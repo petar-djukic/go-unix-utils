@@ -1,173 +1,223 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/sha384sum computes SHA-384 message digests for files or stdin.
-//
-// Implements prd075-sha384sum: R1.1 (file digest computation), R1.2 (stdin),
-// R1.3 (--tag BSD-style output), R1.4 (exit 1 on read error),
-// R2.1 (--check verification), R2.2 (OK/FAILED output), R2.3 (--warn/--quiet/--status),
-// R3.1 (binary mode indicator), R3.2 (--tag overrides -b/-t),
-// R4.1 (--strict malformed line failure), R4.2 (--version/--help),
-// R4.3 (SIGPIPE handling).
+// Package main implements cmd/sha384sum: compute and check SHA-384 message digests.
+// Implements srd075-sha384sum R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2,
+// R4.1, R4.2, R4.3.
 package main
 
 import (
 	"crypto/sha512"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/hashutil"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// sha384Config is the hashutil configuration for SHA-384 digests.
-//
-// R1.1: SHA-384 hash via crypto/sha512.New384 with 96-character hex digest.
-var sha384Config = hashutil.HashConfig{
-	Algorithm: "SHA384",
-	NewHash:   sha512.New384,
-	DigestLen: 96,
+const (
+	programName   = "sha384sum"
+	algorithmName = "SHA384"
+	// R1.2: SHA-384 produces 48-byte (96 hex character) digests.
+	sha384DigestLen = 96
+)
+
+// usageText is the --help output printed to stdout.
+const usageText = `Usage: sha384sum [OPTION]... [FILE]...
+Print or check SHA384 (384-bit) checksums.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -b, --binary   read in binary mode
+  -c, --check    read checksums from the FILEs and check them
+      --tag      create a BSD-style checksum
+  -t, --text     read in text mode (default)
+
+The following five options are useful only when verifying checksums:
+      --quiet    don't print OK for each successfully verified file
+      --status   don't output anything, status code shows success
+      --strict   exit non-zero for improperly formatted checksum lines
+  -w, --warn     warn about improperly formatted checksum lines
+
+      --help     display this help and exit
+      --version  output version information and exit
+`
+
+// versionText is the --version output printed to stdout.
+const versionText = "sha384sum (go-unix-utils) 0.1.0\n"
+
+// config holds parsed command-line options for sha384sum.
+type config struct {
+	binary  bool // -b, --binary
+	text    bool // -t, --text
+	tag     bool // --tag
+	check   bool // -c, --check
+	warn    bool // -w, --warn
+	quiet   bool // --quiet
+	status  bool // --status
+	strict  bool // --strict
+	help    bool // --help
+	version bool // --version
+	files   []string
 }
 
-// options holds all parsed command-line flags.
-type options struct {
-	binary bool
-	tag    bool
-	check  bool
-	quiet  bool
-	status bool
-	warn   bool
-	strict bool
-	files  []string
-}
-
+// R1.1: main entry with SIGPIPE handler and flag parsing.
+// R4.3: InstallSIGPIPEHandler for graceful SIGPIPE exit.
 func main() {
-	// R4.3: SIGPIPE handling.
 	sys.InstallSIGPIPEHandler()
 
-	opts := parseArgs(os.Args[1:])
-
-	if err := validateFlags(opts); err != nil {
-		fmt.Fprintf(os.Stderr, "sha384sum: %s\n", err)
+	cfg, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 		os.Exit(1)
 	}
 
-	if opts.check {
-		os.Exit(runCheckMode(opts))
-	}
-
-	// R1.1, R1.2, R3.2: Compute digests for files or stdin.
-	os.Exit(hashutil.DigestFiles(opts.files, sha384Config, opts.binary, opts.tag, os.Stdout, os.Stderr))
+	exitCode := run(cfg)
+	os.Exit(exitCode)
 }
 
-// validateFlags returns an error if flags are used in invalid combinations.
-//
-// R4.1: --strict requires --check.
-// R4.3: --tag with --check is meaningless.
-func validateFlags(opts options) error {
-	if opts.check {
-		if opts.tag {
-			return fmt.Errorf("the --tag option is meaningless when verifying checksums")
+// run executes the sha384sum logic and returns the exit code.
+// R4.2: --help and --version print to stdout and exit 0.
+// R1.4: in digest mode, delegates to hashutil.DigestFiles.
+func run(cfg config) int {
+	if cfg.help {
+		fmt.Fprint(os.Stdout, usageText)
+		return 0
+	}
+	if cfg.version {
+		fmt.Fprint(os.Stdout, versionText)
+		return 0
+	}
+
+	// R1.2: configure HashConfig with SHA384 algorithm.
+	hcfg := hashutil.HashConfig{
+		Algorithm: algorithmName,
+		NewHash:   sha512.New384,
+		DigestLen: sha384DigestLen,
+	}
+
+	if cfg.check {
+		return runCheck(cfg, hcfg)
+	}
+	return hashutil.DigestFiles(cfg.files, hcfg, cfg.binary, cfg.tag, os.Stdout, os.Stderr)
+}
+
+// runCheck verifies checksums from each file argument.
+// R2.1: --check reads a checksum file and reports OK or FAILED.
+// R2.3: --strict makes malformed lines cause exit code 1.
+func runCheck(cfg config, hcfg hashutil.HashConfig) int {
+	opts := hashutil.CheckOptions{
+		Warn:   cfg.warn || cfg.strict,
+		Quiet:  cfg.quiet,
+		Status: cfg.status,
+	}
+	allOK := true
+	for _, f := range cfg.files {
+		ok, err := hashutil.VerifyChecksums(f, hcfg, opts, os.Stdout, os.Stderr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			allOK = false
+			continue
 		}
-		return nil
+		if !ok {
+			allOK = false
+		}
 	}
-	if opts.quiet {
-		return fmt.Errorf("the --quiet option is meaningful only when verifying checksums")
+	if !allOK {
+		return 1
 	}
-	if opts.status {
-		return fmt.Errorf("the --status option is meaningful only when verifying checksums")
+	return 0
+}
+
+// parseArgs parses command-line arguments into config.
+// R1.3: supports -b, -t, --tag, -c, -w, --quiet, --status, --strict.
+func parseArgs(args []string) (config, error) {
+	cfg := config{}
+	flagsDone := false
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if flagsDone || (!strings.HasPrefix(arg, "-") || arg == "-") {
+			cfg.files = append(cfg.files, arg)
+			continue
+		}
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		skip, err := parseFlag(&cfg, arg)
+		if err != nil {
+			return config{}, err
+		}
+		i += skip
 	}
-	if opts.warn {
-		return fmt.Errorf("the --warn option is meaningful only when verifying checksums")
+	if cfg.help || cfg.version {
+		return cfg, nil
 	}
-	if opts.strict {
-		return fmt.Errorf("the --strict option is meaningful only when verifying checksums")
+	return cfg, validateArgs(cfg)
+}
+
+// validateArgs checks for invalid flag combinations.
+func validateArgs(cfg config) error {
+	if cfg.check && len(cfg.files) == 0 {
+		return fmt.Errorf("--check requires a file argument")
 	}
 	return nil
 }
 
-// runCheckMode verifies checksums from files and returns the exit code.
-//
-// R2.1: -c reads checksum file and verifies entries via hashutil.VerifyChecksums.
-// R4.1: --strict causes non-zero exit on malformed lines.
-func runCheckMode(opts options) int {
-	checkOpts := hashutil.CheckOptions{
-		Quiet:  opts.quiet,
-		Status: opts.status,
-		Warn:   opts.warn,
-		Strict: opts.strict,
+// parseFlag dispatches to long or short flag parsing.
+func parseFlag(cfg *config, arg string) (int, error) {
+	if strings.HasPrefix(arg, "--") {
+		return parseLongFlag(cfg, arg)
 	}
-	files := opts.files
-	if len(files) == 0 {
-		files = []string{"-"}
-	}
-	exitCode := 0
-	for _, f := range files {
-		allOK, err := hashutil.VerifyChecksums(f, sha384Config, checkOpts, os.Stdout, os.Stderr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "sha384sum: %s\n", err)
-			exitCode = 1
-			continue
-		}
-		if !allOK {
-			exitCode = 1
-		}
-	}
-	return exitCode
+	return parseShortFlags(cfg, arg[1:])
 }
 
-// parseArgs parses GNU-compatible flags from args and returns the parsed options.
-//
-// R3.2: --tag enables BSD-style output regardless of -b/-t.
-// R4.2: --help and --version print info and exit 0.
-func parseArgs(args []string) options {
-	var opts options
-	for _, arg := range args {
-		switch arg {
-		case "-b", "--binary":
-			opts.binary = true
-		case "-t", "--text":
-			opts.binary = false
-		case "--tag":
-			opts.tag = true
-		case "-c", "--check":
-			opts.check = true
-		case "--quiet":
-			opts.quiet = true
-		case "--status":
-			opts.status = true
-		case "-w", "--warn":
-			opts.warn = true
-		case "--strict":
-			opts.strict = true
-		case "--":
-			continue
-		case "--help":
-			printUsage()
-			os.Exit(0)
-		case "--version":
-			fmt.Fprintln(os.Stdout, "sha384sum (go-unix-utils)")
-			os.Exit(0)
+// parseLongFlag handles --name flags.
+func parseLongFlag(cfg *config, arg string) (int, error) {
+	switch arg {
+	case "--binary":
+		cfg.binary = true
+	case "--text":
+		cfg.text = true
+	case "--tag":
+		cfg.tag = true
+	case "--check":
+		cfg.check = true
+	case "--warn":
+		cfg.warn = true
+	case "--quiet":
+		cfg.quiet = true
+	case "--status":
+		cfg.status = true
+	case "--strict":
+		cfg.strict = true
+	case "--help":
+		cfg.help = true
+	case "--version":
+		cfg.version = true
+	default:
+		return 0, fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	return 0, nil
+}
+
+// parseShortFlags processes bundled short flags like -bw.
+func parseShortFlags(cfg *config, flags string) (int, error) {
+	for _, ch := range flags {
+		switch ch {
+		case 'b':
+			cfg.binary = true
+		case 't':
+			cfg.text = true
+		case 'c':
+			cfg.check = true
+		case 'w':
+			cfg.warn = true
 		default:
-			opts.files = append(opts.files, arg)
+			return 0, fmt.Errorf("invalid option -- '%c'", ch)
 		}
 	}
-	return opts
-}
-
-// printUsage prints the usage message to stdout.
-//
-// R4.2: --help output.
-func printUsage() {
-	fmt.Fprintln(os.Stdout, "Usage: sha384sum [OPTION]... [FILE]...")
-	fmt.Fprintln(os.Stdout, "Print or check SHA384 checksums.")
-	fmt.Fprintln(os.Stdout, "")
-	fmt.Fprintln(os.Stdout, "  -b, --binary  read in binary mode")
-	fmt.Fprintln(os.Stdout, "  -t, --text    read in text mode (default)")
-	fmt.Fprintln(os.Stdout, "      --tag     create a BSD-style checksum")
-	fmt.Fprintln(os.Stdout, "  -c, --check   read checksums from FILEs and check them")
-	fmt.Fprintln(os.Stdout, "      --quiet   don't print OK for each successfully verified file")
-	fmt.Fprintln(os.Stdout, "      --status  don't output anything, status code shows success")
-	fmt.Fprintln(os.Stdout, "  -w, --warn    warn about improperly formatted checksum lines")
-	fmt.Fprintln(os.Stdout, "      --strict  exit non-zero for improperly formatted checksum lines")
+	return 0, nil
 }

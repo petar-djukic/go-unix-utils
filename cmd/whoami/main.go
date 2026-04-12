@@ -1,21 +1,26 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/whoami implements GNU whoami: print the effective user name.
-//
-// Implements prd042-whoami R1.1, R1.2, R2.1, R2.2, R3.1, R3.2, R3.3.
+// Package main implements cmd/whoami: print the effective user name.
+// Implements srd042-whoami R1.1, R1.2, R2.1, R2.2.
 package main
 
 import (
 	"fmt"
 	"os"
 	"os/user"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const programName = "whoami"
+// progName is used in error messages.
+const progName = "whoami"
 
+// versionText is printed when --version is passed.
+const versionText = progName + " (go-unix-utils)"
+
+// helpText is the usage message printed when --help is passed.
 const helpText = `Usage: whoami [OPTION]...
 Print the user name associated with the current effective user ID.
 Same as id -un.
@@ -24,89 +29,50 @@ Same as id -un.
       --version  output version information and exit
 `
 
-const versionText = "whoami (go-unix-utils) 0.1\n"
-
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	exitCode := run(os.Args[1:], os.Stdout, os.Stderr)
-	os.Exit(exitCode)
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
+	}
 }
 
-// parseResult signals how argument parsing concluded.
-type parseResult int
-
-const (
-	parseOK           parseResult = iota
-	parseHelp                     // --help requested
-	parseVer                      // --version requested
-	parseErr                      // unknown flag
-	parseExtraOperand             // extra operand provided
-)
-
-// run parses arguments and prints the effective username.
-// Returns exit code: 0 on success, 1 on error.
-func run(args []string, stdout, stderr *os.File) int {
-	result, badArg := parseArgs(args)
-	switch result {
-	case parseHelp:
-		fmt.Fprint(stdout, helpText) //nolint:errcheck // best-effort
-		return 0
-	case parseVer:
-		fmt.Fprint(stdout, versionText) //nolint:errcheck // best-effort
-		return 0
-	case parseErr:
-		printUnknownOption(badArg, stderr)
-		return 1
-	case parseExtraOperand:
-		printExtraOperand(badArg, stderr)
-		return 1
+// run processes arguments and prints the effective username.
+// R1.1: no arguments prints effective username with trailing newline.
+// R2.1, R2.2: extra operands and unknown flags produce errors.
+func run(args []string) error {
+	if err := parseArgs(args); err != nil {
+		return err
 	}
 
-	return printUsername(stdout, stderr)
-}
-
-// parseArgs classifies the argument list.
-// R2.1: extra operands produce parseExtraOperand.
-// R2.2: unknown flags produce parseErr.
-func parseArgs(args []string) (parseResult, string) {
-	for _, arg := range args {
-		switch arg {
-		case "--help":
-			return parseHelp, ""
-		case "--version":
-			return parseVer, ""
-		default:
-			if len(arg) > 0 && arg[0] == '-' {
-				return parseErr, arg
-			}
-			return parseExtraOperand, arg
-		}
-	}
-	return parseOK, ""
-}
-
-// printUnknownOption writes the unknown-option error to stderr.
-func printUnknownOption(flag string, stderr *os.File) {
-	fmt.Fprintf(stderr, "%s: unrecognized option '%s'\n", programName, flag) //nolint:errcheck
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName) //nolint:errcheck
-}
-
-// printExtraOperand writes the extra-operand error to stderr.
-func printExtraOperand(operand string, stderr *os.File) {
-	fmt.Fprintf(stderr, "%s: extra operand '%s'\n", programName, operand) //nolint:errcheck
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName) //nolint:errcheck
-}
-
-// printUsername looks up and prints the effective username.
-// R1.1: prints the effective username followed by a newline.
-// R1.2: uses os/user.Current() which reflects the effective UID.
-func printUsername(stdout, stderr *os.File) int {
+	// R1.1, R1.2: print the effective username via os/user.Current().
 	u, err := user.Current()
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: cannot find name for user ID: %v\n", programName, err) //nolint:errcheck
-		return 1
+		return fmt.Errorf("cannot find name for user ID %d", os.Geteuid())
 	}
-	fmt.Fprintln(stdout, u.Username) //nolint:errcheck // best-effort
-	return 0
+	fmt.Println(u.Username)
+	return nil
+}
+
+// parseArgs validates that no extra operands or unknown flags are present.
+// R2.2: only --help and --version are accepted.
+func parseArgs(args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	arg := args[0]
+	if arg == "--help" {
+		fmt.Print(helpText)
+		os.Exit(0)
+	}
+	if arg == "--version" {
+		fmt.Println(versionText)
+		os.Exit(0)
+	}
+	if strings.HasPrefix(arg, "-") && arg != "-" {
+		return fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	return fmt.Errorf("extra operand '%s'", arg)
 }

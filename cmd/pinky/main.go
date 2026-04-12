@@ -1,20 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/pinky implements prd098-pinky R1.1-R1.3, R2.1-R2.3, R3.1-R3.3:
-// lightweight finger information lookup showing logged-in user details
-// in short or long format, verified against gpinky via differential testing.
-
+// Package main implements cmd/pinky: lightweight finger information lookup.
+// Implements srd098-pinky R1.1-R1.3: core utmpx reading and default output.
+// Implements srd098-pinky R2.1-R2.3: flags and display options.
+// Implements srd098-pinky R3.1-R3.3: error handling, version, and help.
 package main
 
 /*
 #include <utmpx.h>
 #include <pwd.h>
 #include <stdlib.h>
-#include <unistd.h>
-
-// utmpxname is available on macOS but not declared in all header versions.
-extern int utmpxname(const char *);
 */
 import "C"
 
@@ -28,119 +24,206 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// progName is the binary name used in error messages.
 const progName = "pinky"
 
-// timeStringLen is the expected width of formatted time strings with LC_ALL=C.
-const timeStringLen = 12
+// timeFormat matches GNU pinky short-format login time: "Mon DD HH:MM".
+const timeFormat = "Jan _2 15:04"
 
-// options holds parsed command-line flags and user operands.
-type options struct {
-	shortFormat     bool
-	longFormat      bool
-	suppressHeader  bool // R2.2: -f suppresses header in short format.
-	suppressDir     bool // R2.3: -b suppresses home dir and shell in long format.
-	suppressProject bool // R2.3: -h suppresses project file (no-op per non_goals).
-	suppressPlan    bool // R2.3: -p suppresses plan file (no-op per non_goals).
-	users           []string
-}
-
-// utmpxEntry holds fields extracted from a utmpx record.
-type utmpxEntry struct {
+// utmpEntry holds one user session from the utmpx database.
+type utmpEntry struct {
 	user string
 	line string
 	time time.Time
 	host string
 }
 
-// passwdInfo holds fields extracted from a passwd entry.
-type passwdInfo struct {
-	name  string
-	gecos string
-	dir   string
-	shell string
+// options holds parsed command-line flags.
+type options struct {
+	longFormat      bool // R2.1: -l
+	suppressHeader  bool // R2.2: -f
+	suppressHomeDir bool // R2.3: -b
+	suppressProject bool // R2.3: -h
+	suppressPlan    bool // R2.3: -p
+	suppressName    bool // -w
+	version         bool // R3.1: --version
+	help            bool // R3.2: --help
 }
 
+// gecosFields holds parsed GECOS information.
+// D1: real name, office, office phone, home phone.
+type gecosFields struct {
+	realName    string
+	office      string
+	officePhone string
+	homePhone   string
+}
+
+// passwdInfo holds user information from the passwd database.
+type passwdInfo struct {
+	username string
+	gecos    gecosFields
+	homeDir  string
+	shell    string
+}
+
+// main is the entry point for cmd/pinky.
 func main() {
-	// R3.3: handle SIGPIPE gracefully.
 	sys.InstallSIGPIPEHandler()
 
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+	opts, operands, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
-}
-
-// run parses arguments and prints pinky output.
-func run(args []string) error {
-	opts, err := parseArgs(args)
-	if err != nil {
-		return err
+	if opts.version {
+		printVersion()
+		return
 	}
-	if opts.longFormat && len(opts.users) == 0 {
-		return fmt.Errorf("no username specified; at least one must be specified when using -l")
-	}
-	if opts.shortFormat {
-		printShort(opts)
+	if opts.help {
+		printUsage()
+		return
 	}
 	if opts.longFormat {
-		printLong(opts)
+		os.Exit(runLongFormat(opts, operands))
+		return
 	}
-	return nil
+	runShortFormat(opts, operands)
 }
 
-// parseArgs extracts options and user operands from arguments.
-// R1.2: user operands filter output to named users.
-// R1.3: -s forces short format.
-func parseArgs(args []string) (options, error) {
-	opts := options{shortFormat: true}
-	for i, arg := range args {
+// runShortFormat displays logged-in users in short format.
+func runShortFormat(opts options, operands []string) {
+	entries := readUserEntries()
+	if len(operands) > 0 {
+		entries = filterByUsers(entries, operands)
+	}
+	if !opts.suppressHeader {
+		printHeader(opts)
+	}
+	printShortEntries(entries, opts)
+}
+
+// runLongFormat displays long-format user information.
+// R2.1: requires at least one username operand, matching GNU behavior.
+func runLongFormat(opts options, operands []string) int {
+	if len(operands) == 0 {
+		fmt.Fprintf(os.Stderr,
+			"%s: no username specified; at least one must be "+
+				"specified when using -l\n"+
+				"Try '%s --help' for more information.\n",
+			progName, progName)
+		return 1
+	}
+	for _, username := range operands {
+		printLongEntry(username, opts)
+	}
+	return 0
+}
+
+// parseArgs parses command-line arguments into options and operands.
+// Returns an error for unrecognized flags (R3.3).
+func parseArgs(args []string) (options, []string, error) {
+	var opts options
+	var operands []string
+	for _, arg := range args {
 		if arg == "--" {
-			opts.users = append(opts.users, args[i+1:]...)
-			break
+			continue
 		}
-		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-			if err := applyFlags(&opts, arg[1:]); err != nil {
-				return opts, err
+		if strings.HasPrefix(arg, "--") {
+			if err := applyLongFlag(&opts, arg); err != nil {
+				return options{}, nil, err
 			}
 			continue
 		}
-		opts.users = append(opts.users, arg)
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			if err := parseShortFlags(&opts, arg); err != nil {
+				return options{}, nil, err
+			}
+			continue
+		}
+		operands = append(operands, arg)
 	}
-	return opts, nil
+	return opts, operands, nil
 }
 
-// applyFlags processes combined short flags like -sl.
-// R2.2: -f suppresses header. R2.3: -b, -h, -p flags.
-func applyFlags(opts *options, flags string) error {
-	for _, ch := range flags {
-		switch ch {
-		case 's':
-			opts.shortFormat = true
-		case 'l':
-			opts.shortFormat = false
-			opts.longFormat = true
-		case 'f':
-			opts.suppressHeader = true
-		case 'b':
-			opts.suppressDir = true
-		case 'h':
-			opts.suppressProject = true
-		case 'p':
-			opts.suppressPlan = true
-		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
+// applyLongFlag handles long-form flags (--version, --help).
+func applyLongFlag(opts *options, arg string) error {
+	switch arg {
+	case "--version":
+		opts.version = true
+	case "--help":
+		opts.help = true
+	default:
+		return fmt.Errorf("%s: unrecognized option '%s'\nTry '%s --help' for more information.",
+			progName, arg, progName)
+	}
+	return nil
+}
+
+// parseShortFlags processes a short flag argument, supporting combined flags.
+func parseShortFlags(opts *options, arg string) error {
+	for _, ch := range arg[1:] {
+		if err := applyShortFlag(opts, ch); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// readUtmpxEntries reads USER_PROCESS entries from the utmpx database.
-func readUtmpxEntries() []utmpxEntry {
+// applyShortFlag sets the option for a single flag character.
+func applyShortFlag(opts *options, ch rune) error {
+	switch ch {
+	case 'l':
+		opts.longFormat = true
+	case 's':
+		// R1.3: short format is default, accepted silently.
+	case 'f':
+		opts.suppressHeader = true
+	case 'b':
+		opts.suppressHomeDir = true
+	case 'h':
+		opts.suppressProject = true
+	case 'p':
+		opts.suppressPlan = true
+	case 'w':
+		opts.suppressName = true
+	default:
+		return fmt.Errorf("%s: invalid option -- '%c'\nTry '%s --help' for more information.",
+			progName, ch, progName)
+	}
+	return nil
+}
+
+// printVersion prints version information to stdout and exits 0.
+// R3.1: matches GNU pinky --version output structure.
+func printVersion() {
+	fmt.Printf("%s (go-unix-utils) 0.1\n", progName)
+}
+
+// printUsage prints usage information to stdout.
+// R3.2: matches GNU pinky --help output structure.
+func printUsage() {
+	fmt.Printf("Usage: %s [OPTION]... [USER]...\n", progName)
+	fmt.Println()
+	fmt.Println("Print information about users who are currently logged in.")
+	fmt.Println()
+	fmt.Println("  -l        produce long format output")
+	fmt.Println("  -b        omit the user's home directory and shell in long format")
+	fmt.Println("  -h        omit the user's project file in long format")
+	fmt.Println("  -p        omit the user's plan file in long format")
+	fmt.Println("  -s        do short format output, this is the default")
+	fmt.Println("  -f        omit the line of column headings in short format")
+	fmt.Println("  -w        omit the user's full name in short format")
+	fmt.Println("      --help     display this help and exit")
+	fmt.Println("      --version  output version information and exit")
+}
+
+// readUserEntries reads the utmpx database and returns USER_PROCESS entries.
+// R1.1: filters to USER_PROCESS type only.
+func readUserEntries() []utmpEntry {
 	C.setutxent()
 	defer C.endutxent()
-	var entries []utmpxEntry
+
+	var entries []utmpEntry
 	for {
 		entry := C.getutxent()
 		if entry == nil {
@@ -154,9 +237,9 @@ func readUtmpxEntries() []utmpxEntry {
 	return entries
 }
 
-// extractEntry converts a C utmpx entry to a Go utmpxEntry.
-func extractEntry(entry *C.struct_utmpx) utmpxEntry {
-	return utmpxEntry{
+// extractEntry converts a C utmpx entry to a Go utmpEntry.
+func extractEntry(entry *C.struct_utmpx) utmpEntry {
+	return utmpEntry{
 		user: C.GoString(&entry.ut_user[0]),
 		line: C.GoString(&entry.ut_line[0]),
 		time: time.Unix(int64(entry.ut_tv.tv_sec), 0),
@@ -164,180 +247,194 @@ func extractEntry(entry *C.struct_utmpx) utmpxEntry {
 	}
 }
 
-// lookupPasswd returns passwd information for a username, or nil if not found.
-func lookupPasswd(username string) *passwdInfo {
-	cname := C.CString(username)
-	defer C.free(unsafe.Pointer(cname))
-	pw := C.getpwnam(cname)
-	if pw == nil {
-		return nil
-	}
-	return &passwdInfo{
-		name:  C.GoString(pw.pw_name),
-		gecos: C.GoString(pw.pw_gecos),
-		dir:   C.GoString(pw.pw_dir),
-		shell: C.GoString(pw.pw_shell),
-	}
-}
-
-// gecosField extracts the field at index from a comma-separated GECOS string.
-// Returns empty string if the index is out of range.
-func gecosField(gecos string, index int) string {
-	fields := strings.Split(gecos, ",")
-	if index < len(fields) {
-		return fields[index]
-	}
-	return ""
-}
-
-// gecosName extracts the first field (real name) from a GECOS string.
-func gecosName(gecos string) string {
-	return gecosField(gecos, 0)
-}
-
-// printShort prints logged-in users in short format.
-// R1.1: default output shows login name, full name, terminal, idle, time, host.
-// R2.2: -f suppresses the header line.
-func printShort(opts options) {
-	if !opts.suppressHeader {
-		printShortHeader()
-	}
-	entries := readUtmpxEntries()
-	userSet := makeUserSet(opts.users)
-	for _, e := range entries {
-		if len(userSet) > 0 && !userSet[e.user] {
-			continue
-		}
-		printShortEntry(e)
-	}
-}
-
-// makeUserSet creates a lookup set from user operands.
-func makeUserSet(users []string) map[string]bool {
-	if len(users) == 0 {
-		return nil
-	}
-	m := make(map[string]bool, len(users))
+// filterByUsers returns entries whose login name matches one of the operands.
+// R1.2: restrict output to users matching given operands.
+func filterByUsers(entries []utmpEntry, users []string) []utmpEntry {
+	set := make(map[string]bool, len(users))
 	for _, u := range users {
-		m[u] = true
+		set[u] = true
 	}
-	return m
-}
-
-// printShortHeader prints the column header for short format.
-func printShortHeader() {
-	fmt.Printf("%-8s %-19s %-9s %-6s %-*s %s\n",
-		"Login", "Name", " TTY", "Idle", timeStringLen, "When", "Where")
-}
-
-// printShortEntry prints one short-format line for a utmpx entry.
-func printShortEntry(e utmpxEntry) {
-	pw := lookupPasswd(e.user)
-	idle := getIdleStr(e.line)
-	timeStr := e.time.Format("Jan _2 15:04")
-	fmt.Printf("%-8s", e.user)
-	printShortName(pw)
-	fmt.Printf("  %-8.8s %-6s %s", e.line, idle, timeStr)
-	if e.host != "" {
-		fmt.Printf(" %s", e.host)
+	var filtered []utmpEntry
+	for _, e := range entries {
+		if set[e.user] {
+			filtered = append(filtered, e)
+		}
 	}
-	fmt.Println()
+	return filtered
 }
 
-// printShortName prints the GECOS name column in short format.
-func printShortName(pw *passwdInfo) {
-	if pw != nil {
-		fmt.Printf(" %-19.19s", gecosName(pw.gecos))
+// printHeader prints the short-format column header line.
+// R2.2: suppressed when -f is set.
+// Column widths match GNU pinky: Login(9) Name(21) TTY(9) Idle(7) When(13) Where.
+func printHeader(opts options) {
+	if opts.suppressName {
+		fmt.Printf("%-10s%-9s%-7s%-13s%s\n",
+			"Login", "TTY", "Idle", "When", "Where")
+		return
+	}
+	fmt.Printf("%-9s%-21s%-9s%-7s%-13s%s\n",
+		"Login", "Name", "TTY", "Idle", "When", "Where")
+}
+
+// printShortEntries prints all user entries in short format.
+func printShortEntries(entries []utmpEntry, opts options) {
+	for _, e := range entries {
+		printShortEntry(e, opts)
+	}
+}
+
+// printShortEntry prints one user entry in short format.
+// R1.1: shows login name, full name, tty, idle, login time, remote host.
+func printShortEntry(e utmpEntry, opts options) {
+	idle := idleString(e.line)
+	timeStr := e.time.Format(timeFormat)
+	if opts.suppressName {
+		printShortLine("%-10s%-9s%-7s", e.user, e.line, idle, timeStr, e.host)
+		return
+	}
+	fullName := lookupRealName(e.user)
+	printShortLineWithName(e.user, fullName, e.line, idle, timeStr, e.host)
+}
+
+// printShortLine prints a short-format line without the name column.
+func printShortLine(prefix string, user, line, idle, when, host string) {
+	fmt.Printf(prefix, user, line, idle)
+	printWhenHost(when, host)
+}
+
+// printShortLineWithName prints a short-format line with the name column.
+func printShortLineWithName(user, name, line, idle, when, host string) {
+	fmt.Printf("%-9s%-21s%-9s%-7s", user, name, line, idle)
+	printWhenHost(when, host)
+}
+
+// printWhenHost prints the When and optional Where fields, avoiding trailing spaces.
+func printWhenHost(when, host string) {
+	if host != "" {
+		fmt.Printf("%-13s%s\n", when, host)
 	} else {
-		fmt.Printf(" %19s", " ???")
+		fmt.Printf("%s\n", when)
 	}
 }
 
-// printLong prints long-format user information.
-// R2.1: shows login name, real name, directory, shell, office, phone.
-// R2.3: -b suppresses directory and shell.
-func printLong(opts options) {
-	for _, user := range opts.users {
-		printLongEntry(user, opts)
+// lookupRealName returns the GECOS real name for the given username.
+func lookupRealName(username string) string {
+	pw, ok := lookupPasswd(username)
+	if !ok {
+		return "???"
 	}
+	return pw.gecos.realName
+}
+
+// lookupPasswd retrieves passwd entry via C getpwnam.
+func lookupPasswd(username string) (passwdInfo, bool) {
+	cName := C.CString(username)
+	defer C.free(unsafe.Pointer(cName))
+	pw := C.getpwnam(cName)
+	if pw == nil {
+		return passwdInfo{}, false
+	}
+	return passwdInfo{
+		username: C.GoString(pw.pw_name),
+		gecos:    parseGECOS(C.GoString(pw.pw_gecos)),
+		homeDir:  C.GoString(pw.pw_dir),
+		shell:    C.GoString(pw.pw_shell),
+	}, true
+}
+
+// parseGECOS splits the GECOS field into its components.
+// D1: comma-separated: real name, office, office phone, home phone.
+func parseGECOS(gecos string) gecosFields {
+	parts := strings.SplitN(gecos, ",", 4)
+	var g gecosFields
+	if len(parts) > 0 {
+		g.realName = parts[0]
+	}
+	if len(parts) > 1 {
+		g.office = parts[1]
+	}
+	if len(parts) > 2 {
+		g.officePhone = parts[2]
+	}
+	if len(parts) > 3 {
+		g.homePhone = parts[3]
+	}
+	return g
 }
 
 // printLongEntry prints long-format information for one user.
-// R2.3: -b suppresses directory and shell lines.
-// R3.1: nonexistent users still exit 0; trailing blank line only when pw exists.
+// R2.1: login name, real name, directory, shell, office, phone.
 func printLongEntry(username string, opts options) {
-	pw := lookupPasswd(username)
-	printLongNameLine(username, pw)
-	if pw == nil {
+	pw, ok := lookupPasswd(username)
+	if !ok {
+		printLongNameLine(username, "???")
 		return
 	}
-	if !opts.suppressDir {
-		fmt.Printf("Directory: %-29s", pw.dir)
-		fmt.Printf("Shell:  %s\n", pw.shell)
+	printLongNameLine(pw.username, pw.gecos.realName)
+	if !opts.suppressHomeDir {
+		printLongDirLine(pw.homeDir, pw.shell)
 	}
-	printLongGecos(pw.gecos)
+	printLongContactLine(pw.gecos)
+	// TODO: R2.3 .project/.plan display is a non-goal on macOS (srd098 non_goals).
 	fmt.Println()
 }
 
-// printLongNameLine prints the login/real-name line in long format.
-func printLongNameLine(username string, pw *passwdInfo) {
-	fmt.Printf("Login name: %-28s", username)
-	fmt.Printf("In real life:  ")
-	if pw != nil {
-		fmt.Printf("%s", gecosName(pw.gecos))
-	} else {
-		fmt.Printf("???")
-	}
-	fmt.Println()
+// printLongNameLine prints the login/real name line in long format.
+func printLongNameLine(username, realName string) {
+	fmt.Printf("Login name: %-28sIn real life:  %s\n",
+		username, realName)
 }
 
-// printLongGecos prints office and phone fields from GECOS in long format.
-func printLongGecos(gecos string) {
-	office := gecosField(gecos, 1)
-	officePhone := gecosField(gecos, 2)
-	homePhone := gecosField(gecos, 3)
-	printOfficeLine(office, officePhone)
-	if homePhone != "" {
-		fmt.Printf("Home Phone: %s\n", homePhone)
-	}
+// printLongDirLine prints the directory/shell line in long format.
+// R2.3: suppressed by -b flag.
+func printLongDirLine(homeDir, shell string) {
+	fmt.Printf("Directory: %-29sShell:  %s\n", homeDir, shell)
 }
 
-// printOfficeLine prints the office location and phone if present.
-func printOfficeLine(office, phone string) {
-	if office == "" && phone == "" {
-		return
-	}
-	if office != "" && phone != "" {
-		fmt.Printf("Office: %s, %s\n", office, phone)
-	} else if office != "" {
-		fmt.Printf("Office: %s\n", office)
-	} else {
-		fmt.Printf("Office: %s\n", phone)
+// printLongContactLine prints office/phone info if any fields are present.
+func printLongContactLine(g gecosFields) {
+	left := buildOfficeString(g.office, g.officePhone)
+	if g.homePhone != "" {
+		fmt.Printf("%-40sHome Phone: %s\n", left, g.homePhone)
+	} else if left != "" {
+		fmt.Println(left)
 	}
 }
 
-// getIdleStr returns the idle time string for a terminal device.
-func getIdleStr(line string) string {
+// buildOfficeString constructs the office portion of the contact line.
+func buildOfficeString(office, officePhone string) string {
+	var parts []string
+	if office != "" {
+		parts = append(parts, office)
+	}
+	if officePhone != "" {
+		parts = append(parts, officePhone)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Office: " + strings.Join(parts, ", ")
+}
+
+// idleString computes the idle time string for a terminal device.
+// D2: computed from tty device modification time.
+// Returns bare strings; column formatting is handled by the caller's printf.
+func idleString(line string) string {
 	devPath := "/dev/" + line
-	info, err := sys.Stat(devPath)
+	info, err := os.Stat(devPath)
 	if err != nil {
 		return "?"
 	}
-	return formatIdle(time.Since(info.AccessTime))
-}
-
-// formatIdle converts a duration to pinky idle format.
-// Active (<60s): empty, days (>=24h): "Nd", otherwise "HH:MM".
-func formatIdle(d time.Duration) string {
-	secs := int(d.Seconds())
-	if secs < 60 {
+	idle := time.Since(info.ModTime())
+	if idle < time.Minute {
 		return ""
 	}
-	if secs >= 86400 {
-		days := secs / 86400
+	const day = 24 * time.Hour
+	if idle >= day {
+		days := int(idle.Hours()) / 24
 		return fmt.Sprintf("%dd", days)
 	}
-	hours := secs / 3600
-	mins := (secs % 3600) / 60
-	return fmt.Sprintf("%02d:%02d", hours, mins)
+	hours := int(idle.Hours())
+	minutes := int(idle.Minutes()) % 60
+	return fmt.Sprintf("%02d:%02d", hours, minutes)
 }

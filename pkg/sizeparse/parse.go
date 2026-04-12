@@ -1,141 +1,180 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// parse.go implements prd087 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2:
-// core size string parsing with SI and IEC unit suffix support,
-// configurable sign handling, default unit, and error reporting.
-
+// Package sizeparse parses size strings with unit suffixes (K, M, G, etc.)
+// into byte counts. Implements srd087-sizeparse R1.1, R1.2, R1.3, R1.4,
+// R2.1, R2.2, R3.1, R3.2.
 package sizeparse
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
 
-// suffixMultipliers maps recognized unit suffixes (uppercase) to byte multipliers.
-// R1.2: binary/IEC suffixes (powers of 1024).
-// R1.3: decimal/SI suffixes (powers of 1000).
-// Note: Z/Y suffixes overflow int64 and are handled as runtime errors in
-// multiplyChecked rather than being excluded from the map entirely.
-var suffixMultipliers = map[string]int64{
-	"B": 1,
-
-	// R1.2: POSIX block suffix (handled specially for case sensitivity).
-	"b": 512,
-
-	// R1.2: binary suffixes (powers of 1024).
-	"K":   1024,
-	"KIB": 1024,
-	"M":   1024 * 1024,
-	"MIB": 1024 * 1024,
-	"G":   1024 * 1024 * 1024,
-	"GIB": 1024 * 1024 * 1024,
-	"T":   1024 * 1024 * 1024 * 1024,
-	"TIB": 1024 * 1024 * 1024 * 1024,
-	"P":   1024 * 1024 * 1024 * 1024 * 1024,
-	"PIB": 1024 * 1024 * 1024 * 1024 * 1024,
-	"E":   1024 * 1024 * 1024 * 1024 * 1024 * 1024,
-	"EIB": 1024 * 1024 * 1024 * 1024 * 1024 * 1024,
-
-	// R1.3: decimal suffixes (powers of 1000).
-	"KB": 1000,
-	"MB": 1000 * 1000,
-	"GB": 1000 * 1000 * 1000,
-	"TB": 1000 * 1000 * 1000 * 1000,
-	"PB": 1000 * 1000 * 1000 * 1000 * 1000,
-	"EB": 1000 * 1000 * 1000 * 1000 * 1000 * 1000,
+// ParseOptions configures the behavior of ParseWithOptions.
+// R2.1: AllowSign permits +/- prefix on size strings.
+// R2.2: DefaultUnit is the multiplier when no suffix is given.
+type ParseOptions struct {
+	// AllowSign permits +/- prefix on size strings.
+	AllowSign bool
+	// DefaultUnit is the multiplier when no suffix is given (default 1).
+	DefaultUnit int64
 }
 
-// parseSizeString parses a size string into its numeric value in bytes.
-// R1.1: parses decimal integer with optional unit suffix.
-// R1.4: preserves sign in returned value.
-func parseSizeString(s string, opts ParseOptions) (int64, error) {
+// suffixDef defines a unit suffix as a base raised to a power.
+type suffixDef struct {
+	base  int64
+	power int
+}
+
+// suffixes maps recognized unit suffixes to their base and power.
+// R1.2: binary (IEC) suffixes use base 1024; b uses base 512.
+// R1.3: decimal (SI) suffixes use base 1000.
+var suffixes = map[string]suffixDef{
+	"b":   {512, 1},
+	"K":   {1024, 1},
+	"KiB": {1024, 1},
+	"KB":  {1000, 1},
+	"M":   {1024, 2},
+	"MiB": {1024, 2},
+	"MB":  {1000, 2},
+	"G":   {1024, 3},
+	"GiB": {1024, 3},
+	"GB":  {1000, 3},
+	"T":   {1024, 4},
+	"TiB": {1024, 4},
+	"TB":  {1000, 4},
+	"P":   {1024, 5},
+	"PiB": {1024, 5},
+	"PB":  {1000, 5},
+	"E":   {1024, 6},
+	"EiB": {1024, 6},
+	"EB":  {1000, 6},
+	"Z":   {1024, 7},
+	"ZiB": {1024, 7},
+	"ZB":  {1000, 7},
+	"Y":   {1024, 8},
+	"YiB": {1024, 8},
+	"YB":  {1000, 8},
+}
+
+// Parse parses a size string consisting of a decimal integer and an optional
+// unit suffix, returning the size in bytes. Returns an error for invalid input.
+// R1.1: delegates to ParseWithOptions with default options.
+func Parse(s string) (int64, error) {
+	return ParseWithOptions(s, ParseOptions{})
+}
+
+// ParseWithOptions parses a size string with configurable behavior controlled
+// by opts. R2.1: AllowSign controls whether +/- prefix is accepted.
+// R2.2: DefaultUnit provides the multiplier when no suffix is given.
+func ParseWithOptions(s string, opts ParseOptions) (int64, error) {
+	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, fmt.Errorf("invalid size: empty string")
 	}
-	num, suffix, err := splitNumSuffix(s, opts.AllowSign)
+	sign, rest, err := extractSign(s, opts.AllowSign)
 	if err != nil {
 		return 0, err
 	}
-	multiplier, err := lookupMultiplier(suffix, opts.DefaultUnit)
+	num, suffix, err := splitNumSuffix(rest)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid size %q: %w", s, err)
 	}
-	return multiplyChecked(num, multiplier)
-}
-
-// splitNumSuffix separates the numeric part from the suffix.
-// R1.4: handles optional +/- sign prefix.
-func splitNumSuffix(s string, allowSign bool) (int64, string, error) {
-	start := 0
-	sign := int64(1)
-	if len(s) > 0 && (s[0] == '+' || s[0] == '-') {
-		if !allowSign {
-			return 0, "", fmt.Errorf("invalid size %q: sign not allowed", s)
-		}
-		if s[0] == '-' {
-			sign = -1
-		}
-		start = 1
-	}
-	end := findSuffixStart(s, start)
-	numStr := s[start:end]
-	if numStr == "" {
-		return 0, "", fmt.Errorf("invalid size %q: no numeric value", s)
-	}
-	num, err := strconv.ParseInt(numStr, 10, 64)
+	multiplier, err := resolveMultiplier(suffix, opts.DefaultUnit)
 	if err != nil {
-		return 0, "", fmt.Errorf("invalid size %q: %w", s, err)
+		return 0, fmt.Errorf("invalid size %q: %w", s, err)
 	}
-	return num * sign, s[end:], nil
+	// R3.1: detect overflow before returning.
+	result, ok := checkedMul(num, multiplier)
+	if !ok {
+		// R3.2: include original input in error message.
+		return 0, fmt.Errorf("size %q overflows int64", s)
+	}
+	return sign * result, nil
 }
 
-// findSuffixStart returns the index where the suffix begins (first non-digit
-// after the numeric part).
-func findSuffixStart(s string, start int) int {
-	for i := start; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return i
-		}
+// extractSign checks for a leading +/- and returns the sign multiplier,
+// the remaining string, and an error if signs are not allowed.
+// R2.1: when AllowSign is false, reject signed input with an error.
+func extractSign(s string, allowSign bool) (int64, string, error) {
+	if s[0] != '+' && s[0] != '-' {
+		return 1, s, nil
 	}
-	return len(s)
+	if !allowSign {
+		// R3.2: error includes the original input string.
+		return 0, "", fmt.Errorf("invalid size %q: sign not allowed", s)
+	}
+	if s[0] == '-' {
+		return -1, s[1:], nil
+	}
+	return 1, s[1:], nil
 }
 
-// lookupMultiplier returns the byte multiplier for the given suffix.
-// R1.2, R1.3: case-insensitive lookup except for 'b' (512) vs 'B' (1).
-// R3.2: returns error for unrecognized suffixes.
-func lookupMultiplier(suffix string, defaultUnit int64) (int64, error) {
+// splitNumSuffix splits a string into a parsed integer and a suffix string.
+func splitNumSuffix(s string) (int64, string, error) {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 {
+		// R3.2: describe what went wrong.
+		return 0, "", fmt.Errorf("no numeric value")
+	}
+	num, err := strconv.ParseInt(s[:i], 10, 64)
+	if err != nil {
+		return 0, "", err
+	}
+	return num, s[i:], nil
+}
+
+// resolveMultiplier returns the byte multiplier for a suffix, or the
+// default unit if the suffix is empty.
+// R2.2: when DefaultUnit is set and no suffix is given, use it.
+// R3.2: unknown suffix produces an error naming the suffix.
+func resolveMultiplier(suffix string, defaultUnit int64) (int64, error) {
 	if suffix == "" {
-		if defaultUnit == 0 {
+		if defaultUnit <= 0 {
 			return 1, nil
 		}
 		return defaultUnit, nil
 	}
-	// Special case: lowercase 'b' means 512 (POSIX blocks).
-	if suffix == "b" {
-		return 512, nil
-	}
-	upper := strings.ToUpper(suffix)
-	m, ok := suffixMultipliers[upper]
+	def, ok := suffixes[suffix]
 	if !ok {
-		return 0, fmt.Errorf("invalid suffix %q", suffix)
+		return 0, fmt.Errorf("unrecognized suffix %q", suffix)
 	}
-	return m, nil
+	return checkedPow(def.base, def.power)
 }
 
-// multiplyChecked multiplies num by multiplier with int64 overflow detection.
-// R3.1: returns error on overflow.
-func multiplyChecked(num, multiplier int64) (int64, error) {
-	if multiplier == 1 {
-		return num, nil
-	}
-	if num == 0 {
-		return 0, nil
-	}
-	result := num * multiplier
-	if result/multiplier != num {
-		return 0, fmt.Errorf("size overflow: %d * %d exceeds int64", num, multiplier)
+// checkedPow computes base^power with overflow detection.
+// R3.1: returns error if the result exceeds int64 range.
+func checkedPow(base int64, power int) (int64, error) {
+	result := int64(1)
+	for range power {
+		r, ok := checkedMul(result, base)
+		if !ok {
+			return 0, fmt.Errorf("multiplier overflow")
+		}
+		result = r
 	}
 	return result, nil
+}
+
+// checkedMul returns a*b and true, or 0 and false on int64 overflow.
+// R3.1: uses uint64 intermediate arithmetic to detect wrap-around (D2).
+func checkedMul(a, b int64) (int64, bool) {
+	if a == 0 || b == 0 {
+		return 0, true
+	}
+	ua, ub := uint64(a), uint64(b)
+	result := ua * ub
+	if result/ua != ub {
+		return 0, false
+	}
+	if result > math.MaxInt64 {
+		return 0, false
+	}
+	return int64(result), true
 }

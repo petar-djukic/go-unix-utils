@@ -1,349 +1,670 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chmod implements GNU chmod: change file mode bits.
-//
-// Implements prd089-chmod R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R4.1, R4.2, R4.3.
+// Package main implements cmd/chmod: change file mode bits.
+// Implements srd089 R1.1-R1.4 (mode specification),
+// R2.1-R2.4 (recursive and output control),
+// R3.1-R3.2 (special mode bits and reference),
+// R4.1-R4.3 (exit codes and SIGPIPE).
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const progName = "chmod"
+const programName = "chmod"
 
-const helpText = `Usage: chmod [OPTION]... MODE[,MODE]... FILE...
-  or:  chmod [OPTION]... --reference=RFILE FILE...
-Change the mode of each FILE to MODE.
+// errAlreadyReported signals that errors were already printed to stderr
+// by the recursive walker, so the caller should not print again.
+var errAlreadyReported = fmt.Errorf("errors already reported")
 
-  -c, --changes          like verbose but report only when a change is made
-  -f, --silent, --quiet  suppress most error messages
-  -v, --verbose          output a diagnostic for every file processed
-  -R, --recursive        change files and directories recursively
-      --reference=RFILE  use RFILE's mode instead of MODE values
-      --help        display this help and exit
-      --version     output version information and exit
-`
+// modeAction represents the operator in a symbolic mode clause.
+type modeAction int
 
-const versionText = "chmod (go-unix-utils) 0.1\n"
+const (
+	modeSet    modeAction = iota // '='
+	modeAdd                      // '+'
+	modeRemove                   // '-'
+)
 
-// options holds the parsed command-line options.
+// symlinkPolicy controls how symlinks are handled during recursive traversal.
+type symlinkPolicy int
+
+const (
+	symlinkNone    symlinkPolicy = iota // -P: don't follow symlinks (default)
+	symlinkCmdLine                      // -H: follow command-line symlinks only
+	symlinkAll                          // -L: follow all symlinks
+)
+
+// modeClause represents a single parsed symbolic mode clause (e.g., u+rwx).
+// When who is empty, no ugoa was specified and umask filtering applies.
+type modeClause struct {
+	who    string     // subset of "ugoa"; empty means umask-dependent
+	action modeAction // +, -, =
+	perms  string     // subset of "rwxXst"
+}
+
+// mode represents a parsed mode specification, either octal or symbolic.
+type mode struct {
+	octal    uint32       // R1.1: Go os.FileMode bits (valid when isOctal is true)
+	symbolic []modeClause // R1.2: parsed symbolic clauses
+	isOctal  bool         // true when the mode was specified as an octal number
+}
+
+// options holds parsed command-line flags for chmod.
 type options struct {
-	recursive bool
-	verbose   bool
-	changes   bool
-	silent    bool
-	reference string // R3.2: --reference=RFILE
+	recursive bool          // R2.1: -R/--recursive
+	verbose   bool          // R2.2: -v/--verbose
+	changes   bool          // R2.3: -c/--changes
+	silent    bool          // R2.4: -f/--silent/--quiet
+	reference string        // R3.2: --reference=RFILE
+	symlinks  symlinkPolicy // R3.1-R3.2: -H/-L/-P symlink traversal
 }
 
-// modeChange represents a parsed mode specification (octal or symbolic).
-type modeChange struct {
-	octal   bool
-	mode    os.FileMode
-	clauses []clause
-}
+// TODO: Task R1 requested --preserve-root/--no-preserve-root (srd089 R4.2),
+// but srd089 non_goals explicitly states "cmd/chmod does not implement
+// --preserve-root (not applicable on macOS)". Skipped per E6.
 
-// clause represents one symbolic mode clause like "u+rwx".
-type clause struct {
-	who   string // combination of u, g, o; empty means all
-	op    byte   // '+', '-', '='
-	perms string // combination of r, w, x, X, s, t
-}
-
+// R4.3, R1.1: main entry with SIGPIPE handler and argument dispatch.
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+
+	opts, modeSpec, files := parseArgs(os.Args[1:])
+	if len(files) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: missing operand\n", programName)
+		os.Exit(1)
+	}
+
+	exitCode := run(opts, modeSpec, files)
+	os.Exit(exitCode)
 }
 
-// run executes the chmod logic and returns the exit code.
-// R1.3: processes multiple FILE arguments.
-// R1.4: exits 1 on any error, continues processing remaining files.
-// R4.1: exits 0 when all files processed successfully.
-// R4.2: exits 1 when any file cannot be accessed or mode is invalid.
-func run(args []string, stdout, stderr *os.File) int {
-	opts, operands, err := parseArgs(args)
-	if err != nil {
-		printError(stderr, opts.silent, err.Error())
-		return 1
-	}
-	if opts.reference != "" {
-		return runWithReference(operands, opts, stdout, stderr)
-	}
-	return runWithMode(operands, opts, stdout, stderr)
-}
-
-// runWithMode handles the standard MODE FILE... invocation.
-func runWithMode(operands []string, opts options, stdout, stderr *os.File) int {
-	if len(operands) == 0 {
-		printError(stderr, false, "missing operand")
-		printTryHelp(stderr)
-		return 1
-	}
-	if len(operands) == 1 {
-		msg := fmt.Sprintf("missing operand after '%s'", operands[0])
-		printError(stderr, false, msg)
-		printTryHelp(stderr)
-		return 1
-	}
-	mc, err := parseMode(operands[0])
-	if err != nil {
-		printError(stderr, opts.silent, err.Error())
-		return 1
-	}
-	return applyToFiles(operands[1:], mc, opts, stdout, stderr)
-}
-
-// runWithReference handles --reference=RFILE FILE... invocation.
-// R3.2: sets each FILE's mode to match RFILE's mode.
-func runWithReference(operands []string, opts options, stdout, stderr *os.File) int {
-	if len(operands) == 0 {
-		printError(stderr, false, "missing operand")
-		printTryHelp(stderr)
-		return 1
-	}
-	refMode, err := getFileMode(opts.reference)
-	if err != nil {
-		msg := fmt.Sprintf("failed to get attributes of '%s': %s",
-			opts.reference, sysErrorMsg(err))
-		printError(stderr, opts.silent, msg)
-		return 1
-	}
-	mc := &modeChange{octal: true, mode: refMode}
-	return applyToFiles(operands, mc, opts, stdout, stderr)
-}
-
-// applyToFiles applies the mode change to each file and returns the exit code.
-func applyToFiles(files []string, mc *modeChange, opts options, stdout, stderr *os.File) int {
-	exitCode := 0
-	for _, file := range files {
-		if err := chmodPath(file, mc, opts, stdout, stderr); err != nil {
-			printError(stderr, opts.silent, err.Error())
-			exitCode = 1
-		}
-	}
-	return exitCode
-}
-
-// parseArgs separates flags from operands.
-func parseArgs(args []string) (options, []string, error) {
+// parseArgs separates flags, mode specification, and file operands.
+// Supports short flags (-R, -v, -c, -f, -H, -L, -P), combined short flags,
+// and long forms (--recursive, --verbose, --changes, --silent,
+// --quiet, --reference=RFILE).
+func parseArgs(rawArgs []string) (options, string, []string) {
 	var opts options
-	var operands []string
+	var positional []string
 	endOfFlags := false
-	for _, arg := range args {
-		if endOfFlags || !isFlag(arg) {
-			operands = append(operands, arg)
+
+	for i := 0; i < len(rawArgs); i++ {
+		arg := rawArgs[i]
+		if endOfFlags {
+			positional = append(positional, arg)
 			continue
 		}
 		if arg == "--" {
 			endOfFlags = true
 			continue
 		}
-		var err error
-		opts, err = handleFlag(arg, opts)
-		if err != nil {
-			return opts, nil, err
+		if strings.HasPrefix(arg, "--") {
+			i = parseLongFlag(&opts, rawArgs, i)
+			continue
 		}
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			if isShortFlags(arg) {
+				parseShortFlags(&opts, arg[1:])
+				continue
+			}
+		}
+		positional = append(positional, arg)
 	}
-	return opts, operands, nil
+
+	// First positional is mode spec (unless --reference is used),
+	// rest are files.
+	if opts.reference != "" {
+		return opts, "", positional
+	}
+	if len(positional) == 0 {
+		return opts, "", nil
+	}
+	return opts, positional[0], positional[1:]
 }
 
-// handleFlag processes a single flag argument.
-func handleFlag(arg string, opts options) (options, error) {
-	// R3.2: --reference=RFILE
-	if strings.HasPrefix(arg, "--reference=") {
-		opts.reference = arg[len("--reference="):]
-		return opts, nil
+// isShortFlags checks if arg (without leading -) contains only
+// valid short flag characters.
+func isShortFlags(arg string) bool {
+	for _, c := range arg[1:] {
+		switch c {
+		case 'R', 'v', 'c', 'f', 'H', 'L', 'P':
+			// valid short flag
+		default:
+			return false
+		}
 	}
-	switch arg {
-	case "--recursive":
+	return true
+}
+
+// parseLongFlag handles long-form flags for chmod.
+func parseLongFlag(opts *options, rawArgs []string, idx int) int {
+	flag := rawArgs[idx]
+	switch {
+	case flag == "--recursive":
 		opts.recursive = true
-		return opts, nil
-	case "--verbose":
+	case flag == "--verbose":
 		opts.verbose = true
-		opts.changes = false
-		return opts, nil
-	case "--changes":
+	case flag == "--changes":
 		opts.changes = true
-		opts.verbose = false
-		return opts, nil
-	case "--silent", "--quiet":
+	case flag == "--silent", flag == "--quiet":
 		opts.silent = true
-		return opts, nil
-	case "--help":
-		fmt.Fprint(os.Stdout, helpText) //nolint:errcheck
-		os.Exit(0)
-	case "--version":
-		fmt.Fprint(os.Stdout, versionText) //nolint:errcheck
-		os.Exit(0)
-	default:
-		if len(arg) > 1 && arg[0] == '-' && arg[1] != '-' {
-			return parseShortFlags(arg[1:], opts)
-		}
-		return opts, fmt.Errorf("unrecognized option '%s'", arg)
+	case strings.HasPrefix(flag, "--reference="):
+		// R3.2: --reference=RFILE
+		opts.reference = strings.TrimPrefix(flag, "--reference=")
 	}
-	return opts, nil
+	return idx
 }
 
-// parseShortFlags processes combined short flags like -Rv.
-func parseShortFlags(flags string, opts options) (options, error) {
-	for _, c := range flags {
+// parseShortFlags handles combined short flags like -Rvc.
+func parseShortFlags(opts *options, chars string) {
+	for _, c := range chars {
 		switch c {
 		case 'R':
 			opts.recursive = true
 		case 'v':
-			// R2.2: -v enables verbose, overrides -c
 			opts.verbose = true
-			opts.changes = false
 		case 'c':
-			// R2.3: -c enables changes-only, overrides -v
 			opts.changes = true
-			opts.verbose = false
 		case 'f':
-			// R2.4: -f enables silent mode
 			opts.silent = true
-		default:
-			return opts, fmt.Errorf("invalid option -- '%c'", c)
+		case 'H':
+			opts.symlinks = symlinkCmdLine
+		case 'L':
+			opts.symlinks = symlinkAll
+		case 'P':
+			opts.symlinks = symlinkNone
 		}
 	}
-	return opts, nil
 }
 
-// chmodPath applies the mode change to path, optionally recursing.
-// R2.1: -R changes modes recursively for directories and their contents.
-func chmodPath(path string, mc *modeChange, opts options, stdout, stderr *os.File) error {
-	if !opts.recursive {
-		return chmodFile(path, mc, opts, stdout)
+// run applies the mode change to all files and returns the exit code.
+// R1.3: processes multiple FILE arguments.
+// R1.4: continues processing remaining files on error, exits 1.
+// R4.1: exits 0 when all files processed successfully.
+// R4.2: exits 1 when any file fails.
+func run(opts options, modeSpec string, files []string) int {
+	m, err := resolveMode(opts, modeSpec)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		return 1
 	}
-	var walkErr error
-	err := filepath.WalkDir(path, func(p string, _ os.DirEntry, err error) error {
+
+	exitCode := 0
+	for _, file := range files {
+		if err := applyMode(opts, m, file); err != nil {
+			if !opts.silent && err != errAlreadyReported {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+			}
+			exitCode = 1
+		}
+	}
+	return exitCode
+}
+
+// resolveMode determines the target mode from --reference or mode spec.
+// R3.2: when --reference is set, reads the mode from the reference file.
+func resolveMode(opts options, modeSpec string) (mode, error) {
+	if opts.reference != "" {
+		return modeFromReference(opts.reference)
+	}
+	return parseMode(modeSpec)
+}
+
+// modeFromReference reads the mode bits from a reference file.
+// R3.2: --reference=RFILE sets each FILE's mode to match RFILE's mode.
+func modeFromReference(rfile string) (mode, error) {
+	fi, err := sys.Stat(rfile)
+	if err != nil {
+		return mode{}, fmt.Errorf("cannot stat %q: %w", rfile, err)
+	}
+	return mode{
+		octal: uint32(fi.Mode.Perm()) |
+			uint32(fi.Mode&os.ModeSetuid) |
+			uint32(fi.Mode&os.ModeSetgid) |
+			uint32(fi.Mode&os.ModeSticky),
+		isOctal: true,
+	}, nil
+}
+
+// parseMode parses a mode specification string into a mode struct.
+// R1.1: accepts octal modes (e.g., 755, 0644).
+// R1.2: accepts symbolic modes (e.g., u+x, go-w, a=rw, u=rwx,go=rx).
+func parseMode(spec string) (mode, error) {
+	if len(spec) == 0 {
+		return mode{}, fmt.Errorf("missing operand")
+	}
+	if isOctalMode(spec) {
+		return parseOctalMode(spec)
+	}
+	return parseSymbolicMode(spec)
+}
+
+// isOctalMode checks if spec is a valid octal mode string.
+func isOctalMode(spec string) bool {
+	for _, c := range spec {
+		if c < '0' || c > '7' {
+			return false
+		}
+	}
+	return len(spec) > 0
+}
+
+// parseOctalMode parses an octal mode string into a mode struct.
+// R1.1: converts Unix octal to Go os.FileMode representation,
+// handling basic permissions (0-0777) and special bits (4000, 2000, 1000).
+func parseOctalMode(spec string) (mode, error) {
+	var val uint32
+	for _, c := range spec {
+		val = val*8 + uint32(c-'0')
+	}
+	goMode := os.FileMode(val & 0o777)
+	if val&0o4000 != 0 {
+		goMode |= os.ModeSetuid
+	}
+	if val&0o2000 != 0 {
+		goMode |= os.ModeSetgid
+	}
+	if val&0o1000 != 0 {
+		goMode |= os.ModeSticky
+	}
+	return mode{octal: uint32(goMode), isOctal: true}, nil
+}
+
+// parseSymbolicMode parses a symbolic mode string into a mode struct.
+// R1.2: supports [ugoa][+-=][rwxXst] with comma-separated clauses.
+// R3.1: supports setuid (u+s), setgid (g+s), and sticky bit (o+t).
+func parseSymbolicMode(spec string) (mode, error) {
+	clauses := strings.Split(spec, ",")
+	var parsed []modeClause
+	for _, clause := range clauses {
+		mc, err := parseSingleClause(clause)
 		if err != nil {
-			msg := fmt.Sprintf("cannot access '%s': %s", p, sysErrorMsg(err))
-			printError(stderr, opts.silent, msg)
-			walkErr = fmt.Errorf("walk error")
-			return nil // continue walking
+			return mode{}, err
 		}
-		if chErr := chmodFile(p, mc, opts, stdout); chErr != nil {
-			printError(stderr, opts.silent, chErr.Error())
-			walkErr = fmt.Errorf("walk error")
-		}
-		return nil
-	})
-	if err != nil {
-		return err
+		parsed = append(parsed, mc)
 	}
-	if walkErr != nil {
-		return walkErr
+	return mode{symbolic: parsed}, nil
+}
+
+// parseSingleClause parses a single symbolic mode clause (e.g., u+rwx).
+// R1.2: format is [ugoa...][+-=][rwxXst...].
+// When no who characters are present, who is left empty to indicate
+// umask-dependent behavior per GNU chmod semantics.
+func parseSingleClause(clause string) (modeClause, error) {
+	if len(clause) == 0 {
+		return modeClause{}, fmt.Errorf("invalid mode: empty clause")
+	}
+
+	var mc modeClause
+	i := 0
+
+	// Parse who characters (leave empty if none specified)
+	for i < len(clause) {
+		c := clause[i]
+		if c == 'u' || c == 'g' || c == 'o' || c == 'a' {
+			mc.who += string(c)
+			i++
+		} else {
+			break
+		}
+	}
+
+	// Parse action
+	if i >= len(clause) {
+		return modeClause{}, fmt.Errorf("invalid mode: %q", clause)
+	}
+	switch clause[i] {
+	case '+':
+		mc.action = modeAdd
+	case '-':
+		mc.action = modeRemove
+	case '=':
+		mc.action = modeSet
+	default:
+		return modeClause{}, fmt.Errorf("invalid mode: %q", clause)
+	}
+	i++
+
+	// Parse permission characters
+	for i < len(clause) {
+		c := clause[i]
+		if c == 'r' || c == 'w' || c == 'x' || c == 'X' || c == 's' || c == 't' {
+			mc.perms += string(c)
+			i++
+		} else {
+			return modeClause{}, fmt.Errorf("invalid mode: %q", clause)
+		}
+	}
+
+	return mc, nil
+}
+
+// applyMode applies the parsed mode to a single file.
+// R2.1: when recursive, traverses directories.
+func applyMode(opts options, m mode, path string) error {
+	if opts.recursive {
+		return applyModeRecursive(opts, m, path)
+	}
+	return applyModeToFile(opts, m, path)
+}
+
+// applyModeRecursive recursively applies mode changes to a directory tree.
+// R2.1: -R/--recursive changes modes for directories and their contents.
+// R3.1-R3.2: respects -H/-L/-P symlink traversal policy.
+func applyModeRecursive(opts options, m mode, root string) error {
+	hadError := false
+	walkChmod(opts, m, root, true, &hadError)
+	if hadError {
+		return errAlreadyReported
 	}
 	return nil
 }
 
-// chmodFile applies the mode change to a single file.
-// R2.2: verbose prints a diagnostic for every file.
-// R2.3: changes prints a diagnostic only when mode changed.
-func chmodFile(path string, mc *modeChange, opts options, stdout *os.File) error {
-	oldMode, err := getFileMode(path)
-	if err != nil {
-		return fmt.Errorf("cannot access '%s': %s", path, sysErrorMsg(err))
+// walkChmod recursively applies mode changes, respecting symlink policy.
+// R3.1: -P (default) skips symlinks.
+// R3.2: -H follows command-line symlinks, -L follows all symlinks.
+func walkChmod(opts options, m mode, path string, isRoot bool, hadErr *bool) {
+	fi, skip := resolveEntry(opts, path, isRoot, hadErr)
+	if skip || fi == nil {
+		return
 	}
-	newMode := resolveMode(mc, oldMode)
+	if err := applyModeToFile(opts, m, path); err != nil {
+		reportFileError(opts, err, hadErr)
+	}
+	if fi.IsDir() {
+		walkChildren(opts, m, path, hadErr)
+	}
+}
+
+// resolveEntry checks the path and decides whether to process it.
+// Returns the file info and whether to skip the entry.
+// A nil fi with skip=true means the entry is a symlink not being followed.
+// A nil fi with skip=false means an error occurred (already reported).
+func resolveEntry(opts options, path string, isRoot bool, hadErr *bool) (os.FileInfo, bool) {
+	lfi, err := os.Lstat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	if lfi.Mode()&os.ModeSymlink == 0 {
+		return lfi, false
+	}
+	if !shouldFollowSymlink(opts.symlinks, isRoot) {
+		return nil, true
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	return fi, false
+}
+
+// shouldFollowSymlink returns true if the symlink should be followed
+// based on the policy and whether the path is a command-line argument.
+func shouldFollowSymlink(policy symlinkPolicy, isRoot bool) bool {
+	return policy == symlinkAll || (policy == symlinkCmdLine && isRoot)
+}
+
+// walkChildren reads directory entries and recurses into each child.
+func walkChildren(opts options, m mode, dir string, hadErr *bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		reportWalkError(opts, dir, err, hadErr)
+		return
+	}
+	for _, e := range entries {
+		walkChmod(opts, m, filepath.Join(dir, e.Name()), false, hadErr)
+	}
+}
+
+// reportWalkError prints a directory traversal error to stderr.
+func reportWalkError(opts options, path string, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %s\n",
+			programName, path, unwrapPathError(err))
+	}
+	*hadErr = true
+}
+
+// reportFileError prints a file mode change error to stderr.
+func reportFileError(opts options, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+	}
+	*hadErr = true
+}
+
+// applyModeToFile applies the mode change to a single file.
+// R1.1, R1.2: reads current mode, computes new mode, applies via os.Chmod.
+// R1.4: returns error when file cannot be accessed.
+// Uses os.Lstat so symlinks themselves are not followed; chmod(2) follows
+// symlinks when called by os.Chmod.
+func applyModeToFile(opts options, m mode, path string) error {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("cannot access '%s': %s",
+			path, unwrapPathError(err))
+	}
+	oldMode := fi.Mode()
+	newMode := computeNewMode(m, oldMode)
 	if err := os.Chmod(path, newMode); err != nil {
-		return fmt.Errorf("changing permissions of '%s': %s", path, sysErrorMsg(err))
+		return fmt.Errorf("changing permissions of '%s': %s",
+			path, unwrapPathError(err))
 	}
-	printDiagnostic(stdout, opts, path, oldMode, newMode)
+	printDiagnostic(opts, path, oldMode, newMode)
 	return nil
 }
 
-// getFileMode returns the current permission and special bits of a file.
-func getFileMode(path string) (os.FileMode, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return 0, err
-	}
-	m := info.Mode()
-	return m.Perm() | m&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky), nil
-}
-
-// sysErrorMsg extracts the underlying system error message from a Go error.
-func sysErrorMsg(err error) string {
-	var pathErr *os.PathError
-	if errors.As(err, &pathErr) {
-		return capitalizeFirst(pathErr.Err.Error())
+// unwrapPathError extracts the underlying error message from *os.PathError.
+func unwrapPathError(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
 	}
 	return err.Error()
 }
 
-// capitalizeFirst capitalizes the first letter of a string.
-func capitalizeFirst(s string) string {
-	if len(s) == 0 {
-		return s
+// computeNewMode calculates the new permission bits for a file.
+// R1.1: for octal modes, returns the stored Go os.FileMode value directly.
+// R1.2: for symbolic modes, applies each clause to the current mode.
+func computeNewMode(m mode, current os.FileMode) os.FileMode {
+	if m.isOctal {
+		return os.FileMode(m.octal)
 	}
-	return strings.ToUpper(s[:1]) + s[1:]
+	result := current
+	for _, clause := range m.symbolic {
+		result = applyClauseToMode(clause, result)
+	}
+	return result
 }
 
-// printDiagnostic prints verbose or changes-only output.
-func printDiagnostic(stdout *os.File, opts options, path string, oldMode, newMode os.FileMode) {
+// applyClauseToMode applies one symbolic mode clause to the current mode.
+// R1.2: handles +, -, = operators with who mask.
+// When who is empty, basic permission bits are filtered by ~umask.
+func applyClauseToMode(mc modeClause, current os.FileMode) os.FileMode {
+	bits := resolvePermBits(mc, current)
+	basicMask := effectiveBasicMask(mc.who)
+	maskedBasic := bits & basicMask
+	specialBits := bits & (os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+
+	switch mc.action {
+	case modeAdd:
+		return current | maskedBasic | specialBits
+	case modeRemove:
+		return current &^ (maskedBasic | specialBits)
+	case modeSet:
+		specMask := effectiveSpecialMask(mc.who)
+		cleared := current &^ basicMask &^ specMask
+		return cleared | maskedBasic | specialBits
+	}
+	return current
+}
+
+// effectiveBasicMask returns the basic permission mask for the who specifier.
+// When who is empty (no ugoa specified), uses ~umask per GNU chmod semantics.
+func effectiveBasicMask(who string) os.FileMode {
+	if who == "" {
+		umask := syscall.Umask(0)
+		syscall.Umask(umask)
+		return 0o777 &^ os.FileMode(umask)
+	}
+	return whoToBasicMask(who)
+}
+
+// effectiveSpecialMask returns the special bits mask for the who specifier.
+// When who is empty, all special bits are included (not affected by umask).
+func effectiveSpecialMask(who string) os.FileMode {
+	if who == "" {
+		return os.ModeSetuid | os.ModeSetgid | os.ModeSticky
+	}
+	return whoToSpecialMask(who)
+}
+
+// resolvePermBits converts permission characters to os.FileMode bits.
+// R1.2: handles rwxXst characters.
+// R3.1: maps s to setuid/setgid based on who, t to sticky.
+func resolvePermBits(mc modeClause, current os.FileMode) os.FileMode {
+	var bits os.FileMode
+	isDir := current&os.ModeDir != 0
+	hasExec := current.Perm()&0o111 != 0
+
+	for _, c := range mc.perms {
+		switch c {
+		case 'r':
+			bits |= 0o444
+		case 'w':
+			bits |= 0o222
+		case 'x':
+			bits |= 0o111
+		case 'X':
+			if isDir || hasExec {
+				bits |= 0o111
+			}
+		case 's':
+			bits |= suidBitsForWho(mc.who)
+		case 't':
+			bits |= os.ModeSticky
+		}
+	}
+	return bits
+}
+
+// suidBitsForWho returns setuid/setgid bits based on who specifier.
+// R3.1: u+s → setuid, g+s → setgid, a+s → both.
+// Empty who (no ugoa specified) acts like 'a' for special bits.
+func suidBitsForWho(who string) os.FileMode {
+	var bits os.FileMode
+	if who == "" || strings.ContainsAny(who, "ua") {
+		bits |= os.ModeSetuid
+	}
+	if who == "" || strings.ContainsAny(who, "ga") {
+		bits |= os.ModeSetgid
+	}
+	return bits
+}
+
+// whoToBasicMask converts who characters to a basic permission bitmask.
+func whoToBasicMask(who string) os.FileMode {
+	var mask os.FileMode
+	for _, c := range who {
+		switch c {
+		case 'u':
+			mask |= 0o700
+		case 'g':
+			mask |= 0o070
+		case 'o':
+			mask |= 0o007
+		case 'a':
+			mask |= 0o777
+		}
+	}
+	return mask
+}
+
+// whoToSpecialMask converts who characters to special mode bits mask.
+func whoToSpecialMask(who string) os.FileMode {
+	var mask os.FileMode
+	for _, c := range who {
+		switch c {
+		case 'u':
+			mask |= os.ModeSetuid
+		case 'g':
+			mask |= os.ModeSetgid
+		case 'o':
+			mask |= os.ModeSticky
+		case 'a':
+			mask |= os.ModeSetuid | os.ModeSetgid | os.ModeSticky
+		}
+	}
+	return mask
+}
+
+// printDiagnostic prints a verbose or changes-only diagnostic message.
+// R2.2: -v prints a diagnostic for every file processed.
+// R2.3: -c prints a diagnostic only when mode actually changed.
+// Format matches GNU chmod: "mode of 'X' changed from OOOO (SSS) to OOOO (SSS)"
+// or "mode of 'X' retained as OOOO (SSS)".
+func printDiagnostic(opts options, path string, old, new os.FileMode) {
 	if !opts.verbose && !opts.changes {
 		return
 	}
-	if opts.changes && oldMode == newMode {
+	changed := modeToOctal(old) != modeToOctal(new)
+	if opts.changes && !changed {
 		return
 	}
-	msg := formatDiagnostic(path, oldMode, newMode)
-	fmt.Fprintln(stdout, msg) //nolint:errcheck
-}
-
-// formatDiagnostic formats a diagnostic message for a mode change.
-func formatDiagnostic(path string, oldMode, newMode os.FileMode) string {
-	if oldMode == newMode {
-		return fmt.Sprintf("mode of '%s' retained as %04o (%s)",
-			path, fileModeToUnix(oldMode), symbolicPerms(oldMode))
+	if changed {
+		fmt.Fprintf(os.Stdout,
+			"mode of '%s' changed from %04o (%s) to %04o (%s)\n",
+			path, modeToOctal(old), formatPermString(old),
+			modeToOctal(new), formatPermString(new))
+	} else {
+		fmt.Fprintf(os.Stdout,
+			"mode of '%s' retained as %04o (%s)\n",
+			path, modeToOctal(new), formatPermString(new))
 	}
-	return fmt.Sprintf("mode of '%s' changed from %04o (%s) to %04o (%s)",
-		path, fileModeToUnix(oldMode), symbolicPerms(oldMode),
-		fileModeToUnix(newMode), symbolicPerms(newMode))
 }
 
-// fileModeToUnix converts os.FileMode to Unix mode_t for display.
-func fileModeToUnix(m os.FileMode) uint32 {
-	mode := uint32(m.Perm())
+// modeToOctal converts Go os.FileMode to Unix-style octal representation
+// including special bits (setuid=4000, setgid=2000, sticky=1000).
+func modeToOctal(m os.FileMode) uint32 {
+	val := uint32(m.Perm())
 	if m&os.ModeSetuid != 0 {
-		mode |= 0o4000
+		val |= 0o4000
 	}
 	if m&os.ModeSetgid != 0 {
-		mode |= 0o2000
+		val |= 0o2000
 	}
 	if m&os.ModeSticky != 0 {
-		mode |= 0o1000
+		val |= 0o1000
 	}
-	return mode
+	return val
 }
 
-// symbolicPerms returns the symbolic permission string (e.g., "rwxr-xr-x").
-func symbolicPerms(m os.FileMode) string {
+// formatPermString returns the 9-character symbolic permission string
+// (e.g., "rwxr-xr-x") with special bit markers (s/S, t/T).
+func formatPermString(m os.FileMode) string {
 	var buf [9]byte
-	const rwx = "rwx"
 	perm := m.Perm()
-	for i := range 9 {
+	for i := 0; i < 9; i++ {
 		if perm&(1<<uint(8-i)) != 0 {
-			buf[i] = rwx[i%3]
+			buf[i] = "rwxrwxrwx"[i]
 		} else {
 			buf[i] = '-'
 		}
 	}
-	applySpecialBits(m, &buf)
+	applySpecialBitMarkers(m, &buf)
 	return string(buf[:])
 }
 
-// applySpecialBits modifies the permission string for setuid/setgid/sticky.
-func applySpecialBits(m os.FileMode, buf *[9]byte) {
+// applySpecialBitMarkers overlays setuid, setgid, and sticky bit markers
+// onto the 9-character permission string.
+func applySpecialBitMarkers(m os.FileMode, buf *[9]byte) {
 	if m&os.ModeSetuid != 0 {
 		if buf[2] == 'x' {
 			buf[2] = 's'
@@ -365,224 +686,4 @@ func applySpecialBits(m os.FileMode, buf *[9]byte) {
 			buf[8] = 'T'
 		}
 	}
-}
-
-// resolveMode computes the new mode for a file.
-// R1.1: octal modes apply directly.
-// R1.2: symbolic modes apply relative to the current file mode.
-func resolveMode(mc *modeChange, currentMode os.FileMode) os.FileMode {
-	if mc.octal {
-		return mc.mode
-	}
-	return applySymbolicClauses(mc.clauses, currentMode)
-}
-
-// applySymbolicClauses applies all symbolic clauses to the current mode.
-func applySymbolicClauses(clauses []clause, mode os.FileMode) os.FileMode {
-	for _, c := range clauses {
-		mode = c.apply(mode)
-	}
-	return mode
-}
-
-// apply applies a single symbolic clause to the current mode.
-func (c clause) apply(mode os.FileMode) os.FileMode {
-	bits := c.computeBits(mode)
-	switch c.op {
-	case '+':
-		return mode | bits
-	case '-':
-		return mode &^ bits
-	case '=':
-		return (mode &^ c.whoMask()) | bits
-	}
-	return mode
-}
-
-// computeBits returns the permission bits for this clause.
-func (c clause) computeBits(currentMode os.FileMode) os.FileMode {
-	who := normalizeWho(c.who)
-	isDir := currentMode.IsDir()
-	hasExec := currentMode&0o111 != 0
-	var bits os.FileMode
-	for _, p := range c.perms {
-		bits |= permBitForChar(p, who, isDir, hasExec)
-	}
-	return bits
-}
-
-// normalizeWho expands empty or "a"-containing who to "ugo".
-func normalizeWho(who string) string {
-	if who == "" || strings.Contains(who, "a") {
-		return "ugo"
-	}
-	return who
-}
-
-// permBitForChar returns the mode bits for a single permission character.
-// R3.1: supports setuid (u+s), setgid (g+s), and sticky bit (o+t).
-func permBitForChar(p rune, who string, isDir, hasExec bool) os.FileMode {
-	switch p {
-	case 'r':
-		return classBits(who, 4)
-	case 'w':
-		return classBits(who, 2)
-	case 'x':
-		return classBits(who, 1)
-	case 'X':
-		if isDir || hasExec {
-			return classBits(who, 1)
-		}
-		return 0
-	case 's':
-		return suidBits(who)
-	case 't':
-		return os.ModeSticky
-	}
-	return 0
-}
-
-// classBits maps a base permission bit to the correct positions for who classes.
-func classBits(who string, baseBit os.FileMode) os.FileMode {
-	var bits os.FileMode
-	if strings.ContainsRune(who, 'u') {
-		bits |= baseBit << 6
-	}
-	if strings.ContainsRune(who, 'g') {
-		bits |= baseBit << 3
-	}
-	if strings.ContainsRune(who, 'o') {
-		bits |= baseBit
-	}
-	return bits
-}
-
-// suidBits returns setuid/setgid bits based on who.
-func suidBits(who string) os.FileMode {
-	var bits os.FileMode
-	if strings.ContainsRune(who, 'u') {
-		bits |= os.ModeSetuid
-	}
-	if strings.ContainsRune(who, 'g') {
-		bits |= os.ModeSetgid
-	}
-	return bits
-}
-
-// whoMask returns the mask covering all bits affected by this clause's who.
-func (c clause) whoMask() os.FileMode {
-	who := normalizeWho(c.who)
-	mask := classBits(who, 7)
-	mask |= suidBits(who)
-	if strings.ContainsRune(who, 'o') {
-		mask |= os.ModeSticky
-	}
-	return mask
-}
-
-// parseMode parses a mode string (octal or symbolic).
-// R1.1: octal mode parsing.
-// R1.2: symbolic mode parsing.
-func parseMode(modeStr string) (*modeChange, error) {
-	if isOctalMode(modeStr) {
-		return parseOctalMode(modeStr)
-	}
-	clauses, err := parseSymbolicClauses(modeStr)
-	if err != nil {
-		return nil, err
-	}
-	return &modeChange{clauses: clauses}, nil
-}
-
-// isOctalMode returns true if the mode string consists only of octal digits.
-func isOctalMode(s string) bool {
-	if len(s) == 0 {
-		return false
-	}
-	for _, c := range s {
-		if c < '0' || c > '7' {
-			return false
-		}
-	}
-	return true
-}
-
-// parseOctalMode parses an octal mode string into a modeChange.
-// R1.1: parse octal mode strings (e.g., 755, 0644).
-func parseOctalMode(s string) (*modeChange, error) {
-	val, err := strconv.ParseUint(s, 8, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid mode: %q", s)
-	}
-	return &modeChange{octal: true, mode: unixToFileMode(val)}, nil
-}
-
-// unixToFileMode converts a Unix mode_t value to os.FileMode.
-func unixToFileMode(m uint64) os.FileMode {
-	mode := os.FileMode(m & 0o777)
-	if m&0o4000 != 0 {
-		mode |= os.ModeSetuid
-	}
-	if m&0o2000 != 0 {
-		mode |= os.ModeSetgid
-	}
-	if m&0o1000 != 0 {
-		mode |= os.ModeSticky
-	}
-	return mode
-}
-
-// parseSymbolicClauses parses a comma-separated symbolic mode string.
-// R1.2: symbolic mode with comma-separated clauses.
-func parseSymbolicClauses(modeStr string) ([]clause, error) {
-	parts := strings.Split(modeStr, ",")
-	clauses := make([]clause, 0, len(parts))
-	for _, part := range parts {
-		c, err := parseOneClause(part)
-		if err != nil {
-			return nil, err
-		}
-		clauses = append(clauses, c)
-	}
-	return clauses, nil
-}
-
-// parseOneClause parses a single symbolic clause like "u+rwx".
-func parseOneClause(s string) (clause, error) {
-	i := 0
-	for i < len(s) && strings.ContainsRune("ugoa", rune(s[i])) {
-		i++
-	}
-	who := s[:i]
-	if i >= len(s) || !strings.ContainsRune("+-=", rune(s[i])) {
-		return clause{}, fmt.Errorf("invalid mode: %q", s)
-	}
-	op := s[i]
-	i++
-	perms := s[i:]
-	for _, c := range perms {
-		if !strings.ContainsRune("rwxXst", c) {
-			return clause{}, fmt.Errorf("invalid mode: %q", s)
-		}
-	}
-	return clause{who: who, op: op, perms: perms}, nil
-}
-
-// isFlag returns true if arg starts with '-' and has content after it.
-func isFlag(arg string) bool {
-	return len(arg) > 1 && arg[0] == '-'
-}
-
-// printError prints a formatted error to stderr, unless silent mode suppresses it.
-// R2.4: -f/--silent/--quiet suppresses most error messages.
-func printError(stderr *os.File, silent bool, msg string) {
-	if silent {
-		return
-	}
-	fmt.Fprintf(stderr, "%s: %s\n", progName, msg) //nolint:errcheck
-}
-
-// printTryHelp prints the "Try ... --help" hint to stderr.
-func printTryHelp(stderr *os.File) {
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
 }

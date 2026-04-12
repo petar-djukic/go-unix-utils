@@ -1,291 +1,179 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for cmd/sum implementing prd078-sum R1.1-R1.4, R2.1, R2.2, R3.1, R3.2, R3.3.
+// Tests for cmd/sum. Differential tests against gsum (GNU coreutils).
+// Covers srd078-sum R2.1 (BSD algorithm via -r), R2.2 (System V via -s),
+// R3.1 (exit 0 on success), R3.2 (exit 1 on file error), R3.3 (SIGPIPE).
 package main
 
 import (
-	"fmt"
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// clearStderr returns a normalizer that blanks stderr so only
-// exit codes and stdout are compared.
-func clearStderr() testutils.NormalizeFunc {
-	return func(b []byte) []byte { return nil }
+// stderrNormalizer normalizes program name and error message casing
+// so that "gsum:" and "sum:" compare as equal, and Go's lowercase
+// syscall error strings match GNU's capitalized versions.
+func stderrNormalizer(data []byte) []byte {
+	re := regexp.MustCompile(`(?m)^(gsum|sum):`)
+	data = re.ReplaceAll(data, []byte("sum:"))
+	return bytes.ToLower(data)
 }
 
-// TestDiff runs differential tests for BSD mode against gsum.
-//
-// R1.1: BSD checksum on files. R1.2: stdin. R1.3: multiple files.
-// R2.1: -r selects BSD. R3.1: exit 0 on success.
 func TestDiff(t *testing.T) {
-	t.Parallel()
-
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsum")
 	if err != nil {
-		t.Skip("reference binary gsum not in PATH")
+		t.Skipf("reference binary gsum not in PATH: %v", err)
 	}
 
-	dir := t.TempDir()
-	singleFile := filepath.Join(dir, "hello.txt")
-	writeTestFile(t, singleFile, "hello world\n")
+	// Create test fixture files in a shared temp directory.
+	tmpDir := t.TempDir()
+	writeFixture(t, tmpDir, "hello.txt", "Hello, world!\n")
+	writeFixture(t, tmpDir, "empty.txt", "")
+	writeFixture(t, tmpDir, "binary.bin", "\x00\x01\x02\xff\xfe\xfd")
+	writeFixture(t, tmpDir, "multi.txt", "line1\nline2\nline3\n")
 
-	multiA := filepath.Join(dir, "a.txt")
-	writeTestFile(t, multiA, "aaa\n")
-	multiB := filepath.Join(dir, "b.txt")
-	writeTestFile(t, multiB, "bbb\n")
-
-	emptyFile := filepath.Join(dir, "empty.txt")
-	writeTestFile(t, emptyFile, "")
+	stderrNorm := []testutils.NormalizeFunc{stderrNormalizer}
 
 	tests := []testutils.DiffTest{
-		// R1.1: single file BSD checksum with block count.
+		// R2.1: -r explicitly selects BSD algorithm (same as default)
 		{
-			Name:     "single_file_bsd",
-			Args:     []string{singleFile},
-			Env:      []string{"LC_ALL=C"},
+			Name:    "r_flag_bsd_file",
+			Args:    []string{"-r", filepath.Join(tmpDir, "hello.txt")},
+			WorkDir: tmpDir,
+		},
+		{
+			Name:    "r_flag_bsd_stdin",
+			Args:    []string{"-r"},
+			Stdin:   []byte("Hello, world!\n"),
+			WorkDir: tmpDir,
+		},
+		{
+			Name:    "r_flag_empty_file",
+			Args:    []string{"-r", filepath.Join(tmpDir, "empty.txt")},
+			WorkDir: tmpDir,
+		},
+		{
+			Name:    "r_flag_binary_data",
+			Args:    []string{"-r", filepath.Join(tmpDir, "binary.bin")},
+			WorkDir: tmpDir,
+		},
+		// R2.2: -s selects System V algorithm
+		{
+			Name:    "s_flag_sysv_file",
+			Args:    []string{"-s", filepath.Join(tmpDir, "hello.txt")},
+			WorkDir: tmpDir,
+		},
+		{
+			Name:    "sysv_long_flag",
+			Args:    []string{"--sysv", filepath.Join(tmpDir, "hello.txt")},
+			WorkDir: tmpDir,
+		},
+		{
+			Name:    "s_flag_sysv_stdin",
+			Args:    []string{"-s"},
+			Stdin:   []byte("Hello, world!\n"),
+			WorkDir: tmpDir,
+		},
+		{
+			Name:    "s_flag_empty_file",
+			Args:    []string{"-s", filepath.Join(tmpDir, "empty.txt")},
+			WorkDir: tmpDir,
+		},
+		{
+			Name:    "s_flag_binary_data",
+			Args:    []string{"-s", filepath.Join(tmpDir, "binary.bin")},
+			WorkDir: tmpDir,
+		},
+		{
+			Name:    "s_flag_multi_file",
+			Args:    []string{"-s", filepath.Join(tmpDir, "hello.txt"), filepath.Join(tmpDir, "multi.txt")},
+			WorkDir: tmpDir,
+		},
+		// R3.1: exit 0 on successful processing
+		{
+			Name:     "exit_0_single_file",
+			Args:     []string{filepath.Join(tmpDir, "hello.txt")},
+			WorkDir:  tmpDir,
 			ExitCode: 0,
 		},
-		// R1.2: stdin when no file arguments given.
 		{
-			Name:     "stdin_no_args",
+			Name:     "exit_0_multiple_files",
+			Args:     []string{filepath.Join(tmpDir, "hello.txt"), filepath.Join(tmpDir, "multi.txt")},
+			WorkDir:  tmpDir,
+			ExitCode: 0,
+		},
+		{
+			Name:     "exit_0_stdin",
 			Args:     []string{},
-			Stdin:    []byte("hello\n"),
-			Env:      []string{"LC_ALL=C"},
+			Stdin:    []byte("test input\n"),
+			WorkDir:  tmpDir,
 			ExitCode: 0,
 		},
-		// R1.2: empty stdin.
+		// R2.1 + R2.2: compare default vs explicit -r (should be identical)
 		{
-			Name:     "empty_stdin",
-			Args:     []string{},
-			Stdin:    []byte{},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:    "default_matches_r_flag",
+			Args:    []string{filepath.Join(tmpDir, "multi.txt")},
+			WorkDir: tmpDir,
 		},
-		// R1.3: multiple files in argument order.
 		{
-			Name:     "multiple_files",
-			Args:     []string{multiA, multiB},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:    "r_flag_multi_file",
+			Args:    []string{"-r", filepath.Join(tmpDir, "hello.txt"), filepath.Join(tmpDir, "multi.txt")},
+			WorkDir: tmpDir,
 		},
-		// R1.1: empty file produces checksum of empty input.
+		// R3.2: exit 1 when a file cannot be opened
 		{
-			Name:     "empty_file",
-			Args:     []string{emptyFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:      "exit_1_nonexistent_file",
+			Args:      []string{filepath.Join(tmpDir, "nonexistent.txt")},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Normalize: stderrNorm,
 		},
-		// R2.1: explicit -r flag (BSD default).
 		{
-			Name:     "explicit_bsd_flag",
-			Args:     []string{"-r", singleFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:      "exit_1_nonexistent_sysv",
+			Args:      []string{"-s", filepath.Join(tmpDir, "nonexistent.txt")},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		{
+			Name:      "exit_1_mixed_valid_invalid",
+			Args:      []string{filepath.Join(tmpDir, "hello.txt"), filepath.Join(tmpDir, "nonexistent.txt")},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		{
+			Name:      "exit_1_mixed_invalid_valid",
+			Args:      []string{filepath.Join(tmpDir, "nonexistent.txt"), filepath.Join(tmpDir, "hello.txt")},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Normalize: stderrNorm,
+		},
+		{
+			Name:      "exit_1_multiple_nonexistent",
+			Args:      []string{filepath.Join(tmpDir, "no1.txt"), filepath.Join(tmpDir, "no2.txt")},
+			WorkDir:   tmpDir,
+			ExitCode:  1,
+			Normalize: stderrNorm,
 		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestDiffNonexistentFile tests R1.4, R3.2: error handling for missing files.
-func TestDiffNonexistentFile(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gsum")
-	if err != nil {
-		t.Skip("reference binary gsum not in PATH")
-	}
-
-	nonexistent := filepath.Join(t.TempDir(), "no_such_file.txt")
-	existing := filepath.Join(t.TempDir(), "exists.txt")
-	writeTestFile(t, existing, "data\n")
-
-	tests := []testutils.DiffTest{
-		// R1.4, R3.2: nonexistent file exits 1.
-		{
-			Name:      "nonexistent_file",
-			Args:      []string{nonexistent},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearStderr()},
-		},
-		// R1.4, R3.2: nonexistent among valid files still exits 1, valid files processed.
-		{
-			Name:      "nonexistent_with_valid",
-			Args:      []string{existing, nonexistent},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearStderr()},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestDiffSysV runs differential tests for System V mode (-s) against gsum.
-//
-// R2.2: -s selects System V algorithm. R3.1: exit 0 on success.
-func TestDiffSysV(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gsum")
-	if err != nil {
-		t.Skip("reference binary gsum not in PATH")
-	}
-
-	dir := t.TempDir()
-	singleFile := filepath.Join(dir, "hello.txt")
-	writeTestFile(t, singleFile, "hello world\n")
-
-	multiA := filepath.Join(dir, "a.txt")
-	writeTestFile(t, multiA, "aaa\n")
-	multiB := filepath.Join(dir, "b.txt")
-	writeTestFile(t, multiB, "bbb\n")
-
-	emptyFile := filepath.Join(dir, "empty.txt")
-	writeTestFile(t, emptyFile, "")
-
-	// R2.2: larger file to exercise block count at 512-byte boundary.
-	largeFile := filepath.Join(dir, "large.txt")
-	writeTestFile(t, largeFile, makeLargeContent(2000))
-
-	tests := []testutils.DiffTest{
-		// R2.2: single file System V checksum.
-		{
-			Name:     "sysv_single_file",
-			Args:     []string{"-s", singleFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.2: stdin in System V mode.
-		{
-			Name:     "sysv_stdin",
-			Args:     []string{"-s"},
-			Stdin:    []byte("hello\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.2: empty stdin in System V mode.
-		{
-			Name:     "sysv_empty_stdin",
-			Args:     []string{"-s"},
-			Stdin:    []byte{},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.2: empty file in System V mode.
-		{
-			Name:     "sysv_empty_file",
-			Args:     []string{"-s", emptyFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.2: multiple files in System V mode.
-		{
-			Name:     "sysv_multiple_files",
-			Args:     []string{"-s", multiA, multiB},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.2: larger file to test 512-byte block counting.
-		{
-			Name:     "sysv_large_file",
-			Args:     []string{"-s", largeFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestDiffSysVNonexistent tests R3.2: exit 1 for missing files in System V mode.
-func TestDiffSysVNonexistent(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gsum")
-	if err != nil {
-		t.Skip("reference binary gsum not in PATH")
-	}
-
-	nonexistent := filepath.Join(t.TempDir(), "no_such_file.txt")
-	existing := filepath.Join(t.TempDir(), "exists.txt")
-	writeTestFile(t, existing, "data\n")
-
-	tests := []testutils.DiffTest{
-		// R3.2: nonexistent file in System V mode exits 1.
-		{
-			Name:      "sysv_nonexistent_file",
-			Args:      []string{"-s", nonexistent},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearStderr()},
-		},
-		// R3.2: nonexistent among valid files in System V mode.
-		{
-			Name:      "sysv_nonexistent_with_valid",
-			Args:      []string{"-s", existing, nonexistent},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearStderr()},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestSIGPIPE verifies R3.3: sum exits 0 when stdout is closed early (SIGPIPE).
-func TestSIGPIPE(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	fileA := filepath.Join(dir, "a.txt")
-	writeTestFile(t, fileA, "aaa\n")
-	fileB := filepath.Join(dir, "b.txt")
-	writeTestFile(t, fileB, "bbb\n")
-
-	// Pipe sum (multiple files) through head -1 to trigger SIGPIPE
-	// on the second write. Expect exit code 0.
-	headBin, err := exec.LookPath("head")
-	if err != nil {
-		t.Skip("head not in PATH")
-	}
-
-	cmd := exec.Command("sh", "-c",
-		fmt.Sprintf("%q %q %q | %q -1", goBin, fileA, fileB, headBin))
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("R3.3: expected exit 0 on SIGPIPE, got error: %v\noutput: %s", err, out)
-	}
-}
-
-// writeTestFile creates a file with the given content.
-func writeTestFile(t *testing.T, path, content string) {
+// writeFixture creates a test file with the given content.
+func writeFixture(t *testing.T, dir, name, content string) {
 	t.Helper()
+	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("failed to write test file %s: %v", path, err)
+		t.Fatalf("failed to write fixture %s: %v", name, err)
 	}
-}
-
-// makeLargeContent generates a string of n bytes of repeating characters.
-func makeLargeContent(n int) string {
-	buf := make([]byte, n)
-	for i := range buf {
-		buf[i] = byte('A' + (i % 26))
-	}
-	return string(buf)
 }

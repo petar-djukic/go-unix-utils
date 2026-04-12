@@ -2,482 +2,694 @@
 // SPDX-License-Identifier: MIT
 
 // Package main implements df: report filesystem disk space usage.
-// Implements prd106-df R1.1-R1.5, R2.1-R2.3, R3.1-R3.7, R4.1-R4.3.
-//
-// TODO: prd106-df R2.1 task requested -B (--block-size=SIZE) but this
-// conflicts with PRD non_goals which excludes --block-size=SIZE. Skipped per E6.
-//
-// TODO: Task requested -P (--portability) but prd106-df non_goals explicitly
-// excludes -P (POSIX output format). Skipped per E6.
-//
-// TODO: Task requested --total (grand total row) but prd106-df non_goals
-// explicitly excludes --total. Skipped per E6.
-//
-// TODO: Task 4160 requested --sync but prd106-df non_goals explicitly
-// excludes --sync (invoke sync before getting usage info). Skipped per E6.
+// Implements srd106-df R1.1-R1.5, R2.1-R2.3, R3.1-R3.7, R4.1-R4.3.
 package main
 
 import (
 	"fmt"
 	"math"
 	"os"
-	"slices"
 	"strings"
 
-	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// sizeMode selects how sizes are displayed.
+// sizeMode controls how size columns are formatted.
+// R2.1: sizeHuman uses binary units (K, M, G).
+// R2.2: sizeSI uses SI units (k, M, G).
 type sizeMode int
 
 const (
-	sizeModeBlocks sizeMode = iota // default 1K-blocks
-	sizeModeHuman                  // -h: powers of 1024
-	sizeModeSI                     // -H: powers of 1000
+	sizeDefault sizeMode = iota
+	sizeHuman
+	sizeSI
 )
 
-// options holds parsed command-line flags.
-type options struct {
-	sizeMode     sizeMode
-	showType     bool
-	showInodes   bool
-	showAll      bool
-	localOnly    bool
-	includeTypes []string
-	excludeTypes []string
-	files        []string
-}
+// humanMinWidth is the minimum column width GNU df applies to
+// human-readable size columns (Size, Used, Avail).
+const humanMinWidth = 5
 
-// fsEntry holds filesystem statistics for a single mount point.
-type fsEntry struct {
+// mountInfo holds filesystem data from the OS.
+type mountInfo struct {
 	source      string
+	target      string
 	fsType      string
-	blocks1K    int64
-	used        int64
-	available   int64
-	inodesTotal int64
-	inodesUsed  int64
-	inodesFree  int64
-	mountedOn   string
+	totalBlocks uint64
+	freeBlocks  uint64
+	availBlocks uint64
+	blockSize   int64
+	totalInodes uint64
+	freeInodes  uint64
 }
 
-// networkFSTypes identifies network filesystem types for -l filtering.
-// R3.4: -l excludes network filesystems.
-var networkFSTypes = map[string]bool{
-	"nfs":    true,
-	"nfs4":   true,
-	"smbfs":  true,
-	"cifs":   true,
-	"afs":    true,
-	"ncpfs":  true,
-	"afpfs":  true,
-	"webdav": true,
+// dfEntry wraps a mount with the FILE argument that selected it.
+type dfEntry struct {
+	mount    mountInfo
+	filePath string
 }
 
+// colDef defines a single output column.
+type colDef struct {
+	header     string
+	rightAlign bool
+	getValue   func(dfEntry) string
+	minWidth   int // minimum column width; 0 = use header/data max
+}
+
+// config holds parsed command-line options.
+type config struct {
+	inodes       bool
+	printType    bool
+	sizeMode     sizeMode
+	hasOutput    bool
+	outFields    []string // specific fields; nil means all when hasOutput
+	includeTypes []string // R3.5: -t TYPE inclusion filter
+	excludeTypes []string // R3.6: -x TYPE exclusion filter
+	paths        []string
+}
+
+// --- Column value functions ---
+
+func valSource(e dfEntry) string { return e.mount.source }
+func valTarget(e dfEntry) string { return e.mount.target }
+func valFsType(e dfEntry) string { return e.mount.fsType }
+func valFile(e dfEntry) string   { return e.filePath }
+
+// totalBytes returns the total size in bytes for a filesystem.
+func totalBytes(e dfEntry) int64 {
+	return int64(e.mount.totalBlocks) * e.mount.blockSize
+}
+
+// usedBytes returns the used size in bytes for a filesystem.
+func usedBytes(e dfEntry) int64 {
+	m := e.mount
+	used := max(int64(m.totalBlocks)-int64(m.freeBlocks), 0)
+	return used * m.blockSize
+}
+
+// availBytes returns the available size in bytes for a filesystem.
+func availBytes(e dfEntry) int64 {
+	return int64(e.mount.availBlocks) * e.mount.blockSize
+}
+
+// valSize returns the total size in 1K-blocks.
+func valSize(e dfEntry) string {
+	return fmt.Sprintf("%d", totalBytes(e)/1024)
+}
+
+// valUsed returns the used size in 1K-blocks.
+func valUsed(e dfEntry) string {
+	return fmt.Sprintf("%d", usedBytes(e)/1024)
+}
+
+// valAvail returns the available size in 1K-blocks.
+func valAvail(e dfEntry) string {
+	return fmt.Sprintf("%d", availBytes(e)/1024)
+}
+
+func valPcent(e dfEntry) string {
+	m := e.mount
+	return computeUsePct(m.totalBlocks, m.freeBlocks, m.availBlocks)
+}
+
+// totalInodes returns the total inode count as int64.
+func totalInodes(e dfEntry) int64 { return int64(e.mount.totalInodes) }
+
+// usedInodes returns the used inode count as int64.
+func usedInodes(e dfEntry) int64 {
+	m := e.mount
+	if m.totalInodes > m.freeInodes {
+		return int64(m.totalInodes - m.freeInodes)
+	}
+	return 0
+}
+
+// freeInodes returns the free inode count as int64.
+func freeInodes(e dfEntry) int64 { return int64(e.mount.freeInodes) }
+
+func valItotal(e dfEntry) string  { return fmt.Sprintf("%d", e.mount.totalInodes) }
+func valIused(e dfEntry) string   { return fmt.Sprintf("%d", usedInodes(e)) }
+func valIavail(e dfEntry) string  { return fmt.Sprintf("%d", e.mount.freeInodes) }
+
+func valIpcent(e dfEntry) string {
+	m := e.mount
+	return computeUsePct(m.totalInodes, m.freeInodes, m.freeInodes)
+}
+
+// formatInodeVal formats an inode count according to the active sizeMode.
+// R4.2: sizeHuman/sizeSI apply human-readable formatting to inode counts.
+func formatInodeVal(count int64, sm sizeMode) string {
+	switch sm {
+	case sizeHuman:
+		return gnuHumanSize(count, true)
+	case sizeSI:
+		return gnuHumanSize(count, false)
+	default:
+		return fmt.Sprintf("%d", count)
+	}
+}
+
+// makeInodeFunc returns a value function that formats inode counts.
+func makeInodeFunc(sm sizeMode, fn func(dfEntry) int64) func(dfEntry) string {
+	return func(e dfEntry) string {
+		return formatInodeVal(fn(e), sm)
+	}
+}
+
+// --- Size formatting ---
+
+// formatSizeVal formats a byte count according to the active sizeMode.
+// R2.1: sizeHuman uses 1024-based ceiling (K, M, G).
+// R2.2: sizeSI uses 1000-based ceiling (k, M, G).
+func formatSizeVal(b int64, sm sizeMode) string {
+	switch sm {
+	case sizeHuman:
+		return gnuHumanSize(b, true)
+	case sizeSI:
+		return gnuHumanSize(b, false)
+	default:
+		return fmt.Sprintf("%d", b/1024)
+	}
+}
+
+// gnuHumanSize formats bytes using GNU coreutils human_readable() conventions
+// with ceiling rounding. binary=true uses 1024-base, binary=false uses 1000-base.
+func gnuHumanSize(bytes int64, binary bool) string {
+	if bytes == 0 {
+		return "0"
+	}
+	base := 1000.0
+	suffixes := []string{"", "k", "M", "G", "T", "P", "E"}
+	if binary {
+		base = 1024.0
+		suffixes = []string{"", "K", "M", "G", "T", "P", "E"}
+	}
+	return formatCeilSize(float64(bytes), base, suffixes)
+}
+
+// formatCeilSize formats a value with the given base and suffixes,
+// using ceiling rounding matching GNU coreutils behavior.
+func formatCeilSize(val float64, base float64, suffixes []string) string {
+	idx := 0
+	for idx+1 < len(suffixes) && val >= base {
+		val /= base
+		idx++
+	}
+	if suffixes[idx] == "" {
+		return fmt.Sprintf("%.0f", math.Ceil(val))
+	}
+	tenths := math.Ceil(val*10) / 10
+	if tenths >= 10 {
+		return fmt.Sprintf("%.0f%s", math.Ceil(val), suffixes[idx])
+	}
+	return fmt.Sprintf("%.1f%s", tenths, suffixes[idx])
+}
+
+// makeSizeFunc returns a value function that formats bytes using sizeMode.
+func makeSizeFunc(sm sizeMode, fn func(dfEntry) int64) func(dfEntry) string {
+	return func(e dfEntry) string {
+		return formatSizeVal(fn(e), sm)
+	}
+}
+
+// --- Column definitions ---
+
+// buildDefaultCols creates the default column set for the given sizeMode.
+// R2.1/R2.2: header changes from "1K-blocks" to "Size" in human-readable modes.
+func buildDefaultCols(sm sizeMode) []colDef {
+	sizeHeader := "1K-blocks"
+	availHeader := "Available"
+	minW := 0
+	if sm != sizeDefault {
+		sizeHeader = "Size"
+		availHeader = "Avail"
+		minW = humanMinWidth
+	}
+	return []colDef{
+		{"Filesystem", false, valSource, 0},
+		{sizeHeader, true, makeSizeFunc(sm, totalBytes), minW},
+		{"Used", true, makeSizeFunc(sm, usedBytes), minW},
+		{availHeader, true, makeSizeFunc(sm, availBytes), minW},
+		{"Use%", true, valPcent, 0},
+		{"Mounted on", false, valTarget, 0},
+	}
+}
+
+// insertTypeCol inserts a Type column after Filesystem.
+// R3.1: -T adds a Type column showing filesystem type.
+func insertTypeCol(cols []colDef) []colDef {
+	typeCol := colDef{"Type", false, valFsType, 0}
+	result := make([]colDef, 0, len(cols)+1)
+	result = append(result, cols[0], typeCol)
+	result = append(result, cols[1:]...)
+	return result
+}
+
+// buildInodeCols creates the inode column set for the given sizeMode.
+// R3.2: inode columns. R4.2: -h/-H applies human formatting to inode counts.
+func buildInodeCols(sm sizeMode) []colDef {
+	minW := 0
+	if sm != sizeDefault {
+		minW = humanMinWidth
+	}
+	return []colDef{
+		{"Filesystem", false, valSource, 0},
+		{"Inodes", true, makeInodeFunc(sm, totalInodes), minW},
+		{"IUsed", true, makeInodeFunc(sm, usedInodes), minW},
+		{"IFree", true, makeInodeFunc(sm, freeInodes), minW},
+		{"IUse%", true, valIpcent, 0},
+		{"Mounted on", false, valTarget, 0},
+	}
+}
+
+// outputFieldMap maps --output field names to column definitions (R3.7).
+var outputFieldMap = map[string]colDef{
+	"source": {"Filesystem", false, valSource, 0},
+	"fstype": {"Type", false, valFsType, 0},
+	"itotal": {"Inodes", true, valItotal, 0},
+	"iused":  {"IUsed", true, valIused, 0},
+	"iavail": {"IFree", true, valIavail, 0},
+	"ipcent": {"IUse%", true, valIpcent, 0},
+	"size":   {"1K-blocks", true, valSize, 0},
+	"used":   {"Used", true, valUsed, 0},
+	"avail":  {"Avail", true, valAvail, 0},
+	"pcent":  {"Use%", true, valPcent, 0},
+	"file":   {"File", false, valFile, 0},
+	"target": {"Mounted on", false, valTarget, 0},
+}
+
+// outputAllOrder defines the canonical field order for --output without a field list (R3.7).
+var outputAllOrder = []string{
+	"source", "fstype", "itotal", "iused", "iavail", "ipcent",
+	"size", "used", "avail", "pcent", "file", "target",
+}
+
+// dummyTypes lists filesystem types that GNU df excludes by default.
+var dummyTypes = map[string]bool{
+	"autofs": true, "devfs": true, "fdescfs": true,
+	"linsysfs": true, "linprocfs": true, "none": true,
+	"nullfs": true, "procfs": true,
+}
+
+// TODO: -B/--block-size=SIZE is listed in srd106-df non_goals.
+// Task R3 references it but it conflicts with the SRD non_goals list.
+// Skipped per constitution E6.
+
+// TODO: -P (POSIX output format) is listed in srd106-df non_goals.
+// Skipped per constitution E6.
+
+// R4.3: install SIGPIPE handler at startup.
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:]))
+	os.Exit(run())
 }
 
-// run executes df logic and returns the exit code.
-func run(args []string) int {
-	opts, err := parseArgs(args)
-	if err != nil {
+// run parses arguments, collects filesystem data, and prints output.
+// R4.1: returns 0 on success. R4.2: returns 1 on any error.
+func run() int {
+	cfg := parseConfig(os.Args[1:])
+	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "df: %v\n", err)
 		return 1
 	}
-	entries, exitCode := collectEntries(opts)
-	entries = applyFilters(entries, opts)
+	entries, hasError := collectEntries(cfg)
+	preFilterLen := len(entries)
+	entries = filterByType(entries, cfg)
+	cols := selectColumns(cfg)
 	if len(entries) > 0 {
-		printFormatted(entries, opts)
+		printTable(cols, entries)
 	}
-	return exitCode
+	if hasTypeFilter(cfg) && preFilterLen > 0 && len(entries) == 0 {
+		fmt.Fprintf(os.Stderr, "df: no file systems processed\n")
+		return 1
+	}
+	if hasError {
+		return 1
+	}
+	return 0
 }
 
-// parseArgs parses command-line arguments into options.
-func parseArgs(args []string) (*options, error) {
-	opts := &options{}
+// parseConfig extracts options and FILE paths from command-line arguments.
+func parseConfig(args []string) config {
+	var cfg config
+	stopFlags := false
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if stopFlags || !strings.HasPrefix(arg, "-") || arg == "-" {
+			cfg.paths = append(cfg.paths, arg)
+			continue
+		}
 		if arg == "--" {
-			opts.files = append(opts.files, args[i+1:]...)
-			break
-		}
-		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			opts.files = append(opts.files, arg)
+			stopFlags = true
 			continue
 		}
-		if strings.HasPrefix(arg, "--") {
-			if err := parseLongFlag(arg, args, &i, opts); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if err := parseShortFlags(arg[1:], args, &i, opts); err != nil {
-			return nil, err
-		}
+		i = handleFlag(&cfg, args, i)
 	}
-	return opts, nil
+	return cfg
 }
 
-// parseLongFlag handles a single --flag or --flag=value argument.
-func parseLongFlag(arg string, args []string, idx *int, opts *options) error {
-	name, val, hasVal := splitLongFlag(arg)
-	switch name {
-	case "--human-readable":
-		opts.sizeMode = sizeModeHuman
-	case "--si":
-		opts.sizeMode = sizeModeSI
-	case "--print-type":
-		opts.showType = true
-	case "--inodes":
-		opts.showInodes = true
-	case "--all":
-		opts.showAll = true
-	case "--local":
-		opts.localOnly = true
-	case "--type":
-		v, err := longFlagValue(val, hasVal, args, idx)
-		if err != nil {
-			return fmt.Errorf("option '--type' requires an argument")
+// handleFlag processes a single flag argument.
+// Returns the (possibly advanced) index for flags that consume a value.
+func handleFlag(cfg *config, args []string, i int) int {
+	arg := args[i]
+	switch {
+	case arg == "-i" || arg == "--inodes":
+		cfg.inodes = true
+	case arg == "-h" || arg == "--human-readable":
+		cfg.sizeMode = sizeHuman
+	case arg == "-H" || arg == "--si":
+		cfg.sizeMode = sizeSI
+	case arg == "-T" || arg == "--print-type":
+		cfg.printType = true
+	case arg == "--output":
+		cfg.hasOutput = true
+	case strings.HasPrefix(arg, "--output="):
+		cfg.hasOutput = true
+		fieldStr := strings.TrimPrefix(arg, "--output=")
+		if fieldStr != "" {
+			cfg.outFields = strings.Split(fieldStr, ",")
 		}
-		opts.includeTypes = append(opts.includeTypes, v)
-	case "--exclude-type":
-		v, err := longFlagValue(val, hasVal, args, idx)
-		if err != nil {
-			return fmt.Errorf("option '--exclude-type' requires an argument")
+	case arg == "-t" || arg == "--type":
+		// R3.5: next arg is the type value.
+		if i+1 < len(args) {
+			i++
+			cfg.includeTypes = appendTypes(cfg.includeTypes, args[i])
 		}
-		opts.excludeTypes = append(opts.excludeTypes, v)
-	case "--no-sync":
-		// no-op: this is the default behavior
+	case strings.HasPrefix(arg, "--type="):
+		cfg.includeTypes = appendTypes(cfg.includeTypes, strings.TrimPrefix(arg, "--type="))
+	case arg == "-x" || arg == "--exclude-type":
+		// R3.6: next arg is the type value.
+		if i+1 < len(args) {
+			i++
+			cfg.excludeTypes = appendTypes(cfg.excludeTypes, args[i])
+		}
+	case strings.HasPrefix(arg, "--exclude-type="):
+		cfg.excludeTypes = appendTypes(cfg.excludeTypes, strings.TrimPrefix(arg, "--exclude-type="))
+	case isNoOpFlag(arg):
+		// -k and --no-sync are accepted but ignored.
 	default:
-		return fmt.Errorf("unrecognized option '%s'", arg)
+		cfg.paths = append(cfg.paths, arg)
 	}
-	return nil
+	return i
 }
 
-// parseShortFlags processes combined short flags like -hTi.
-// R2.3: -h and -H are mutually exclusive; last one wins.
-func parseShortFlags(flags string, args []string, idx *int, opts *options) error {
-	for j := 0; j < len(flags); j++ {
-		switch flags[j] {
-		case 'h':
-			opts.sizeMode = sizeModeHuman
-		case 'H':
-			opts.sizeMode = sizeModeSI
-		case 'k':
-			// no-op: 1K-blocks is the default
-		case 'T':
-			opts.showType = true
-		case 'i':
-			opts.showInodes = true
-		case 'a':
-			opts.showAll = true
-		case 'l':
-			opts.localOnly = true
-		case 't':
-			val, err := flagValue(flags[j+1:], args, idx)
-			if err != nil {
-				return fmt.Errorf("option requires an argument -- 't'")
-			}
-			opts.includeTypes = append(opts.includeTypes, val)
-			return nil
-		case 'x':
-			val, err := flagValue(flags[j+1:], args, idx)
-			if err != nil {
-				return fmt.Errorf("option requires an argument -- 'x'")
-			}
-			opts.excludeTypes = append(opts.excludeTypes, val)
-			return nil
-		default:
-			return fmt.Errorf("invalid option -- '%c'", flags[j])
+// appendTypes splits a comma-separated type string and appends each to the slice.
+// R3.5/R3.6: supports comma-separated type lists.
+func appendTypes(types []string, val string) []string {
+	for t := range strings.SplitSeq(val, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			types = append(types, t)
+		}
+	}
+	return types
+}
+
+// isNoOpFlag returns true for flags accepted but without visible effect.
+func isNoOpFlag(arg string) bool {
+	return arg == "-k" || arg == "--no-sync"
+}
+
+// validateConfig checks for incompatible flag combinations.
+// R3.7: --output is incompatible with -i, -T, and -h/-H.
+func validateConfig(cfg config) error {
+	if !cfg.hasOutput {
+		return nil
+	}
+	if cfg.inodes {
+		return fmt.Errorf("-i and --output are mutually exclusive")
+	}
+	if cfg.printType {
+		return fmt.Errorf("-T and --output are mutually exclusive")
+	}
+	if cfg.sizeMode != sizeDefault {
+		return fmt.Errorf("-h/-H and --output are mutually exclusive")
+	}
+	return validateOutputFields(cfg)
+}
+
+// validateOutputFields checks that all --output fields are recognized.
+func validateOutputFields(cfg config) error {
+	if !cfg.hasOutput || cfg.outFields == nil {
+		return nil
+	}
+	for _, f := range cfg.outFields {
+		if _, ok := outputFieldMap[f]; !ok {
+			return fmt.Errorf("option --output: invalid field '%s'", f)
 		}
 	}
 	return nil
 }
 
-// splitLongFlag splits --name=value into parts.
-func splitLongFlag(arg string) (name, val string, hasVal bool) {
-	name, val, hasVal = strings.Cut(arg, "=")
-	return name, val, hasVal
+// selectColumns returns the column definitions for the active mode.
+func selectColumns(cfg config) []colDef {
+	if cfg.hasOutput {
+		return selectOutputColumns(cfg.outFields)
+	}
+	var cols []colDef
+	if cfg.inodes {
+		cols = buildInodeCols(cfg.sizeMode)
+	} else {
+		cols = buildDefaultCols(cfg.sizeMode)
+	}
+	if cfg.printType {
+		cols = insertTypeCol(cols)
+	}
+	return cols
 }
 
-// flagValue returns the value for a short flag that takes an argument.
-// Uses the remainder of the current flag string or the next argument.
-func flagValue(rest string, args []string, idx *int) (string, error) {
-	if len(rest) > 0 {
-		return rest, nil
+// selectOutputColumns builds columns from the --output field list.
+// nil fields means all fields in canonical order.
+func selectOutputColumns(fields []string) []colDef {
+	if fields == nil {
+		fields = outputAllOrder
 	}
-	if *idx+1 >= len(args) {
-		return "", fmt.Errorf("missing argument")
+	cols := make([]colDef, len(fields))
+	for i, f := range fields {
+		cols[i] = outputFieldMap[f]
 	}
-	*idx++
-	return args[*idx], nil
+	return cols
 }
 
-// longFlagValue returns the value for a long flag that takes an argument.
-func longFlagValue(val string, hasVal bool, args []string, idx *int) (string, error) {
-	if hasVal {
-		return val, nil
+// collectEntries gathers filesystem entries for the given config.
+// R1.1: no paths means all mounted filesystems.
+// R1.4: paths means report filesystem containing each file.
+func collectEntries(cfg config) ([]dfEntry, bool) {
+	if len(cfg.paths) == 0 {
+		return collectAllMounts(cfg)
 	}
-	if *idx+1 >= len(args) {
-		return "", fmt.Errorf("missing argument")
-	}
-	*idx++
-	return args[*idx], nil
+	return collectForPaths(cfg.paths)
 }
 
-// collectEntries gathers filesystem entries from args or all mounts.
-func collectEntries(opts *options) ([]fsEntry, int) {
-	if len(opts.files) == 0 {
-		return collectAllFilesystems(opts.showAll)
-	}
-	return collectFileArgs(opts.files)
-}
-
-// collectAllFilesystems returns all mounted filesystems.
-// R1.1: exclude pseudo-filesystems unless -a is given.
+// collectAllMounts returns entries for all non-pseudo mounted filesystems.
+// R1.1: excludes pseudo-filesystems (0 total blocks) and dummy types.
 // R3.3: -a includes pseudo-filesystems.
-func collectAllFilesystems(showAll bool) ([]fsEntry, int) {
-	entries, err := enumerateFilesystems()
+func collectAllMounts(_ config) ([]dfEntry, bool) {
+	mounts, err := getMounts()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "df: %v\n", err)
-		return nil, 1
+		return nil, true
 	}
-	if !showAll {
-		entries = filterPseudo(entries)
-	}
-	return entries, 0
-}
-
-// collectFileArgs returns filesystem info for each specified path.
-// R1.4: report only the filesystem containing each FILE.
-func collectFileArgs(files []string) ([]fsEntry, int) {
-	var entries []fsEntry
-	exitCode := 0
-	for _, path := range files {
-		entry, err := statfsForPath(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "df: %s: %s\n", path, capitalizeErr(err))
-			exitCode = 1
+	var entries []dfEntry
+	seenDev := make(map[uint64]bool)
+	for _, m := range mounts {
+		if skipMount(m, seenDev) {
 			continue
 		}
-		entries = append(entries, *entry)
+		entries = append(entries, dfEntry{mount: m, filePath: m.source})
 	}
-	return entries, exitCode
+	return entries, false
 }
 
-// applyFilters applies -l and -t/-x filters to entries.
-func applyFilters(entries []fsEntry, opts *options) []fsEntry {
-	if opts.localOnly {
-		entries = filterLocal(entries)
+// skipMount returns true if a mount entry should be excluded from output.
+func skipMount(m mountInfo, seenDev map[uint64]bool) bool {
+	if m.totalBlocks == 0 || dummyTypes[m.fsType] {
+		return true
 	}
-	entries = filterByType(entries, opts.includeTypes, opts.excludeTypes)
-	return entries
-}
-
-// filterPseudo removes filesystems with 0 total blocks.
-func filterPseudo(entries []fsEntry) []fsEntry {
-	result := make([]fsEntry, 0, len(entries))
-	for _, e := range entries {
-		if e.blocks1K > 0 {
-			result = append(result, e)
-		}
-	}
-	return result
-}
-
-// filterLocal removes network filesystems.
-// R3.4: -l restricts output to local filesystems only.
-func filterLocal(entries []fsEntry) []fsEntry {
-	result := make([]fsEntry, 0, len(entries))
-	for _, e := range entries {
-		if !networkFSTypes[e.fsType] {
-			result = append(result, e)
-		}
-	}
-	return result
-}
-
-// filterByType applies -t and -x type filters.
-// R3.5: -t inclusion applied first.
-// R3.6: -x exclusion applied second.
-func filterByType(entries []fsEntry, include, exclude []string) []fsEntry {
-	if len(include) == 0 && len(exclude) == 0 {
-		return entries
-	}
-	result := make([]fsEntry, 0, len(entries))
-	for _, e := range entries {
-		if matchesTypeFilter(e.fsType, include, exclude) {
-			result = append(result, e)
-		}
-	}
-	return result
-}
-
-// matchesTypeFilter checks if a filesystem type passes include/exclude filters.
-func matchesTypeFilter(fsType string, include, exclude []string) bool {
-	if len(include) > 0 && !slices.Contains(include, fsType) {
+	fi, err := sys.Stat(m.target)
+	if err != nil {
 		return false
 	}
-	return !slices.Contains(exclude, fsType)
-}
-
-// capitalizeErr returns the error message with the first letter uppercased.
-// R4.2: GNU df uses system strerror which capitalizes; Go syscall does not.
-func capitalizeErr(err error) string {
-	s := err.Error()
-	if len(s) == 0 {
-		return s
+	if seenDev[fi.Dev] {
+		return true
 	}
-	return strings.ToUpper(s[:1]) + s[1:]
+	seenDev[fi.Dev] = true
+	return false
 }
 
-// computeUsePct calculates the use percentage matching GNU df.
-// R1.3: ceiling(used * 100 / (used + available)) when denominator > 0.
-func computeUsePct(used, available int64) string {
-	denom := used + available
-	if denom <= 0 {
+// filterByType applies -t (include) and -x (exclude) type filters.
+// R3.5: when includeTypes is non-empty, keep only matching types.
+// R3.6: when excludeTypes is non-empty, remove matching types.
+// R3.6: -t is applied first, then -x.
+func filterByType(entries []dfEntry, cfg config) []dfEntry {
+	if len(cfg.includeTypes) == 0 && len(cfg.excludeTypes) == 0 {
+		return entries
+	}
+	includeSet := toSet(cfg.includeTypes)
+	excludeSet := toSet(cfg.excludeTypes)
+	var filtered []dfEntry
+	for _, e := range entries {
+		if !matchesTypeFilter(e.mount.fsType, includeSet, excludeSet) {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered
+}
+
+// matchesTypeFilter returns true if fsType passes include/exclude filters.
+func matchesTypeFilter(fsType string, include, exclude map[string]bool) bool {
+	if len(include) > 0 && !include[fsType] {
+		return false
+	}
+	if len(exclude) > 0 && exclude[fsType] {
+		return false
+	}
+	return true
+}
+
+// hasTypeFilter returns true if any -t or -x filters are active.
+func hasTypeFilter(cfg config) bool {
+	return len(cfg.includeTypes) > 0 || len(cfg.excludeTypes) > 0
+}
+
+// toSet converts a string slice to a set for O(1) lookup.
+func toSet(items []string) map[string]bool {
+	if len(items) == 0 {
+		return nil
+	}
+	s := make(map[string]bool, len(items))
+	for _, item := range items {
+		s[item] = true
+	}
+	return s
+}
+
+// collectForPaths returns entries for filesystems containing the given files.
+// R1.4: reports errors for non-existent files and continues.
+// R4.2: prints diagnostic to stderr and sets exit code 1.
+func collectForPaths(paths []string) ([]dfEntry, bool) {
+	var entries []dfEntry
+	hasError := false
+	for _, p := range paths {
+		m, err := getFilesystemInfo(p)
+		if err != nil {
+			reportError(p, err)
+			hasError = true
+			continue
+		}
+		entries = append(entries, dfEntry{mount: *m, filePath: p})
+	}
+	return entries, hasError
+}
+
+// computeUsePct calculates Use% as ceiling(used * 100 / (used + avail)).
+// R1.3: returns "-" when the denominator is zero.
+func computeUsePct(total, free, avail uint64) string {
+	if total == 0 {
 		return "-"
 	}
-	pct := int(math.Ceil(float64(used) * 100.0 / float64(denom)))
+	var used uint64
+	if total > free {
+		used = total - free
+	}
+	denom := used + avail
+	if denom == 0 {
+		return "-"
+	}
+	pct := (used*100 + denom - 1) / denom
 	return fmt.Sprintf("%d%%", pct)
 }
 
-// printFormatted outputs df with aligned columns in the selected mode.
-func printFormatted(entries []fsEntry, opts *options) {
-	headers := buildHeaders(opts)
-	rows := buildRows(entries, opts)
-	widths := computeColumnWidths(headers, rows)
-	rightAlign := buildAlignments(headers)
-	printAlignedRow(headers, widths, rightAlign)
-	for _, row := range rows {
-		printAlignedRow(row, widths, rightAlign)
+// printTable prints the header and all rows with aligned columns.
+// R1.2: header and alignment matching GNU df. R1.5: column widths.
+func printTable(cols []colDef, entries []dfEntry) {
+	rows := buildRows(cols, entries)
+	widths := computeWidths(cols, rows)
+	printRow(cols, extractHeaders(cols), widths)
+	for _, r := range rows {
+		printRow(cols, r, widths)
 	}
 }
 
-// buildHeaders returns column headers based on current options.
-// R2.1/R2.2: header changes from "1K-blocks" to "Size" for -h/-H.
-// R3.1: -T inserts "Type" column after "Filesystem".
-// R3.2: -i replaces block columns with inode columns.
-func buildHeaders(opts *options) []string {
-	var h []string
-	h = append(h, "Filesystem")
-	if opts.showType {
-		h = append(h, "Type")
-	}
-	if opts.showInodes {
-		h = append(h, "Inodes", "IUsed", "IFree", "IUse%")
-	} else {
-		sizeHeader := "1K-blocks"
-		if opts.sizeMode != sizeModeBlocks {
-			sizeHeader = "Size"
-		}
-		h = append(h, sizeHeader, "Used", "Available", "Use%")
-	}
-	h = append(h, "Mounted on")
-	return h
-}
-
-// buildAlignments returns right-alignment flags for each column.
-// Filesystem, Type, and Mounted on are left-aligned; numeric columns right-aligned.
-func buildAlignments(headers []string) []bool {
-	ra := make([]bool, len(headers))
-	for i, h := range headers {
-		switch h {
-		case "Filesystem", "Type", "Mounted on":
-			ra[i] = false
-		default:
-			ra[i] = true
-		}
-	}
-	return ra
-}
-
-// buildRows converts filesystem entries to formatted string rows.
-func buildRows(entries []fsEntry, opts *options) [][]string {
+// buildRows converts entries to string rows using column definitions.
+func buildRows(cols []colDef, entries []dfEntry) [][]string {
 	rows := make([][]string, len(entries))
-	for i := range entries {
-		rows[i] = buildRow(&entries[i], opts)
+	for i, e := range entries {
+		row := make([]string, len(cols))
+		for j, c := range cols {
+			row[j] = c.getValue(e)
+		}
+		rows[i] = row
 	}
 	return rows
 }
 
-// buildRow formats a single fsEntry according to options.
-// R3.1: includes fsType when showType is set.
-// R3.2: shows inode columns instead of block columns when showInodes is set.
-func buildRow(e *fsEntry, opts *options) []string {
-	var row []string
-	row = append(row, e.source)
-	if opts.showType {
-		row = append(row, e.fsType)
+// extractHeaders returns the header strings from column definitions.
+func extractHeaders(cols []colDef) []string {
+	hdrs := make([]string, len(cols))
+	for i, c := range cols {
+		hdrs[i] = c.header
 	}
-	if opts.showInodes {
-		row = append(row,
-			fmt.Sprintf("%d", e.inodesTotal),
-			fmt.Sprintf("%d", e.inodesUsed),
-			fmt.Sprintf("%d", e.inodesFree),
-			computeUsePct(e.inodesUsed, e.inodesFree),
-		)
-	} else {
-		row = append(row,
-			formatSize(e.blocks1K, opts.sizeMode),
-			formatSize(e.used, opts.sizeMode),
-			formatSize(e.available, opts.sizeMode),
-			computeUsePct(e.used, e.available),
-		)
-	}
-	row = append(row, e.mountedOn)
-	return row
+	return hdrs
 }
 
-// formatSize renders a 1K-block count in the selected display mode.
-// R2.1: -h uses pkg/format.HumanSize with Binary=true.
-// R2.2: -H uses pkg/format.HumanSize with Binary=false.
-func formatSize(blocks1K int64, mode sizeMode) string {
-	switch mode {
-	case sizeModeHuman:
-		return format.HumanSize(blocks1K*1024, format.HumanSizeOpts{Binary: true})
-	case sizeModeSI:
-		return format.HumanSize(blocks1K*1024, format.HumanSizeOpts{Binary: false})
-	default:
-		return fmt.Sprintf("%d", blocks1K)
+// computeWidths returns the per-column max width including headers.
+// R1.5: column widths are per-column maxima across all rows.
+// Respects colDef.minWidth for human-readable size columns.
+func computeWidths(cols []colDef, rows [][]string) []int {
+	widths := make([]int, len(cols))
+	for i, c := range cols {
+		widths[i] = max(len(c.header), c.minWidth)
 	}
-}
-
-// computeColumnWidths returns the maximum width per column.
-// R1.5: per-column maxima across all rows including the header.
-func computeColumnWidths(headers []string, rows [][]string) []int {
-	widths := make([]int, len(headers))
-	for i, h := range headers {
-		widths[i] = len(h)
-	}
-	for _, row := range rows {
-		for i, cell := range row {
-			if len(cell) > widths[i] {
-				widths[i] = len(cell)
+	for _, r := range rows {
+		for i, v := range r {
+			if len(v) > widths[i] {
+				widths[i] = len(v)
 			}
 		}
 	}
 	return widths
 }
 
-// printAlignedRow prints a single row with proper alignment.
-// Right-aligned columns use right padding; left-aligned use left padding.
-// The last column has no trailing padding.
-func printAlignedRow(cells []string, widths []int, rightAlign []bool) {
-	parts := make([]string, len(cells))
-	lastIdx := len(cells) - 1
-	for i, cell := range cells {
-		switch {
-		case rightAlign[i]:
-			parts[i] = fmt.Sprintf("%*s", widths[i], cell)
-		case i == lastIdx:
-			parts[i] = cell
-		default:
-			parts[i] = fmt.Sprintf("%-*s", widths[i], cell)
+// printRow prints one row with proper alignment.
+// R1.2: numeric columns right-aligned, text columns left-aligned.
+func printRow(cols []colDef, vals []string, widths []int) {
+	var buf strings.Builder
+	for i, v := range vals {
+		if i > 0 {
+			buf.WriteByte(' ')
+		}
+		if i == len(vals)-1 {
+			buf.WriteString(v)
+		} else if cols[i].rightAlign {
+			fmt.Fprintf(&buf, "%*s", widths[i], v)
+		} else {
+			fmt.Fprintf(&buf, "%-*s", widths[i], v)
 		}
 	}
-	fmt.Println(strings.Join(parts, " "))
+	buf.WriteByte('\n')
+	fmt.Fprint(os.Stdout, buf.String())
+}
+
+// reportError prints a diagnostic to stderr for a file access error.
+// R4.2: matches GNU df error format.
+func reportError(path string, err error) {
+	fmt.Fprintf(os.Stderr, "df: %s: %s\n", path, capitalizeFirst(errnoMsg(err)))
+}
+
+// errnoMsg extracts the underlying error message string.
+func errnoMsg(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+// capitalizeFirst returns s with the first byte uppercased.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

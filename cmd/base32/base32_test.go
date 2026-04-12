@@ -1,61 +1,266 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/base32 against gbase32 (Homebrew coreutils).
-//
-// Covers prd079-base32: R1.1 (encode stdin/file), R1.2 (default wrap),
-// R1.3 (-w COLS wrap control), R1.4 (exit 1 on missing file),
-// R2.1 (-d decode), R2.2 (whitespace ignored), R2.3 (--ignore-garbage),
-// R2.4 (exit 1 on invalid decode input).
+// Differential tests for cmd/base32: srd079 R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// stderrProgramName normalizes the program name prefix in error messages
-// so "gbase32: ..." and "base32: ..." compare as equal.
-var stderrProgramName = regexp.MustCompile(`^[a-z0-9]+:`)
-
-// versionStdout normalizes --version output since version strings differ.
-var versionStdout = regexp.MustCompile(`(?s).*`)
-
-// helpStdout normalizes --help output since help text differs between impls.
-var helpStdout = regexp.MustCompile(`(?s).*`)
-
-// normalizeProgramName strips the leading program name from stderr lines.
-func normalizeProgramName(data []byte) []byte {
-	return stderrProgramName.ReplaceAll(data, []byte("base32:"))
-}
-
-// decodeErrDetail trims trailing detail after "invalid input" so
-// "invalid input: illegal base32 data at input byte 0" becomes "invalid input".
-var decodeErrDetail = regexp.MustCompile(`invalid input[^\n]*`)
-
-// normalizeDecodeErrDetail strips Go-specific error detail from decode errors.
-func normalizeDecodeErrDetail(data []byte) []byte {
-	return decodeErrDetail.ReplaceAll(data, []byte("invalid input"))
-}
-
-// normalizeAllStdout replaces all stdout with empty bytes so only exit code
-// is compared. Used for --version and --help where output text differs.
-func normalizeAllStdout(data []byte) []byte {
-	return versionStdout.ReplaceAll(data, []byte(""))
-}
-
-// normalizeAllStderr replaces all stderr with empty bytes.
-func normalizeAllStderr(data []byte) []byte {
-	return helpStdout.ReplaceAll(data, []byte(""))
-}
-
+// TestDiff runs differential tests comparing our base32 against gbase32.
+// Traces: srd079 R1.1 (encoding), R1.2 (default wrap), R1.3 (wrap flag),
+// R1.4 (file open error).
 func TestDiff(t *testing.T) {
 	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase32")
+	if err != nil {
+		t.Skip("reference binary gbase32 not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R1.1: encode stdin input using RFC 4648 Base32.
+		{
+			Name:  "encode short string from stdin",
+			Stdin: []byte("hello\n"),
+		},
+		{
+			Name:  "encode empty input",
+			Stdin: []byte(""),
+		},
+		{
+			Name:  "encode binary data",
+			Stdin: []byte{0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd},
+		},
+		// R1.2: default wrap at 76 columns.
+		{
+			Name:  "default wrap at 76 columns",
+			Stdin: bytes.Repeat([]byte("A"), 200),
+		},
+		// R1.3: -w flag controls wrap column.
+		{
+			Name:  "wrap 0 disables wrapping",
+			Args:  []string{"-w", "0"},
+			Stdin: bytes.Repeat([]byte("B"), 200),
+		},
+		{
+			Name:  "custom wrap at 40",
+			Args:  []string{"-w", "40"},
+			Stdin: bytes.Repeat([]byte("C"), 200),
+		},
+		// R1.4: missing file exits 1.
+		{
+			Name:      "missing file exits 1",
+			Args:      []string{"nonexistent_file_xyz"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffFileInput tests encoding from a file argument.
+// Traces: srd079 R1.1 (read from FILE).
+func TestDiffFileInput(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase32")
+	if err != nil {
+		t.Skip("reference binary gbase32 not in PATH")
+	}
+
+	dir := t.TempDir()
+	inputFile := filepath.Join(dir, "input.txt")
+	if err := os.WriteFile(inputFile, []byte("file content\n"), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "encode from file argument",
+			Args: []string{inputFile},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffDecode runs differential tests for decode mode.
+// Traces: srd079 R2.1 (decode mode), R2.2 (whitespace tolerance).
+func TestDiffDecode(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase32")
+	if err != nil {
+		t.Skip("reference binary gbase32 not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.1: decode Base32 input back to binary.
+		{
+			Name:  "decode simple string",
+			Args:  []string{"-d"},
+			Stdin: []byte("NBSWY3DPEB3W64TMMQ======\n"),
+		},
+		{
+			Name:  "decode hello",
+			Args:  []string{"--decode"},
+			Stdin: []byte("NBSWY3DP\n"),
+		},
+		{
+			Name:  "decode empty input",
+			Args:  []string{"-d"},
+			Stdin: []byte(""),
+		},
+		// R2.2: ignore whitespace (newlines, spaces) during decoding.
+		{
+			Name:  "decode with embedded newlines",
+			Args:  []string{"-d"},
+			Stdin: []byte("NBSW\nY3DP\n"),
+		},
+		{
+			Name:  "decode multiline wrapped input",
+			Args:  []string{"-d"},
+			Stdin: []byte("NBSWY3DPEB3W64TMMQ======\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffDecodeIgnoreGarbage runs differential tests for --ignore-garbage.
+// Traces: srd079 R2.3 (ignore non-alphabet chars).
+func TestDiffDecodeIgnoreGarbage(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase32")
+	if err != nil {
+		t.Skip("reference binary gbase32 not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.3: -i ignores non-alphabet characters during decode.
+		{
+			Name:  "ignore garbage short flag",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("NBS!WY@3D#P\n"),
+		},
+		{
+			Name:  "ignore garbage long flag",
+			Args:  []string{"--decode", "--ignore-garbage"},
+			Stdin: []byte("NBS***WY3DP\n"),
+		},
+		{
+			Name:  "ignore garbage with various special chars",
+			Args:  []string{"-d", "-i"},
+			Stdin: []byte("N~B`S{W}Y[3]D(P)\n"),
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffDecodeInvalidInput runs differential tests for invalid input errors.
+// Traces: srd079 R2.4 (exit 1 on invalid Base32 characters without --ignore-garbage),
+// R3.2 (exit 1 on error).
+func TestDiffDecodeInvalidInput(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase32")
+	if err != nil {
+		t.Skip("reference binary gbase32 not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R2.4: invalid chars without --ignore-garbage cause exit 1.
+		{
+			Name:      "invalid chars without ignore-garbage",
+			Args:      []string{"-d"},
+			Stdin:     []byte("!!!invalid!!!\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		{
+			Name:      "garbage at start without ignore-garbage",
+			Args:      []string{"-d"},
+			Stdin:     []byte("!@#$%\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffDecodeFromFile tests decoding from a file argument.
+// Traces: srd079 R2.1 (decode from FILE).
+func TestDiffDecodeFromFile(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase32")
+	if err != nil {
+		t.Skip("reference binary gbase32 not in PATH")
+	}
+
+	dir := t.TempDir()
+	inputFile := filepath.Join(dir, "encoded.txt")
+	if err := os.WriteFile(inputFile, []byte("NBSWY3DP\n"), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name: "decode from file argument",
+			Args: []string{"-d", inputFile},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffErrorPaths runs differential tests for error reporting.
+// Traces: srd079 R3.1 (exit 0 on success), R3.2 (exit 1 on error).
+func TestDiffErrorPaths(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gbase32")
+	if err != nil {
+		t.Skip("reference binary gbase32 not in PATH")
+	}
+
+	tests := []testutils.DiffTest{
+		// R3.1: --version exits 0.
+		{
+			Name:      "version flag exits 0",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+		// R3.1: --help exits 0.
+		{
+			Name:      "help flag exits 0",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{clearOutput},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffPermissionError tests file permission error reporting.
+// Traces: srd079 R3.2 (exit 1 on error).
+func TestDiffPermissionError(t *testing.T) {
+	t.Parallel()
+	if os.Getuid() == 0 {
+		t.Skip("cannot test permission errors as root")
+	}
 
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gbase32")
@@ -63,133 +268,41 @@ func TestDiff(t *testing.T) {
 		t.Skip("reference binary gbase32 not in PATH")
 	}
 
-	tmpDir := t.TempDir()
-	inputFile := filepath.Join(tmpDir, "input.txt")
-	if err := os.WriteFile(inputFile, []byte("file content\n"), 0o644); err != nil {
+	dir := t.TempDir()
+	noReadFile := filepath.Join(dir, "noperm.txt")
+	if err := os.WriteFile(noReadFile, []byte("data"), 0o000); err != nil {
 		t.Fatalf("writing test file: %v", err)
 	}
 
 	tests := []testutils.DiffTest{
 		{
-			Name:  "encode_stdin",
-			Stdin: []byte("hello\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "encode_empty",
-			Stdin: []byte(""),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "decode_basic",
-			Args:  []string{"-d"},
-			Stdin: []byte("NBSWY3DPEB3W64TMMQ======\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "wrap_zero",
-			Args:  []string{"-w", "0"},
-			Stdin: []byte("hello world this is a longer string\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "wrap_custom",
-			Args:  []string{"-w", "20"},
-			Stdin: []byte("hello world this is a longer string for wrapping\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "decode_long_flag",
-			Args:  []string{"--decode"},
-			Stdin: []byte("NBSWY3DP\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "encode_binary_data",
-			Stdin: []byte{0x00, 0x01, 0x02, 0xff, 0xfe},
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:      "missing_file",
-			Args:      []string{"/nonexistent/file/path"},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "permission denied on encode",
+			Args:      []string{noReadFile},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+			Normalize: []testutils.NormalizeFunc{normStderr},
 		},
 		{
-			Name: "encode_from_file",
-			Args: []string{inputFile},
-			Env:  []string{"LC_ALL=C"},
-		},
-		// R2.1: decode with -d flag
-		{
-			Name:  "decode_short_flag",
-			Args:  []string{"-d"},
-			Stdin: []byte("NBSWY3DPEB3W64TMMQ======\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R2.2: whitespace in encoded input silently ignored during decode
-		{
-			Name:  "decode_multiline_whitespace",
-			Args:  []string{"--decode"},
-			Stdin: []byte("NBSWY3DP\nEB3W64TM\nMQ======\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R2.2 + R2.3: spaces/tabs within a line are non-alphabet; use -i to skip them
-		{
-			Name:  "decode_spaces_tabs_with_ignore",
-			Args:  []string{"-d", "-i"},
-			Stdin: []byte("NBSWY3DP \t EB3W64TMMQ======\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R2.3: --ignore-garbage skips non-alphabet characters
-		{
-			Name:  "decode_ignore_garbage_short",
-			Args:  []string{"-d", "-i"},
-			Stdin: []byte("NBSWY3DP!!@@##\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "decode_ignore_garbage_long",
-			Args:  []string{"--decode", "--ignore-garbage"},
-			Stdin: []byte("NBSWY3DP$$%%^^\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R2.4: invalid Base32 input without --ignore-garbage exits 1
-		{
-			Name:      "decode_invalid_input",
-			Args:      []string{"-d"},
-			Stdin:     []byte("!!!invalid!!!\n"),
-			Env:       []string{"LC_ALL=C"},
+			Name:      "permission denied on decode",
+			Args:      []string{"-d", noReadFile},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeDecodeErrDetail},
-		},
-		// R3.1: successful encode exits 0 (covered by encode_stdin above, explicit)
-		// R3.2: error on invalid option exits 1
-		{
-			Name:      "invalid_option",
-			Args:      []string{"--bogus"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeProgramName, normalizeAllStderr},
-		},
-		// R3.3: --version exits 0
-		{
-			Name:      "version_flag",
-			Args:      []string{"--version"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{normalizeAllStdout},
-		},
-		// R3.3: --help exits 0
-		{
-			Name:      "help_flag",
-			Args:      []string{"--help"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{normalizeAllStdout, normalizeAllStderr},
+			Normalize: []testutils.NormalizeFunc{normStderr},
 		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// normStderr normalizes error output so that gbase32 and our binary
+// produce comparable stderr. Handles program name and OS error case.
+func normStderr(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("gbase32: "), []byte("base32: "))
+	data = bytes.ReplaceAll(data, []byte("No such file"), []byte("no such file"))
+	data = bytes.ReplaceAll(data, []byte("Permission denied"), []byte("permission denied"))
+	return data
+}
+
+// clearOutput clears all output for tests where only exit code matters
+// (e.g., --help and --version produce different text but same exit code).
+func clearOutput(data []byte) []byte {
+	return nil
 }

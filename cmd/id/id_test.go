@@ -1,22 +1,57 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/id against gid (GNU coreutils).
-//
-// Covers prd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
+// Package main provides differential tests for cmd/id.
+// Tests cover srd041-id R4.1, R4.2, R4.3.
 package main
 
 import (
 	"os/exec"
+	"os/user"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-// Used for --help/--version where GNU includes paths and boilerplate.
-func discardAll(data []byte) []byte {
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// noSuchUserSuffixRe strips OS-specific suffix after "no such user" in error messages.
+// GNU id appends ": Invalid argument" from strerror; Go omits it.
+var noSuchUserSuffixRe = regexp.MustCompile(`no such user[^\n]*`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+// R4.3: replaces binary paths with "PROG" so error message structure
+// can be compared between Go and GNU binaries.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	b = noSuchUserSuffixRe.ReplaceAll(b, []byte("no such user"))
+	return b
+}
+
+// discardOutput normalizes by discarding all output, used when
+// output content differs by design (--version, --help) and only
+// exit code comparison is meaningful.
+func discardOutput(b []byte) []byte {
 	return nil
+}
+
+// currentUsername returns the current user's login name for test cases.
+func currentUsername(t *testing.T) string {
+	t.Helper()
+	u, err := user.Current()
+	if err != nil {
+		t.Fatalf("cannot determine current user: %v", err)
+	}
+	return u.Username
 }
 
 func TestDiff(t *testing.T) {
@@ -25,204 +60,193 @@ func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gid")
 	if err != nil {
-		t.Skip("reference binary gid not in PATH")
+		t.Skipf("reference binary gid not in PATH: %v", err)
 	}
 
+	username := currentUsername(t)
+
 	tests := []testutils.DiffTest{
-		// R1.1, R1.2, R1.3: default output uid=N(name) gid=N(name) groups=...
+		// R4.1: default invocation with no arguments prints
+		// uid=N(name) gid=N(name) groups=...
 		{
-			Name:     "R1.1_R1.2_R1.3_default_output",
-			Args:     []string{},
-			ExitCode: 0,
+			Name: "default_no_args",
+			Args: []string{},
 		},
-		// R2.1: -u prints effective UID
+
+		// R4.1: -u prints effective UID as a number.
 		{
-			Name:     "R2.1_u_flag",
-			Args:     []string{"-u"},
-			ExitCode: 0,
+			Name: "flag_u",
+			Args: []string{"-u"},
 		},
-		// R2.1: --user prints effective UID
+
+		// R4.1: -g prints effective GID as a number.
 		{
-			Name:     "R2.1_user_long_flag",
-			Args:     []string{"--user"},
-			ExitCode: 0,
+			Name: "flag_g",
+			Args: []string{"-g"},
 		},
-		// R2.2: -g prints effective GID
+
+		// R4.1: -G prints all group IDs space-separated.
 		{
-			Name:     "R2.2_g_flag",
-			Args:     []string{"-g"},
-			ExitCode: 0,
+			Name: "flag_G",
+			Args: []string{"-G"},
 		},
-		// R2.2: --group prints effective GID
+
+		// R4.1: -un prints effective username.
 		{
-			Name:     "R2.2_group_long_flag",
-			Args:     []string{"--group"},
-			ExitCode: 0,
+			Name: "flag_un",
+			Args: []string{"-un"},
 		},
-		// R2.3: -G prints all group IDs space-separated
+
+		// R4.1: -gn prints effective group name.
 		{
-			Name:     "R2.3_G_flag",
-			Args:     []string{"-G"},
-			ExitCode: 0,
+			Name: "flag_gn",
+			Args: []string{"-gn"},
 		},
-		// R2.3: --groups prints all group IDs
+
+		// R4.1: -Gn prints all group names space-separated.
 		{
-			Name:     "R2.3_groups_long_flag",
-			Args:     []string{"--groups"},
-			ExitCode: 0,
+			Name: "flag_Gn",
+			Args: []string{"-Gn"},
 		},
-		// R2.4: -u -g conflicts -> error exit 1
+
+		// R4.1: -ru prints real UID.
 		{
-			Name:      "R2.4_u_g_conflict",
-			Args:      []string{"-u", "-g"},
+			Name: "flag_ru",
+			Args: []string{"-ru"},
+		},
+
+		// R4.1: -rg prints real GID.
+		{
+			Name: "flag_rg",
+			Args: []string{"-rg"},
+		},
+
+		// R4.1: -run prints real username.
+		{
+			Name: "flag_run",
+			Args: []string{"-run"},
+		},
+
+		// R4.1: -rgn prints real group name.
+		{
+			Name: "flag_rgn",
+			Args: []string{"-rgn"},
+		},
+
+		// R4.2: named user (current user) prints identity info.
+		{
+			Name: "named_current_user",
+			Args: []string{username},
+		},
+
+		// R4.2: named user with -u flag.
+		{
+			Name: "named_user_flag_u",
+			Args: []string{"-u", username},
+		},
+
+		// R4.2: named user with -gn flag.
+		{
+			Name: "named_user_flag_gn",
+			Args: []string{"-gn", username},
+		},
+
+		// R4.2: named user with -G flag.
+		{
+			Name: "named_user_flag_G",
+			Args: []string{"-G", username},
+		},
+
+		// R4.2: named user with -Gn flag.
+		{
+			Name: "named_user_flag_Gn",
+			Args: []string{"-Gn", username},
+		},
+
+		// R4.2: root user lookup.
+		{
+			Name: "named_user_root",
+			Args: []string{"root"},
+		},
+
+		// R4.2: nonexistent user produces error and exit 1.
+		{
+			Name:      "nonexistent_user",
+			Args:      []string{"no_such_user_xyzzy_42"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R2.4: -u -G conflicts -> error exit 1
+
+		// R4.3: -n without a selection flag is an error.
 		{
-			Name:      "R2.4_u_G_conflict",
-			Args:      []string{"-u", "-G"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R2.4: -g -G conflicts -> error exit 1
-		{
-			Name:      "R2.4_g_G_conflict",
-			Args:      []string{"-g", "-G"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R3.1: -un prints effective user name
-		{
-			Name:     "R3.1_un_flag",
-			Args:     []string{"-u", "-n"},
-			ExitCode: 0,
-		},
-		// R3.1: -gn prints effective group name
-		{
-			Name:     "R3.1_gn_flag",
-			Args:     []string{"-g", "-n"},
-			ExitCode: 0,
-		},
-		// R3.1: -Gn prints all group names
-		{
-			Name:     "R3.1_Gn_flag",
-			Args:     []string{"-G", "-n"},
-			ExitCode: 0,
-		},
-		// R3.1: -n alone (no selection flag) is an error
-		{
-			Name:      "R3.1_n_without_selection",
+			Name:      "flag_n_alone",
 			Args:      []string{"-n"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R3.2: -r -u prints real UID
+
+		// R4.3: -r without -u or -g is an error.
 		{
-			Name:     "R3.2_r_u_flag",
-			Args:     []string{"-r", "-u"},
-			ExitCode: 0,
-		},
-		// R3.2: -r -g prints real GID
-		{
-			Name:     "R3.2_r_g_flag",
-			Args:     []string{"-r", "-g"},
-			ExitCode: 0,
-		},
-		// R3.2: -r -u -n prints real user name
-		{
-			Name:     "R3.2_r_u_n_flag",
-			Args:     []string{"-r", "-u", "-n"},
-			ExitCode: 0,
-		},
-		// R3.2: -r -g -n prints real group name
-		{
-			Name:     "R3.2_r_g_n_flag",
-			Args:     []string{"-r", "-g", "-n"},
-			ExitCode: 0,
-		},
-		// R3.2: -r alone (no -u or -g) is an error
-		{
-			Name:      "R3.2_r_without_u_or_g",
+			Name:      "flag_r_alone",
 			Args:      []string{"-r"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R3.2: -r -G is accepted (r has no effect on -G)
+
+		// R4.3: conflicting -u and -g flags.
 		{
-			Name:     "R3.2_r_G_accepted",
-			Args:     []string{"-r", "-G"},
-			ExitCode: 0,
-		},
-		// R3.3: named user lookup (root exists on all systems)
-		{
-			Name:     "R3.3_named_user_root",
-			Args:     []string{"root"},
-			ExitCode: 0,
-		},
-		// R3.3: named user with -u flag
-		{
-			Name:     "R3.3_named_user_u",
-			Args:     []string{"-u", "root"},
-			ExitCode: 0,
-		},
-		// R3.3: named user with -g flag
-		{
-			Name:     "R3.3_named_user_g",
-			Args:     []string{"-g", "root"},
-			ExitCode: 0,
-		},
-		// R3.3: named user with -G flag
-		{
-			Name:     "R3.3_named_user_G",
-			Args:     []string{"-G", "root"},
-			ExitCode: 0,
-		},
-		// R3.3: named user with -un flag
-		{
-			Name:     "R3.3_named_user_un",
-			Args:     []string{"-u", "-n", "root"},
-			ExitCode: 0,
-		},
-		// R4.2: named user with -gn
-		{
-			Name:     "R4.2_named_user_gn",
-			Args:     []string{"-g", "-n", "root"},
-			ExitCode: 0,
-		},
-		// R4.2: named user with -Gn
-		{
-			Name:     "R4.2_named_user_Gn",
-			Args:     []string{"-G", "-n", "root"},
-			ExitCode: 0,
-		},
-		// R4.3: all three selection flags conflict -> error exit 1
-		{
-			Name:      "R4.3_u_g_G_conflict",
-			Args:      []string{"-u", "-g", "-G"},
+			Name:      "conflicting_u_g",
+			Args:      []string{"-u", "-g"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R3.3: nonexistent user -> error exit 1
+
+		// R4.3: conflicting -u and -G flags.
 		{
-			Name:      "R3.3_nonexistent_user",
-			Args:      []string{"nonexistent_user_xyz_12345"},
+			Name:      "conflicting_u_G",
+			Args:      []string{"-u", "-G"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// --help exits 0
+
+		// R4.3: -r with -G is silently accepted by GNU id (ignores -r).
 		{
-			Name:      "help",
+			Name: "flag_r_with_G",
+			Args: []string{"-rG"},
+		},
+
+		// R4.3: --help flag exits 0.
+		{
+			Name:      "help_flag",
 			Args:      []string{"--help"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
 		},
-		// --version exits 0
+
+		// R4.3: --version flag exits 0.
 		{
-			Name:      "version",
+			Name:      "version_flag",
 			Args:      []string{"--version"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
+		},
+
+		// R4.3: unknown flag produces error and exit 1.
+		{
+			Name:      "unknown_flag",
+			Args:      []string{"--bogus"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+
+		// R4.3: -z with -G prints NUL-delimited groups.
+		{
+			Name: "flag_z_with_G",
+			Args: []string{"-zG"},
+		},
+
+		// R4.3: -z with -u prints UID with NUL terminator.
+		{
+			Name: "flag_z_with_u",
+			Args: []string{"-zu"},
 		},
 	}
 

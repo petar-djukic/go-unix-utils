@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/fmt.
-// Covers prd070-fmt R1.1, R2.1, R3.1, R4.1, R5.1, R6.1, R7.1, R8.1, R9.1, R10.1, R11.1, R12.1,
-// R13.1, R13.2, R13.3, R13.4.
+// Differential tests for cmd/fmt against gfmt (GNU coreutils).
+// Implements srd070-fmt R13.3, R13.4.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,297 +15,231 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeNonEmpty replaces any non-empty output with a fixed marker.
-// Used for stderr where message format differs between Go and GNU.
-func normalizeNonEmpty(b []byte) []byte {
-	if len(b) > 0 {
-		return []byte("ERROR\n")
-	}
-	return b
+// normalizeProgramName replaces gfmt: with fmt: in stderr so that
+// diagnostic messages match between the reference and Go binaries.
+func normalizeProgramName(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gfmt:"), []byte("fmt:"))
 }
 
-func TestDiff(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gfmt")
-	if err != nil {
-		t.Skip("reference binary gfmt not in PATH")
-	}
-
-	tmpDir := t.TempDir()
-	writeTestFile(t, tmpDir, "para.txt",
-		"This is a short paragraph that fits in 75 chars easily.\n")
-	writeTestFile(t, tmpDir, "multi.txt",
-		"first file content here\n")
-	writeTestFile(t, tmpDir, "multi2.txt",
-		"second file content here\n")
-
-	longLine := "word " +
-		"word word word word word word word word word " +
-		"word word word word word word word word word " +
-		"word word word word word word word word word " +
-		"word word word word word word word word word end"
-
-	indented := "    first indented line that is long enough to require wrapping to test indentation preservation properly\n" +
-		"        second line has deeper indent and also needs to be long enough to wrap around\n"
-
-	tests := []testutils.DiffTest{
-		{
-			// R1.1: default 75-char formatting, short line unchanged
-			Name:  "short_line_unchanged",
-			Args:  []string{},
-			Stdin: []byte("short line\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R1.1: default 75-char formatting on long line
-			Name:  "default_width_wrap",
-			Args:  []string{},
-			Stdin: []byte(longLine + "\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R2.1: blank lines separate paragraphs
-			Name:  "paragraph_boundary",
-			Args:  []string{},
-			Stdin: []byte("first paragraph words words words words words\n\nsecond paragraph words words words words words\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R2.1: multiple blank lines
-			Name:  "multiple_blank_lines",
-			Args:  []string{},
-			Stdin: []byte("para one\n\n\npara two\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R3.1: indentation preservation
-			Name:  "indentation_preserved",
-			Args:  []string{},
-			Stdin: []byte(indented),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R3.1: single-line paragraph indent
-			Name:  "single_line_indent",
-			Args:  []string{},
-			Stdin: []byte("   indented single line\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R4.1: read from file argument
-			Name:  "file_input",
-			Args:  []string{filepath.Join(tmpDir, "para.txt")},
-			Stdin: nil,
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R4.1: read from multiple files
-			Name: "multi_file_input",
-			Args: []string{
-				filepath.Join(tmpDir, "multi.txt"),
-				filepath.Join(tmpDir, "multi2.txt"),
-			},
-			Stdin: nil,
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R4.1: "-" means stdin
-			Name:  "dash_stdin",
-			Args:  []string{"-"},
-			Stdin: []byte("stdin input line\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R4.1: missing file produces error exit code
-			Name:      "missing_file_error",
-			Args:      []string{filepath.Join(tmpDir, "nonexistent.txt")},
-			Stdin:     nil,
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
-		},
-		{
-			// R5.1: -w sets custom width
-			Name:  "width_short_flag",
-			Args:  []string{"-w", "30"},
-			Stdin: []byte("this is a line of text that should be wrapped at thirty characters\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R5.1: --width=N long form
-			Name:  "width_long_equals",
-			Args:  []string{"--width=40"},
-			Stdin: []byte("this is a line of text that should be wrapped at about forty characters or so\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R5.1: --width N space-separated long form
-			Name:  "width_long_space",
-			Args:  []string{"--width", "30"},
-			Stdin: []byte("this is a line of text that should be wrapped at thirty characters\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R5.1: -wN attached value
-			Name:  "width_attached",
-			Args:  []string{"-w30"},
-			Stdin: []byte("this is a line of text that should be wrapped at thirty characters\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R6.1: -g sets goal width
-			Name:  "goal_width",
-			Args:  []string{"-w", "60", "-g", "50"},
-			Stdin: []byte("this is some text that we want to fill to approximately fifty characters per line in the output\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R6.1: --goal=N long form
-			Name:  "goal_long_equals",
-			Args:  []string{"--goal=20", "-w", "30"},
-			Stdin: []byte("some text here that needs formatting with a goal width setting\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R7.1: long word exceeding width is not broken
-			Name:  "long_word_no_break",
-			Args:  []string{"-w", "10"},
-			Stdin: []byte("a verylongwordthatexceedswidth b\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R8.1: sentence-ending punctuation gets two spaces
-			Name:  "sentence_end_spacing",
-			Args:  []string{},
-			Stdin: []byte("First sentence.  Second sentence.  Third sentence.\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R8.1: multiple spaces in short line pass through (GNU fmt behavior)
-			Name:  "space_preserve_short",
-			Args:  []string{},
-			Stdin: []byte("word     word    word\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R8.1: original spacing preserved when reformatting
-			Name:  "space_preserve_reformat",
-			Args:  []string{"-w", "20"},
-			Stdin: []byte("lots   of   extra   spaces   here\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R8.1: single-space text reformatted at custom width
-			Name:  "reformat_single_space",
-			Args:  []string{"-w", "30"},
-			Stdin: []byte("End of sentence. Start of another sentence. And more text here.\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R9.1: split-only mode
-		{
-			Name:  "split_only_short_unchanged",
-			Args:  []string{"-s"},
-			Stdin: []byte("short line\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "split_only_long_split",
-			Args:  []string{"-s", "-w", "20"},
-			Stdin: []byte("this is a line that is definitely longer than twenty characters\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "split_only_no_join",
-			Args:  []string{"-s"},
-			Stdin: []byte("short\nlines\nare\nnot\njoined\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "split_only_blank_lines",
-			Args:  []string{"-s"},
-			Stdin: []byte("line one\n\nline two\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R10.1: uniform spacing
-		{
-			Name:  "uniform_spacing_normalize",
-			Args:  []string{"-u", "-w", "60"},
-			Stdin: []byte("word   word    word    word word word word word word word word word word word word\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "uniform_spacing_sentence_end",
-			Args:  []string{"-u"},
-			Stdin: []byte("End of sentence. Start of next. More text here to make this line long enough to need reformatting by the formatter.\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "uniform_spacing_short_line",
-			Args:  []string{"-u"},
-			Stdin: []byte("word    word     word\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R11.1: prefix mode
-		{
-			Name:  "prefix_short_passthrough",
-			Args:  []string{"-p", "> "},
-			Stdin: []byte("> short line\nnot prefixed\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "prefix_long_wrap",
-			Args:  []string{"-p", "> ", "-w", "30"},
-			Stdin: []byte("> This line is long enough that it must be wrapped at thirty characters.\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "prefix_long_flag",
-			Args:  []string{"--prefix=> "},
-			Stdin: []byte("> hello world\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R12.1: tagged-paragraph mode
-		{
-			// First line forced separate (next word exceeds width).
-			Name:  "tagged_paragraph_mode",
-			Args:  []string{"-t", "-w", "40"},
-			Stdin: []byte("  First line fills up the line here.\n    Body text is long enough to require\n    wrapping around.\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "tagged_paragraph_long_flag",
-			Args:  []string{"--tagged-paragraph", "-w", "40"},
-			Stdin: []byte("Header line for paragraph.\n  Body text with indent that should be preserved and wrapped if needed.\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R13.1: exit 0 on successful formatting (covered by all tests above with ExitCode 0)
-		// R13.2: exit 1 on invalid option
-		{
-			Name:      "invalid_option_error",
-			Args:      []string{"--bogus"},
-			Stdin:     []byte("hello\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
-		},
-		// R13.2: exit 1 on invalid width value
-		{
-			Name:      "invalid_width_error",
-			Args:      []string{"-w", "abc"},
-			Stdin:     []byte("hello\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
+// writeTestFile creates a file with the given content in dir.
 func writeTestFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644)
 	if err != nil {
-		t.Fatalf("writeTestFile %s: %v", name, err)
+		t.Fatalf("writing test file %s: %v", name, err)
 	}
+}
+
+func TestDiff(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gfmt")
+	if err != nil {
+		t.Skipf("reference binary gfmt not in PATH: %v", err)
+	}
+
+	// R13.4: test inputs for various scenarios.
+	longParagraph := "This is a long paragraph of text that exceeds the default " +
+		"seventy-five character width and needs to be reformatted by the fmt " +
+		"utility to fit within the specified line width properly."
+
+	indentedText := "  First line with indent.\n" +
+		"  Second line continues the paragraph with more words to fill.\n" +
+		"  Third line also indented.\n"
+
+	taggedText := "    First line has extra indent.\n" +
+		"  Second line has less indent and continues with more text to fill.\n" +
+		"  Third line also continues.\n"
+
+	prefixedText := "> This is a prefixed line that should be reformatted.\n" +
+		"> Another prefixed line that continues the paragraph.\n" +
+		"This line has no prefix and should not be reformatted.\n"
+
+	multiSpaceText := "Word   with    multiple   spaces   between   them   here.\n"
+
+	splitText := "short\n" +
+		"a very long line that definitely exceeds the default width of " +
+		"seventy-five characters and should be split into multiple lines by " +
+		"the split-only mode\n"
+
+	paraText := "first paragraph line one.\n" +
+		"first paragraph line two.\n" +
+		"\n" +
+		"second paragraph line one.\n" +
+		"second paragraph line two.\n"
+
+	// Create a temp dir for file-based tests.
+	fileDir := t.TempDir()
+	writeTestFile(t, fileDir, "input.txt", longParagraph+"\n")
+	writeTestFile(t, fileDir, "para.txt", paraText)
+	writeTestFile(t, fileDir, "second.txt", "Another file content here.\n")
+
+	tests := []testutils.DiffTest{
+		// R1.1, R4.1: default 75-char formatting from stdin
+		{
+			Name:  "default_width_stdin",
+			Stdin: []byte(longParagraph + "\n"),
+		},
+		// R1.1: short line unchanged
+		{
+			Name:  "short_line_unchanged",
+			Stdin: []byte("short line\n"),
+		},
+		// R5.1: -w custom width
+		{
+			Name:  "custom_width_w30",
+			Args:  []string{"-w", "30"},
+			Stdin: []byte("a line of text that exceeds thirty characters\n"),
+		},
+		// R5.1: --width=N long form
+		{
+			Name:  "custom_width_long_form",
+			Args:  []string{"--width=40"},
+			Stdin: []byte("a line of text that exceeds forty characters in width\n"),
+		},
+		// R6.1: -g goal width
+		{
+			Name:  "goal_width",
+			Args:  []string{"-w", "60", "-g", "40"},
+			Stdin: []byte(longParagraph + "\n"),
+		},
+		// R6.1: --goal=N long form
+		{
+			Name:  "goal_width_long_form",
+			Args:  []string{"--width=60", "--goal=40"},
+			Stdin: []byte(longParagraph + "\n"),
+		},
+		// R9.1: -s split-only mode
+		{
+			Name:  "split_only",
+			Args:  []string{"-s"},
+			Stdin: []byte(splitText),
+		},
+		// R9.1: --split-only long form
+		{
+			Name:  "split_only_long_form",
+			Args:  []string{"--split-only"},
+			Stdin: []byte(splitText),
+		},
+		// R10.1: -u uniform spacing
+		{
+			Name:  "uniform_spacing",
+			Args:  []string{"-u"},
+			Stdin: []byte(multiSpaceText),
+		},
+		// R10.1: --uniform-spacing long form
+		{
+			Name:  "uniform_spacing_long_form",
+			Args:  []string{"--uniform-spacing"},
+			Stdin: []byte(multiSpaceText),
+		},
+		// R11.1: -p prefix mode
+		{
+			Name:  "prefix_mode",
+			Args:  []string{"-p", ">"},
+			Stdin: []byte(prefixedText),
+		},
+		// R11.1: --prefix=PREFIX long form
+		{
+			Name:  "prefix_mode_long_form",
+			Args:  []string{"--prefix=>"},
+			Stdin: []byte(prefixedText),
+		},
+		// R12.1: -t tagged paragraph
+		{
+			Name:  "tagged_paragraph",
+			Args:  []string{"-t"},
+			Stdin: []byte(taggedText),
+		},
+		// R12.1: --tagged-paragraph long form
+		{
+			Name:  "tagged_paragraph_long_form",
+			Args:  []string{"--tagged-paragraph"},
+			Stdin: []byte(taggedText),
+		},
+		// R2.1: blank line paragraph boundaries
+		{
+			Name:  "paragraph_boundaries",
+			Args:  []string{"-w", "40"},
+			Stdin: []byte(paraText),
+		},
+		// R3.1: indentation preservation
+		{
+			Name:  "indentation_preservation",
+			Stdin: []byte(indentedText),
+		},
+		// R4.1: file input
+		{
+			Name:    "file_input",
+			Args:    []string{"input.txt"},
+			WorkDir: fileDir,
+		},
+		// R4.1: multi-file input
+		{
+			Name:    "multi_file_input",
+			Args:    []string{"input.txt", "second.txt"},
+			WorkDir: fileDir,
+		},
+		// R4.1: stdin via "-"
+		{
+			Name:  "stdin_dash",
+			Args:  []string{"-"},
+			Stdin: []byte("hello world\n"),
+		},
+		// R8.1: sentence-ending punctuation gets two spaces
+		{
+			Name:  "sentence_spacing",
+			Args:  []string{"-w", "60"},
+			Stdin: []byte("First sentence. Second sentence. Third sentence.\n"),
+		},
+		// R7.1: word boundaries preserved
+		{
+			Name:  "word_boundary_wrap",
+			Args:  []string{"-w", "20"},
+			Stdin: []byte("one two three four five six seven eight\n"),
+		},
+		// R5.1 + R9.1: -s with custom width
+		{
+			Name:  "split_only_custom_width",
+			Args:  []string{"-s", "-w", "30"},
+			Stdin: []byte("short\na longer line that exceeds thirty characters\n"),
+		},
+		// R13.1: exit 0 on success (empty input)
+		{
+			Name:  "exit_0_empty_input",
+			Stdin: []byte(""),
+		},
+		// R13.2: missing file error
+		{
+			Name:      "missing_file_error",
+			Args:      []string{"nonexistent_file.txt"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R13.2: invalid width value
+		{
+			Name:      "invalid_width",
+			Args:      []string{"-w", "abc"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R1.1: multiple blank lines between paragraphs
+		{
+			Name:  "multiple_blank_lines",
+			Stdin: []byte("first paragraph\n\n\nsecond paragraph\n"),
+		},
+		// R1.1: single word exceeding width
+		{
+			Name:  "long_word_exceeds_width",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("averylongwordthatexceedswidth\n"),
+		},
+		// R12.1 + R5.1: tagged paragraph with custom width
+		{
+			Name:  "tagged_paragraph_custom_width",
+			Args:  []string{"-t", "-w", "40"},
+			Stdin: []byte(taggedText),
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

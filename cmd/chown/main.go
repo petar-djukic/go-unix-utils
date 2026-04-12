@@ -1,470 +1,322 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chown implements GNU chown: change file owner and group.
-//
-// Implements prd091-chown R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
+// Package main implements cmd/chown: change file owner and group.
+// Implements srd091 R1.1-R1.4 (ownership specification),
+// R2.1-R2.3 (recursive and symlink handling),
+// R3.1-R3.3 (output control and exit codes).
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const progName = "chown"
+const programName = "chown"
 
-const helpText = `Usage: chown [OPTION]... [OWNER][:[GROUP]] FILE...
-  or:  chown [OPTION]... --reference=RFILE FILE...
-Change the owner and/or group of each FILE to OWNER and/or GROUP.
+// errAlreadyReported signals that errors were already printed to stderr
+// by the recursive walker, so the caller should not print again.
+var errAlreadyReported = fmt.Errorf("errors already reported")
 
-  -c, --changes       like verbose but report only when a change is made
-  -f, --silent, --quiet  suppress most error messages
-  -v, --verbose       output a diagnostic for every file processed
-      --no-dereference  affect symbolic links instead of referenced files
-  -h                  same as --no-dereference
-  -R, --recursive     operate on files and directories recursively
-  -H                  if a command line argument is a symbolic link to
-                        a directory, traverse it (with -R)
-  -L                  traverse every symbolic link to a directory encountered
-                        (with -R)
-  -P                  do not traverse any symbolic links (default with -R)
-      --reference=RFILE  use RFILE's owner and group rather than specifying
-                        OWNER:GROUP values
-      --help        display this help and exit
-      --version     output version information and exit
-`
-
-const versionText = "chown (go-unix-utils) 0.1\n"
-
-// symMode controls symlink traversal during recursive operation.
-// R2.3: -H, -L, -P flags.
-type symMode int
+// symlinkPolicy controls how symlinks are handled during recursive traversal.
+type symlinkPolicy int
 
 const (
-	symP symMode = iota // R2.3: never follow symlinks (default with -R)
-	symH                // R2.3: follow symlinks on command line only
-	symL                // R2.3: follow all symlinks
+	symlinkNone    symlinkPolicy = iota // -P: don't follow symlinks (default with -R)
+	symlinkCmdLine                      // -H: follow command-line symlinks only
+	symlinkAll                          // -L: follow all symlinks
 )
 
-// ownerSpec holds parsed OWNER:GROUP specification.
-// R1.1: uid or gid of -1 means unchanged.
+// TODO: Task requested --preserve-root/--no-preserve-root and
+// --from=CURRENT_OWNER:CURRENT_GROUP, but srd091 non_goals explicitly
+// excludes both. Skipped per E6.
+
+// ownerSpec holds the parsed OWNER[:GROUP] specification.
+// R1.1: supports OWNER, OWNER:GROUP, OWNER:, :GROUP forms.
 type ownerSpec struct {
-	uid int
-	gid int
+	uid       int  // target UID (-1 means unchanged)
+	gid       int  // target GID (-1 means unchanged)
+	changeUID bool // whether to change the owner
+	changeGID bool // whether to change the group
 }
 
-// options holds parsed command-line options.
+// options holds parsed command-line flags for chown.
 type options struct {
-	reference string  // R1.3: --reference=RFILE
-	recursive bool    // R2.1: -R
-	noDerefer bool    // R2.2: -h / --no-dereference
-	symlink   symMode // R2.3: -H, -L, -P
-	verbose   bool    // R3.1: -v
-	changes   bool    // R3.1: -c
-	silent    bool    // R1.4: -f suppresses errors
+	recursive   bool          // R2.1: -R/--recursive
+	verbose     bool          // R3.1: -v/--verbose
+	changes     bool          // R3.1: -c/--changes
+	silent      bool          // R3.1: -f/--silent/--quiet
+	noDerefer   bool          // R2.2: -h/--no-dereference
+	reference   string        // R1.3: --reference=RFILE
+	symlinks    symlinkPolicy // R2.3: -H/-L/-P symlink traversal
+	dereference bool          // R2.2: --dereference (default behavior)
 }
 
+// R3.3, R1.1: main entry with SIGPIPE handler and argument dispatch.
 func main() {
-	sys.InstallSIGPIPEHandler() // R3.3: graceful SIGPIPE handling
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
-}
+	sys.InstallSIGPIPEHandler()
 
-// run executes chown logic and returns the exit code.
-func run(args []string, stdout, stderr *os.File) int {
-	opts, operands, err := parseArgs(args)
-	if err != nil {
-		printError(stderr, err.Error())
-		return 1
-	}
-	if opts.reference != "" {
-		return runWithReference(operands, opts, stdout, stderr)
-	}
-	return runWithOwner(operands, opts, stdout, stderr)
-}
-
-// runWithOwner handles the standard OWNER[:GROUP] FILE... invocation.
-func runWithOwner(operands []string, opts options, stdout, stderr *os.File) int {
-	if len(operands) == 0 {
-		printError(stderr, "missing operand")
-		printTryHelp(stderr)
-		return 1
-	}
-	if len(operands) == 1 {
-		msg := fmt.Sprintf("missing operand after '%s'", operands[0])
-		printError(stderr, msg)
-		printTryHelp(stderr)
-		return 1
-	}
-	spec, err := parseOwnerGroup(operands[0])
-	if err != nil {
-		printError(stderr, err.Error())
-		return 1
-	}
-	return applyToFiles(operands[1:], spec, opts, stdout, stderr)
-}
-
-// runWithReference handles --reference=RFILE FILE... invocation.
-// R1.3: set each FILE's owner and group to match RFILE's.
-func runWithReference(operands []string, opts options, stdout, stderr *os.File) int {
-	if len(operands) == 0 {
-		printError(stderr, "missing operand")
-		printTryHelp(stderr)
-		return 1
-	}
-	spec, err := getFileOwnerGroup(opts.reference)
-	if err != nil {
-		msg := fmt.Sprintf("failed to get attributes of '%s': %s",
-			opts.reference, sysErrorMsg(err))
-		printError(stderr, msg)
-		return 1
-	}
-	return applyToFiles(operands, spec, opts, stdout, stderr)
-}
-
-// parseOwnerGroup parses OWNER[:GROUP] into ownerSpec.
-// R1.1: supports OWNER, :GROUP, OWNER:GROUP, and OWNER: forms.
-func parseOwnerGroup(spec string) (ownerSpec, error) {
-	ownerPart, groupPart, hasColon := strings.Cut(spec, ":")
-	if !hasColon {
-		// OWNER only — change owner, leave group unchanged
-		uid, err := resolveUser(spec)
-		if err != nil {
-			return ownerSpec{}, err
-		}
-		return ownerSpec{uid: uid, gid: -1}, nil
-	}
-	return resolveOwnerGroupParts(ownerPart, groupPart)
-}
-
-// resolveOwnerGroupParts resolves the owner and group parts after splitting.
-func resolveOwnerGroupParts(ownerPart, groupPart string) (ownerSpec, error) {
-	uid := -1
-	gid := -1
-	if ownerPart != "" {
-		var err error
-		uid, err = resolveUser(ownerPart)
-		if err != nil {
-			return ownerSpec{}, err
-		}
-	}
-	if groupPart != "" {
-		var err error
-		gid, err = resolveGroup(groupPart)
-		if err != nil {
-			return ownerSpec{}, err
-		}
-	} else if ownerPart != "" {
-		// R1.1: OWNER: form — set group to owner's login group
-		var err error
-		gid, err = loginGroupForUser(ownerPart)
-		if err != nil {
-			return ownerSpec{}, err
-		}
-	}
-	return ownerSpec{uid: uid, gid: gid}, nil
-}
-
-// applyToFiles changes ownership for each file and returns exit code.
-// R1.4: continues processing remaining files on error.
-func applyToFiles(files []string, spec ownerSpec, opts options, stdout, stderr *os.File) int {
-	exitCode := 0
-	for _, file := range files {
-		if opts.recursive {
-			if chownRecursive(file, spec, opts, stdout, stderr) != 0 {
-				exitCode = 1
-			}
-		} else {
-			if err := chownSingle(file, spec, opts, stdout); err != nil {
-				if !opts.silent {
-					printError(stderr, err.Error())
-				}
-				exitCode = 1
-			}
-		}
-	}
-	return exitCode
-}
-
-// chownSingle changes ownership of a single file with verbose/changes output.
-func chownSingle(path string, spec ownerSpec, opts options, stdout *os.File) error {
-	oldUid, oldGid, err := getFileIDs(path, opts.noDerefer)
-	if err != nil {
-		return fmt.Errorf("cannot access '%s': %s", path, sysErrorMsg(err))
-	}
-	changed := ownerChanged(oldUid, oldGid, spec)
-	if err := doChown(path, spec, opts.noDerefer); err != nil {
-		return fmt.Errorf("changing ownership of '%s': %s", path, sysErrorMsg(err))
-	}
-	printDiag(stdout, opts, path, spec, oldUid, oldGid, changed)
-	return nil
-}
-
-// chownRecursive walks a directory tree changing ownership.
-// R2.1: -R recursive traversal.
-// R2.3: -H/-L/-P symlink traversal control.
-func chownRecursive(root string, spec ownerSpec, opts options, stdout, stderr *os.File) int {
-	exitCode := 0
-	// R2.3: -H follows command-line symlinks, -L follows all
-	actualRoot := root
-	if opts.symlink == symH || opts.symlink == symL {
-		if resolved, err := resolveIfSymDir(root); err == nil {
-			actualRoot = resolved
-		}
-	}
-	walkPostOrder(actualRoot, root, spec, opts, stdout, stderr, &exitCode)
-	return exitCode
-}
-
-// walkPostOrder recursively processes a directory in depth-first post-order
-// to match GNU chown output ordering.
-func walkPostOrder(
-	realPath, dispPath string, spec ownerSpec,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	entries, err := os.ReadDir(realPath)
-	if err != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot read directory '%s': %s", dispPath, sysErrorMsg(err)))
-		}
-		*exitCode = 1
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
-	processEntries(entries, realPath, dispPath, spec, opts, stdout, stderr, exitCode)
-	// Post-order: change the directory itself last
-	applyChange(realPath, dispPath, spec, false, opts, stdout, stderr, exitCode)
-}
-
-// processEntries handles each directory entry during recursive walk.
-func processEntries(
-	entries []os.DirEntry, realPath, dispPath string, spec ownerSpec,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	for _, entry := range entries {
-		childReal := filepath.Join(realPath, entry.Name())
-		childDisp := joinDispPath(dispPath, entry.Name())
-		processOneEntry(childReal, childDisp, entry, spec, opts, stdout, stderr, exitCode)
-	}
-}
-
-// processOneEntry handles a single entry (file, dir, or symlink).
-func processOneEntry(
-	childReal, childDisp string, entry os.DirEntry, spec ownerSpec,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	if entry.Type()&os.ModeSymlink != 0 {
-		handleSymlink(childReal, childDisp, spec, opts, stdout, stderr, exitCode)
+	if handleSpecialFlags(os.Args[1:]) {
 		return
 	}
-	if entry.IsDir() {
-		walkPostOrder(childReal, childDisp, spec, opts, stdout, stderr, exitCode)
-		return
-	}
-	applyChange(childReal, childDisp, spec, false, opts, stdout, stderr, exitCode)
-}
 
-// handleSymlink processes a symlink during recursive traversal.
-func handleSymlink(
-	realPath, dispPath string, spec ownerSpec,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	// R2.3 -L: follow all symlinks
-	if opts.symlink == symL {
-		followSymlink(realPath, dispPath, spec, opts, stdout, stderr, exitCode)
-		return
+	opts, ownerArg, files := parseArgs(os.Args[1:])
+	if len(files) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: missing operand\n", programName)
+		os.Exit(1)
 	}
-	// R2.3 -P (default): change the symlink itself
-	applyChange(realPath, dispPath, spec, true, opts, stdout, stderr, exitCode)
-}
 
-// followSymlink resolves and recurses into a symlinked directory.
-func followSymlink(
-	realPath, dispPath string, spec ownerSpec,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	target, err := filepath.EvalSymlinks(realPath)
+	spec, err := resolveOwnerSpec(opts, ownerArg)
 	if err != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot access '%s': %s", dispPath, sysErrorMsg(err)))
-		}
-		*exitCode = 1
-		return
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		os.Exit(1)
 	}
-	info, err := os.Stat(target)
-	if err != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot access '%s': %s", dispPath, sysErrorMsg(err)))
-		}
-		*exitCode = 1
-		return
-	}
-	if info.IsDir() {
-		walkPostOrder(target, dispPath, spec, opts, stdout, stderr, exitCode)
-		return
-	}
-	applyChange(target, dispPath, spec, false, opts, stdout, stderr, exitCode)
+
+	exitCode := run(opts, spec, files)
+	os.Exit(exitCode)
 }
 
-// applyChange changes ownership on a single path and prints diagnostics.
-func applyChange(
-	realPath, dispPath string, spec ownerSpec, useLchown bool,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	oldUid, oldGid, err := getFileIDs(realPath, useLchown)
-	if err != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot access '%s': %s", dispPath, sysErrorMsg(err)))
+// handleSpecialFlags checks for --version and --help flags.
+// R4: --version and --help produce GNU-compatible output.
+func handleSpecialFlags(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
 		}
-		*exitCode = 1
-		return
-	}
-	changed := ownerChanged(oldUid, oldGid, spec)
-	chownErr := doChownRaw(realPath, spec, useLchown)
-	if chownErr != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("changing ownership of '%s': %s", dispPath, sysErrorMsg(chownErr)))
+		if arg == "--version" {
+			printVersion()
+			return true
 		}
-		*exitCode = 1
-		return
-	}
-	printDiag(stdout, opts, dispPath, spec, oldUid, oldGid, changed)
-}
-
-// ownerChanged returns true if the spec would change uid or gid.
-func ownerChanged(oldUid, oldGid uint32, spec ownerSpec) bool {
-	if spec.uid >= 0 && uint32(spec.uid) != oldUid {
-		return true
-	}
-	if spec.gid >= 0 && uint32(spec.gid) != oldGid {
-		return true
+		if arg == "--help" {
+			printHelp()
+			return true
+		}
 	}
 	return false
 }
 
-// joinDispPath joins a display path with a child name, preserving "./" prefix.
-func joinDispPath(parent, child string) string {
-	if parent == "." {
-		return "./" + child
-	}
-	return parent + "/" + child
+// printVersion outputs version information and exits 0.
+func printVersion() {
+	fmt.Printf("%s (go-unix-utils) 0.1\n", programName)
 }
 
-// resolveIfSymDir resolves path if it's a symlink to a directory.
-func resolveIfSymDir(path string) (string, error) {
-	target, err := filepath.EvalSymlinks(path)
+// printHelp outputs usage information and exits 0.
+func printHelp() {
+	fmt.Printf("Usage: %s [OPTION]... [OWNER][:[GROUP]] FILE...\n", programName)
+	fmt.Printf("  or:  %s [OPTION]... --reference=RFILE FILE...\n", programName)
+	fmt.Println("Change the owner and/or group of each FILE to OWNER and/or GROUP.")
+	fmt.Println()
+	fmt.Println("  -c, --changes       like verbose but report only when a change is made")
+	fmt.Println("  -f, --silent, --quiet  suppress most error messages")
+	fmt.Println("  -v, --verbose       output a diagnostic for every file processed")
+	fmt.Println("      --dereference   affect the referent of each symbolic link (default)")
+	fmt.Println("  -h, --no-dereference  affect symbolic links instead of any referenced file")
+	fmt.Println("      --reference=RFILE  use RFILE's owner and group rather than specifying values")
+	fmt.Println("  -R, --recursive     operate on files and directories recursively")
+	fmt.Println("  -H                  if -R, follow symlinks on the command line")
+	fmt.Println("  -L                  if -R, follow all symlinks")
+	fmt.Println("  -P                  if -R, never follow symlinks (default)")
+	fmt.Println("      --help          display this help and exit")
+	fmt.Println("      --version       output version information and exit")
+}
+
+// parseArgs separates flags, owner:group argument, and file operands.
+func parseArgs(rawArgs []string) (options, string, []string) {
+	var opts options
+	var positional []string
+	endOfFlags := false
+
+	for i := 0; i < len(rawArgs); i++ {
+		arg := rawArgs[i]
+		if endOfFlags {
+			positional = append(positional, arg)
+			continue
+		}
+		if arg == "--" {
+			endOfFlags = true
+			continue
+		}
+		if strings.HasPrefix(arg, "--") {
+			i = parseLongFlag(&opts, rawArgs, i)
+			continue
+		}
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			if isShortFlags(arg) {
+				parseShortFlags(&opts, arg[1:])
+				continue
+			}
+		}
+		positional = append(positional, arg)
+	}
+
+	// R1.3: when --reference is used, all positional args are files.
+	// R1.1: otherwise, first positional is OWNER[:GROUP], rest are files.
+	if opts.reference != "" {
+		return opts, "", positional
+	}
+	if len(positional) == 0 {
+		return opts, "", nil
+	}
+	return opts, positional[0], positional[1:]
+}
+
+// isShortFlags checks if arg (without leading -) contains only
+// valid short flag characters for chown.
+func isShortFlags(arg string) bool {
+	for _, c := range arg[1:] {
+		switch c {
+		case 'R', 'v', 'c', 'f', 'h', 'H', 'L', 'P':
+			// valid short flag
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// parseLongFlag handles long-form flags for chown.
+func parseLongFlag(opts *options, rawArgs []string, idx int) int {
+	flag := rawArgs[idx]
+	switch {
+	case flag == "--recursive":
+		opts.recursive = true
+	case flag == "--verbose":
+		opts.verbose = true
+	case flag == "--changes":
+		opts.changes = true
+	case flag == "--silent", flag == "--quiet":
+		opts.silent = true
+	case flag == "--no-dereference":
+		opts.noDerefer = true
+	case flag == "--dereference":
+		opts.dereference = true
+	case strings.HasPrefix(flag, "--reference="):
+		// R1.3: --reference=RFILE
+		opts.reference = strings.TrimPrefix(flag, "--reference=")
+	}
+	return idx
+}
+
+// parseShortFlags handles combined short flags like -Rvc.
+func parseShortFlags(opts *options, chars string) {
+	for _, c := range chars {
+		switch c {
+		case 'R':
+			opts.recursive = true
+		case 'v':
+			opts.verbose = true
+		case 'c':
+			opts.changes = true
+		case 'f':
+			opts.silent = true
+		case 'h':
+			opts.noDerefer = true
+		case 'H':
+			opts.symlinks = symlinkCmdLine
+		case 'L':
+			opts.symlinks = symlinkAll
+		case 'P':
+			opts.symlinks = symlinkNone
+		}
+	}
+}
+
+// resolveOwnerSpec determines the target UID/GID from --reference or
+// the OWNER[:GROUP] argument.
+// R1.1: OWNER, OWNER:GROUP, OWNER:, :GROUP forms.
+// R1.3: --reference=RFILE.
+func resolveOwnerSpec(opts options, ownerArg string) (ownerSpec, error) {
+	if opts.reference != "" {
+		return ownerSpecFromReference(opts.reference)
+	}
+	return parseOwnerGroup(ownerArg)
+}
+
+// ownerSpecFromReference reads owner and group from a reference file.
+// R1.3: --reference=RFILE sets each FILE's owner and group to match RFILE's.
+func ownerSpecFromReference(rfile string) (ownerSpec, error) {
+	fi, err := sys.Stat(rfile)
 	if err != nil {
-		return "", err
+		return ownerSpec{}, fmt.Errorf(
+			"failed to get attributes of %q: %s",
+			rfile, unwrapPathError(err))
 	}
-	info, err := os.Stat(target)
-	if err != nil || !info.IsDir() {
-		return "", fmt.Errorf("not a symlink to directory")
-	}
-	return target, nil
+	return ownerSpec{
+		uid:       int(fi.Uid),
+		gid:       int(fi.Gid),
+		changeUID: true,
+		changeGID: true,
+	}, nil
 }
 
-// getFileIDs returns the UID and GID of a file, using Lstat or Stat.
-func getFileIDs(path string, lstat bool) (uint32, uint32, error) {
-	var fi *sys.FileInfo
-	var err error
-	if lstat {
-		fi, err = sys.Lstat(path)
-	} else {
-		fi, err = sys.Stat(path)
+// parseOwnerGroup parses the OWNER[:GROUP] argument.
+// R1.1: OWNER changes owner only. OWNER:GROUP changes both.
+// OWNER: changes owner and sets group to OWNER's login group.
+// :GROUP changes group only.
+// D1: colon is the separator; leading colon = group only;
+// trailing colon = owner + login group.
+func parseOwnerGroup(arg string) (ownerSpec, error) {
+	spec := ownerSpec{uid: -1, gid: -1}
+
+	ownerPart, groupPart, hasColon := strings.Cut(arg, ":")
+	if !hasColon {
+		// OWNER only (no colon)
+		uid, err := resolveUser(arg)
+		if err != nil {
+			return spec, err
+		}
+		spec.uid = uid
+		spec.changeUID = true
+		return spec, nil
 	}
-	if err != nil {
-		return 0, 0, err
-	}
-	return fi.Uid, fi.Gid, nil
+
+	return resolveOwnerGroupParts(spec, ownerPart, groupPart, arg)
 }
 
-// doChown performs the actual ownership change syscall.
-// R2.2: with noDereference, changes the symlink itself via Lchown.
-func doChown(path string, spec ownerSpec, noDerefer bool) error {
-	return doChownRaw(path, spec, noDerefer)
-}
-
-// doChownRaw performs the chown/lchown syscall.
-func doChownRaw(path string, spec ownerSpec, useLchown bool) error {
-	if useLchown {
-		return os.Lchown(path, spec.uid, spec.gid)
+// resolveOwnerGroupParts resolves the owner and group parts of OWNER:GROUP.
+// originalArg is the full OWNER[:GROUP] string for error messages.
+func resolveOwnerGroupParts(
+	spec ownerSpec, ownerPart, groupPart, originalArg string,
+) (ownerSpec, error) {
+	if ownerPart != "" {
+		uid, err := resolveUser(ownerPart)
+		if err != nil {
+			return spec, err
+		}
+		spec.uid = uid
+		spec.changeUID = true
 	}
-	return os.Chown(path, spec.uid, spec.gid)
-}
 
-// printDiag prints verbose or changes diagnostic output.
-// R3.1: -v prints every file, -c prints only changed files.
-func printDiag(
-	stdout *os.File, opts options, path string,
-	spec ownerSpec, oldUid, oldGid uint32, changed bool,
-) {
-	if opts.verbose {
-		printOwnerMsg(stdout, path, spec, oldUid, oldGid, changed)
-	} else if opts.changes && changed {
-		printOwnerMsg(stdout, path, spec, oldUid, oldGid, changed)
+	if groupPart != "" {
+		// OWNER:GROUP or :GROUP
+		gid, err := resolveGroup(groupPart)
+		if err != nil {
+			return spec, fmt.Errorf("invalid group: '%s'", originalArg)
+		}
+		spec.gid = gid
+		spec.changeGID = true
+	} else if ownerPart != "" {
+		// OWNER: (trailing colon, set group to owner's login group)
+		gid, err := loginGroupForUser(ownerPart)
+		if err != nil {
+			return spec, err
+		}
+		spec.gid = gid
+		spec.changeGID = true
 	}
+
+	return spec, nil
 }
 
-// printOwnerMsg prints the ownership change diagnostic message.
-func printOwnerMsg(
-	stdout *os.File, path string,
-	spec ownerSpec, oldUid, oldGid uint32, changed bool,
-) {
-	oldStr := formatOwnerGroup(oldUid, oldGid)
-	newStr := formatNewOwnerGroup(spec, oldUid, oldGid)
-	if changed {
-		fmt.Fprintf(stdout, "changed ownership of '%s' from %s to %s\n", path, oldStr, newStr) //nolint:errcheck
-	} else {
-		fmt.Fprintf(stdout, "ownership of '%s' retained as %s\n", path, newStr) //nolint:errcheck
-	}
-}
-
-// formatOwnerGroup formats uid:gid as "user:group" using names when available.
-func formatOwnerGroup(uid, gid uint32) string {
-	return userName(uid) + ":" + groupName(gid)
-}
-
-// formatNewOwnerGroup formats the new ownership based on the spec.
-func formatNewOwnerGroup(spec ownerSpec, oldUid, oldGid uint32) string {
-	uid := oldUid
-	if spec.uid >= 0 {
-		uid = uint32(spec.uid)
-	}
-	gid := oldGid
-	if spec.gid >= 0 {
-		gid = uint32(spec.gid)
-	}
-	return userName(uid) + ":" + groupName(gid)
-}
-
-// userName returns the username for a UID, or the UID as a string.
-func userName(uid uint32) string {
-	u, err := user.LookupId(strconv.Itoa(int(uid)))
-	if err != nil {
-		return strconv.Itoa(int(uid))
-	}
-	return u.Username
-}
-
-// groupName returns the group name for a GID, or the GID as a string.
-func groupName(gid uint32) string {
-	grp, err := user.LookupGroupId(strconv.Itoa(int(gid)))
-	if err != nil {
-		return strconv.Itoa(int(gid))
-	}
-	return grp.Name
-}
-
-// resolveUser resolves a username or numeric UID to a numeric UID.
-// R1.2: name-to-ID resolution via os/user.
+// resolveUser resolves a user name or numeric UID to an integer UID.
+// R1.2: OWNER may be a name or numeric ID.
+// D2: uses os/user.Lookup with fallback to numeric IDs.
 func resolveUser(name string) (int, error) {
 	if uid, err := strconv.Atoi(name); err == nil {
 		return uid, nil
@@ -473,174 +325,285 @@ func resolveUser(name string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid user: '%s'", name)
 	}
-	return strconv.Atoi(u.Uid)
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return 0, fmt.Errorf("invalid user ID %q for user %q", u.Uid, name)
+	}
+	return uid, nil
 }
 
-// resolveGroup resolves a group name or numeric GID to a numeric GID.
-// R1.2: name-to-ID resolution via os/user.
-func resolveGroup(group string) (int, error) {
-	if gid, err := strconv.Atoi(group); err == nil {
+// resolveGroup resolves a group name or numeric GID to an integer GID.
+// R1.2: GROUP may be a name or numeric ID.
+// D2: uses os/user.LookupGroup with fallback to numeric IDs.
+func resolveGroup(name string) (int, error) {
+	if gid, err := strconv.Atoi(name); err == nil {
 		return gid, nil
 	}
-	grp, err := user.LookupGroup(group)
+	g, err := user.LookupGroup(name)
 	if err != nil {
-		return 0, fmt.Errorf("invalid group: '%s'", group)
+		return 0, fmt.Errorf("invalid group: '%s'", name)
 	}
-	return strconv.Atoi(grp.Gid)
+	gid, err := strconv.Atoi(g.Gid)
+	if err != nil {
+		return 0, fmt.Errorf("invalid group ID %q for group %q", g.Gid, name)
+	}
+	return gid, nil
 }
 
-// loginGroupForUser returns the primary GID for the given user.
-// R1.1: OWNER: form sets group to owner's login group.
+// loginGroupForUser returns the primary group GID for a user.
+// D1: OWNER: form sets group to the owner's login group.
 func loginGroupForUser(name string) (int, error) {
-	if _, err := strconv.Atoi(name); err == nil {
-		u, lookupErr := user.LookupId(name)
-		if lookupErr != nil {
-			return 0, fmt.Errorf("invalid user: '%s'", name)
-		}
-		return strconv.Atoi(u.Gid)
+	var u *user.User
+	var err error
+
+	if uid, numErr := strconv.Atoi(name); numErr == nil {
+		u, err = user.LookupId(strconv.Itoa(uid))
+	} else {
+		u, err = user.Lookup(name)
 	}
-	u, err := user.Lookup(name)
 	if err != nil {
-		return 0, fmt.Errorf("invalid user: '%s'", name)
+		return 0, fmt.Errorf("failed to get login group for '%s'", name)
 	}
-	return strconv.Atoi(u.Gid)
-}
-
-// getFileOwnerGroup returns the UID and GID of a file.
-// R1.3: --reference uses the referenced file's owner and group.
-func getFileOwnerGroup(path string) (ownerSpec, error) {
-	fi, err := sys.Stat(path)
+	gid, err := strconv.Atoi(u.Gid)
 	if err != nil {
-		return ownerSpec{}, err
+		return 0, fmt.Errorf("invalid group ID %q for user %q", u.Gid, name)
 	}
-	return ownerSpec{uid: int(fi.Uid), gid: int(fi.Gid)}, nil
+	return gid, nil
 }
 
-// parseArgs separates flags from operands.
-func parseArgs(args []string) (options, []string, error) {
-	var opts options
-	var operands []string
-	endOfFlags := false
-	for _, arg := range args {
-		if endOfFlags || !isFlag(arg) {
-			operands = append(operands, arg)
-			continue
-		}
-		if arg == "--" {
-			endOfFlags = true
-			continue
-		}
-		var err error
-		opts, err = handleFlag(arg, opts)
-		if err != nil {
-			return opts, nil, err
+// run applies the ownership change to all files and returns the exit code.
+// R1.4: continues processing remaining files on error, exits 1.
+// R3.2: exits 0 when all files processed successfully, 1 on any error.
+func run(opts options, spec ownerSpec, files []string) int {
+	exitCode := 0
+	for _, file := range files {
+		if err := applyOwner(opts, spec, file); err != nil {
+			if !opts.silent && err != errAlreadyReported {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+			}
+			exitCode = 1
 		}
 	}
-	return opts, operands, nil
+	return exitCode
 }
 
-// handleFlag processes a single flag argument.
-func handleFlag(arg string, opts options) (options, error) {
-	if strings.HasPrefix(arg, "--reference=") {
-		opts.reference = arg[len("--reference="):]
-		return opts, nil
+// applyOwner applies the ownership change to a single file or recursively.
+// R2.1: when recursive, traverses directories.
+func applyOwner(opts options, spec ownerSpec, path string) error {
+	if opts.recursive {
+		return applyOwnerRecursive(opts, spec, path)
 	}
-	switch arg {
-	case "--help":
-		fmt.Fprint(os.Stdout, helpText) //nolint:errcheck
-		os.Exit(0)
-	case "--version":
-		fmt.Fprint(os.Stdout, versionText) //nolint:errcheck
-		os.Exit(0)
-	case "-R", "--recursive":
-		opts.recursive = true
-	case "-h", "--no-dereference":
-		opts.noDerefer = true
-	case "-H":
-		opts.symlink = symH
-	case "-L":
-		opts.symlink = symL
-	case "-P":
-		opts.symlink = symP
-	case "-v", "--verbose":
-		opts.verbose = true
-	case "-c", "--changes":
-		opts.changes = true
-	case "-f", "--silent", "--quiet":
-		opts.silent = true
-	default:
-		return handleShortFlags(arg, opts)
-	}
-	return opts, nil
+	return changeOwner(opts, spec, path)
 }
 
-// handleShortFlags processes combined short flags like -Rv, -hc.
-func handleShortFlags(arg string, opts options) (options, error) {
-	if !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") {
-		return opts, fmt.Errorf("unrecognized option '%s'", arg)
+// applyOwnerRecursive recursively applies ownership changes.
+// R2.1: -R/--recursive changes owner/group for directories and contents.
+func applyOwnerRecursive(opts options, spec ownerSpec, root string) error {
+	hadError := false
+	walkChown(opts, spec, root, true, &hadError)
+	if hadError {
+		return errAlreadyReported
 	}
-	for _, ch := range arg[1:] {
-		var err error
-		opts, err = applySingleFlag(ch, opts)
-		if err != nil {
-			return opts, err
-		}
-	}
-	return opts, nil
+	return nil
 }
 
-// applySingleFlag applies a single short flag character.
-func applySingleFlag(ch rune, opts options) (options, error) {
-	switch ch {
-	case 'R':
-		opts.recursive = true
-	case 'h':
-		opts.noDerefer = true
-	case 'H':
-		opts.symlink = symH
-	case 'L':
-		opts.symlink = symL
-	case 'P':
-		opts.symlink = symP
-	case 'v':
-		opts.verbose = true
-	case 'c':
-		opts.changes = true
-	case 'f':
-		opts.silent = true
-	default:
-		return opts, fmt.Errorf("invalid option -- '%c'", ch)
+// walkChown recursively applies ownership changes, respecting symlink policy.
+// R2.3: -P (default) skips symlinks. -H follows command-line symlinks.
+// -L follows all symlinks.
+func walkChown(opts options, spec ownerSpec, path string, isRoot bool, hadErr *bool) {
+	fi, isSymlink := resolveEntry(opts, path, isRoot, hadErr)
+	if fi == nil {
+		return
 	}
-	return opts, nil
+	if isSymlink && !shouldFollowSymlink(opts.symlinks, isRoot) {
+		changeSymlinkOwner(opts, spec, path, hadErr)
+		return
+	}
+	if err := changeOwner(opts, spec, path); err != nil {
+		reportFileError(opts, err, hadErr)
+	}
+	if fi.IsDir() {
+		walkChildren(opts, spec, path, hadErr)
+	}
 }
 
-// isFlag returns true if arg starts with '-' and has content after it.
-func isFlag(arg string) bool {
-	return len(arg) > 1 && arg[0] == '-'
+// resolveEntry checks the path and decides how to process it.
+func resolveEntry(opts options, path string, isRoot bool, hadErr *bool) (os.FileInfo, bool) {
+	lfi, err := os.Lstat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	if lfi.Mode()&os.ModeSymlink == 0 {
+		return lfi, false
+	}
+	if !shouldFollowSymlink(opts.symlinks, isRoot) {
+		return lfi, true
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	return fi, true
 }
 
-// sysErrorMsg extracts the underlying system error message from a Go error.
-func sysErrorMsg(err error) string {
-	if pathErr, ok := errors.AsType[*os.PathError](err); ok {
-		return capitalizeFirst(pathErr.Err.Error())
+// shouldFollowSymlink returns true if the symlink should be followed.
+// R2.3: -H follows command-line only, -L follows all, -P follows none.
+func shouldFollowSymlink(policy symlinkPolicy, isRoot bool) bool {
+	return policy == symlinkAll || (policy == symlinkCmdLine && isRoot)
+}
+
+// changeSymlinkOwner changes the owner/group of a symlink itself via lchown.
+// R2.2: --no-dereference changes the symlink, not its target.
+func changeSymlinkOwner(opts options, spec ownerSpec, path string, hadErr *bool) {
+	fi, err := sys.Lstat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return
+	}
+	uid, gid := computeIDs(spec, int(fi.Uid), int(fi.Gid))
+	if err := os.Lchown(path, uid, gid); err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return
+	}
+	printDiagnostic(opts, path, int(fi.Uid), int(fi.Gid), uid, gid)
+}
+
+// walkChildren reads directory entries and recurses into each child.
+func walkChildren(opts options, spec ownerSpec, dir string, hadErr *bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		reportWalkError(opts, dir, err, hadErr)
+		return
+	}
+	for _, e := range entries {
+		walkChown(opts, spec, filepath.Join(dir, e.Name()), false, hadErr)
+	}
+}
+
+// changeOwner changes the owner and/or group of a single file.
+// R1.1: changes owner/group based on ownerSpec.
+func changeOwner(opts options, spec ownerSpec, path string) error {
+	fi, err := statForOpts(opts, path)
+	if err != nil {
+		return fmt.Errorf("cannot access '%s': %s",
+			path, unwrapPathError(err))
+	}
+
+	oldUID := int(fi.Uid)
+	oldGID := int(fi.Gid)
+	uid, gid := computeIDs(spec, oldUID, oldGID)
+
+	if err := chownForOpts(opts, path, uid, gid); err != nil {
+		return fmt.Errorf("changing ownership of '%s': %s",
+			path, unwrapPathError(err))
+	}
+
+	printDiagnostic(opts, path, oldUID, oldGID, uid, gid)
+	return nil
+}
+
+// computeIDs determines the final UID and GID based on the ownerSpec.
+func computeIDs(spec ownerSpec, currentUID, currentGID int) (int, int) {
+	uid := currentUID
+	gid := currentGID
+	if spec.changeUID {
+		uid = spec.uid
+	}
+	if spec.changeGID {
+		gid = spec.gid
+	}
+	return uid, gid
+}
+
+// statForOpts calls sys.Lstat or sys.Stat depending on dereference mode.
+// R2.2: --no-dereference uses Lstat; default (dereference) uses Stat.
+func statForOpts(opts options, path string) (*sys.FileInfo, error) {
+	if opts.noDerefer {
+		return sys.Lstat(path)
+	}
+	return sys.Stat(path)
+}
+
+// chownForOpts calls os.Lchown or os.Chown depending on dereference mode.
+func chownForOpts(opts options, path string, uid, gid int) error {
+	if opts.noDerefer {
+		return os.Lchown(path, uid, gid)
+	}
+	return os.Chown(path, uid, gid)
+}
+
+// printDiagnostic prints a verbose or changes-only diagnostic message.
+// R3.1: -v prints for every file. -c prints only when changes are made.
+func printDiagnostic(
+	opts options, path string,
+	oldUID, oldGID, newUID, newGID int,
+) {
+	if !opts.verbose && !opts.changes {
+		return
+	}
+	changed := oldUID != newUID || oldGID != newGID
+	if opts.changes && !changed {
+		return
+	}
+	oldOwner := formatOwnership(oldUID, oldGID)
+	newOwner := formatOwnership(newUID, newGID)
+	if changed {
+		fmt.Fprintf(os.Stdout,
+			"changed ownership of '%s' from %s to %s\n",
+			path, oldOwner, newOwner)
+	} else {
+		fmt.Fprintf(os.Stdout,
+			"ownership of '%s' retained as %s\n",
+			path, newOwner)
+	}
+}
+
+// formatOwnership formats a UID:GID pair as "user:group" for diagnostics.
+func formatOwnership(uid, gid int) string {
+	return userName(uid) + ":" + groupName(gid)
+}
+
+// userName returns the user name for a UID, or the numeric string.
+func userName(uid int) string {
+	u, err := user.LookupId(strconv.Itoa(uid))
+	if err != nil {
+		return strconv.Itoa(uid)
+	}
+	return u.Username
+}
+
+// groupName returns the group name for a GID, or the numeric string.
+func groupName(gid int) string {
+	g, err := user.LookupGroupId(strconv.Itoa(gid))
+	if err != nil {
+		return strconv.Itoa(gid)
+	}
+	return g.Name
+}
+
+// reportWalkError prints a directory traversal error to stderr.
+func reportWalkError(opts options, path string, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %s\n",
+			programName, path, unwrapPathError(err))
+	}
+	*hadErr = true
+}
+
+// reportFileError prints a file ownership change error to stderr.
+func reportFileError(opts options, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+	}
+	*hadErr = true
+}
+
+// unwrapPathError extracts the underlying error message from *os.PathError.
+func unwrapPathError(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
 	}
 	return err.Error()
-}
-
-// capitalizeFirst capitalizes the first letter of a string.
-func capitalizeFirst(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
-}
-
-// printError prints a formatted error to stderr.
-func printError(stderr *os.File, msg string) {
-	fmt.Fprintf(stderr, "%s: %s\n", progName, msg) //nolint:errcheck
-}
-
-// printTryHelp prints the "Try ... --help" hint to stderr.
-func printTryHelp(stderr *os.File) {
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
 }

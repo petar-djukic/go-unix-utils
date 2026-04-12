@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Package main implements the csplit utility.
-// Implements prd068-csplit R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
+// Package main implements cmd/csplit: split a file into context-determined pieces.
+// Implements srd068-csplit R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -17,64 +17,45 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const (
-	defaultPrefix = "xx"
-	defaultDigits = 2
-)
+// progName is used in diagnostic messages.
+const progName = "csplit"
 
-// patternKind identifies the type of a csplit pattern.
+// defaultPrefix is the output filename prefix.
+// R3.1: default prefix is "xx".
+const defaultPrefix = "xx"
+
+// defaultDigits is the default number of digits in numeric suffixes.
+// R3.3: default is 2.
+const defaultDigits = 2
+
+// patternKind distinguishes the type of split pattern.
 type patternKind int
 
 const (
-	patternRegex   patternKind = iota // /REGEXP/
-	patternSkip                       // %REGEXP%
-	patternLineNum                    // INTEGER
+	patternRegex   patternKind = iota // R1.2: /REGEXP/ split
+	patternSkip                       // R1.3: %REGEXP% skip
+	patternLineNum                    // R1.4: INTEGER split
 )
 
-// noMatchError indicates a pattern failed to find a match.
-// R2.4: used to distinguish expected exhaustion ({*}) from real errors.
-type noMatchError struct {
-	msg string
-}
-
-func (e *noMatchError) Error() string {
-	return e.msg
-}
-
-// isNoMatch reports whether err is a no-match error.
-func isNoMatch(err error) bool {
-	_, ok := err.(*noMatchError)
-	return ok
-}
-
-// pattern holds a parsed csplit pattern.
+// pattern holds a parsed PATTERN argument from the command line.
 type pattern struct {
 	kind    patternKind
-	regex   *regexp.Regexp
-	lineNum int
-	offset  int // R2.3: +N or -N offset for regex/skip patterns
-	repeat  int // R2.1/R2.2: -1 for {*}, 0 for no repeat, N for {N}
-	raw     string
+	regex   *regexp.Regexp // non-nil for patternRegex and patternSkip
+	lineNo  int64          // used for patternLineNum
+	offset  int            // R2.3: +N or -N offset for regex patterns
+	repeat  int            // R2.1: repeat count; -1 means {*} (R2.2)
+	display string         // original pattern text for error messages
 }
 
 // config holds parsed command-line options for csplit.
 type config struct {
-	file     string
-	prefix   string
-	digits   int
-	elide    bool
-	quiet    bool
-	patterns []pattern
-}
-
-// splitState tracks progress during pattern-based splitting.
-type splitState struct {
-	cfg          config
-	lines        [][]byte
-	pos          int
-	fileIndex    int
-	createdFiles []string
-	lastMatch    int // R2.1/R2.2: last regex/skip match index for repeat search
+	prefix     string // R3.2: -f PREFIX
+	digits     int    // R3.3: -n DIGITS
+	elideEmpty bool   // R3.4: -z
+	keepFiles  bool   // keep files on error (not implemented per non_goals)
+	quiet      bool   // -s/--quiet/--silent: suppress byte count output
+	inputFile  string // FILE argument
+	patterns   []pattern
 }
 
 func main() {
@@ -82,527 +63,570 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
-// run parses arguments, reads input, and performs context-based splitting.
+// run executes the csplit logic and returns the exit code.
+// R4.1: returns 0 on success.
+// R4.2: returns 1 on error.
 func run(args []string) int {
 	cfg, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "csplit: %v\n", err)
+		reportError(err.Error())
 		return 1
 	}
-	lines, err := readInput(cfg.file)
+	if len(cfg.patterns) == 0 {
+		reportError("missing operand")
+		return 1
+	}
+	rc, err := openInput(cfg.inputFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "csplit: %v\n", err)
+		reportError(err.Error())
 		return 1
 	}
-	if err := splitByPatterns(lines, cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "csplit: %v\n", err)
+	defer rc.Close()
+	if err := execute(rc, &cfg); err != nil {
+		reportError(err.Error())
 		return 1
 	}
 	return 0
 }
 
-// parseArgs separates options from positional arguments (FILE PATTERN...).
-// R1.1: accepts one or more pattern arguments.
+// parseArgs separates flags from positional arguments.
 func parseArgs(args []string) (config, error) {
-	cfg := config{prefix: defaultPrefix, digits: defaultDigits}
-	pos, err := extractPositional(&cfg, args)
-	if err != nil {
-		return cfg, err
+	cfg := config{
+		prefix: defaultPrefix,
+		digits: defaultDigits,
 	}
-	if len(pos) < 2 {
-		return cfg, fmt.Errorf("missing operand")
-	}
-	cfg.file = pos[0]
-	return cfg, parsePatternList(&cfg, pos[1:])
-}
-
-// extractPositional splits args into options (applied to cfg) and positional args.
-func extractPositional(cfg *config, args []string) ([]string, error) {
-	var pos []string
-	for i := 0; i < len(args); i++ {
+	i := 0
+	for i < len(args) {
 		arg := args[i]
 		if arg == "--" {
-			pos = append(pos, args[i+1:]...)
-			return pos, nil
+			i++
+			break
 		}
-		if arg == "-" || arg[0] != '-' {
-			pos = append(pos, arg)
+		if strings.HasPrefix(arg, "--") {
+			adv, err := parseLongFlag(&cfg, args, i)
+			if err != nil {
+				return cfg, err
+			}
+			i += adv
 			continue
 		}
-		ni, err := handleOption(cfg, args, i)
-		if err != nil {
-			return nil, err
+		if len(arg) > 1 && arg[0] == '-' && !isPatternOrNum(arg) {
+			adv, err := parseShortFlags(&cfg, args, i)
+			if err != nil {
+				return cfg, err
+			}
+			i += adv
+			continue
 		}
-		i = ni
+		break
 	}
-	return pos, nil
+	return applyPositional(cfg, args[i:])
 }
 
-// handleOption dispatches to short or long option parsing.
-func handleOption(cfg *config, args []string, i int) (int, error) {
-	if strings.HasPrefix(args[i], "--") {
-		return handleLongOption(cfg, args, i)
+// isPatternOrNum returns true if arg looks like a negative number
+// rather than a flag (used to distinguish -N from -f).
+func isPatternOrNum(arg string) bool {
+	if len(arg) < 2 {
+		return false
 	}
-	return handleShortOption(cfg, args, i)
+	_, err := strconv.ParseInt(arg, 10, 64)
+	return err == nil
 }
 
-// handleShortOption processes single-character options.
-func handleShortOption(cfg *config, args []string, i int) (int, error) {
-	c := args[i][1]
-	switch c {
-	case 'z':
-		cfg.elide = true
-		return i, nil
-	case 's':
-		cfg.quiet = true
-		return i, nil
-	case 'f':
-		val, ni, err := shortOptValue(args, i)
-		if err != nil {
-			return i, err
-		}
-		cfg.prefix = val
-		return ni, nil
-	case 'n':
-		return parseShortDigits(cfg, args, i)
-	default:
-		return i, fmt.Errorf("invalid option -- '%c'", c)
-	}
-}
-
-// handleLongOption processes --key=value style options.
-func handleLongOption(cfg *config, args []string, i int) (int, error) {
-	key, val, hasVal := strings.Cut(args[i][2:], "=")
+// parseLongFlag handles --key=value or --key value flags.
+func parseLongFlag(cfg *config, args []string, i int) (int, error) {
+	key, val, hasVal := splitLongFlag(args[i])
 	switch key {
-	case "elide-empty-files":
-		cfg.elide = true
-		return i, nil
-	case "quiet", "silent":
+	case "--prefix":
+		return setFlagVal(val, hasVal, args, i, setString(&cfg.prefix))
+	case "--digits":
+		return setFlagVal(val, hasVal, args, i, setDigits(cfg))
+	case "--elide-empty-files":
+		cfg.elideEmpty = true
+		return 1, nil
+	case "--quiet", "--silent":
 		cfg.quiet = true
-		return i, nil
-	case "prefix":
-		v, ni, err := longOptValue(val, hasVal, args, i)
-		if err != nil {
-			return i, err
-		}
-		cfg.prefix = v
-		return ni, nil
-	case "digits":
-		return parseLongDigits(cfg, val, hasVal, args, i)
+		return 1, nil
 	default:
-		return i, fmt.Errorf("unrecognized option '--%s'", key)
+		return 0, fmt.Errorf("unrecognized option '%s'", args[i])
 	}
 }
 
-// shortOptValue extracts the value for a short option (-fVAL or -f VAL).
-func shortOptValue(args []string, i int) (string, int, error) {
-	val := args[i][2:]
-	if val != "" {
-		return val, i, nil
-	}
-	if i+1 >= len(args) {
-		return "", i, fmt.Errorf("option requires an argument -- '%c'", args[i][1])
-	}
-	return args[i+1], i + 1, nil
+// splitLongFlag splits --key=value into key, value, hasValue.
+func splitLongFlag(arg string) (string, string, bool) {
+	key, val, found := strings.Cut(arg, "=")
+	return key, val, found
 }
 
-// longOptValue extracts the value for a long option (--key=val or --key val).
-func longOptValue(val string, hasVal bool, args []string, i int) (string, int, error) {
+// setFlagVal resolves a flag value and applies it via setter.
+func setFlagVal(val string, hasVal bool, args []string, i int, apply func(string) error) (int, error) {
 	if hasVal {
-		return val, i, nil
+		return 1, apply(val)
 	}
 	if i+1 >= len(args) {
-		return "", i, fmt.Errorf("option '--%s' requires an argument", args[i][2:])
+		return 0, fmt.Errorf("option requires an argument")
 	}
-	return args[i+1], i + 1, nil
+	return 2, apply(args[i+1])
 }
 
-// parseShortDigits parses -n DIGITS.
-func parseShortDigits(cfg *config, args []string, i int) (int, error) {
-	val, ni, err := shortOptValue(args, i)
-	if err != nil {
-		return i, err
+// parseShortFlags handles single-character flags.
+func parseShortFlags(cfg *config, args []string, i int) (int, error) {
+	flags := args[i][1:]
+	j := 0
+	for j < len(flags) {
+		switch flags[j] {
+		case 'f':
+			return shortWithArg(flags[j+1:], args, i, setString(&cfg.prefix))
+		case 'n':
+			return shortWithArg(flags[j+1:], args, i, setDigits(cfg))
+		case 'z':
+			cfg.elideEmpty = true
+			j++
+		case 's', 'q':
+			cfg.quiet = true
+			j++
+		default:
+			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
+		}
 	}
-	d, perr := strconv.Atoi(val)
-	if perr != nil || d <= 0 {
-		return ni, fmt.Errorf("invalid number of digits: '%s'", val)
-	}
-	cfg.digits = d
-	return ni, nil
+	return 1, nil
 }
 
-// parseLongDigits parses --digits=N or --digits N.
-func parseLongDigits(cfg *config, val string, hasVal bool, args []string, i int) (int, error) {
-	v, ni, err := longOptValue(val, hasVal, args, i)
-	if err != nil {
-		return i, err
+// shortWithArg extracts the value for a short flag with an argument.
+func shortWithArg(rest string, args []string, i int, apply func(string) error) (int, error) {
+	if rest != "" {
+		return 1, apply(rest)
 	}
-	d, perr := strconv.Atoi(v)
-	if perr != nil || d <= 0 {
-		return ni, fmt.Errorf("invalid number of digits: '%s'", v)
+	if i+1 >= len(args) {
+		return 0, fmt.Errorf("option requires an argument")
 	}
-	cfg.digits = d
-	return ni, nil
+	return 2, apply(args[i+1])
 }
 
-// parsePatternList parses a slice of pattern strings into the config.
-// R1.1: accepts one or more pattern arguments applied in order.
-// R2.1/R2.2: handles {N} and {*} repeat counts as separate arguments.
-func parsePatternList(cfg *config, args []string) error {
-	for i := 0; i < len(args); i++ {
-		pat, err := parsePattern(args[i])
+// setString returns a setter that stores a string value.
+func setString(dst *string) func(string) error {
+	return func(s string) error {
+		*dst = s
+		return nil
+	}
+}
+
+// setDigits returns a setter for the -n/--digits value.
+// R3.3: must be a positive integer.
+func setDigits(cfg *config) func(string) error {
+	return func(s string) error {
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
+			return fmt.Errorf("invalid number of digits: '%s'", s)
+		}
+		cfg.digits = n
+		return nil
+	}
+}
+
+// applyPositional handles FILE and PATTERN arguments after flags.
+// R2.1/R2.2: standalone {N} or {*} modifies the previous pattern's repeat.
+func applyPositional(cfg config, pos []string) (config, error) {
+	if len(pos) == 0 {
+		return cfg, nil
+	}
+	cfg.inputFile = pos[0]
+	for _, arg := range pos[1:] {
+		if err := applyOnePositional(&cfg, arg); err != nil {
+			return cfg, err
+		}
+	}
+	return cfg, nil
+}
+
+// applyOnePositional handles a single positional argument.
+// R2.1/R2.2: {N} and {*} are standalone repeat modifiers.
+func applyOnePositional(cfg *config, arg string) error {
+	rc, isRepeat, err := parseRepeatArg(arg)
+	if isRepeat {
 		if err != nil {
 			return err
 		}
-		if i+1 < len(args) && isRepeatArg(args[i+1]) {
-			rep, rerr := parseRepeat(args[i+1])
-			if rerr != nil {
-				return rerr
-			}
-			pat.repeat = rep
-			i++
+		if len(cfg.patterns) == 0 {
+			return fmt.Errorf("'%s': no preceding pattern", arg)
 		}
-		cfg.patterns = append(cfg.patterns, pat)
+		cfg.patterns[len(cfg.patterns)-1].repeat = rc
+		return nil
 	}
+	p, err := parsePattern(arg)
+	if err != nil {
+		return err
+	}
+	cfg.patterns = append(cfg.patterns, p)
 	return nil
 }
 
-// parsePattern parses a single pattern string into a pattern struct.
-// R1.1: supports /REGEXP/[OFFSET], %REGEXP%[OFFSET], and INTEGER forms.
-func parsePattern(s string) (pattern, error) {
-	if len(s) > 1 && s[0] == '/' {
-		return parseDelimitedPattern(s, '/', patternRegex)
+// parseRepeatArg checks if an argument is a standalone {N} or {*} repeat.
+// R2.1: {N} sets repeat to N.
+// R2.2: {*} sets repeat to -1 (unlimited).
+func parseRepeatArg(arg string) (int, bool, error) {
+	if !strings.HasPrefix(arg, "{") || !strings.HasSuffix(arg, "}") {
+		return 0, false, nil
 	}
-	if len(s) > 1 && s[0] == '%' {
-		return parseDelimitedPattern(s, '%', patternSkip)
+	body := arg[1 : len(arg)-1]
+	if body == "*" {
+		return -1, true, nil
 	}
-	return parseLineNumPattern(s)
+	n, err := strconv.Atoi(body)
+	if err != nil || n < 0 {
+		return 0, true, fmt.Errorf("invalid repeat count: '%s'", arg)
+	}
+	return n, true, nil
 }
 
-// parseDelimitedPattern parses /REGEXP/[OFFSET] or %REGEXP%[OFFSET] patterns.
-// R1.2: regex split. R1.3: skip pattern. R2.3: optional +N/-N offset.
-func parseDelimitedPattern(s string, delim byte, kind patternKind) (pattern, error) {
-	idx := strings.LastIndexByte(s, delim)
-	if idx <= 0 {
-		return pattern{}, fmt.Errorf("invalid pattern: '%s'", s)
+// parsePattern parses a single PATTERN argument.
+// R1.2: /REGEXP/[+/-N]
+// R1.3: %REGEXP%[+/-N]
+// R1.4: INTEGER
+func parsePattern(arg string) (pattern, error) {
+	raw, repeatCount, err := extractRepeat(arg)
+	if err != nil {
+		return pattern{}, err
 	}
-	expr := s[1:idx]
+	if len(raw) == 0 {
+		return pattern{}, fmt.Errorf("invalid pattern: '%s'", arg)
+	}
+	if raw[0] == '/' {
+		return parseRegexPattern(raw, patternRegex, repeatCount)
+	}
+	if raw[0] == '%' {
+		return parseRegexPattern(raw, patternSkip, repeatCount)
+	}
+	return parseLineNumPattern(raw, repeatCount)
+}
+
+// extractRepeat separates a trailing {N} or {*} from the pattern.
+// R2.1: {N} means repeat N additional times.
+// R2.2: {*} means repeat until end of input.
+func extractRepeat(arg string) (string, int, error) {
+	idx := strings.LastIndex(arg, "{")
+	if idx < 0 {
+		return arg, 0, nil
+	}
+	if !strings.HasSuffix(arg, "}") {
+		return arg, 0, nil
+	}
+	body := arg[idx+1 : len(arg)-1]
+	raw := arg[:idx]
+	if body == "*" {
+		return raw, -1, nil
+	}
+	n, err := strconv.Atoi(body)
+	if err != nil || n < 0 {
+		return "", 0, fmt.Errorf("invalid repeat count: '%s'", arg)
+	}
+	return raw, n, nil
+}
+
+// parseRegexPattern parses /REGEXP/[+/-N] or %REGEXP%[+/-N].
+// R2.3: offset after the closing delimiter.
+func parseRegexPattern(raw string, kind patternKind, repeatCount int) (pattern, error) {
+	delim := raw[0]
+	end := strings.LastIndexByte(raw[1:], delim)
+	if end < 0 {
+		return pattern{}, fmt.Errorf("invalid pattern: '%s'", raw)
+	}
+	expr := raw[1 : end+1]
+	offset := 0
+	tail := raw[end+2:]
+	if tail != "" {
+		n, err := strconv.Atoi(tail)
+		if err != nil {
+			return pattern{}, fmt.Errorf("invalid offset: '%s'", tail)
+		}
+		offset = n
+	}
 	re, err := regexp.Compile(expr)
 	if err != nil {
-		return pattern{}, fmt.Errorf("invalid regexp '%s': %v", expr, err)
+		return pattern{}, fmt.Errorf("invalid regex: %v", err)
 	}
-	offset, oerr := parseOffset(s[idx+1:])
-	if oerr != nil {
-		return pattern{}, oerr
-	}
-	return pattern{kind: kind, regex: re, offset: offset, raw: s}, nil
-}
-
-// parseOffset parses an optional +N or -N offset suffix.
-// R2.3: offset from the matching line.
-func parseOffset(s string) (int, error) {
-	if s == "" {
-		return 0, nil
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		return 0, fmt.Errorf("invalid offset: '%s'", s)
-	}
-	return n, nil
-}
-
-// isRepeatArg reports whether s is a {N} or {*} repeat argument.
-func isRepeatArg(s string) bool {
-	return len(s) >= 3 && s[0] == '{' && s[len(s)-1] == '}'
-}
-
-// parseRepeat parses a {N} or {*} repeat argument.
-// R2.1: {N} returns N. R2.2: {*} returns -1.
-func parseRepeat(s string) (int, error) {
-	inner := s[1 : len(s)-1]
-	if inner == "*" {
-		return -1, nil
-	}
-	n, err := strconv.Atoi(inner)
-	if err != nil || n < 0 {
-		return 0, fmt.Errorf("invalid repeat count: '%s'", s)
-	}
-	return n, nil
+	return pattern{
+		kind:    kind,
+		regex:   re,
+		offset:  offset,
+		repeat:  repeatCount,
+		display: raw,
+	}, nil
 }
 
 // parseLineNumPattern parses an INTEGER pattern.
-// R1.4: line number split point.
-func parseLineNumPattern(s string) (pattern, error) {
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		return pattern{}, fmt.Errorf("invalid pattern: '%s'", s)
+// R1.4: line number must be positive.
+func parseLineNumPattern(raw string, repeatCount int) (pattern, error) {
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n <= 0 {
+		return pattern{}, fmt.Errorf("invalid line number: '%s'", raw)
 	}
-	if n <= 0 {
-		return pattern{}, fmt.Errorf("'%s': line number out of range", s)
-	}
-	return pattern{kind: patternLineNum, lineNum: n, raw: s}, nil
+	return pattern{
+		kind:    patternLineNum,
+		lineNo:  n,
+		repeat:  repeatCount,
+		display: raw,
+	}, nil
 }
 
-// readInput reads all lines from the specified file or stdin.
-func readInput(file string) ([][]byte, error) {
-	r, err := openFile(file)
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-	return readLines(r)
-}
-
-// openFile opens the input file, or returns stdin for "-".
-func openFile(file string) (io.ReadCloser, error) {
-	if file == "-" {
+// openInput returns the input reader.
+// Reads from stdin when FILE is "-" or empty.
+func openInput(name string) (io.ReadCloser, error) {
+	if name == "" || name == "-" {
 		return io.NopCloser(os.Stdin), nil
 	}
-	return os.Open(file)
+	return os.Open(name)
 }
 
-// readLines reads all data from r and splits into lines preserving newlines.
-func readLines(r io.Reader) ([][]byte, error) {
-	data, err := io.ReadAll(r)
+// suffixGenerator produces sequential numeric suffixes for output files.
+type suffixGenerator struct {
+	prefix string
+	digits int
+	index  int
+}
+
+// newSuffixGenerator creates a suffix generator.
+// R3.1, R3.2, R3.3: configurable prefix and digit width.
+func newSuffixGenerator(prefix string, digits int) *suffixGenerator {
+	return &suffixGenerator{prefix: prefix, digits: digits}
+}
+
+// next returns the next output filename.
+func (g *suffixGenerator) next() string {
+	name := fmt.Sprintf("%s%0*d", g.prefix, g.digits, g.index)
+	g.index++
+	return name
+}
+
+// execute performs the csplit operation.
+// R1.1: applies patterns in order to split input.
+func execute(r io.Reader, cfg *config) error {
+	lines, err := readAllLines(r)
 	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return nil, nil
-	}
-	var lines [][]byte
-	for len(data) > 0 {
-		idx := bytes.IndexByte(data, '\n')
-		if idx < 0 {
-			lines = append(lines, data)
-			break
-		}
-		lines = append(lines, data[:idx+1])
-		data = data[idx+1:]
-	}
-	return lines, nil
-}
-
-// splitByPatterns applies patterns in order to split input lines into files.
-func splitByPatterns(lines [][]byte, cfg config) error {
-	s := &splitState{cfg: cfg, lines: lines, lastMatch: -1}
-	if err := applyAllPatterns(s); err != nil {
-		cleanupFiles(s.createdFiles)
 		return err
 	}
-	return nil
+	gen := newSuffixGenerator(cfg.prefix, cfg.digits)
+	return splitWithPatterns(lines, cfg.patterns, gen, cfg)
 }
 
-// applyAllPatterns processes each pattern then writes remaining content.
-func applyAllPatterns(s *splitState) error {
-	for _, pat := range s.cfg.patterns {
-		if err := applyPatternWithRepeat(s, pat); err != nil {
+// readAllLines reads all lines from the input into a string slice.
+func readAllLines(r io.Reader) ([]string, error) {
+	var lines []string
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return lines, scanner.Err()
+}
+
+// splitWithPatterns applies each pattern in order to split lines.
+// Byte counts are printed immediately as each file is written.
+func splitWithPatterns(lines []string, patterns []pattern, gen *suffixGenerator, cfg *config) error {
+	pos := 0
+	var fileCount int
+	for _, pat := range patterns {
+		var err error
+		pos, fileCount, err = applyPattern(lines, pos, pat, gen, cfg, fileCount)
+		if err != nil {
+			removeCreatedFiles(cfg, fileCount)
 			return err
 		}
 	}
-	return writeRemaining(s)
-}
-
-// applyPatternWithRepeat applies a pattern once, then repeats per R2.1/R2.2.
-func applyPatternWithRepeat(s *splitState, pat pattern) error {
-	if err := applyPattern(s, pat, s.pos); err != nil {
-		return err
-	}
-	if pat.repeat == 0 {
-		return nil
-	}
-	if pat.repeat < 0 {
-		return repeatUntilDone(s, pat)
-	}
-	return repeatN(s, pat)
-}
-
-// repeatUntilDone applies the pattern until no match is found.
-// R2.2: {*} repeats until end of input; final no-match is not an error.
-func repeatUntilDone(s *splitState, pat pattern) error {
-	for {
-		sf := repeatSearchFrom(s, pat)
-		if sf >= len(s.lines) {
-			return nil
-		}
-		err := applyPattern(s, pat, sf)
-		if err == nil {
-			continue
-		}
-		if isNoMatch(err) {
-			return nil
-		}
-		return err
-	}
-}
-
-// repeatN applies the pattern N additional times.
-// R2.1: {N} repeats N additional times (total N+1 applications).
-// R2.4: error messages include the repetition number.
-func repeatN(s *splitState, pat pattern) error {
-	for i := 0; i < pat.repeat; i++ {
-		sf := repeatSearchFrom(s, pat)
-		if err := applyPattern(s, pat, sf); err != nil {
-			return annotateRepeat(err, i+1)
+	// Write remaining lines as the final piece.
+	if pos < len(lines) {
+		if _, err := writePiece(gen, lines[pos:], cfg); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// annotateRepeat adds "on repetition N" to no-match errors.
-func annotateRepeat(err error, n int) error {
-	nme, ok := err.(*noMatchError)
-	if !ok {
-		return err
+// applyPattern applies a single pattern (possibly repeated) to the lines.
+// R2.1: {N} repeats pattern N additional times (total N+1).
+// R2.2: {*} repeats until no more matches.
+// R2.4: error on no match (except {*} after at least one success).
+func applyPattern(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config, fileCount int) (int, int, error) {
+	total := pat.repeat + 1
+	if pat.repeat < 0 {
+		total = -1 // {*}: unlimited
 	}
-	return &noMatchError{
-		msg: fmt.Sprintf("%s on repetition %d", nme.msg, n),
+	count := 0
+	for total < 0 || count < total {
+		newPos, wrote, err := applyOnce(lines, pos, pat, gen, cfg, count > 0)
+		if wrote {
+			fileCount++
+		}
+		if err != nil {
+			pos = newPos
+			if total < 0 && count > 0 {
+				// R2.4: {*} stops when no more matches; not an error.
+				break
+			}
+			return pos, fileCount, err
+		}
+		pos = newPos
+		count++
 	}
+	return pos, fileCount, nil
 }
 
-// repeatSearchFrom computes the search start for a repeat application.
-// For regex/skip, starts past the last match to avoid re-matching.
-func repeatSearchFrom(s *splitState, pat pattern) int {
-	if pat.kind == patternLineNum {
-		return s.pos
-	}
-	if s.lastMatch >= s.pos {
-		return s.lastMatch + 1
-	}
-	return s.pos
-}
-
-// applyPattern dispatches to the handler for the pattern kind.
-func applyPattern(s *splitState, pat pattern, searchFrom int) error {
+// applyOnce applies a pattern once and returns the new position.
+// R2.1/R2.2: isRepeat is true for second and subsequent applications.
+// Returns (newPos, wroteFile, error).
+func applyOnce(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config, isRepeat bool) (int, bool, error) {
 	switch pat.kind {
 	case patternRegex:
-		return processRegex(s, pat, searchFrom)
+		return applyRegex(lines, pos, pat, gen, cfg, isRepeat)
 	case patternSkip:
-		return processSkip(s, pat, searchFrom)
+		return applySkip(lines, pos, pat, isRepeat)
 	case patternLineNum:
-		return processLineNum(s, pat)
-	default:
-		return fmt.Errorf("unknown pattern kind")
+		return applyLineNum(lines, pos, pat, gen, cfg, isRepeat)
 	}
+	return pos, false, fmt.Errorf("unknown pattern kind")
 }
 
-// processRegex finds the next matching line and writes preceding lines as output.
-// R1.2: the matching line becomes the first line of the next piece.
-// R2.3: offset shifts the split point relative to the match.
-// R2.4: writes remaining content before reporting no-match error.
-func processRegex(s *splitState, pat pattern, searchFrom int) error {
-	idx := findMatch(s.lines, searchFrom, pat.regex)
-	if idx < 0 {
-		writeOnError(s)
-		return &noMatchError{msg: fmt.Sprintf("'%s': match not found", pat.raw)}
+// applyRegex handles /REGEXP/[+/-N] pattern application.
+// R1.2: matching line becomes first line of the next piece.
+// R2.3: offset adjusts the split point.
+// R2.1/R2.2: on repeat, search starts from pos+1 to avoid re-matching.
+// R2.4: on no match, writes remaining lines before returning error.
+func applyRegex(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config, isRepeat bool) (int, bool, error) {
+	searchFrom := pos
+	if isRepeat {
+		searchFrom = pos + 1
 	}
-	s.lastMatch = idx
-	splitAt := idx + pat.offset
-	if splitAt < s.pos || splitAt > len(s.lines) {
-		return fmt.Errorf("'%s': line number out of range", pat.raw)
+	matchIdx := findMatch(lines, searchFrom, pat.regex)
+	if matchIdx < 0 {
+		return writeRemainingAndError(lines, pos, pat, gen, cfg)
 	}
-	return writePiece(s, s.pos, splitAt)
+	splitAt := clampSplitAt(matchIdx+pat.offset, pos, len(lines))
+	_, err := writePiece(gen, lines[pos:splitAt], cfg)
+	if err != nil {
+		return pos, false, err
+	}
+	return splitAt, true, nil
 }
 
-// processSkip advances past the next matching line without writing output.
-// R1.3: skip to matching line without creating an output file.
-// R2.3: offset shifts the skip point relative to the match.
-func processSkip(s *splitState, pat pattern, searchFrom int) error {
-	idx := findMatch(s.lines, searchFrom, pat.regex)
-	if idx < 0 {
-		return &noMatchError{msg: fmt.Sprintf("'%s': match not found", pat.raw)}
+// writeRemainingAndError writes remaining lines before a no-match error.
+// R2.4: GNU csplit writes remaining content before reporting the error.
+func writeRemainingAndError(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config) (int, bool, error) {
+	_, werr := writePiece(gen, lines[pos:], cfg)
+	if werr != nil {
+		return pos, false, werr
 	}
-	s.lastMatch = idx
-	skipTo := idx + pat.offset
-	if skipTo < s.pos || skipTo > len(s.lines) {
-		return fmt.Errorf("'%s': line number out of range", pat.raw)
-	}
-	s.pos = skipTo
-	return nil
+	return len(lines), true, fmt.Errorf("'%s': match not found", pat.display)
 }
 
-// processLineNum writes lines from current position to the given line number.
-// R1.4: the specified line becomes the first line of the next piece.
-func processLineNum(s *splitState, pat pattern) error {
-	idx := pat.lineNum - 1
-	if idx < s.pos || idx >= len(s.lines) {
-		writeOnError(s)
-		return &noMatchError{
-			msg: fmt.Sprintf("'%d': line number out of range", pat.lineNum),
-		}
+// applySkip handles %REGEXP% pattern application.
+// R1.3: skips to the match without creating an output file.
+// R2.1/R2.2: on repeat, search starts from pos+1 to avoid re-matching.
+func applySkip(lines []string, pos int, pat pattern, isRepeat bool) (int, bool, error) {
+	searchFrom := pos
+	if isRepeat {
+		searchFrom = pos + 1
 	}
-	return writePiece(s, s.pos, idx)
+	matchIdx := findMatch(lines, searchFrom, pat.regex)
+	if matchIdx < 0 {
+		return pos, false, fmt.Errorf("'%s': match not found", pat.display)
+	}
+	splitAt := clampSplitAt(matchIdx+pat.offset, pos, len(lines))
+	return splitAt, false, nil
 }
 
-// writePiece writes lines[from:to] to the next output file and prints byte count.
-func writePiece(s *splitState, from, to int) error {
-	data := joinLineRange(s.lines, from, to)
-	name := outputName(s.cfg.prefix, s.cfg.digits, s.fileIndex)
-	if s.cfg.elide && len(data) == 0 {
-		s.pos = to
-		return nil
+// applyLineNum handles INTEGER pattern application.
+// R1.4: line number becomes first line of next piece.
+// R2.1: on repeat, the integer is a relative offset from current position.
+func applyLineNum(lines []string, pos int, pat pattern, gen *suffixGenerator, cfg *config, isRepeat bool) (int, bool, error) {
+	target := computeLineTarget(pat.lineNo, pos, isRepeat)
+	if target <= pos && isRepeat {
+		return pos, false, fmt.Errorf("'%d': line number out of range", pat.lineNo)
 	}
-	if err := os.WriteFile(name, data, 0o666); err != nil {
-		return err
+	if target < pos {
+		return pos, false, fmt.Errorf("line number '%d' is smaller than current line", pat.lineNo)
 	}
-	s.createdFiles = append(s.createdFiles, name)
-	if !s.cfg.quiet {
-		fmt.Println(len(data))
+	if target > len(lines) {
+		target = len(lines)
 	}
-	s.fileIndex++
-	s.pos = to
-	return nil
+	_, err := writePiece(gen, lines[pos:target], cfg)
+	if err != nil {
+		return pos, false, err
+	}
+	return target, true, nil
 }
 
-// writeOnError writes remaining content before reporting an error.
-// R2.4: GNU csplit outputs byte count for remaining content on failure.
-func writeOnError(s *splitState) {
-	if s.pos >= len(s.lines) {
-		return
+// computeLineTarget returns the 0-based target index for a line number pattern.
+// R1.4: first application uses absolute line number (1-based to 0-based).
+// R2.1: repeat applications use relative offset from current position.
+func computeLineTarget(lineNo int64, pos int, isRepeat bool) int {
+	if isRepeat {
+		return pos + int(lineNo)
 	}
-	_ = writePiece(s, s.pos, len(s.lines)) // best-effort, error ignored
+	return int(lineNo) - 1
 }
 
-// writeRemaining writes any lines after the last pattern as the final piece.
-func writeRemaining(s *splitState) error {
-	if s.pos >= len(s.lines) {
-		return nil
+// clampSplitAt clamps the split position to [minPos, maxPos].
+func clampSplitAt(splitAt, minPos, maxPos int) int {
+	if splitAt < minPos {
+		return minPos
 	}
-	return writePiece(s, s.pos, len(s.lines))
+	if splitAt > maxPos {
+		return maxPos
+	}
+	return splitAt
 }
 
-// findMatch returns the 0-based index of the first matching line from pos.
-func findMatch(lines [][]byte, pos int, re *regexp.Regexp) int {
+// findMatch returns the index of the first line matching re, starting at pos.
+func findMatch(lines []string, pos int, re *regexp.Regexp) int {
 	for i := pos; i < len(lines); i++ {
-		if re.Match(lines[i]) {
+		if re.MatchString(lines[i]) {
 			return i
 		}
 	}
 	return -1
 }
 
-// joinLineRange concatenates lines[from:to] into a single byte slice.
-func joinLineRange(lines [][]byte, from, to int) []byte {
-	var buf bytes.Buffer
-	for i := from; i < to; i++ {
-		buf.Write(lines[i])
+// writePiece writes a slice of lines to the next output file.
+// R3.4: -z suppresses empty output files.
+// Prints the byte count to stdout immediately unless quiet mode is set.
+func writePiece(gen *suffixGenerator, lines []string, cfg *config) (int, error) {
+	if len(lines) == 0 && cfg.elideEmpty {
+		return 0, nil
 	}
-	return buf.Bytes()
+	fname := gen.next()
+	content := joinLines(lines)
+	if err := os.WriteFile(fname, []byte(content), 0o666); err != nil {
+		return 0, err
+	}
+	if !cfg.quiet {
+		fmt.Println(len(content))
+	}
+	return len(content), nil
 }
 
-// outputName generates a zero-padded numeric suffix filename.
-// R3.1: default prefix "xx" and 2-digit suffixes.
-func outputName(prefix string, digits, index int) string {
-	s := strconv.Itoa(index)
-	if pad := digits - len(s); pad > 0 {
-		s = strings.Repeat("0", pad) + s
+// joinLines joins lines with newline terminators.
+func joinLines(lines []string) string {
+	if len(lines) == 0 {
+		return ""
 	}
-	return prefix + s
+	var b strings.Builder
+	for _, line := range lines {
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
-// cleanupFiles removes output files created during a failed split.
-func cleanupFiles(files []string) {
-	for _, f := range files {
-		os.Remove(f) // best-effort cleanup, error ignored
+// removeCreatedFiles removes output files created before an error.
+// Per GNU behavior, files are removed on error by default.
+func removeCreatedFiles(cfg *config, count int) {
+	rgen := newSuffixGenerator(cfg.prefix, cfg.digits)
+	for range count {
+		fname := rgen.next()
+		os.Remove(fname) // best-effort cleanup
 	}
+}
+
+// reportError prints a GNU-compatible diagnostic to stderr.
+func reportError(msg string) {
+	fmt.Fprintf(os.Stderr, "%s: %s\n", progName, msg)
 }

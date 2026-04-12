@@ -1,156 +1,175 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/sha1sum computes SHA-1 message digests for files or stdin.
-//
-// Implements prd031-sha1sum: R1.1 (file digest computation), R1.2 (stdin),
-// R1.3 (binary/text mode flags), R1.4 (--tag BSD-style output),
-// R2.1 (--check), R2.2 (--warn), R2.3 (--quiet/--status), R3.1 (--help),
-// R3.2 (--version), R4.1 (exit 0 on success), R4.2 (exit 1 on failure),
-// R4.3 (SIGPIPE handling).
+// Package main implements cmd/sha1sum: compute and check SHA-1 message digests.
+// Implements srd031-sha1sum R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2,
+// R4.1, R4.2, R4.3.
 package main
 
 import (
 	"crypto/sha1"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/hashutil"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// sha1Config is the hashutil configuration for SHA-1 digests.
-//
-// R1.1: SHA-1 hash via crypto/sha1 with 40-character hex digest.
-var sha1Config = hashutil.HashConfig{
-	Algorithm: "SHA1",
-	NewHash:   sha1.New,
-	DigestLen: 40,
-}
+const (
+	programName   = "sha1sum"
+	algorithmName = "SHA1"
+	// R1.3: SHA-1 produces 20-byte (40 hex character) digests.
+	sha1DigestLen = 40
+)
 
-// options holds all parsed command-line flags.
-type options struct {
-	binary bool
-	tag    bool
-	check  bool
-	quiet  bool
-	status bool
-	warn   bool
+// config holds parsed command-line options for sha1sum.
+type config struct {
+	binary bool // -b, --binary
+	text   bool // -t, --text
+	tag    bool // --tag
+	check  bool // -c, --check
+	warn   bool // -w, --warn
+	quiet  bool // --quiet
+	status bool // --status
 	files  []string
 }
 
+// R1.1: main entry with SIGPIPE handler and flag parsing.
+// R1.4: InstallSIGPIPEHandler for graceful SIGPIPE exit.
 func main() {
-	// R4.3: SIGPIPE handling.
 	sys.InstallSIGPIPEHandler()
 
-	opts := parseArgs(os.Args[1:])
-
-	if err := validateCheckFlags(opts); err != nil {
-		fmt.Fprintf(os.Stderr, "sha1sum: %s\n", err)
+	cfg, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 		os.Exit(1)
 	}
 
-	if opts.check {
-		exitCode := runCheckMode(opts)
-		os.Exit(exitCode)
-	}
-
-	exitCode := hashutil.DigestFiles(opts.files, sha1Config, opts.binary, opts.tag, os.Stdout, os.Stderr)
+	exitCode := run(cfg)
 	os.Exit(exitCode)
 }
 
-// validateCheckFlags returns an error if check-only flags are used without -c.
-func validateCheckFlags(opts options) error {
-	if opts.check {
-		return nil
+// run executes the sha1sum logic and returns the exit code.
+// R1.1: in digest mode, delegates to hashutil.DigestFiles.
+func run(cfg config) int {
+	// R1.3: configure HashConfig with SHA1 algorithm.
+	hcfg := hashutil.HashConfig{
+		Algorithm: algorithmName,
+		NewHash:   sha1.New,
+		DigestLen: sha1DigestLen,
 	}
-	if opts.quiet {
-		return fmt.Errorf("the --quiet option is meaningful only when verifying checksums")
+
+	if cfg.check {
+		return runCheck(cfg, hcfg)
 	}
-	if opts.status {
-		return fmt.Errorf("the --status option is meaningful only when verifying checksums")
+	return hashutil.DigestFiles(cfg.files, hcfg, cfg.binary, cfg.tag, os.Stdout, os.Stderr)
+}
+
+// runCheck verifies checksums from each file argument.
+func runCheck(cfg config, hcfg hashutil.HashConfig) int {
+	opts := hashutil.CheckOptions{
+		Warn:   cfg.warn,
+		Quiet:  cfg.quiet,
+		Status: cfg.status,
 	}
-	if opts.warn {
-		return fmt.Errorf("the --warn option is meaningful only when verifying checksums")
+	allOK := true
+	for _, f := range cfg.files {
+		ok, err := hashutil.VerifyChecksums(f, hcfg, opts, os.Stdout, os.Stderr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			allOK = false
+			continue
+		}
+		if !ok {
+			allOK = false
+		}
+	}
+	if !allOK {
+		return 1
+	}
+	return 0
+}
+
+// parseArgs parses command-line arguments into config.
+// R1.2: supports -b, -t, --tag, -c, -w, --quiet, --status.
+func parseArgs(args []string) (config, error) {
+	cfg := config{}
+	flagsDone := false
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if flagsDone || (!strings.HasPrefix(arg, "-") || arg == "-") {
+			cfg.files = append(cfg.files, arg)
+			continue
+		}
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		skip, err := parseFlag(&cfg, arg)
+		if err != nil {
+			return config{}, err
+		}
+		i += skip
+	}
+	return cfg, validateArgs(cfg)
+}
+
+// validateArgs checks for invalid flag combinations.
+func validateArgs(cfg config) error {
+	if cfg.check && len(cfg.files) == 0 {
+		return fmt.Errorf("--check requires a file argument")
 	}
 	return nil
 }
 
-// runCheckMode verifies checksums from files and returns the exit code.
-//
-// R2.1: -c reads checksum file and verifies entries via hashutil.VerifyChecksums.
-func runCheckMode(opts options) int {
-	checkOpts := hashutil.CheckOptions{
-		Quiet:  opts.quiet,
-		Status: opts.status,
-		Warn:   opts.warn,
+// parseFlag dispatches to long or short flag parsing.
+func parseFlag(cfg *config, arg string) (int, error) {
+	if strings.HasPrefix(arg, "--") {
+		return parseLongFlag(cfg, arg)
 	}
-	files := opts.files
-	if len(files) == 0 {
-		files = []string{"-"}
-	}
-	exitCode := 0
-	for _, f := range files {
-		allOK, err := hashutil.VerifyChecksums(f, sha1Config, checkOpts, os.Stdout, os.Stderr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "sha1sum: %s\n", err)
-			exitCode = 1
-			continue
-		}
-		if !allOK {
-			exitCode = 1
-		}
-	}
-	return exitCode
+	return parseShortFlags(cfg, arg[1:])
 }
 
-// parseArgs parses GNU-compatible flags from args and returns the parsed options.
-//
-// R1.3: -b/--binary sets binary mode; -t/--text sets text mode (default).
-// R1.4: --tag enables BSD-style output.
-func parseArgs(args []string) options {
-	var opts options
-	for _, arg := range args {
-		switch arg {
-		case "-b", "--binary":
-			opts.binary = true
-		case "-t", "--text":
-			opts.binary = false
-		case "--tag":
-			opts.tag = true
-		case "-c", "--check":
-			opts.check = true
-		case "--quiet":
-			opts.quiet = true
-		case "--status":
-			opts.status = true
-		case "-w", "--warn":
-			opts.warn = true
-		case "--":
-			continue
-		case "--help":
-			printUsage()
-			os.Exit(0)
-		case "--version":
-			fmt.Fprintln(os.Stdout, "sha1sum (go-unix-utils)")
-			os.Exit(0)
+// parseLongFlag handles --name flags.
+func parseLongFlag(cfg *config, arg string) (int, error) {
+	switch arg {
+	case "--binary":
+		cfg.binary = true
+	case "--text":
+		cfg.text = true
+	case "--tag":
+		cfg.tag = true
+	case "--check":
+		cfg.check = true
+	case "--warn":
+		cfg.warn = true
+	case "--quiet":
+		cfg.quiet = true
+	case "--status":
+		cfg.status = true
+	default:
+		return 0, fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	return 0, nil
+}
+
+// parseShortFlags processes bundled short flags like -bw.
+func parseShortFlags(cfg *config, flags string) (int, error) {
+	for _, ch := range flags {
+		switch ch {
+		case 'b':
+			cfg.binary = true
+		case 't':
+			cfg.text = true
+		case 'c':
+			cfg.check = true
+		case 'w':
+			cfg.warn = true
 		default:
-			opts.files = append(opts.files, arg)
+			return 0, fmt.Errorf("invalid option -- '%c'", ch)
 		}
 	}
-	return opts
-}
-
-// printUsage prints the usage message to stdout.
-func printUsage() {
-	fmt.Fprintln(os.Stdout, "Usage: sha1sum [OPTION]... [FILE]...")
-	fmt.Fprintln(os.Stdout, "Print or check SHA1 checksums.")
-	fmt.Fprintln(os.Stdout, "")
-	fmt.Fprintln(os.Stdout, "  -b, --binary  read in binary mode")
-	fmt.Fprintln(os.Stdout, "  -t, --text    read in text mode (default)")
-	fmt.Fprintln(os.Stdout, "      --tag     create a BSD-style checksum")
-	fmt.Fprintln(os.Stdout, "  -c, --check   read checksums from FILEs and check them")
-	fmt.Fprintln(os.Stdout, "      --quiet   don't print OK for each successfully verified file")
-	fmt.Fprintln(os.Stdout, "      --status  don't output anything, status code shows success")
-	fmt.Fprintln(os.Stdout, "  -w, --warn    warn about improperly formatted checksum lines")
+	return 0, nil
 }

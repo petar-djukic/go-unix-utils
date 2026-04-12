@@ -1,10 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/tail implements GNU tail: print the last lines or bytes of files.
-//
-// Implements prd055-tail R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
+// Package main implements cmd/tail: print the last lines or bytes of files.
+// Implements srd055-tail R1.1-R1.4, R2.1-R2.3, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -13,311 +11,264 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// progName is used in diagnostic messages.
+const progName = "tail"
+
+// defaultLines is the number of lines printed when no -n flag is given.
+// R1.1: default is 10 lines.
+const defaultLines int64 = 10
+
+// versionText is printed when --version is passed.
+const versionText = progName + " (go-unix-utils)"
+
+// helpText is the usage message printed when --help is passed.
+const helpText = `Usage: tail [OPTION]... [FILE]...
+Print the last 10 lines of each FILE to standard output.
+With more than one FILE, precede each with a header giving the file name.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -c, --bytes=[+]NUM       output the last NUM bytes; or use -c +NUM to
+                             output starting with byte NUM of each file
+  -n, --lines=[+]NUM       output the last NUM lines, instead of the last 10;
+                             or use -n +NUM to output starting with line NUM
+  -q, --quiet, --silent    never output headers giving file names
+  -v, --verbose            always output headers giving file names
+      --help     display this help and exit
+      --version  output version information and exit
+
+NUM may have a multiplier suffix:
+b 512, kB 1000, K 1024, MB 1000*1000, M 1024*1024,
+GB 1000*1000*1000, G 1024*1024*1024, and so on for T, P, E, Z, Y.
+`
+
+// countMode distinguishes line-count from byte-count mode.
+type countMode int
+
 const (
-	defaultLines = 10
-	programName  = "tail"
+	modeLines countMode = iota
+	modeBytes
 )
+
+// config holds parsed command-line options.
+type config struct {
+	mode    countMode
+	count   int64
+	fromPos bool // R1.3: +N means start from position N
+	quiet   bool
+	verbose bool
+	files   []string
+	err     bool
+}
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+
+	// R3.2: handle --version and --help before argument parsing.
+	if handleInfoFlags(os.Args[1:]) {
+		return
+	}
+
+	os.Exit(run(os.Args[1:]))
 }
 
-// tailOptions holds parsed flag state.
-type tailOptions struct {
-	count     int64
-	fromStart bool // true when +N prefix is used
-	byteMode  bool // R2.1: true when -c is used
-	quiet     bool
-	verbose   bool
+// handleInfoFlags checks for --version and --help, prints and exits 0.
+// Returns true if a flag was handled (caller should return).
+func handleInfoFlags(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--version":
+			fmt.Println(versionText)
+			return true
+		case "--help":
+			fmt.Print(helpText)
+			return true
+		case "--":
+			return false
+		}
+	}
+	return false
 }
 
-// run parses flags and processes input files.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	opts, files, err := parseArgs(args)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-		fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName)
+// run executes the tail logic and returns the exit code.
+// R4.1: returns 0 when all files processed successfully.
+// R4.2: returns 1 when any file cannot be opened or read.
+func run(args []string) int {
+	cfg := parseArgs(args)
+	if cfg.err {
 		return 1
 	}
-	if len(files) == 0 {
-		files = []string{"-"}
+	if len(cfg.files) == 0 {
+		cfg.files = []string{"-"}
 	}
-	return processFiles(files, stdin, stdout, stderr, opts)
-}
-
-// showHeaders returns true when file headers should be printed.
-// R3.1: headers for multiple files. R3.3: -q suppresses. R3.4: -v forces.
-func showHeaders(fileCount int, opts tailOptions) bool {
-	if opts.quiet {
-		return false
-	}
-	if opts.verbose {
-		return true
-	}
-	return fileCount > 1
-}
-
-// processFiles iterates over files and prints tail output for each.
-// R4.1: exit 0 when all files succeed. R4.2: exit 1 on any error.
-func processFiles(files []string, stdin io.Reader, stdout, stderr io.Writer, opts tailOptions) int {
+	showHeader := shouldShowHeader(&cfg)
 	exitCode := 0
-	headers := showHeaders(len(files), opts)
-	for i, name := range files {
-		if headers {
-			printHeader(stdout, name, i > 0)
-		}
-		if err := tailFile(name, stdin, stdout, opts); err != nil {
-			fmt.Fprintf(stderr, "%s: %s\n", programName, err)
+	printed := 0
+	for _, name := range cfg.files {
+		if err := processOneFile(name, &cfg, showHeader, &printed); err != nil {
+			reportError(name, err)
 			exitCode = 1
 		}
 	}
 	return exitCode
 }
 
-// printHeader prints the '==> FILENAME <==' header line.
-// R3.1: blank line before header when not the first file.
-func printHeader(w io.Writer, name string, preceded bool) {
-	if preceded {
-		fmt.Fprintln(w)
+// shouldShowHeader determines whether file headers should be printed.
+// R3.2: no header for single file by default.
+// R3.3: -q suppresses all headers.
+// R3.4: -v forces headers even for single file.
+func shouldShowHeader(cfg *config) bool {
+	if cfg.quiet {
+		return false
 	}
-	fmt.Fprintf(w, "==> %s <==\n", fileDisplayName(name))
+	if cfg.verbose {
+		return true
+	}
+	return len(cfg.files) > 1
 }
 
-// fileDisplayName returns the display name for a file argument.
-// R1.4: "-" is displayed as "standard input".
-func fileDisplayName(name string) string {
+// displayName returns the user-visible name for a file argument.
+// R3.1: stdin ("-") is displayed as "standard input" to match GNU tail.
+func displayName(name string) string {
 	if name == "-" {
 		return "standard input"
 	}
 	return name
 }
 
-// parseArgs separates flags from file arguments.
-func parseArgs(args []string) (tailOptions, []string, error) {
-	opts := tailOptions{count: defaultLines}
-	var files []string
-	flagsDone := false
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if flagsDone || (len(arg) > 0 && arg[0] != '-') {
-			files = append(files, arg)
-			continue
-		}
-		if arg == "-" {
-			files = append(files, arg)
-			continue
-		}
-		var err error
-		i, err = parseFlag(&opts, &flagsDone, args, i)
-		if err != nil {
-			return opts, nil, err
-		}
+// printHeader writes the GNU tail-format header for a file.
+// R3.1: format is "==> FILENAME <==" with blank line between files.
+func printHeader(name string, first bool) {
+	if !first {
+		fmt.Fprintln(os.Stdout)
 	}
-	return opts, files, nil
+	fmt.Fprintf(os.Stdout, "==> %s <==\n", displayName(name))
 }
 
-// parseFlag handles a single flag argument starting at args[i].
-func parseFlag(opts *tailOptions, flagsDone *bool, args []string, i int) (int, error) {
-	arg := args[i]
-	switch {
-	case arg == "--":
-		*flagsDone = true
-	case arg == "-q", arg == "--quiet", arg == "--silent":
-		opts.quiet = true
-		opts.verbose = false
-	case arg == "-v", arg == "--verbose":
-		opts.verbose = true
-		opts.quiet = false
-	case strings.HasPrefix(arg, "--lines="):
-		return i, parseLinesValue(opts, arg[len("--lines="):])
-	case arg == "--lines", arg == "-n":
-		return parseNextArg(opts, args, i, arg, parseLinesValue)
-	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'n':
-		return i, parseLinesValue(opts, arg[2:])
-	// R2.1: byte-count mode flags
-	case strings.HasPrefix(arg, "--bytes="):
-		return i, parseBytesValue(opts, arg[len("--bytes="):])
-	case arg == "--bytes", arg == "-c":
-		return parseNextArg(opts, args, i, arg, parseBytesValue)
-	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'c':
-		return i, parseBytesValue(opts, arg[2:])
-	case isLegacyNumArg(arg):
-		return i, parseLegacyNum(opts, arg)
-	default:
-		return i, fmt.Errorf("invalid option -- '%s'", arg[1:])
-	}
-	return i, nil
-}
-
-// parseNextArg reads the next argument as the value for a flag.
-func parseNextArg(opts *tailOptions, args []string, i int, flag string, parse func(*tailOptions, string) error) (int, error) {
-	i++
-	if i >= len(args) {
-		return i, fmt.Errorf("option '%s' requires an argument", flag)
-	}
-	return i, parse(opts, args[i])
-}
-
-// parseLinesValue parses a line count value which may have a + prefix.
-// R1.2: positive integer sets line count.
-// R1.3: + prefix means start from that line number.
-// R2.1: -n sets byteMode to false (last flag wins).
-func parseLinesValue(opts *tailOptions, s string) error {
-	raw := s
-	fromStart := false
-	if strings.HasPrefix(s, "+") {
-		fromStart = true
-		s = s[1:]
-	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || n < 0 {
-		return fmt.Errorf("invalid number of lines: '%s'", raw)
-	}
-	opts.count = n
-	opts.fromStart = fromStart
-	opts.byteMode = false
-	return nil
-}
-
-// parseBytesValue parses a byte count value with optional + prefix and suffixes.
-// R2.1: sets byte mode. R2.2: + prefix for offset from start.
-// R2.3: supports multiplier suffixes via sizeparse.
-func parseBytesValue(opts *tailOptions, s string) error {
-	raw := s
-	fromStart := false
-	if strings.HasPrefix(s, "+") {
-		fromStart = true
-		s = s[1:]
-	}
-	n, err := sizeparse.Parse(s)
-	if err != nil || n < 0 {
-		return fmt.Errorf("invalid number of bytes: '%s'", raw)
-	}
-	opts.count = n
-	opts.fromStart = fromStart
-	opts.byteMode = true
-	return nil
-}
-
-// isLegacyNumArg checks for legacy -NUM form (e.g., tail -5).
-func isLegacyNumArg(arg string) bool {
-	return len(arg) > 1 && arg[0] == '-' && arg[1] >= '0' && arg[1] <= '9'
-}
-
-// parseLegacyNum parses legacy -NUM form.
-func parseLegacyNum(opts *tailOptions, arg string) error {
-	n, err := strconv.ParseInt(arg[1:], 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid number of lines: '%s'", arg[1:])
-	}
-	opts.count = n
-	opts.fromStart = false
-	return nil
-}
-
-// tailFile processes a single input file or stdin.
-// R1.4: "-" means read from stdin.
-func tailFile(name string, stdin io.Reader, stdout io.Writer, opts tailOptions) error {
-	r, closer, err := openInput(name, stdin)
+// processOneFile opens a file, prints a header if needed, then outputs content.
+// R4.4: prints error and continues; header is printed only on successful open.
+func processOneFile(name string, cfg *config, showHeader bool, printed *int) error {
+	r, closer, err := openInput(name)
 	if err != nil {
 		return err
 	}
-	if closer != nil {
-		defer closer.Close() // best-effort close
+	defer closer()
+	if showHeader {
+		printHeader(name, *printed == 0)
 	}
-	if opts.byteMode {
-		return tailBytes(r, stdout, opts)
+	*printed++
+	if cfg.mode == modeBytes {
+		return processByteMode(r, cfg.count, cfg.fromPos)
 	}
-	return tailLines(r, stdout, opts)
+	return processLineMode(r, cfg.count, cfg.fromPos)
 }
 
-// tailLines dispatches line-mode output.
-func tailLines(r io.Reader, w io.Writer, opts tailOptions) error {
-	if opts.fromStart {
-		return tailFromLineOffset(r, w, opts.count)
+// processLineMode handles line-count output.
+// R1.1, R1.2: print last N lines.
+// R1.3: +N prints starting from line N.
+func processLineMode(r io.Reader, count int64, fromPos bool) error {
+	if fromPos {
+		return printFromLineN(r, count)
 	}
-	return tailLastLines(r, w, int(opts.count))
+	return printLastNLines(r, count)
 }
 
-// tailBytes dispatches byte-mode output.
-// R2.1: last N bytes. R2.2: from byte offset.
-func tailBytes(r io.Reader, w io.Writer, opts tailOptions) error {
-	if opts.fromStart {
-		return tailFromByteOffset(r, w, opts.count)
+// processByteMode handles byte-count output.
+// R2.1: -c NUM prints last NUM bytes.
+// R2.2: -c +NUM prints starting from byte NUM.
+func processByteMode(r io.Reader, count int64, fromPos bool) error {
+	if fromPos {
+		return printFromByteN(r, count)
 	}
-	return tailLastBytes(r, w, opts.count)
+	return printLastNBytes(r, count)
 }
 
-// openInput returns a reader and optional closer for the given filename.
-// R1.4: "-" means stdin.
-// R4.4: open failures use GNU format "cannot open 'FILE' for reading: REASON".
-func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
+// openInput opens a file for reading, or returns stdin for "-".
+// R1.4: stdin when file argument is "-".
+func openInput(name string) (io.Reader, func(), error) {
 	if name == "-" {
-		return stdin, nil, nil
+		return os.Stdin, func() {}, nil
 	}
 	f, err := os.Open(name)
 	if err != nil {
-		if pe, ok := errors.AsType[*os.PathError](err); ok {
-			return nil, nil, fmt.Errorf("cannot open '%s' for reading: %v", name, pe.Err)
-		}
 		return nil, nil, err
 	}
-	return f, f, nil
+	return f, func() { f.Close() }, nil
 }
 
-// tailLastLines prints the last n lines from r.
-// R1.1: default 10 lines. R1.2: configurable via -n.
-func tailLastLines(r io.Reader, w io.Writer, n int) error {
+// printLastNLines writes the last n lines from r to stdout.
+// R1.1, R1.2: output last N lines using a ring buffer.
+func printLastNLines(r io.Reader, n int64) error {
 	if n <= 0 {
 		return nil
 	}
-	lines, err := readAllLines(r)
-	if err != nil {
-		return err
-	}
-	start := max(len(lines)-n, 0)
-	return writeLines(w, lines[start:])
+	return drainLineRing(bufio.NewReader(r), int(n))
 }
 
-// tailFromLineOffset prints from line number offset to end of input.
-// R1.3: line numbering starts at 1.
-func tailFromLineOffset(r io.Reader, w io.Writer, offset int64) error {
-	br := bufio.NewReaderSize(r, 64*1024)
-	bw := bufio.NewWriter(w)
-	var lineNum int64
+// drainLineRing reads all lines into a ring buffer, then outputs the last n.
+func drainLineRing(br *bufio.Reader, n int) error {
+	ring := make([][]byte, n)
+	idx := 0
+	total := 0
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
-			lineNum++
-			if lineNum >= offset {
-				if _, wErr := bw.Write(line); wErr != nil {
-					return wErr
-				}
-			}
-		}
-		if err == io.EOF {
-			break
+			ring[idx] = append(ring[idx][:0], line...)
+			idx = (idx + 1) % n
+			total++
 		}
 		if err != nil {
-			_ = bw.Flush() // best-effort flush before returning read error
+			if errors.Is(err, io.EOF) {
+				break
+			}
 			return err
 		}
 	}
-	return bw.Flush()
+	return writeRing(ring, idx, total, n)
 }
 
-// tailLastBytes prints the last n bytes from r.
-// R2.1: byte-count mode.
-func tailLastBytes(r io.Reader, w io.Writer, n int64) error {
+// writeRing outputs buffered lines from the ring buffer in order.
+func writeRing(ring [][]byte, idx, total, n int) error {
+	count := min(n, total)
+	start := idx - count
+	if start < 0 {
+		start += n
+	}
+	for i := range count {
+		pos := (start + i) % n
+		if _, err := os.Stdout.Write(ring[pos]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// printFromLineN writes lines starting from line number n to end.
+// R1.3: +N means start from line N (1-based).
+func printFromLineN(r io.Reader, n int64) error {
+	br := bufio.NewReader(r)
+	for skip := int64(1); skip < n; skip++ {
+		_, err := br.ReadBytes('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
+	_, err := io.Copy(os.Stdout, br)
+	return err
+}
+
+// printLastNBytes writes the last n bytes from r to stdout.
+// R2.1: -c NUM prints last NUM bytes.
+func printLastNBytes(r io.Reader, n int64) error {
 	if n <= 0 {
 		return nil
 	}
@@ -325,53 +276,170 @@ func tailLastBytes(r io.Reader, w io.Writer, n int64) error {
 	if err != nil {
 		return err
 	}
-	start := max(int64(len(data))-n, 0)
-	_, wErr := w.Write(data[start:])
-	return wErr
+	start := max(0, int64(len(data))-n)
+	_, werr := os.Stdout.Write(data[start:])
+	return werr
 }
 
-// tailFromByteOffset prints from byte offset to end of input.
-// R2.2: byte numbering starts at 1.
-func tailFromByteOffset(r io.Reader, w io.Writer, offset int64) error {
-	if offset > 1 {
-		discarded, err := io.CopyN(io.Discard, r, offset-1)
-		if err != nil && err != io.EOF {
+// printFromByteN writes bytes starting from byte number n to end.
+// R2.2: +N means start from byte N (1-based).
+func printFromByteN(r io.Reader, n int64) error {
+	if n > 1 {
+		if _, err := io.CopyN(io.Discard, r, n-1); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
-		if discarded < offset-1 {
-			return nil // offset beyond input
-		}
 	}
-	_, err := io.Copy(w, r)
+	_, err := io.Copy(os.Stdout, r)
 	return err
 }
 
-// readAllLines reads all lines from r, preserving line endings.
-func readAllLines(r io.Reader) ([][]byte, error) {
-	br := bufio.NewReaderSize(r, 64*1024)
-	var lines [][]byte
-	for {
-		line, err := br.ReadBytes('\n')
-		if len(line) > 0 {
-			lines = append(lines, line)
+// parseArgs extracts flags and file arguments.
+// R3.4: unrecognized options print error to stderr and set err=true.
+func parseArgs(args []string) config {
+	cfg := config{count: defaultLines}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			cfg.files = append(cfg.files, args[i+1:]...)
+			return cfg
 		}
-		if err == io.EOF {
-			break
+		if consumed := parseHeaderFlag(&cfg, arg); consumed > 0 {
+			continue
 		}
-		if err != nil {
-			return nil, err
+		if consumed := parseCountFlag(&cfg, args, i); consumed > 0 {
+			i += consumed - 1
+			continue
 		}
+		if isUnrecognizedFlag(arg) {
+			reportUnrecognized(arg)
+			cfg.err = true
+			return cfg
+		}
+		cfg.files = append(cfg.files, arg)
 	}
-	return lines, nil
+	return cfg
 }
 
-// writeLines writes a slice of lines to w using buffered I/O.
-func writeLines(w io.Writer, lines [][]byte) error {
-	bw := bufio.NewWriter(w)
-	for _, line := range lines {
-		if _, err := bw.Write(line); err != nil {
-			return err
-		}
+// isUnrecognizedFlag returns true if arg looks like an unrecognized option.
+// R3.4: flags start with "-" but are not "-" (stdin) or a numeric legacy arg.
+func isUnrecognizedFlag(arg string) bool {
+	if !strings.HasPrefix(arg, "-") || arg == "-" {
+		return false
 	}
-	return bw.Flush()
+	// Legacy GNU tail allows plain -NUM as shorthand for -n NUM.
+	if len(arg) > 1 && arg[1] >= '0' && arg[1] <= '9' {
+		return false
+	}
+	return true
+}
+
+// reportUnrecognized prints a GNU-compatible error for unrecognized options.
+// R3.4: format matches GNU tail unrecognized option output.
+func reportUnrecognized(arg string) {
+	if strings.HasPrefix(arg, "--") {
+		fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", progName, arg)
+	} else {
+		// Short option: extract the invalid character.
+		invalid := arg[1:]
+		fmt.Fprintf(os.Stderr, "%s: invalid option -- '%s'\n", progName, invalid)
+	}
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+}
+
+// parseHeaderFlag handles -q/--quiet/--silent and -v/--verbose flags.
+// R3.3: -q suppresses headers.
+// R3.4: -v forces headers.
+func parseHeaderFlag(cfg *config, arg string) int {
+	switch {
+	case arg == "-q" || arg == "--quiet" || arg == "--silent":
+		cfg.quiet = true
+		cfg.verbose = false
+		return 1
+	case arg == "-v" || arg == "--verbose":
+		cfg.verbose = true
+		cfg.quiet = false
+		return 1
+	}
+	return 0
+}
+
+// parseCountFlag handles -n/--lines and -c/--bytes flags.
+func parseCountFlag(cfg *config, args []string, i int) int {
+	mode, numStr, consumed := matchCountFlag(args[i], args, i)
+	if consumed == 0 {
+		return 0
+	}
+	cfg.mode = mode
+	cfg.count, cfg.fromPos, cfg.err = parseCount(numStr, mode)
+	return consumed
+}
+
+// matchCountFlag identifies -n/-c flags and extracts the numeric string.
+func matchCountFlag(arg string, args []string, i int) (countMode, string, int) {
+	switch arg {
+	case "-n", "--lines":
+		if i+1 < len(args) {
+			return modeLines, args[i+1], 2
+		}
+		return modeLines, "", 1
+	case "-c", "--bytes":
+		if i+1 < len(args) {
+			return modeBytes, args[i+1], 2
+		}
+		return modeBytes, "", 1
+	default:
+		return matchCountFlagPrefix(arg)
+	}
+}
+
+// matchCountFlagPrefix handles prefixed forms like -n5, --lines=5, -c10, --bytes=10.
+func matchCountFlagPrefix(arg string) (countMode, string, int) {
+	switch {
+	case strings.HasPrefix(arg, "--lines="):
+		return modeLines, arg[len("--lines="):], 1
+	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'n':
+		return modeLines, arg[2:], 1
+	case strings.HasPrefix(arg, "--bytes="):
+		return modeBytes, arg[len("--bytes="):], 1
+	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'c':
+		return modeBytes, arg[2:], 1
+	}
+	return 0, "", 0
+}
+
+// parseCount parses a count string, detecting the + prefix for from-position mode.
+// R3.1: suffix multipliers supported via sizeparse.Parse for both modes.
+func parseCount(s string, mode countMode) (int64, bool, bool) {
+	fromPos := false
+	raw := s
+	if strings.HasPrefix(s, "+") {
+		fromPos = true
+		raw = s[1:]
+	}
+	n, err := sizeparse.Parse(raw)
+	if err != nil {
+		label := "lines"
+		if mode == modeBytes {
+			label = "bytes"
+		}
+		fmt.Fprintf(os.Stderr, "%s: invalid number of %s: '%s'\n",
+			progName, label, s)
+		return 0, false, true
+	}
+	return n, fromPos, false
+}
+
+// reportError prints a GNU-compatible diagnostic to stderr.
+// R4.4: prints error and continues with remaining files.
+func reportError(name string, err error) {
+	dname := displayName(name)
+	if pe, ok := errors.AsType[*os.PathError](err); ok {
+		fmt.Fprintf(os.Stderr, "%s: cannot open '%s' for reading: %s\n",
+			progName, dname, pe.Err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, dname, err)
 }

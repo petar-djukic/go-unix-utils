@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/pathchk checks whether file names are valid or portable (prd103-pathchk R1, R2).
+// Package main implements cmd/pathchk: check whether file names are valid or portable.
+// Implements srd103-pathchk R1.1-R1.4, R2.1-R2.3.
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -13,81 +13,96 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const (
-	progName     = "pathchk"
-	posixNameMax = 14
-	posixPathMax = 256
-	sysNameMax   = 255
-	sysPathMax   = 1024
-)
+// progName is used in error messages.
+const progName = "pathchk"
 
-const versionStr = progName + " (go-unix-utils) 1.0"
+// versionText is printed when --version is passed.
+const versionText = progName + " (go-unix-utils) dev"
 
-const helpStr = `Usage: pathchk [OPTION]... NAME...
+// portableMaxComponent is the POSIX _POSIX_NAME_MAX limit for -p mode.
+const portableMaxComponent = 14
+
+// portableMaxPath is the POSIX _POSIX_PATH_MAX limit for -p mode.
+const portableMaxPath = 256
+
+// portableChars is the set of characters allowed by POSIX portable filename character set.
+const portableChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+
+func main() {
+	sys.InstallSIGPIPEHandler()
+
+	args := os.Args[1:]
+
+	if handleInfoFlags(args) {
+		return
+	}
+
+	opts, paths, err := parseArgs(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", os.Args[0])
+		os.Exit(1)
+	}
+
+	if len(paths) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", os.Args[0])
+		os.Exit(1)
+	}
+
+	// R2.1: exit 0 when all pathnames pass.
+	// R2.2: exit 1 when any pathname fails.
+	exitCode := 0
+	for _, p := range paths {
+		if !checkPath(p, opts) {
+			exitCode = 1
+		}
+	}
+	os.Exit(exitCode)
+}
+
+// options holds parsed command-line flags.
+type options struct {
+	posix         bool // -p: POSIX portable filename checking
+	extraPortable bool // -P: additional portability checks
+}
+
+// handleInfoFlags checks for --version and --help, prints and exits 0.
+func handleInfoFlags(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--version":
+			fmt.Println(versionText)
+			return true
+		case "--help":
+			printHelp()
+			return true
+		case "--":
+			return false
+		}
+	}
+	return false
+}
+
+// printHelp writes usage information to stdout.
+func printHelp() {
+	fmt.Print(`Usage: pathchk [OPTION]... NAME...
 Diagnose invalid or unportable file names.
 
   -p                  check for most POSIX systems
   -P                  check for empty names and leading "-"
       --portability   check for all POSIX systems (equivalent to -p -P)
-      --help          display this help and exit
-      --version       output version information and exit
-`
-
-func main() {
-	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+      --help        display this help and exit
+      --version     output version information and exit
+`)
 }
 
-// run parses flags, iterates over pathname arguments, and dispatches checks.
-// R2.1: exits 0 when all pathnames pass. R2.2: exits 1 when any fails.
-func run(args []string, stdout, stderr *os.File) int {
-	posix, extended, paths, done := parseArgs(args, stdout)
-	if done {
-		return 0
-	}
-	if len(paths) == 0 {
-		return 0
-	}
-	exitCode := 0
-	checkBasic := !posix && !extended
-	for _, path := range paths {
-		if reportErrors(path, checkBasic, posix, extended, stderr) {
-			exitCode = 1
-		}
-	}
-	return exitCode
-}
-
-// reportErrors runs applicable checks on path, printing errors to stderr.
-// D3: all modes are checked independently; multiple errors may be reported.
-func reportErrors(path string, basic, posix, extended bool, w *os.File) bool {
-	hadError := false
-	if basic {
-		if err := checkDefault(path); err != nil {
-			fmt.Fprintln(w, err)
-			hadError = true
-		}
-	}
-	if posix {
-		if err := checkPOSIX(path); err != nil {
-			fmt.Fprintln(w, err)
-			hadError = true
-		}
-	}
-	if extended {
-		if err := checkPOSIXExtended(path); err != nil {
-			fmt.Fprintln(w, err)
-			hadError = true
-		}
-	}
-	return hadError
-}
-
-// parseArgs extracts -p, -P, --portability, --help, --version flags
-// and remaining pathnames. R1.4: supports multiple pathname arguments.
-// R2.3: --help prints usage and returns done=true, --version prints version.
-func parseArgs(args []string, stdout *os.File) (posix, extended bool, paths []string, done bool) {
+// parseArgs separates flags from pathname arguments.
+func parseArgs(args []string) (options, []string, error) {
+	var opts options
+	var paths []string
 	endOfFlags := false
+
 	for _, arg := range args {
 		if endOfFlags {
 			paths = append(paths, arg)
@@ -98,206 +113,150 @@ func parseArgs(args []string, stdout *os.File) (posix, extended bool, paths []st
 			continue
 		}
 		if arg == "--portability" {
-			posix = true
-			extended = true
+			opts.posix = true
+			opts.extraPortable = true
 			continue
 		}
-		if arg == "--help" {
-			fmt.Fprint(stdout, helpStr)
-			return false, false, nil, true
-		}
-		if arg == "--version" {
-			fmt.Fprintln(stdout, versionStr)
-			return false, false, nil, true
-		}
-		if isKnownFlags(arg) {
-			posix, extended = applyFlags(arg, posix, extended)
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			if err := parseFlagArg(arg, &opts); err != nil {
+				return opts, nil, err
+			}
 			continue
 		}
 		paths = append(paths, arg)
+		endOfFlags = true
 	}
-	return posix, extended, paths, false
+	return opts, paths, nil
 }
 
-// isKnownFlags returns true if arg is a short flag group containing only p and P.
-func isKnownFlags(arg string) bool {
-	if len(arg) < 2 || arg[0] != '-' {
+// parseFlagArg handles short flags like -p, -P, -pP.
+func parseFlagArg(arg string, opts *options) error {
+	for i := 1; i < len(arg); i++ {
+		switch arg[i] {
+		case 'p':
+			opts.posix = true
+		case 'P':
+			opts.extraPortable = true
+		default:
+			return fmt.Errorf("%s: invalid option -- '%c'",
+				progName, arg[i])
+		}
+	}
+	return nil
+}
+
+// checkPath validates a single pathname according to the given options.
+// R2.1: returns true when the path passes all applicable checks.
+// R2.2: returns false when any check fails.
+// Matches GNU pathchk order: posix checks first, then extra portability.
+// Both checks run independently when both flags are set.
+func checkPath(path string, opts options) bool {
+	if !opts.posix && !opts.extraPortable {
+		return checkSystem(path)
+	}
+	ok := true
+	if opts.posix && !checkPosixPortable(path) {
+		ok = false
+	}
+	if opts.extraPortable && !checkExtraPortable(path) {
+		ok = false
+	}
+	return ok
+}
+
+// checkExtraPortable applies -P checks: no empty path, no leading dash in components.
+// R1.3: -P checks for empty names and leading hyphen.
+func checkExtraPortable(path string) bool {
+	if path == "" {
+		fmt.Fprintf(os.Stderr, "%s: empty file name\n", progName)
 		return false
 	}
-	for i := 1; i < len(arg); i++ {
-		if arg[i] != 'p' && arg[i] != 'P' {
+	for _, comp := range strings.Split(path, "/") {
+		if strings.HasPrefix(comp, "-") {
+			fmt.Fprintf(os.Stderr,
+				"%s: leading '-' in a component of file name '%s'\n",
+				progName, path)
 			return false
 		}
 	}
 	return true
 }
 
-// applyFlags sets posix and extended flags from a short flag group.
-func applyFlags(arg string, posix, extended bool) (bool, bool) {
-	for i := 1; i < len(arg); i++ {
-		switch arg[i] {
-		case 'p':
-			posix = true
-		case 'P':
-			extended = true
-		}
-	}
-	return posix, extended
-}
-
-// checkDefault checks a pathname against system limits.
-// R1.1: checks component length against NAME_MAX, total path against PATH_MAX.
-func checkDefault(path string) error {
+// checkPosixPortable validates against POSIX portable filename rules.
+// R1.2: portable characters only, component <= 14, path < _POSIX_PATH_MAX.
+// R2.1/R2.2: reports all violations without short-circuiting, matching GNU behavior.
+func checkPosixPortable(path string) bool {
 	if path == "" {
-		return fmt.Errorf("%s: empty file name", progName)
+		fmt.Fprintf(os.Stderr, "%s: empty file name\n", progName)
+		return false
 	}
-	if len(path) >= sysPathMax {
-		return fmt.Errorf("%s: limit %d exceeded by length %d of file name '%s'",
-			progName, sysPathMax-1, len(path), path)
+	ok := true
+	if len(path) >= portableMaxPath {
+		fmt.Fprintf(os.Stderr,
+			"%s: limit %d exceeded by length %d of file name '%s'\n",
+			progName, portableMaxPath-1, len(path), path)
+		ok = false
 	}
-	return checkDefaultComponents(path)
+	if !checkPortableChars(path) {
+		ok = false
+	}
+	if !checkPortableComponentLengths(path) {
+		ok = false
+	}
+	return ok
 }
 
-// checkDefaultComponents checks component lengths and intermediate directory existence.
-// R1.1: verifies each component exists or could be created.
-func checkDefaultComponents(path string) error {
-	absolute := strings.HasPrefix(path, "/")
-	components := splitNonEmpty(path)
-	var prefix string
-	for i, comp := range components {
-		if len(comp) > sysNameMax {
-			return fmtComponentTooLong(sysNameMax, len(comp), comp)
+// checkPortableChars verifies all characters are in the portable set.
+// Reports the first nonportable character found.
+func checkPortableChars(path string) bool {
+	for _, ch := range path {
+		if ch == '/' {
+			continue
 		}
-		prefix = growPrefix(prefix, comp, absolute && prefix == "")
-		if i < len(components)-1 {
-			if _, err := os.Stat(prefix); err != nil {
-				return fmtStatError(prefix, err)
-			}
+		if !strings.ContainsRune(portableChars, ch) {
+			fmt.Fprintf(os.Stderr,
+				"%s: non-portable character '%c' in file name '%s'\n",
+				progName, ch, path)
+			return false
 		}
 	}
-	return nil
+	return true
 }
 
-// checkPOSIX checks a pathname against POSIX portability rules.
-// R1.2: only portable filename characters, component <= 14, total <= 256.
-func checkPOSIX(path string) error {
+// checkPortableComponentLengths checks each component against the 14-char limit.
+// Reports all components that exceed the limit, matching GNU behavior.
+func checkPortableComponentLengths(path string) bool {
+	ok := true
+	for _, comp := range strings.Split(path, "/") {
+		if len(comp) > portableMaxComponent {
+			fmt.Fprintf(os.Stderr,
+				"%s: limit %d exceeded by length %d of file name component '%s'\n",
+				progName, portableMaxComponent, len(comp), comp)
+			ok = false
+		}
+	}
+	return ok
+}
+
+// checkSystem validates a path against current system limits.
+// R1.1: checks for empty path and NUL characters.
+func checkSystem(path string) bool {
 	if path == "" {
-		return fmt.Errorf("%s: empty file name", progName)
+		fmt.Fprintf(os.Stderr, "%s: '': No such file or directory\n", progName)
+		return false
 	}
-	if len(path) >= posixPathMax {
-		return fmt.Errorf("%s: limit %d exceeded by length %d of file name '%s'",
-			progName, posixPathMax-1, len(path), path)
-	}
-	return checkPOSIXComponents(path)
+	return checkSystemChars(path)
 }
 
-// checkPOSIXComponents checks each component for portable characters and length.
-func checkPOSIXComponents(path string) error {
-	for _, comp := range splitNonEmpty(path) {
-		if err := checkPortableChars(comp, path); err != nil {
-			return err
-		}
-		if len(comp) > posixNameMax {
-			return fmtComponentTooLong(posixNameMax, len(comp), comp)
-		}
-	}
-	return nil
-}
-
-// checkPortableChars returns an error if comp contains a non-portable character.
-// R1.2: portable set is A-Z, a-z, 0-9, period, underscore, hyphen.
-func checkPortableChars(comp, path string) error {
-	for i := 0; i < len(comp); i++ {
-		if !isPortableChar(comp[i]) {
-			return fmt.Errorf("%s: nonportable character '%c' in file name '%s'",
-				progName, comp[i], path)
-		}
-	}
-	return nil
-}
-
-// isPortableChar returns true if c is in the POSIX portable filename character set.
-func isPortableChar(c byte) bool {
-	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-		(c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-'
-}
-
-// checkPOSIXExtended checks a pathname for extended POSIX portability.
-// R2.1: rejects empty pathnames, empty components, and leading hyphens.
-func checkPOSIXExtended(path string) error {
-	if path == "" {
-		return fmt.Errorf("%s: empty file name", progName)
-	}
-	if err := checkEmptyComponents(path); err != nil {
-		return err
-	}
-	return checkLeadingHyphen(path)
-}
-
-// checkEmptyComponents rejects consecutive slashes, leading slash, or
-// trailing slash that produce empty pathname components.
-// R2.1: empty component check for -P mode.
-func checkEmptyComponents(path string) error {
-	parts := strings.Split(path, "/")
-	for _, p := range parts {
-		if p == "" {
-			return fmt.Errorf("%s: empty file name component in file name '%s'",
+// checkSystemChars checks for NUL bytes in the path (invalid on all POSIX systems).
+func checkSystemChars(path string) bool {
+	for _, ch := range path {
+		if ch == 0 {
+			fmt.Fprintf(os.Stderr,
+				"%s: nonportable character '\\0' in file name '%s'\n",
 				progName, path)
+			return false
 		}
 	}
-	return nil
-}
-
-// checkLeadingHyphen checks that no component starts with a hyphen.
-// R1.3: rejects pathnames with leading-hyphen components.
-func checkLeadingHyphen(path string) error {
-	for _, comp := range splitNonEmpty(path) {
-		if len(comp) > 0 && comp[0] == '-' {
-			return fmt.Errorf("%s: leading '-' in a component of file name '%s'",
-				progName, path)
-		}
-	}
-	return nil
-}
-
-// splitNonEmpty splits path by "/" and returns only non-empty components.
-func splitNonEmpty(path string) []string {
-	parts := strings.Split(path, "/")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-// growPrefix appends comp to the current path prefix.
-func growPrefix(prefix, comp string, leadingSlash bool) string {
-	if leadingSlash {
-		return "/" + comp
-	}
-	if prefix == "" {
-		return comp
-	}
-	return prefix + "/" + comp
-}
-
-// fmtComponentTooLong formats a component-too-long error.
-func fmtComponentTooLong(limit, length int, comp string) error {
-	return fmt.Errorf("%s: limit %d exceeded by length %d of file name component '%s'",
-		progName, limit, length, comp)
-}
-
-// fmtStatError formats an error from os.Stat with a capitalized errno message.
-func fmtStatError(prefix string, err error) error {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
-		msg := pe.Err.Error()
-		if len(msg) > 0 && msg[0] >= 'a' && msg[0] <= 'z' {
-			msg = strings.ToUpper(msg[:1]) + msg[1:]
-		}
-		return fmt.Errorf("%s: '%s': %s", progName, prefix, msg)
-	}
-	return fmt.Errorf("%s: '%s': %s", progName, prefix, err)
+	return true
 }

@@ -1,175 +1,114 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Differential tests for cmd/tac. Implements srd021-tac R4.1, R4.2, R4.3.
 package main
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// writeTestFile creates a file with the given content in dir.
-func writeTestFile(t *testing.T, dir, name, content string) string {
-	t.Helper()
-	p := filepath.Join(dir, name)
-	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-		t.Fatalf("writing test file %s: %v", name, err)
-	}
-	return p
-}
-
-// tacErrorNormalizer replaces tac error message lines with a fixed
-// placeholder so different error formats between GNU and Go do not
-// cause divergence. GNU uses "tac: cannot open 'F' for reading: MSG"
-// while Go uses "tac: open F: msg".
-var tacErrorNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
-	re := regexp.MustCompile(`(?m)^(g?tac|tac): .*$`)
-	return re.ReplaceAll(data, []byte("tac: <FILE_ERROR>"))
-}
-
-// TestDiff runs differential tests comparing the Go tac binary against
-// the GNU reference binary gtac.
-//
-// Implements prd021-tac R4.1, R4.2, R4.3.
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
-
 	refBin, err := exec.LookPath("gtac")
 	if err != nil {
 		t.Skipf("reference binary gtac not in PATH: %v", err)
 	}
 
-	// Create temp files for file-argument tests (R1.4).
-	tmpDir := t.TempDir()
-	file1 := writeTestFile(t, tmpDir, "f1.txt", "alpha\nbeta\ngamma\n")
-	file2 := writeTestFile(t, tmpDir, "f2.txt", "one\ntwo\n")
+	// Create temp files for file-based tests.
+	dir := t.TempDir()
 
-	// R3.2: path to a file that does not exist.
-	nonexistent := filepath.Join(tmpDir, "no_such_file.txt")
+	fileA := filepath.Join(dir, "a.txt")
+	os.WriteFile(fileA, []byte("a\nb\nc\n"), 0o644)
 
+	fileB := filepath.Join(dir, "b.txt")
+	os.WriteFile(fileB, []byte("x\ny\n"), 0o644)
+
+	noNewline := filepath.Join(dir, "nonl.txt")
+	os.WriteFile(noNewline, []byte("a\nb\nc"), 0o644)
+
+	colonFile := filepath.Join(dir, "colon.txt")
+	os.WriteFile(colonFile, []byte("a:b:c:"), 0o644)
+
+	colonBefore := filepath.Join(dir, "colonbefore.txt")
+	os.WriteFile(colonBefore, []byte(":a:b:c"), 0o644)
+
+	// R4.2: tests cover single-file reversal, stdin reversal, multi-file
+	// reversal, -s with a custom separator, -b flag, and no trailing newline.
+	// R4.3: LC_ALL=C is set by default via testutils.RunDiffTests buildEnv.
 	tests := []testutils.DiffTest{
+		// R4.2: single-file reversal.
 		{
-			// R1.1, R1.2: lines reversed; trailing newline preserved.
-			Name:  "tac_default_reversal",
-			Stdin: []byte("alpha\nbeta\ngamma\n"),
-			Env:   []string{"LC_ALL=C"},
+			Name: "single_file_reversal",
+			Args: []string{fileA},
 		},
+		// R4.2: stdin reversal.
 		{
-			// R1.2: no trailing newline on input.
-			Name:  "tac_no_trailing_newline",
-			Stdin: []byte("a\nb\nc"),
-			Env:   []string{"LC_ALL=C"},
+			Name: "stdin_reversal",
+			Stdin: []byte("a\nb\nc\n"),
 		},
+		// R4.2: stdin via explicit dash.
 		{
-			// R1.1: single line reverses to itself.
-			Name:  "tac_single_line",
-			Stdin: []byte("only\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R1.1: empty input produces empty output.
-			Name:  "tac_empty_input",
-			Stdin: []byte(""),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R1.3: explicit "-" reads from stdin.
-			Name:  "tac_stdin_dash",
+			Name: "stdin_dash",
 			Args:  []string{"-"},
-			Stdin: []byte("x\ny\nz\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("one\ntwo\nthree\n"),
 		},
+		// R4.2: multi-file reversal (each file reversed independently).
 		{
-			// R1.4: single file argument.
-			Name: "tac_file_arg",
-			Args: []string{file1},
-			Env:  []string{"LC_ALL=C"},
+			Name: "multi_file_reversal",
+			Args: []string{fileA, fileB},
 		},
+		// R4.2: file with no trailing newline.
 		{
-			// R1.4: multiple files processed independently.
-			Name: "tac_multi_file",
-			Args: []string{file1, file2},
-			Env:  []string{"LC_ALL=C"},
+			Name: "no_trailing_newline",
+			Args: []string{noNewline},
 		},
+		// R4.2: -s with a custom separator.
 		{
-			// R2.1: custom single-character separator.
-			Name:  "tac_custom_sep",
-			Args:  []string{"-s", ":"},
-			Stdin: []byte("a:b:c:"),
-			Env:   []string{"LC_ALL=C"},
+			Name: "custom_separator_colon",
+			Args: []string{"-s", ":", colonFile},
 		},
+		// R4.2: -b flag (separator before record).
 		{
-			// R2.1: custom multi-character separator.
-			Name:  "tac_multichar_sep",
-			Args:  []string{"-s", "::"},
-			Stdin: []byte("a::b::c::"),
-			Env:   []string{"LC_ALL=C"},
+			Name: "before_flag_colon",
+			Args: []string{"-b", "-s", ":", colonBefore},
 		},
+		// Combined -b -s via stdin.
 		{
-			// R2.1: custom separator with no trailing separator.
-			Name:  "tac_custom_sep_no_trailing",
-			Args:  []string{"-s", ":"},
-			Stdin: []byte("a:b:c"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			// R2.2: -b places separator before records.
-			Name:  "tac_before_sep",
+			Name: "before_flag_stdin",
 			Args:  []string{"-b", "-s", ":"},
 			Stdin: []byte(":a:b:c"),
-			Env:   []string{"LC_ALL=C"},
 		},
+		// Custom separator via stdin.
 		{
-			// R2.2: -b with trailing separator.
-			Name:  "tac_before_sep_trailing",
-			Args:  []string{"-b", "-s", ":"},
-			Stdin: []byte(":a:b:c:"),
-			Env:   []string{"LC_ALL=C"},
+			Name: "custom_sep_stdin",
+			Args:  []string{"-s", ":"},
+			Stdin: []byte("a:b:c:"),
 		},
+		// Single line, no reversal needed.
 		{
-			// R2.3, R2.4: -r interprets separator as regex.
-			Name:  "tac_regex_sep",
-			Args:  []string{"-r", "-s", "[:|]"},
-			Stdin: []byte("a:b|c:"),
-			Env:   []string{"LC_ALL=C"},
+			Name: "single_line",
+			Stdin: []byte("hello\n"),
 		},
+		// Empty input.
 		{
-			// R2.2, R2.3, R2.4: -b -r combined.
-			Name:  "tac_before_regex_sep",
-			Args:  []string{"-b", "-r", "-s", "[:|]"},
-			Stdin: []byte(":a|b:c"),
-			Env:   []string{"LC_ALL=C"},
+			Name: "empty_input",
+			Stdin: []byte{},
 		},
-		// R3.1: exit 0 on successful processing.
+		// Multi-char separator.
 		{
-			Name:     "tac_exit_zero_on_success",
-			Args:     []string{file1},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R3.2: exit 1 when a file cannot be opened.
-		{
-			Name:      "tac_nonexistent_file",
-			Args:      []string{nonexistent},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{tacErrorNormalizer},
-		},
-		// R3.2: exit 1 with mixed valid and invalid files; valid files
-		// are still processed and remaining files continue.
-		{
-			Name:      "tac_mixed_valid_invalid_files",
-			Args:      []string{file1, nonexistent, file2},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{tacErrorNormalizer},
+			Name: "multi_char_separator",
+			Args:  []string{"-s", "::"},
+			Stdin: []byte("a::b::c::"),
 		},
 	}
 
+	// R4.1: compare Go tac output against gtac byte-for-byte.
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

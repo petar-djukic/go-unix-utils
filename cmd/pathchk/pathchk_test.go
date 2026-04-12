@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/pathchk (prd103-pathchk R1, R2).
+// Package main provides differential tests for cmd/pathchk.
+// Tests cover srd103-pathchk R1.1-R1.4, R2.1-R2.3.
 package main
 
 import (
@@ -13,38 +14,27 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// stderrNameNormalizer replaces the binary name prefix in stderr messages so
-// "gpathchk:" and "pathchk:" (possibly with full path) both become "pathchk:".
-var stderrNameNormalizer testutils.NormalizeFunc = func() testutils.NormalizeFunc {
-	re := regexp.MustCompile(`(?m)^[^\s:]*(?:gpathchk|pathchk):`)
-	return func(data []byte) []byte {
-		return re.ReplaceAll(data, []byte("pathchk:"))
-	}
-}()
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
 
-// stderrTryLineNormalizer strips the "Try ... --help" line GNU appends.
-var stderrTryLineNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
-	re := regexp.MustCompile(`(?m)^Try '.*' for more information\.\n`)
-	return re.ReplaceAll(data, nil)
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	return b
 }
 
-// stderrPortableNormalizer normalizes "nonportable" (Go) to "non-portable" (GNU).
-var stderrPortableNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
-	return []byte(strings.ReplaceAll(string(data), "nonportable", "non-portable"))
+// discardOutput normalizes by discarding all output, used when
+// output content differs by design (--version, --help).
+func discardOutput(b []byte) []byte {
+	return nil
 }
-
-// stderrLimitNormalizer normalizes Go's "limit N exceeded by length M of
-// file name component 'X'" to GNU's default-mode format "X: File name too long".
-// Both binaries use the "limit ... exceeded" format for -p mode, so applying
-// this globally is safe (both get changed identically).
-var stderrLimitNormalizer testutils.NormalizeFunc = func() testutils.NormalizeFunc {
-	re := regexp.MustCompile(
-		`limit \d+ exceeded by length \d+ of file name component '([^']*)'`,
-	)
-	return func(data []byte) []byte {
-		return re.ReplaceAll(data, []byte("$1: File name too long"))
-	}
-}()
 
 func TestDiff(t *testing.T) {
 	t.Parallel()
@@ -55,215 +45,243 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary gpathchk not in PATH: %v", err)
 	}
 
-	normalizers := []testutils.NormalizeFunc{
-		stderrNameNormalizer,
-		stderrTryLineNormalizer,
-		stderrPortableNormalizer,
-		stderrLimitNormalizer,
-	}
+	// Build boundary-length paths for -p mode testing.
+	// POSIX _POSIX_PATH_MAX is 256; paths of 256+ chars fail.
+	// Usable limit is 255 chars.
+	path255 := strings.Repeat("a/", 127) + "a"  // 254 + 1 = 255 chars
+	path256 := strings.Repeat("a/", 127) + "ab" // 254 + 2 = 256 chars
 
-	// R1.1: component exceeding NAME_MAX (255 on macOS/Linux).
-	longComponent := strings.Repeat("a", 256)
-
-	// R1.2: component exceeding _POSIX_NAME_MAX (14).
-	posixLongComponent := strings.Repeat("a", 15)
-
-	// R1.2: path exceeding _POSIX_PATH_MAX (256).
-	posixLongPath := strings.Repeat("a", 257)
+	norms := []testutils.NormalizeFunc{stderrNormalizer}
 
 	tests := []testutils.DiffTest{
-		// --- R1.1: Default mode pathname checking ---
+		// R1.1: valid path exits 0.
+		{
+			Name: "valid_simple",
+			Args: []string{"validpath"},
+		},
+		{
+			Name: "valid_nested",
+			Args: []string{"/usr/bin/sort"},
+		},
+		{
+			Name: "valid_relative",
+			Args: []string{"a/b/c"},
+		},
 
-		// R1.1, R2.1: valid pathname exits 0
+		// R1.1: empty path in default mode.
 		{
-			Name:      "R1.1_valid_path",
-			Args:      []string{"validpath"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: normalizers,
-		},
-		// R1.1: single-character path
-		{
-			Name:      "R1.1_single_char",
-			Args:      []string{"x"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: normalizers,
-		},
-		// R1.1: component exceeding NAME_MAX, exit 1
-		{
-			Name:      "R1.1_component_too_long",
-			Args:      []string{longComponent},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "empty_default",
+			Args:      []string{""},
 			ExitCode:  1,
-			Normalize: normalizers,
-		},
-		// R1.1: absolute path to existing directory
-		{
-			Name:      "R1.1_absolute_existing",
-			Args:      []string{"/tmp"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: normalizers,
+			Normalize: norms,
 		},
 
-		// --- R1.2: POSIX portability (-p) checks ---
-
-		// R1.2: non-portable character '@', exit 1
+		// R1.2: -p portable character set checks.
 		{
-			Name:      "R1.2_nonportable_at",
+			Name: "posix_valid",
+			Args: []string{"-p", "valid_path.txt"},
+		},
+		{
+			Name:      "posix_invalid_char",
 			Args:      []string{"-p", "invalid@path"},
-			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
-			Normalize: normalizers,
+			Normalize: norms,
 		},
-		// R1.2: non-portable character space, exit 1
 		{
-			Name:      "R1.2_nonportable_space",
+			Name:      "posix_space_in_name",
 			Args:      []string{"-p", "has space"},
-			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
-			Normalize: normalizers,
+			Normalize: norms,
 		},
-		// R1.2: component exceeding _POSIX_NAME_MAX (14), exit 1
 		{
-			Name:      "R1.2_posix_component_too_long",
-			Args:      []string{"-p", posixLongComponent},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "posix_long_component",
+			Args:      []string{"-p", "abcdefghijklmno"},
 			ExitCode:  1,
-			Normalize: normalizers,
+			Normalize: norms,
 		},
-		// R1.2: path exceeding _POSIX_PATH_MAX (256), exit 1
 		{
-			Name:      "R1.2_posix_path_too_long",
-			Args:      []string{"-p", posixLongPath},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: normalizers,
-		},
-		// R1.2: valid portable path (14 chars max component), exit 0
-		{
-			Name:      "R1.2_valid_portable",
-			Args:      []string{"-p", "valid-name.txt"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: normalizers,
-		},
-		// R1.2: empty string argument, exit 1
-		{
-			Name:      "R1.2_empty_string",
-			Args:      []string{"-p", ""},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: normalizers,
+			Name: "posix_max_component",
+			Args: []string{"-p", "abcdefghijklmn"},
 		},
 
-		// --- R1.3: -P leading hyphen check ---
-
-		// R1.3: leading hyphen in component, exit 1
+		// R1.3: -P extra portability checks (use -- to separate from operands).
 		{
-			Name:      "R1.3_leading_hyphen",
+			Name:      "extra_leading_dash",
 			Args:      []string{"-P", "--", "-filename"},
-			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
-			Normalize: normalizers,
+			Normalize: norms,
 		},
-		// R1.3: leading hyphen in nested component, exit 1
 		{
-			Name:      "R1.3_leading_hyphen_nested",
-			Args:      []string{"-P", "dir/-file"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: normalizers,
-		},
-		// R1.3: no leading hyphen, exit 0
-		{
-			Name:      "R1.3_no_leading_hyphen",
-			Args:      []string{"-P", "safe_name"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: normalizers,
-		},
-		// R1.3: -P with empty string, exit 1
-		{
-			Name:      "R1.3_empty_string",
+			Name:      "extra_empty",
 			Args:      []string{"-P", ""},
-			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
-			Normalize: normalizers,
+			Normalize: norms,
+		},
+		{
+			Name: "extra_valid",
+			Args: []string{"-P", "validname"},
+		},
+		{
+			Name:      "extra_leading_dash_in_component",
+			Args:      []string{"-P", "dir/-file"},
+			ExitCode:  1,
+			Normalize: norms,
 		},
 
-		// --- R1.4: Multiple pathname arguments ---
-
-		// R1.4: multiple valid pathnames, exit 0
+		// R1.3 + R1.2: combined -p -P (--portability).
 		{
-			Name:      "R1.4_multiple_valid",
-			Args:      []string{"path1", "path2", "path3"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: normalizers,
-		},
-		// R1.4: mix of valid and invalid with -p, exit 1
-		{
-			Name:      "R1.4_mixed_valid_invalid",
-			Args:      []string{"-p", "valid", "bad@name"},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "portability_flag",
+			Args:      []string{"--portability", "--", "-leadingdash"},
 			ExitCode:  1,
-			Normalize: normalizers,
+			Normalize: norms,
+		},
+		{
+			Name:      "combined_pP_invalid_char",
+			Args:      []string{"-pP", "bad@name"},
+			ExitCode:  1,
+			Normalize: norms,
 		},
 
-		// --- R2.1, R2.2: Combined -p -P / --portability ---
-
-		// R2.1: --portability with non-portable char, exit 1
+		// R1.4: multiple pathnames.
 		{
-			Name:      "R2.1_portability_nonportable",
-			Args:      []string{"--portability", "bad@name"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: normalizers,
+			Name: "multi_valid",
+			Args: []string{"a", "b", "c"},
 		},
-		// R2.2: combined -p -P with leading hyphen via --, exit 1
 		{
-			Name:      "R2.2_combined_pP_leading_hyphen",
-			Args:      []string{"-p", "-P", "--", "-name"},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "multi_one_invalid",
+			Args:      []string{"-p", "valid", "invalid@"},
 			ExitCode:  1,
-			Normalize: normalizers,
-		},
-		// R2.2: --portability with leading hyphen via --, exit 1
-		{
-			Name:      "R2.2_portability_leading_hyphen",
-			Args:      []string{"--portability", "--", "-name"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: normalizers,
-		},
-		// R2.1: --portability valid path, exit 0
-		{
-			Name:      "R2.1_portability_valid",
-			Args:      []string{"--portability", "goodname"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: normalizers,
+			Normalize: norms,
 		},
 
-		// --- R2.1, R2.2: Exit code verification ---
-
-		// R2.1: all valid paths exit 0
+		// R1.4: --help and --version.
 		{
-			Name:      "R2.1_exit_0_all_valid",
-			Args:      []string{"a", "b", "c"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: normalizers,
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
 		},
-		// R2.2: any invalid path exits 1
 		{
-			Name:      "R2.2_exit_1_any_invalid",
-			Args:      []string{"-p", "ok", "bad@"},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
+		},
+
+		// No operand error.
+		{
+			Name:      "no_args",
+			Args:      []string{},
 			ExitCode:  1,
-			Normalize: normalizers,
+			Normalize: norms,
+		},
+
+		// R2.1: additional exit 0 cases -- various valid paths.
+		{
+			Name: "exit_0_root",
+			Args: []string{"/"},
+		},
+		{
+			Name: "exit_0_dot",
+			Args: []string{"."},
+		},
+		{
+			Name: "exit_0_dotdot",
+			Args: []string{".."},
+		},
+		{
+			Name: "posix_path_at_limit",
+			Args: []string{"-p", path255},
+		},
+		{
+			Name: "extra_root",
+			Args: []string{"-P", "/"},
+		},
+		{
+			Name: "extra_dot",
+			Args: []string{"-P", "."},
+		},
+		{
+			Name: "posix_trailing_slash",
+			Args: []string{"-p", "abc/"},
+		},
+		{
+			Name: "posix_double_slash",
+			Args: []string{"-p", "a//b"},
+		},
+		{
+			Name: "posix_nested_max_component",
+			Args: []string{"-p", "ab/abcdefghijklmn/cd"},
+		},
+
+		// R2.2: exit 1 cases -- path length boundary.
+		{
+			Name:      "posix_path_over_limit",
+			Args:      []string{"-p", path256},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: exit 1 cases -- various nonportable characters.
+		{
+			Name:      "posix_colon",
+			Args:      []string{"-p", "has:colon"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "posix_tilde",
+			Args:      []string{"-p", "has~tilde"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "posix_hash",
+			Args:      []string{"-p", "has#hash"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "posix_equals",
+			Args:      []string{"-p", "has=equals"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: exit 1 when multiple paths all fail.
+		{
+			Name:      "exit_1_multi_invalid",
+			Args:      []string{"-p", "bad@", "bad!"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: exit 1 when second path fails (first valid).
+		{
+			Name:      "exit_1_second_fails",
+			Args:      []string{"-p", "good", "bad@"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: -P edge cases.
+		{
+			Name:      "extra_bare_dash",
+			Args:      []string{"-P", "--", "-"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "extra_nested_dash",
+			Args:      []string{"-P", "a/-b"},
+			ExitCode:  1,
+			Normalize: norms,
+		},
+
+		// R2.2: -p with empty string.
+		{
+			Name:      "posix_empty",
+			Args:      []string{"-p", ""},
+			ExitCode:  1,
+			Normalize: norms,
 		},
 	}
 

@@ -1,25 +1,21 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/numfmt.
-// Traces: prd071-numfmt R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
+// Differential tests for cmd/numfmt against gnumfmt reference binary.
+// Implements srd071-numfmt R4.3, R4.4.
 package main
 
 import (
+	"bytes"
 	"os/exec"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeNonEmpty replaces any non-empty output with a fixed marker.
-// Used for stderr where message format differs between Go and GNU binaries.
-func normalizeNonEmpty(b []byte) []byte {
-	if len(b) > 0 {
-		return []byte("ERROR\n")
-	}
-	return b
+// normProgName replaces gnumfmt program name with numfmt for stderr comparison.
+func normProgName(b []byte) []byte {
+	return bytes.Replace(b, []byte("gnumfmt:"), []byte("numfmt:"), -1)
 }
 
 func TestDiff(t *testing.T) {
@@ -27,371 +23,168 @@ func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gnumfmt")
 	if err != nil {
-		t.Skip("reference binary gnumfmt not in PATH")
+		t.Skipf("reference binary gnumfmt not in PATH: %v", err)
 	}
+	tests := buildTestCases()
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
 
-	tests := []testutils.DiffTest{
-		// R1.1: --to=iec converts raw number to human-readable IEC suffix
+func buildTestCases() []testutils.DiffTest {
+	norm := []testutils.NormalizeFunc{normProgName}
+	tests := []testutils.DiffTest{}
+	tests = append(tests, toConversionTests()...)
+	tests = append(tests, fromConversionTests()...)
+	tests = append(tests, formatTests()...)
+	tests = append(tests, fieldAndHeaderTests()...)
+	tests = append(tests, invalidModeTests(norm)...)
+	tests = append(tests, zeroTerminatedTests()...)
+	tests = append(tests, errorTests(norm)...)
+	tests = append(tests, operandTests()...)
+	return tests
+}
+
+func toConversionTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{Name: "to_si_1000", Args: []string{"--to=si"}, Stdin: []byte("1000\n")},
+		{Name: "to_si_1500", Args: []string{"--to=si"}, Stdin: []byte("1500\n")},
+		{Name: "to_si_1000000", Args: []string{"--to=si"}, Stdin: []byte("1000000\n")},
+		{Name: "to_iec_1024", Args: []string{"--to=iec"}, Stdin: []byte("1024\n")},
+		{Name: "to_iec_1048576", Args: []string{"--to=iec"}, Stdin: []byte("1048576\n")},
+		{Name: "to_iec_i_1024", Args: []string{"--to=iec-i"}, Stdin: []byte("1024\n")},
+		{Name: "to_iec_i_1048576", Args: []string{"--to=iec-i"}, Stdin: []byte("1048576\n")},
+		{Name: "to_none", Args: []string{"--to=none"}, Stdin: []byte("1000\n")},
+		{Name: "passthrough", Stdin: []byte("42\n")},
+		{Name: "multi_line", Args: []string{"--to=si"}, Stdin: []byte("1000\n2000\n3000\n")},
+	}
+}
+
+func fromConversionTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{Name: "from_si_1K", Args: []string{"--from=si"}, Stdin: []byte("1K\n")},
+		{Name: "from_si_1M", Args: []string{"--from=si"}, Stdin: []byte("1M\n")},
+		{Name: "from_iec_1K", Args: []string{"--from=iec"}, Stdin: []byte("1K\n")},
+		{Name: "from_iec_1M", Args: []string{"--from=iec"}, Stdin: []byte("1M\n")},
+		{Name: "from_iec_i_1Ki", Args: []string{"--from=iec-i"}, Stdin: []byte("1Ki\n")},
+		{Name: "from_auto_1K", Args: []string{"--from=auto"}, Stdin: []byte("1K\n")},
+		{Name: "from_auto_1Ki", Args: []string{"--from=auto"}, Stdin: []byte("1Ki\n")},
+		{Name: "from_si_to_iec", Args: []string{"--from=si", "--to=iec"}, Stdin: []byte("1000000\n")},
+		{Name: "from_si_to_si", Args: []string{"--from=si", "--to=si"}, Stdin: []byte("1K\n")},
+	}
+}
+
+func formatTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{Name: "format_width", Args: []string{"--to=si", "--format=%10f"}, Stdin: []byte("1000\n")},
+		{Name: "format_precision", Args: []string{"--to=si", "--format=%.2f"}, Stdin: []byte("1000\n")},
+		{Name: "padding_right", Args: []string{"--to=si", "--padding=10"}, Stdin: []byte("1000\n")},
+		{Name: "padding_left", Args: []string{"--to=si", "--padding=-10"}, Stdin: []byte("1000\n")},
+		{Name: "round_up", Args: []string{"--to=si", "--round=up"}, Stdin: []byte("1500\n")},
+		{Name: "round_down", Args: []string{"--to=si", "--round=down"}, Stdin: []byte("1500\n")},
+		{Name: "round_from_zero", Args: []string{"--to=si", "--round=from-zero"}, Stdin: []byte("1500\n")},
+		{Name: "round_towards_zero", Args: []string{"--to=si", "--round=towards-zero"}, Stdin: []byte("1500\n")},
+		{Name: "round_nearest", Args: []string{"--to=si", "--round=nearest"}, Stdin: []byte("1500\n")},
+		{Name: "suffix_B", Args: []string{"--to=si", "--suffix=B"}, Stdin: []byte("1000\n")},
+		{Name: "from_unit", Args: []string{"--from-unit=1024", "--to=iec"}, Stdin: []byte("1\n")},
+		{Name: "to_unit", Args: []string{"--to-unit=1000", "--to=si"}, Stdin: []byte("1000000\n")},
+	}
+}
+
+func fieldAndHeaderTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{Name: "field_2", Args: []string{"--to=si", "--field=2"}, Stdin: []byte("foo 1000\n")},
+		{Name: "delimiter_comma", Args: []string{"--to=si", "--delimiter=,", "--field=2"}, Stdin: []byte("foo,1000\n")},
+		{Name: "delimiter_short", Args: []string{"--to=si", "-d,", "--field=2"}, Stdin: []byte("foo,1000\n")},
+		{Name: "header_default", Args: []string{"--to=si", "--header"}, Stdin: []byte("name value\n1000\n2000\n")},
+		{Name: "header_2", Args: []string{"--to=si", "--header=2"}, Stdin: []byte("h1\nh2\n1000\n")},
+	}
+}
+
+func invalidModeTests(norm []testutils.NormalizeFunc) []testutils.DiffTest {
+	return []testutils.DiffTest{
 		{
-			Name:  "to_iec_1M",
-			Args:  []string{"--to=iec"},
-			Stdin: []byte("1048576\n"),
-		},
-		{
-			Name:  "to_iec_1K",
-			Args:  []string{"--to=iec"},
-			Stdin: []byte("1024\n"),
-		},
-		{
-			Name:  "to_iec_small",
-			Args:  []string{"--to=iec"},
-			Stdin: []byte("500\n"),
-		},
-		{
-			Name:  "to_iec_zero",
-			Args:  []string{"--to=iec"},
-			Stdin: []byte("0\n"),
-		},
-		// R1.1: --to=si converts raw number to human-readable SI suffix
-		{
-			Name:  "to_si_1M",
-			Args:  []string{"--to=si"},
-			Stdin: []byte("1000000\n"),
-		},
-		{
-			Name:  "to_si_1500",
-			Args:  []string{"--to=si"},
-			Stdin: []byte("1500\n"),
-		},
-		// R1.1: --to=iec-i uses Ki/Mi/Gi suffixes
-		{
-			Name:  "to_iec_i_1M",
-			Args:  []string{"--to=iec-i"},
-			Stdin: []byte("1048576\n"),
-		},
-		// R1.2: --from=si parses SI suffixes to raw number
-		{
-			Name:  "from_si_1K",
-			Args:  []string{"--from=si"},
-			Stdin: []byte("1K\n"),
-		},
-		{
-			Name:  "from_si_1M",
-			Args:  []string{"--from=si"},
-			Stdin: []byte("1M\n"),
-		},
-		{
-			Name:  "from_si_1point5K",
-			Args:  []string{"--from=si"},
-			Stdin: []byte("1.5K\n"),
-		},
-		// R1.2: --from=iec parses IEC suffixes
-		{
-			Name:  "from_iec_1K",
-			Args:  []string{"--from=iec"},
-			Stdin: []byte("1K\n"),
-		},
-		// R1.2: --from=iec-i parses Ki/Mi suffixes
-		{
-			Name:  "from_iec_i_1Ki",
-			Args:  []string{"--from=iec-i"},
-			Stdin: []byte("1Ki\n"),
-		},
-		// R1.2 + R1.1: --from combined with --to
-		{
-			Name:  "from_si_to_iec",
-			Args:  []string{"--from=si", "--to=iec"},
-			Stdin: []byte("1M\n"),
-		},
-		// R1.3: passthrough without --from or --to
-		{
-			Name:  "passthrough_integer",
-			Stdin: []byte("42\n"),
-		},
-		{
-			Name:  "passthrough_float",
-			Stdin: []byte("3.14\n"),
-		},
-		// R1.4: process command-line operands directly
-		{
-			Name: "operand_to_iec",
-			Args: []string{"--to=iec", "1048576"},
-		},
-		{
-			Name: "operand_passthrough",
-			Args: []string{"42"},
-		},
-		{
-			Name: "operand_multiple",
-			Args: []string{"--to=iec", "1024", "1048576"},
-		},
-		// R1.4: stdin with multiple lines
-		{
-			Name:  "stdin_multiline",
-			Args:  []string{"--to=iec"},
-			Stdin: []byte("1024\n1048576\n1073741824\n"),
-		},
-		// R4.1, R4.2: invalid number exits 2 (default --invalid=abort)
-		{
-			Name:      "invalid_number",
-			Args:      []string{"--to=iec"},
+			Name:      "invalid_abort_single",
+			Args:      []string{"--to=si", "--invalid=abort"},
 			Stdin:     []byte("abc\n"),
 			ExitCode:  2,
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+			Normalize: norm,
 		},
-		// R1.1: default from-zero rounding matches GNU
 		{
-			Name:  "default_rounding_1111",
-			Args:  []string{"--to=si"},
-			Stdin: []byte("1111\n"),
-		},
-		// R2.1: --format with width (right-align)
-		{
-			Name:  "format_width_right",
-			Args:  []string{"--to=si", "--format=%10f"},
-			Stdin: []byte("1500\n"),
-		},
-		// R2.1: --format with precision
-		{
-			Name:  "format_precision",
-			Args:  []string{"--to=si", "--format=%.2f"},
-			Stdin: []byte("1500\n"),
-		},
-		// R2.1: --format with left alignment
-		{
-			Name:  "format_left_align",
-			Args:  []string{"--to=si", "--format=%-10f"},
-			Stdin: []byte("1500\n"),
-		},
-		// R2.1: --format with width and precision
-		{
-			Name:  "format_width_precision",
-			Args:  []string{"--to=si", "--format=%10.2f"},
-			Stdin: []byte("1500\n"),
-		},
-		// R2.2: --padding right-align
-		{
-			Name:  "padding_right",
-			Args:  []string{"--to=iec", "--padding=10"},
-			Stdin: []byte("1048576\n"),
-		},
-		// R2.2: --padding left-align
-		{
-			Name:  "padding_left",
-			Args:  []string{"--to=iec", "--padding=-10"},
-			Stdin: []byte("1048576\n"),
-		},
-		// R2.3: --round=up
-		{
-			Name:  "round_up",
-			Args:  []string{"--to=si", "--round=up"},
-			Stdin: []byte("1444\n"),
-		},
-		// R2.3: --round=down
-		{
-			Name:  "round_down",
-			Args:  []string{"--to=si", "--round=down"},
-			Stdin: []byte("1555\n"),
-		},
-		// R2.3: --round=towards-zero
-		{
-			Name:  "round_towards_zero",
-			Args:  []string{"--to=si", "--round=towards-zero"},
-			Stdin: []byte("1555\n"),
-		},
-		// R2.3: --round=from-zero
-		{
-			Name:  "round_from_zero",
-			Args:  []string{"--to=si", "--round=from-zero"},
-			Stdin: []byte("1444\n"),
-		},
-		// R2.3: --round=nearest
-		{
-			Name:  "round_nearest",
-			Args:  []string{"--to=si", "--round=nearest"},
-			Stdin: []byte("1444\n"),
-		},
-		// R2.4: --suffix appended to output
-		{
-			Name:  "suffix_append",
-			Args:  []string{"--to=si", "--suffix=B"},
-			Stdin: []byte("1500\n"),
-		},
-		// R2.4: --suffix stripped from input and re-appended
-		{
-			Name:  "suffix_from_si",
-			Args:  []string{"--from=si", "--suffix=B"},
-			Stdin: []byte("1.5kB\n"),
-		},
-		// R2.4: --suffix with --from and --to
-		{
-			Name:  "suffix_from_to",
-			Args:  []string{"--from=si", "--to=iec", "--suffix=B"},
-			Stdin: []byte("1MB\n"),
-		},
-		// R2.2 + R2.1: --padding overrides --format width
-		{
-			Name:  "padding_with_format",
-			Args:  []string{"--to=si", "--format=%.2f", "--padding=15"},
-			Stdin: []byte("1500\n"),
-		},
-		// R2.3: rounding with magnitude change
-		{
-			Name:  "round_magnitude_change",
-			Args:  []string{"--to=si"},
-			Stdin: []byte("9950\n"),
-		},
-		// R3.1: --field=2 converts only the second field
-		{
-			Name:  "field_2",
-			Args:  []string{"--to=iec", "--field=2"},
-			Stdin: []byte("name 1048576\n"),
-		},
-		// R3.1: --field=1 converts only the first field
-		{
-			Name:  "field_1",
-			Args:  []string{"--to=iec", "--field=1"},
-			Stdin: []byte("1048576 name\n"),
-		},
-		// R3.1: --field=2- converts from field 2 onwards
-		{
-			Name:  "field_2_onwards",
-			Args:  []string{"--to=iec", "--field=2-"},
-			Stdin: []byte("text 1024 1048576\n"),
-		},
-		// R3.1: --field=1,3 converts fields 1 and 3
-		{
-			Name:  "field_1_and_3",
-			Args:  []string{"--to=iec", "--field=1,3"},
-			Stdin: []byte("1024 text 1048576\n"),
-		},
-		// R3.2: --delimiter=: uses colon as field delimiter
-		{
-			Name:  "delimiter_colon",
-			Args:  []string{"--to=iec", "--field=2", "--delimiter=:"},
-			Stdin: []byte("name:1048576\n"),
-		},
-		// R3.2: -d , short form
-		{
-			Name:  "delimiter_short_comma",
-			Args:  []string{"--to=iec", "--field=2", "-d", ","},
-			Stdin: []byte("name,1048576\n"),
-		},
-		// R3.3: --header passes first line through unchanged
-		{
-			Name:  "header_default",
-			Args:  []string{"--to=iec", "--header"},
-			Stdin: []byte("size\n1048576\n"),
-		},
-		// R3.3: --header=2 passes first 2 lines through
-		{
-			Name:  "header_2",
-			Args:  []string{"--to=iec", "--header=2"},
-			Stdin: []byte("col1\ncol2\n1048576\n"),
-		},
-		// R3.3: --header combined with --field
-		{
-			Name:  "header_with_field",
-			Args:  []string{"--to=iec", "--header", "--field=2"},
-			Stdin: []byte("name size\nfoo 1048576\n"),
-		},
-		// R3.4: --from-unit multiplies input value
-		{
-			Name:  "from_unit_1024",
-			Args:  []string{"--to=iec", "--from-unit=1024"},
-			Stdin: []byte("1024\n"),
-		},
-		// R3.4: --to-unit divides output value
-		{
-			Name:  "to_unit_1000",
-			Args:  []string{"--to-unit=1000"},
-			Stdin: []byte("5000\n"),
-		},
-		// R3.4: --from-unit combined with --to
-		{
-			Name:  "from_unit_with_to_si",
-			Args:  []string{"--to=si", "--from-unit=1000000"},
-			Stdin: []byte("5\n"),
-		},
-		// R3.4: --to-unit combined with --to
-		{
-			Name:  "to_unit_with_to_si",
-			Args:  []string{"--to=si", "--to-unit=1000"},
-			Stdin: []byte("5000000\n"),
-		},
-
-		// --- R4.1, R4.2: exit code and --invalid mode tests ---
-
-		// R4.1: exit 0 on successful conversion
-		{
-			Name:  "exit_0_success",
-			Args:  []string{"--to=iec"},
-			Stdin: []byte("1024\n"),
-		},
-		// R4.1: exit 0 on successful multi-line conversion
-		{
-			Name:  "exit_0_multiline_success",
-			Args:  []string{"--to=si"},
-			Stdin: []byte("1000\n2000\n3000\n"),
-		},
-		// R4.2: --invalid=fail prints error, continues, exits 2
-		{
-			Name:      "invalid_fail",
-			Args:      []string{"--to=iec", "--invalid=fail"},
-			Stdin:     []byte("abc\n"),
+			Name:      "invalid_abort_multi",
+			Args:      []string{"--to=si", "--invalid=abort"},
+			Stdin:     []byte("1000\nabc\n2000\n"),
 			ExitCode:  2,
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+			Normalize: norm,
 		},
-		// R4.2: --invalid=warn prints warning, continues, exits 0
+		{
+			Name:      "invalid_fail_multi",
+			Args:      []string{"--to=si", "--invalid=fail"},
+			Stdin:     []byte("1000\nabc\n2000\n"),
+			ExitCode:  2,
+			Normalize: norm,
+		},
 		{
 			Name:      "invalid_warn",
-			Args:      []string{"--to=iec", "--invalid=warn"},
+			Args:      []string{"--to=si", "--invalid=warn"},
 			Stdin:     []byte("abc\n"),
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+			Normalize: norm,
 		},
-		// R4.2: --invalid=ignore silently passes through, exits 0
+		{
+			Name:      "invalid_warn_multi",
+			Args:      []string{"--to=si", "--invalid=warn"},
+			Stdin:     []byte("1000\nabc\n2000\n"),
+			Normalize: norm,
+		},
 		{
 			Name:  "invalid_ignore",
-			Args:  []string{"--to=iec", "--invalid=ignore"},
+			Args:  []string{"--to=si", "--invalid=ignore"},
 			Stdin: []byte("abc\n"),
 		},
-		// R4.2: --invalid=fail with mixed valid/invalid lines
 		{
-			Name:      "invalid_fail_mixed",
-			Args:      []string{"--to=iec", "--invalid=fail"},
-			Stdin:     []byte("1024\nabc\n2048\n"),
-			ExitCode:  2,
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
-		},
-		// R4.2: --invalid=warn with mixed valid/invalid lines
-		{
-			Name:      "invalid_warn_mixed",
-			Args:      []string{"--to=iec", "--invalid=warn"},
-			Stdin:     []byte("1024\nabc\n2048\n"),
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
-		},
-		// R4.2: --invalid=ignore with mixed valid/invalid lines
-		{
-			Name:      "invalid_ignore_mixed",
-			Args:      []string{"--to=iec", "--invalid=ignore"},
-			Stdin:     []byte("1024\nabc\n2048\n"),
-		},
-		// R4.4: operand error case
-		{
-			Name:      "operand_invalid",
-			Args:      []string{"--to=iec", "xyz"},
-			ExitCode:  2,
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
-		},
-		// R4.4: unknown suffix error
-		{
-			Name:      "unknown_suffix_error",
-			Args:      []string{"--from=si"},
-			Stdin:     []byte("1Q\n"),
-			ExitCode:  2,
-			Normalize: []testutils.NormalizeFunc{normalizeNonEmpty},
+			Name:  "invalid_ignore_multi",
+			Args:  []string{"--to=si", "--invalid=ignore"},
+			Stdin: []byte("1000\nabc\n2000\n"),
 		},
 	}
+}
 
-	testutils.RunDiffTests(t, goBin, refBin, tests)
+func zeroTerminatedTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "zero_term_z",
+			Args:  []string{"--to=si", "-z"},
+			Stdin: []byte("1000\x002000\x00"),
+		},
+		{
+			Name:  "zero_term_long",
+			Args:  []string{"--to=si", "--zero-terminated"},
+			Stdin: []byte("1000\x002000\x00"),
+		},
+	}
+}
+
+func errorTests(norm []testutils.NormalizeFunc) []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:      "invalid_number_default",
+			Args:      []string{"--to=si"},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  2,
+			Normalize: norm,
+		},
+		{
+			Name:      "invalid_suffix",
+			Args:      []string{"--from=si"},
+			Stdin:     []byte("1X\n"),
+			ExitCode:  2,
+			Normalize: norm,
+		},
+	}
+}
+
+func operandTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{Name: "operand_single", Args: []string{"--to=si", "1000"}},
+		{Name: "operand_multiple", Args: []string{"--to=si", "1000", "2000000"}},
+		{Name: "operand_from", Args: []string{"--from=si", "1K"}},
+	}
 }

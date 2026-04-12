@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Differential tests for cmd/join against gjoin (GNU coreutils).
+// Implements srd069-join R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -13,28 +16,23 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeProgramName replaces "gjoin:" with "join:" so stderr messages
-// from the reference binary match our binary's program name.
-func normalizeProgramName(b []byte) []byte {
-	return bytes.ReplaceAll(b, []byte("gjoin:"), []byte("join:"))
-}
-
-// normalizeFileError normalizes file-open error messages across platforms.
-func normalizeFileError(b []byte) []byte {
-	return bytes.ToLower(b)
-}
-
-// writeTestFiles creates file1.txt and file2.txt in a temp directory.
-func writeTestFiles(t *testing.T, content1, content2 string) string {
+// setupDir creates a temp directory with the given files for test input.
+func setupDir(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "file1.txt"), []byte(content1), 0o644); err != nil {
-		t.Fatalf("writing file1.txt: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "file2.txt"), []byte(content2), 0o644); err != nil {
-		t.Fatalf("writing file2.txt: %v", err)
+	for name, content := range files {
+		err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644)
+		if err != nil {
+			t.Fatalf("writing test file %s: %v", name, err)
+		}
 	}
 	return dir
+}
+
+// normalizeProgramName replaces gjoin: with join: in output so that
+// stderr diagnostics match between the reference and Go binaries.
+func normalizeProgramName(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("gjoin:"), []byte("join:"))
 }
 
 func TestDiff(t *testing.T) {
@@ -45,276 +43,523 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary gjoin not in PATH: %v", err)
 	}
 
-	// Setup test file pairs for different scenarios.
-	dirAllMatch := writeTestFiles(t, "a 1\nb 2\nc 3\n", "a X\nb Y\nc Z\n")
-	dirPartial := writeTestFiles(t, "a 1\nb 2\nc 3\n", "b Y\nc Z\nd W\n")
-	dirNoMatch := writeTestFiles(t, "a 1\nc 3\n", "b 2\nd 4\n")
-	dirEmpty1 := writeTestFiles(t, "", "a X\nb Y\n")
-	dirEmpty2 := writeTestFiles(t, "a 1\nb 2\n", "")
-	dirBothEmpty := writeTestFiles(t, "", "")
-	dirMultiField := writeTestFiles(t, "a 1 2\nb 3 4\n", "a X Y\nb Z W\n")
-	dirDupKeys := writeTestFiles(t, "a 1\na 2\n", "a X\na Y\n")
-	dirSingleField := writeTestFiles(t, "a\nb\nc\n", "a\nc\n")
-
-	// R2.1: -1/-2 field selection test data.
-	dirField12 := writeTestFiles(t, "X a 1\nY b 2\n", "a P\nb Q\n")
-	// R2.2: -j combined field test data.
-	dirFieldJ := writeTestFiles(t, "1 a\n2 b\n", "1 X\n2 Y\n")
-	// R2.3: -o output format test data.
-	dirOutputFmt := writeTestFiles(t, "a 1 2\nb 3 4\n", "a X Y\nb Z W\n")
-	// R2.4: -t custom separator test data.
-	dirCommaSep := writeTestFiles(t, "a,1,2\nb,3,4\n", "a,X,Y\nb,Z,W\n")
-	// R2.1 + R2.4 combined: join on non-first field with custom separator.
-	dirCommaField := writeTestFiles(t, "1,a\n2,b\n", "a,P\nb,Q\n")
-
-	// R3.1: -a unpairable lines test data.
-	dirUnpair := writeTestFiles(t, "a 1\nb 2\nc 3\n", "b Y\nc Z\nd W\n")
-	// R3.2: -v unpairable only test data.
-	dirVOnly := writeTestFiles(t, "a 1\nb 2\nc 3\n", "b Y\nd W\n")
-	// R3.3: -e empty replacement test data.
-	dirEmptyRepl := writeTestFiles(t, "a 1\nb 2\nc 3\n", "a X\nc Z\n")
-	// R3.4: --header test data (headers may not be sorted relative to data).
-	dirHeader := writeTestFiles(t, "NAME VAL\na 1\nb 2\n", "NAME CODE\na X\nb Y\n")
-	dirHeaderUnsorted := writeTestFiles(t, "ZZZ VAL\na 1\nb 2\n", "ZZZ CODE\na X\nb Y\n")
-
-	// R4.4: --check-order test data (file1 has unsorted keys: a, c, b).
-	dirCheckOrder := writeTestFiles(t, "a 1\nc 3\nb 2\n", "a X\nb Y\nc Z\n")
-
-	errNorm := []testutils.NormalizeFunc{normalizeProgramName, normalizeFileError}
-
 	tests := []testutils.DiffTest{
-		// R1.1: Join lines where first field matches, one output line per pair.
+		// R1.1: basic join on first field, all lines match
 		{
-			Name:    "R1.1_default_join_all_match",
-			Args:    []string{"file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirAllMatch,
+			Name: "basic_all_match",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
 		},
+		// R1.1, R1.3: partial match, unpaired lines suppressed
 		{
-			Name:    "R1.1_partial_match",
-			Args:    []string{"file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirPartial,
+			Name: "partial_match",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nd 4\n",
+				"f2.txt": "a X\nc Y\nd Z\n",
+			}),
 		},
+		// R1.3: no matching lines, empty output
 		{
-			Name:    "R1.1_no_matching_keys",
-			Args:    []string{"file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirNoMatch,
+			Name: "no_match",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "c X\nd Y\n",
+			}),
 		},
+		// R1.1, R1.2: multi-field lines with whitespace separation
 		{
-			Name:    "R1.1_duplicate_keys_cartesian",
-			Args:    []string{"file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirDupKeys,
+			Name: "multi_field_lines",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1 2\nb 3 4\n",
+				"f2.txt": "a X Y\nb P Q\n",
+			}),
 		},
+		// R1.1: duplicate keys in file2, cross product
 		{
-			Name:    "R1.1_single_field_lines",
-			Args:    []string{"file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirSingleField,
+			Name: "duplicate_key_file2",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\na Y\nb Z\n",
+			}),
 		},
-
-		// R1.2: Whitespace field separator, space output separator.
+		// R1.1: duplicate keys in file1, cross product
 		{
-			Name:    "R1.2_multiple_fields_space_output",
-			Args:    []string{"file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirMultiField,
+			Name: "duplicate_key_file1",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\na 2\nb 3\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
 		},
-
-		// R1.3: Unpairable lines suppressed by default.
+		// R1.1: duplicate keys in both files, full cross product
 		{
-			Name:    "R1.3_file1_empty_all_suppressed",
-			Args:    []string{"file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirEmpty1,
+			Name: "duplicate_keys_both",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\na 2\n",
+				"f2.txt": "a X\na Y\n",
+			}),
 		},
+		// R1.1: empty file1, no output
 		{
-			Name:    "R1.3_file2_empty_all_suppressed",
-			Args:    []string{"file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirEmpty2,
+			Name: "empty_file1",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "",
+				"f2.txt": "a X\nb Y\n",
+			}),
 		},
+		// R1.1: empty file2, no output
 		{
-			Name:    "R1.3_both_empty",
-			Args:    []string{"file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirBothEmpty,
+			Name: "empty_file2",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "",
+			}),
 		},
-
-		// R1.4: stdin as '-' for one of the file arguments.
+		// R1.2: single-field lines (join field only, no remaining)
 		{
-			Name:    "R1.4_stdin_as_file1",
-			Args:    []string{"-", "file2.txt"},
-			Stdin:   []byte("a 1\nb 2\nc 3\n"),
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirAllMatch,
+			Name: "single_field_lines",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a\nb\nc\n",
+				"f2.txt": "a\nb\n",
+			}),
 		},
+		// R1.4: stdin as file1
 		{
-			Name:    "R1.4_stdin_as_file2",
-			Args:    []string{"file1.txt", "-"},
-			Stdin:   []byte("a X\nb Y\nc Z\n"),
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirAllMatch,
+			Name:  "stdin_as_file1",
+			Args:  []string{"-", "f2.txt"},
+			Stdin: []byte("a 1\nb 2\n"),
+			WorkDir: setupDir(t, map[string]string{
+				"f2.txt": "a X\nb Y\n",
+			}),
 		},
-
-		// R2.1: -1 FIELD and -2 FIELD join on specified fields.
+		// R1.4: stdin as file2
 		{
-			Name:    "R2.1_field_selection_1_2",
-			Args:    []string{"-1", "2", "-2", "1", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirField12,
+			Name:  "stdin_as_file2",
+			Args:  []string{"f1.txt", "-"},
+			Stdin: []byte("a X\nb Y\n"),
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+			}),
 		},
-
-		// R2.2: -j FIELD sets join field for both files.
+		// R1.1: single matching line in each file
 		{
-			Name:    "R2.2_combined_field_j",
-			Args:    []string{"-j", "1", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirFieldJ,
+			Name: "single_line_match",
+			Args: []string{"f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "hello world\n",
+				"f2.txt": "hello there\n",
+			}),
 		},
+		// R2.4: -t CHAR uses comma as field separator
 		{
-			Name:    "R2.2_j_field2",
-			Args:    []string{"-j", "2", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: writeTestFiles(t, "X a\nY b\n", "P a\nQ b\n"),
+			Name: "separator_comma",
+			Args: []string{"-t", ",", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a,1,2\nb,3,4\nc,5,6\n",
+				"f2.txt": "a,X,Y\nb,P,Q\n",
+			}),
 		},
-
-		// R2.3: -o FORMAT output field selection.
+		// R2.4: -t with colon separator
 		{
-			Name:    "R2.3_output_format_join_field",
-			Args:    []string{"-o", "0", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirOutputFmt,
+			Name: "separator_colon",
+			Args: []string{"-t", ":", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a:1\nb:2\n",
+				"f2.txt": "a:X\nb:Y\n",
+			}),
 		},
+		// R2.4: -t with tab separator
 		{
-			Name:    "R2.3_output_format_specific_fields",
-			Args:    []string{"-o", "1.2,2.2", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirOutputFmt,
+			Name: "separator_tab",
+			Args: []string{"-t", "\t", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a\t1\nb\t2\n",
+				"f2.txt": "a\tX\nb\tY\n",
+			}),
 		},
+		// R2.1: -1 2 -2 1 join on second field of file1, first of file2
 		{
-			Name:    "R2.3_output_format_mixed",
-			Args:    []string{"-o", "0,1.2,2.2,1.3,2.3", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirOutputFmt,
+			Name: "field_selection_1_2",
+			Args: []string{"-1", "2", "-2", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "x a\ny b\nz c\n",
+				"f2.txt": "a 10\nb 20\n",
+			}),
 		},
-
-		// R2.4: -t CHAR custom field separator.
+		// R2.1: -1 3 join on third field of file1
 		{
-			Name:    "R2.4_comma_separator",
-			Args:    []string{"-t", ",", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirCommaSep,
+			Name: "field_selection_1_3",
+			Args: []string{"-1", "3", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "x y a\np q b\n",
+				"f2.txt": "a 10\nb 20\n",
+			}),
 		},
+		// R2.1: -2 2 join on second field of file2
 		{
-			Name:    "R2.4_comma_sep_with_field_selection",
-			Args:    []string{"-t", ",", "-1", "2", "-2", "1", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirCommaField,
+			Name: "field_selection_2_2",
+			Args: []string{"-2", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "X a\nY b\n",
+			}),
 		},
-
-		// R3.1: -a FILENUM prints unpairable lines from the specified file.
+		// R2.2: -j 2 sets both join fields to 2
 		{
-			Name:    "R3.1_unpair_file1",
-			Args:    []string{"-a", "1", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirUnpair,
+			Name: "j_flag_both_fields",
+			Args: []string{"-j", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "x a\ny b\n",
+				"f2.txt": "P a\nQ b\n",
+			}),
 		},
+		// R2.3: -o FORMAT with specific field selection
 		{
-			Name:    "R3.1_unpair_file2",
-			Args:    []string{"-a", "2", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirUnpair,
+			Name: "output_format_basic",
+			Args: []string{"-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
 		},
+		// R2.3: -o with reversed field order
 		{
-			Name:    "R3.1_unpair_both",
-			Args:    []string{"-a", "1", "-a", "2", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirUnpair,
+			Name: "output_format_reversed",
+			Args: []string{"-o", "2.2,0,1.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
 		},
+		// R2.3: -o with space-separated format
 		{
-			Name:    "R3.1_unpair_all_match_no_extra",
-			Args:    []string{"-a", "1", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirAllMatch,
+			Name: "output_format_space_sep",
+			Args: []string{"-o", "1.1 1.2 2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
 		},
-
-		// R3.2: -v FILENUM prints only unpairable lines, suppressing paired.
+		// R2.3: -o 0 outputs only the join field
 		{
-			Name:    "R3.2_v_file1",
-			Args:    []string{"-v", "1", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirVOnly,
+			Name: "output_format_join_only",
+			Args: []string{"-o", "0", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
 		},
+		// R2.1 + R2.4: -t and -1/-2 combined
 		{
-			Name:    "R3.2_v_file2",
-			Args:    []string{"-v", "2", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirVOnly,
+			Name: "separator_and_field_selection",
+			Args: []string{"-t", ",", "-1", "2", "-2", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "x,a,1\ny,b,2\n",
+				"f2.txt": "a,10\nb,20\n",
+			}),
 		},
+		// R2.3 + R2.4: -o and -t combined
 		{
-			Name:    "R3.2_v_no_unpairable",
-			Args:    []string{"-v", "1", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirAllMatch,
+			Name: "output_format_with_separator",
+			Args: []string{"-t", ",", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a,1\nb,2\n",
+				"f2.txt": "a,X\nb,Y\n",
+			}),
 		},
-
-		// R3.3: -e STRING replaces missing fields.
+		// R2.1 + R2.3: -1/-2 with -o format
 		{
-			Name:    "R3.3_empty_replacement_with_format",
-			Args:    []string{"-a", "1", "-e", "EMPTY", "-o", "0,1.2,2.2", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirEmptyRepl,
+			Name: "field_selection_with_output_format",
+			Args: []string{"-1", "2", "-o", "0,1.1,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "x a\ny b\n",
+				"f2.txt": "a 10\nb 20\n",
+			}),
 		},
+		// R2.2 + R2.4: -j with -t combined
 		{
-			Name:    "R3.3_empty_replacement_both_files",
-			Args:    []string{"-a", "1", "-a", "2", "-e", "N/A", "-o", "0,1.2,2.2", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirUnpair,
+			Name: "j_flag_with_separator",
+			Args: []string{"-j", "2", "-t", ",", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "x,a\ny,b\n",
+				"f2.txt": "P,a\nQ,b\n",
+			}),
 		},
-
-		// R3.4: --header treats first line as header.
+		// R2.3: -o with multi-field output from both files
 		{
-			Name:    "R3.4_header_mode",
-			Args:    []string{"--header", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirHeader,
+			Name: "output_format_multi_fields",
+			Args: []string{"-o", "1.1,1.2,1.3,2.1,2.2,2.3", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1 2\nb 3 4\n",
+				"f2.txt": "a X Y\nb P Q\n",
+			}),
 		},
+		// R3.1: -a 1 shows unpairable lines from file1 plus paired
 		{
-			Name:    "R3.4_header_unsorted_header_line",
-			Args:    []string{"--header", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirHeaderUnsorted,
+			Name: "a1_unpairable_file1",
+			Args: []string{"-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
 		},
-
-		// R4.4: --check-order with sorted input succeeds normally.
+		// R3.1: -a 2 shows unpairable lines from file2 plus paired
 		{
-			Name:    "R4.4_check_order_sorted_ok",
-			Args:    []string{"--check-order", "file1.txt", "file2.txt"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: dirAllMatch,
+			Name: "a2_unpairable_file2",
+			Args: []string{"-a", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
 		},
-
-		// R4.4: --check-order detects unsorted file1 and exits 1.
+		// R3.1: -a 1 -a 2 shows unpairable from both files
 		{
-			Name:      "R4.4_check_order_unsorted",
-			Args:      []string{"--check-order", "file1.txt", "file2.txt"},
-			Env:       []string{"LC_ALL=C"},
-			WorkDir:   dirCheckOrder,
+			Name: "a1_a2_unpairable_both",
+			Args: []string{"-a", "1", "-a", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nd 4\n",
+				"f2.txt": "a X\nc Y\nd Z\n",
+			}),
+		},
+		// R3.1: -a 1 with all lines matching (no effect)
+		{
+			Name: "a1_all_match",
+			Args: []string{"-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
+		},
+		// R3.1: -a 1 with no lines matching
+		{
+			Name: "a1_no_match",
+			Args: []string{"-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "c X\nd Y\n",
+			}),
+		},
+		// R3.2: -v 1 shows only unpairable from file1
+		{
+			Name: "v1_only_unpairable_file1",
+			Args: []string{"-v", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
+		},
+		// R3.2: -v 2 shows only unpairable from file2
+		{
+			Name: "v2_only_unpairable_file2",
+			Args: []string{"-v", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R3.2: -v 1 -v 2 shows only unpairable from both
+		{
+			Name: "v1_v2_only_unpairable_both",
+			Args: []string{"-v", "1", "-v", "2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nd 4\n",
+				"f2.txt": "a X\nc Y\nd Z\n",
+			}),
+		},
+		// R3.2: -v 1 with no unpairable lines (all match)
+		{
+			Name: "v1_all_match",
+			Args: []string{"-v", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
+		},
+		// R3.3: -e STRING replaces missing fields with -o format
+		{
+			Name: "e_replace_missing_a1",
+			Args: []string{"-a", "1", "-e", "EMPTY", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
+		},
+		// R3.3: -e with -a 2
+		{
+			Name: "e_replace_missing_a2",
+			Args: []string{"-a", "2", "-e", "NA", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R3.3: -e with -a 1 -a 2 both unpairable
+		{
+			Name: "e_replace_both_unpaired",
+			Args: []string{"-a", "1", "-a", "2", "-e", "---", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nc Y\n",
+			}),
+		},
+		// R3.4: --header joins first lines unconditionally
+		{
+			Name: "header_basic",
+			Args: []string{"--header", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "KEY VAL1\na 1\nb 2\n",
+				"f2.txt": "KEY VAL2\na X\nb Y\n",
+			}),
+		},
+		// R3.4: --header with unsorted header line
+		{
+			Name: "header_unsorted",
+			Args: []string{"--header", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "ZZZ COL1\na 1\nb 2\n",
+				"f2.txt": "AAA COL2\na X\nb Y\n",
+			}),
+		},
+		// R3.4: --header with -o format
+		{
+			Name: "header_with_output_format",
+			Args: []string{"--header", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "KEY VAL1\na 1\nb 2\n",
+				"f2.txt": "KEY VAL2\na X\nb Y\n",
+			}),
+		},
+		// R3.4: --header with -t separator
+		{
+			Name: "header_with_separator",
+			Args: []string{"--header", "-t", ",", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "KEY,VAL1\na,1\nb,2\n",
+				"f2.txt": "KEY,VAL2\na,X\nb,Y\n",
+			}),
+		},
+		// R3.1 + R3.4: --header combined with -a 1
+		{
+			Name: "header_with_a1",
+			Args: []string{"--header", "-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "KEY VAL1\na 1\nb 2\nc 3\n",
+				"f2.txt": "KEY VAL2\na X\nc Z\n",
+			}),
+		},
+		// R3.2 + R3.3: -v with -e and -o format
+		{
+			Name: "v1_with_e_and_o",
+			Args: []string{"-v", "1", "-e", "X", "-o", "0,1.2,2.2", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
+		},
+		// R3.1: -a 1 with custom separator
+		{
+			Name: "a1_with_separator",
+			Args: []string{"-a", "1", "-t", ",", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a,1\nb,2\nc,3\n",
+				"f2.txt": "a,X\nc,Z\n",
+			}),
+		},
+		// R4.1: -e with -o, out-of-range field replaced
+		{
+			Name: "e_replace_out_of_range_field",
+			Args: []string{"-e", "N/A", "-o", "0,1.2,2.2,2.3", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
+		},
+		// R4.2: -i case-insensitive basic join
+		{
+			Name: "ignore_case_basic",
+			Args: []string{"-i", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "A 1\nB 2\nC 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R4.2: -i with mixed case keys
+		{
+			Name: "ignore_case_mixed",
+			Args: []string{"-i", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "Apple 1\nBanana 2\n",
+				"f2.txt": "APPLE X\nBANANA Y\n",
+			}),
+		},
+		// R4.2: --ignore-case long flag form
+		{
+			Name: "ignore_case_long_flag",
+			Args: []string{"--ignore-case", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "A 1\nB 2\n",
+				"f2.txt": "a X\nb Y\n",
+			}),
+		},
+		// R4.2: -i with -a unpairable
+		{
+			Name: "ignore_case_with_a1",
+			Args: []string{"-i", "-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "A 1\nB 2\nC 3\n",
+				"f2.txt": "a X\nc Z\n",
+			}),
+		},
+		// R4.3: --check-order with sorted input (no error)
+		{
+			Name: "check_order_sorted",
+			Args: []string{"--check-order", "f1.txt", "f2.txt"},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nb 2\nc 3\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R4.3: --check-order with unsorted file1
+		{
+			Name:      "check_order_unsorted_file1",
+			Args:      []string{"--check-order", "f1.txt", "f2.txt"},
 			ExitCode:  1,
-			Normalize: errNorm,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\nb 2\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
 		},
-
-		// Error: missing file exits 1. R4.2.
+		// R4.3: default order check warns on unsorted input
 		{
-			Name:      "error_missing_file",
-			Args:      []string{"nonexistent.txt", "file2.txt"},
-			Env:       []string{"LC_ALL=C"},
-			WorkDir:   dirAllMatch,
+			Name:      "default_order_check_warns",
+			Args:      []string{"f1.txt", "f2.txt"},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+			WorkDir: setupDir(t, map[string]string{
+				"f1.txt": "a 1\nc 3\nb 2\n",
+				"f2.txt": "a X\nb Y\nc Z\n",
+			}),
+		},
+		// R4.4: missing file error
+		{
+			Name:      "missing_file_error",
+			Args:      []string{"nonexistent.txt", "f2.txt"},
 			ExitCode:  1,
-			Normalize: errNorm,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+			WorkDir: setupDir(t, map[string]string{
+				"f2.txt": "a X\nb Y\n",
+			}),
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

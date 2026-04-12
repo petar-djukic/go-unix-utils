@@ -1,15 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/vidir implements moreutils vidir: edit a directory in a text editor.
-//
-// Implements prd114-vidir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2.
+// Package main implements cmd/vidir: edit a directory in a text editor.
+// Implements srd114-vidir R1.1-R1.4, R2.1-R2.2.
 package main
 
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,290 +19,311 @@ import (
 
 const progName = "vidir"
 
-// defaultEditor is the fallback editor when $EDITOR is not set.
-const defaultEditor = "vi"
-
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stderr))
+	os.Exit(run(os.Args[1:]))
 }
 
-// config holds parsed flag state.
-type config struct {
-	verbose bool
-	args    []string
+// options holds parsed command-line flags.
+type options struct {
+	verbose bool // R1.4: -v/--verbose prints actions to stderr
 }
 
-// parseArgs extracts flags and positional arguments.
-func parseArgs(args []string) config {
-	c := config{}
-	for _, arg := range args {
+// entry represents a numbered file in the directory listing.
+type entry struct {
+	num  int
+	path string
+}
+
+// run parses flags, collects files, and orchestrates editing.
+// R1.1-R1.4: core vidir behavior.
+func run(args []string) int {
+	opts, paths, err := parseFlags(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 1
+	}
+	files, err := collectFiles(paths)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 1
+	}
+	return editAndApply(files, opts)
+}
+
+// parseFlags extracts -v/--verbose from args.
+// Returns parsed options, remaining positional args, and error.
+func parseFlags(args []string) (options, []string, error) {
+	var opts options
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--" {
+			i++
+			break
+		}
+		if !strings.HasPrefix(arg, "-") {
+			break
+		}
 		switch arg {
 		case "-v", "--verbose":
-			c.verbose = true
+			opts.verbose = true
 		default:
-			c.args = append(c.args, arg)
+			return opts, nil, fmt.Errorf("unknown option: %s", arg)
 		}
+		i++
 	}
-	return c
+	return opts, args[i:], nil
 }
 
-// entry represents one file in the numbered listing.
-type entry struct {
-	id   int
-	name string
+// collectFiles resolves paths from args, stdin, or current directory.
+// R1.1: list from args, stdin (if piped), or current directory.
+func collectFiles(paths []string) ([]string, error) {
+	if len(paths) > 0 {
+		return expandPaths(paths)
+	}
+	if !sys.IsTerminal(os.Stdin.Fd()) {
+		return readStdinPaths()
+	}
+	return listDir(".")
 }
 
-// run executes the vidir logic. Returns exit code.
-func run(args []string, stdin io.Reader, stderr io.Writer) int {
-	cfg := parseArgs(args)
-	original, err := buildListing(cfg.args, stdin)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-		return 1
-	}
-	edited, err := editListing(original)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-		return 1
-	}
-	if err := applyChanges(original, edited, cfg.verbose, stderr); err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-		return 1
-	}
-	return 0
-}
-
-// buildListing produces the initial file listing.
-// R1.1: lists files from directory args or reads from stdin if piped.
-func buildListing(args []string, stdin io.Reader) ([]entry, error) {
-	if isStdinPipe() {
-		return readListingFromStdin(stdin)
-	}
-	dirs := args
-	if len(dirs) == 0 {
-		dirs = []string{"."}
-	}
-	return listDirectories(dirs)
-}
-
-// isStdinPipe reports whether stdin is a pipe (FIFO), matching Perl's -p check.
-func isStdinPipe() bool {
-	info, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeNamedPipe != 0
-}
-
-// listDirectories lists all entries from the given directories.
-func listDirectories(dirs []string) ([]entry, error) {
-	var entries []entry
-	id := 1
-	for _, dir := range dirs {
-		dirEntries, err := os.ReadDir(dir)
-		if err != nil {
-			return nil, fmt.Errorf("reading directory %s: %w", dir, err)
-		}
-		for _, de := range dirEntries {
-			name := filepath.Join(dir, de.Name())
-			entries = append(entries, entry{id: id, name: name})
-			id++
-		}
-	}
-	return entries, nil
-}
-
-// readListingFromStdin reads filenames from stdin, one per line.
-func readListingFromStdin(r io.Reader) ([]entry, error) {
-	var entries []entry
-	scanner := bufio.NewScanner(r)
-	id := 1
+// readStdinPaths reads file paths from stdin, one per line.
+// R1.1: stdin mode when input is piped.
+func readStdinPaths() ([]string, error) {
+	var paths []string
+	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		name := scanner.Text()
-		if name != "" {
-			entries = append(entries, entry{id: id, name: name})
-			id++
+		line := scanner.Text()
+		if line != "" {
+			paths = append(paths, line)
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("reading stdin: %w", err)
-	}
-	return entries, nil
+	return paths, scanner.Err()
 }
 
-// formatListing writes the numbered listing to w.
-// R1.1: each line formatted as "NUMBER\tFILENAME".
-func formatListing(w io.Writer, entries []entry) error {
-	for _, e := range entries {
-		if _, err := fmt.Fprintf(w, "%d\t%s\n", e.id, e.name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// editListing writes the listing to a temp file, opens the editor, and parses
-// the result.
-// R1.1: opens listing in $EDITOR (default vi).
-func editListing(original []entry) ([]entry, error) {
-	tmpFile, err := writeTempListing(original)
+// listDir returns sorted entries of a directory as prefixed paths.
+func listDir(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading directory %s: %w", dir, err)
 	}
-	defer os.Remove(tmpFile) // best-effort cleanup
-	if err := runEditor(tmpFile); err != nil {
-		return nil, err
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, dir+"/"+e.Name())
 	}
-	return parseTempListing(tmpFile)
+	return names, nil
 }
 
-// writeTempListing creates a temp file with the numbered listing.
-func writeTempListing(entries []entry) (string, error) {
-	f, err := os.CreateTemp("", "vidir-*")
+// expandPaths expands each path: directories become their contents,
+// files pass through as-is.
+func expandPaths(paths []string) ([]string, error) {
+	var result []string
+	for _, p := range paths {
+		expanded, err := expandOnePath(p)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, expanded...)
+	}
+	return result, nil
+}
+
+// expandOnePath returns directory contents if p is a directory,
+// or p itself otherwise.
+func expandOnePath(p string) ([]string, error) {
+	info, err := os.Stat(p)
+	if err != nil {
+		// File may not exist yet; include as-is (matches Perl behavior).
+		return []string{p}, nil
+	}
+	if !info.IsDir() {
+		return []string{p}, nil
+	}
+	return listDir(p)
+}
+
+// editAndApply writes the listing, opens the editor, and applies changes.
+func editAndApply(files []string, opts options) int {
+	original := makeEntries(files)
+	tmpPath, err := writeTempFile(original)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 1
+	}
+	defer os.Remove(tmpPath)
+	// R2.1: exit 2 when editor exits non-zero (matches reference vidir).
+	if err := openEditor(tmpPath); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	return processEdits(original, tmpPath, opts)
+}
+
+// makeEntries assigns sequential numbers starting at 1 to each file.
+func makeEntries(files []string) []entry {
+	entries := make([]entry, len(files))
+	for i, f := range files {
+		entries[i] = entry{num: i + 1, path: f}
+	}
+	return entries
+}
+
+// writeTempFile writes the numbered listing to a temporary file.
+// R1.1: format is "NUMBER\tFILENAME\n".
+func writeTempFile(entries []entry) (string, error) {
+	f, err := os.CreateTemp("", "vidir.")
 	if err != nil {
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
-	if err := formatListing(f, entries); err != nil {
-		f.Close()            // best-effort close
-		os.Remove(f.Name()) // best-effort cleanup
-		return "", fmt.Errorf("writing listing: %w", err)
-	}
 	name := f.Name()
+	for _, e := range entries {
+		if _, err := fmt.Fprintf(f, "%d\t%s\n", e.num, e.path); err != nil {
+			f.Close()
+			os.Remove(name)
+			return "", fmt.Errorf("writing temp file: %w", err)
+		}
+	}
 	if err := f.Close(); err != nil {
+		os.Remove(name)
 		return "", fmt.Errorf("closing temp file: %w", err)
 	}
 	return name, nil
 }
 
-// runEditor launches $EDITOR on the given file.
-// R2.1: returns error if editor exits non-zero.
-func runEditor(path string) error {
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = defaultEditor
+// resolveEditor returns the editor command from EDITOR, VISUAL, or "vi".
+// R1.2: EDITOR takes precedence, then VISUAL, then vi.
+func resolveEditor() string {
+	if editor := os.Getenv("EDITOR"); editor != "" {
+		return editor
 	}
-	cmd := exec.Command(editor, path)
+	if editor := os.Getenv("VISUAL"); editor != "" {
+		return editor
+	}
+	return "vi"
+}
+
+// openEditor launches the editor on the given file and waits for exit.
+// R1.2: open temp file in user's editor.
+// R2.1: returns error if editor exits non-zero.
+func openEditor(path string) error {
+	editor := resolveEditor()
+	parts := strings.Fields(editor)
+	name := parts[0]
+	cmd := exec.Command(name, append(parts[1:], path)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("editor failed: %w", err)
+		return fmt.Errorf("%s exited nonzero, aborting", name)
 	}
 	return nil
 }
 
-// parseTempListing reads the edited temp file and returns the parsed entries.
-func parseTempListing(path string) ([]entry, error) {
+// processEdits parses the edited file and applies changes.
+func processEdits(original []entry, tmpPath string, opts options) int {
+	edited, err := parseEditedFile(tmpPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 1
+	}
+	return applyChanges(original, edited, opts)
+}
+
+// parseEditedFile reads the edited temp file and returns num → path map.
+// R1.2/R1.3: parses numbered lines to detect renames and deletions.
+func parseEditedFile(path string) (map[int]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading edited listing: %w", err)
+		return nil, fmt.Errorf("reading edited file: %w", err)
 	}
-	defer f.Close() // best-effort close
-	return parseListing(f)
-}
-
-// parseListing parses a numbered listing from r.
-func parseListing(r io.Reader) ([]entry, error) {
-	var entries []entry
-	scanner := bufio.NewScanner(r)
+	defer f.Close()
+	result := make(map[int]string)
+	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
+		num, name, ok := parseLine(scanner.Text())
+		if ok {
+			result[num] = name
 		}
-		e, err := parseLine(line)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, e)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("reading listing: %w", err)
+		return nil, fmt.Errorf("scanning edited file: %w", err)
 	}
-	return entries, nil
+	return result, nil
 }
 
-// parseLine parses a single "NUMBER\tFILENAME" line.
-func parseLine(line string) (entry, error) {
+// parseLine extracts the number and filename from a "NUMBER\tFILENAME" line.
+func parseLine(line string) (int, string, bool) {
 	numStr, name, ok := strings.Cut(line, "\t")
 	if !ok {
-		return entry{}, fmt.Errorf("malformed line: %q", line)
+		return 0, "", false
 	}
-	id, err := strconv.Atoi(numStr)
+	num, err := strconv.Atoi(strings.TrimSpace(numStr))
 	if err != nil {
-		return entry{}, fmt.Errorf("invalid id in line: %q", line)
+		return 0, "", false
 	}
-	return entry{id: id, name: name}, nil
+	return num, name, true
 }
 
-// applyChanges compares original and edited listings and applies renames and
-// deletions.
-// R1.2: deleted lines → remove file; changed names → rename file.
-// R1.3: process renames before deletions.
-func applyChanges(original, edited []entry, verbose bool, stderr io.Writer) error {
-	origMap := buildIDMap(original)
-	editedMap := buildIDMap(edited)
-
-	if err := processRenames(origMap, editedMap, verbose, stderr); err != nil {
-		return err
+// applyChanges processes renames then deletions.
+// R1.3: renames before deletions to avoid conflicts.
+func applyChanges(original []entry, edited map[int]string, opts options) int {
+	exitCode := 0
+	if code := applyRenames(original, edited, opts); code != 0 {
+		exitCode = code
 	}
-	return processDeletions(origMap, editedMap, verbose, stderr)
+	if code := applyDeletions(original, edited, opts); code != 0 {
+		exitCode = code
+	}
+	return exitCode
 }
 
-// buildIDMap creates a map from entry id to filename.
-func buildIDMap(entries []entry) map[int]string {
-	m := make(map[int]string, len(entries))
-	for _, e := range entries {
-		m[e.id] = e.name
-	}
-	return m
-}
-
-// processRenames handles entries whose names changed.
-// R1.3: creates parent directories for renames that move files.
-// R1.4: prints rename actions to stderr when verbose.
-func processRenames(orig, edited map[int]string, verbose bool, stderr io.Writer) error {
-	for id, newName := range edited {
-		oldName, ok := orig[id]
-		if !ok || oldName == newName {
+// applyRenames renames files whose paths changed in the editor.
+// R1.3: create parent directories for renames to new paths.
+// R1.4: verbose mode prints each rename to stderr.
+func applyRenames(original []entry, edited map[int]string, opts options) int {
+	exitCode := 0
+	for _, e := range original {
+		newPath, ok := edited[e.num]
+		if !ok || newPath == e.path {
 			continue
 		}
-		if err := renameFile(oldName, newName, verbose, stderr); err != nil {
-			return err
+		if opts.verbose {
+			fmt.Fprintf(os.Stderr, "'%s' -> '%s'\n", e.path, newPath)
+		}
+		if err := doRename(e.path, newPath); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+			exitCode = 1
 		}
 	}
-	return nil
+	return exitCode
 }
 
-// renameFile renames a file, creating parent directories as needed.
-func renameFile(oldName, newName string, verbose bool, stderr io.Writer) error {
-	dir := filepath.Dir(newName)
+// doRename creates parent directories and renames src to dst.
+// R1.3: create parent directories for renames.
+func doRename(src, dst string) error {
+	dir := filepath.Dir(dst)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating directory %s: %w", dir, err)
 	}
-	if err := os.Rename(oldName, newName); err != nil {
-		return fmt.Errorf("renaming %s to %s: %w", oldName, newName, err)
-	}
-	if verbose {
-		fmt.Fprintf(stderr, "%s -> %s\n", oldName, newName)
-	}
-	return nil
+	return os.Rename(src, dst)
 }
 
-// processDeletions removes files that were deleted from the listing.
-// R1.4: prints delete actions to stderr when verbose.
-func processDeletions(orig, edited map[int]string, verbose bool, stderr io.Writer) error {
-	for id, name := range orig {
-		if _, ok := edited[id]; ok {
+// applyDeletions removes files whose lines were deleted from the editor.
+// R1.4: verbose mode prints each deletion to stderr.
+func applyDeletions(original []entry, edited map[int]string, opts options) int {
+	exitCode := 0
+	for _, e := range original {
+		if _, ok := edited[e.num]; ok {
 			continue
 		}
-		if err := os.Remove(name); err != nil {
-			return fmt.Errorf("removing %s: %w", name, err)
+		if opts.verbose {
+			fmt.Fprintf(os.Stderr, "removed '%s'\n", e.path)
 		}
-		if verbose {
-			fmt.Fprintf(stderr, "removed %s\n", name)
+		if err := os.Remove(e.path); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+			exitCode = 1
 		}
 	}
-	return nil
+	return exitCode
 }

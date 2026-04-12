@@ -1,15 +1,17 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/fold wraps long lines to a specified width (prd023-fold R1.1-R1.4, R2, R3, R4).
+// Package main implements cmd/fold: wrap long lines to a specified width.
+// Implements srd023-fold R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
 	"bufio"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -19,269 +21,260 @@ const (
 	tabStop      = 8
 )
 
+// config holds fold command-line options.
 type config struct {
-	width      int
-	byteMode   bool
-	spaceBreak bool
-	files      []string
+	width     int  // -w N: maximum line width (default 80)
+	byteMode  bool // -b: count bytes instead of columns
+	spaceMode bool // -s: break at spaces
 }
 
-type foldState struct {
-	out   *bufio.Writer
-	cfg   config
-	col   int
-	buf   []byte
-	blank int // index of last space in buf, -1 if none
+// parseFlags parses command-line flags and returns config and file arguments.
+func parseFlags() (config, []string) {
+	cfg := config{width: defaultWidth}
+	fs := flag.NewFlagSet("fold", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.Usage = func() {}
+
+	fs.IntVar(&cfg.width, "w", defaultWidth, "maximum line width")
+	fs.BoolVar(&cfg.byteMode, "b", false, "count bytes instead of columns")
+	fs.BoolVar(&cfg.spaceMode, "s", false, "break at spaces")
+
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		os.Exit(1)
+	}
+
+	if cfg.width <= 0 {
+		fmt.Fprintf(os.Stderr, "fold: invalid number of columns: %q\n", fmt.Sprintf("%d", cfg.width))
+		os.Exit(1)
+	}
+
+	return cfg, fs.Args()
 }
 
-func main() {
-	sys.InstallSIGPIPEHandler()
-	cfg := parseArgs(os.Args[1:])
-	os.Exit(run(cfg))
+// openInput returns os.Stdin for "-", otherwise opens the named file.
+func openInput(name string) (*os.File, error) {
+	if name == "-" {
+		return os.Stdin, nil
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, formatOpenError(name, err)
+	}
+	return f, nil
 }
 
-func run(cfg config) int {
-	out := bufio.NewWriter(os.Stdout)
-	exitCode := 0
-	for _, name := range cfg.files {
-		if err := processFile(name, cfg, out); err != nil {
-			fmt.Fprintf(os.Stderr, "fold: %v\n", err)
-			exitCode = 1
+// formatOpenError extracts the underlying error for GNU-compatible messages.
+func formatOpenError(name string, err error) error {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return fmt.Errorf("%s: %s", name, pe.Err)
+	}
+	return fmt.Errorf("%s: %s", name, err)
+}
+
+// columnWidth returns the display column width after appending byte b
+// at the given column position. Tab stops are every 8 columns.
+// R1.1: columns by default; each byte is one column except tabs.
+func columnWidth(col int, b byte) int {
+	if b == '\t' {
+		return col + tabStop - (col % tabStop)
+	}
+	if b == '\b' {
+		if col > 0 {
+			return col - 1
+		}
+		return 0
+	}
+	if b == '\r' {
+		return 0
+	}
+	return col + 1
+}
+
+// foldLine wraps a single line (without trailing newline) to the writer.
+// R1.3: lines longer than width are split by inserting newlines.
+// R1.4: hasNewline controls whether a trailing newline is emitted.
+func foldLine(w *bufio.Writer, line []byte, cfg config, hasNewline bool) error {
+	if cfg.spaceMode {
+		return foldLineSpace(w, line, cfg, hasNewline)
+	}
+	return foldLineHard(w, line, cfg, hasNewline)
+}
+
+// foldLineHard wraps a line at exact column/byte boundaries.
+// R1.2: lines within width pass through unchanged.
+// R1.3: repeated wrapping until remaining fits.
+func foldLineHard(w *bufio.Writer, line []byte, cfg config, hasNewline bool) error {
+	col := 0
+	for i := 0; i < len(line); i++ {
+		nextCol := advancePos(col, line[i], cfg.byteMode)
+		if nextCol > cfg.width && col > 0 {
+			if err := writeByte(w, '\n'); err != nil {
+				return err
+			}
+			col = 0
+			nextCol = advancePos(col, line[i], cfg.byteMode)
+		}
+		if err := writeByte(w, line[i]); err != nil {
+			return err
+		}
+		col = nextCol
+	}
+	if hasNewline {
+		return writeByte(w, '\n')
+	}
+	return nil
+}
+
+// foldLineSpace wraps a line at the last space at or before the wrap column.
+// R3.1: break at last space at or before wrap column.
+// R3.2: fall back to hard break when no space is found within W columns.
+// R3.3: space is written as last char before the inserted newline.
+// R3.4: compatible with -b; space detection uses byte positions when -b is active.
+func foldLineSpace(w *bufio.Writer, line []byte, cfg config, hasNewline bool) error {
+	col := 0
+	lastSpace := -1
+	segStart := 0
+
+	for i := 0; i < len(line); i++ {
+		nextCol := advancePos(col, line[i], cfg.byteMode)
+		if line[i] == ' ' {
+			lastSpace = i
+		}
+		if nextCol > cfg.width {
+			if err := breakAtSpace(w, line, &segStart, &i, &col, &lastSpace, cfg); err != nil {
+				return err
+			}
+			continue
+		}
+		col = nextCol
+	}
+
+	if err := writeSegment(w, line[segStart:]); err != nil {
+		return err
+	}
+	if hasNewline {
+		return writeByte(w, '\n')
+	}
+	return nil
+}
+
+// breakAtSpace handles a line break at a space or hard position.
+func breakAtSpace(w *bufio.Writer, line []byte, segStart, i, col, lastSpace *int, cfg config) error {
+	if *lastSpace >= *segStart {
+		if err := writeSegment(w, line[*segStart:*lastSpace+1]); err != nil {
+			return err
+		}
+		if err := writeByte(w, '\n'); err != nil {
+			return err
+		}
+		*segStart = *lastSpace + 1
+		*col = recomputeCol(line, *segStart, *i, cfg.byteMode)
+		*lastSpace = -1
+		return nil
+	}
+	// No space found; hard break before current byte.
+	if err := writeSegment(w, line[*segStart:*i]); err != nil {
+		return err
+	}
+	if err := writeByte(w, '\n'); err != nil {
+		return err
+	}
+	*segStart = *i
+	*col = advancePos(0, line[*i], cfg.byteMode)
+	*lastSpace = -1
+	return nil
+}
+
+// recomputeCol recalculates column position for a range of bytes.
+func recomputeCol(line []byte, from, to int, byteMode bool) int {
+	col := 0
+	for j := from; j <= to; j++ {
+		col = advancePos(col, line[j], byteMode)
+	}
+	return col
+}
+
+// advancePos advances the column/byte position by one byte.
+func advancePos(col int, b byte, byteMode bool) int {
+	if byteMode {
+		return col + 1
+	}
+	return columnWidth(col, b)
+}
+
+// writeByte writes a single byte to the writer.
+func writeByte(w *bufio.Writer, b byte) error {
+	return w.WriteByte(b)
+}
+
+// writeSegment writes a slice of bytes to the writer.
+func writeSegment(w *bufio.Writer, data []byte) error {
+	_, err := w.Write(data)
+	return err
+}
+
+// foldReader reads from r and writes folded output to w.
+// R1.1: read each file and wrap lines to width.
+func foldReader(r io.Reader, cfg config, w *bufio.Writer) error {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			hasNewline := len(line) > 0 && line[len(line)-1] == '\n'
+			content := line
+			if hasNewline {
+				content = line[:len(line)-1]
+			}
+			if foldErr := foldLine(w, content, cfg, hasNewline); foldErr != nil {
+				return foldErr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
 		}
 	}
-	if err := out.Flush(); err != nil {
-		fmt.Fprintf(os.Stderr, "fold: write error: %v\n", err)
-		return 1
-	}
-	return exitCode
+	return nil
 }
 
-// processFile opens and folds one input file.
-// R3.1: multiple files are processed in order by the caller.
-// R3.3: empty input produces no output (foldStream returns nil on immediate EOF).
-func processFile(name string, cfg config, out *bufio.Writer) error {
+// foldFile opens and folds a named file.
+func foldFile(name string, cfg config, w *bufio.Writer) error {
 	r, err := openInput(name)
 	if err != nil {
-		// R3.2: format matches GNU fold: "fold: <name>: <reason>"
-		if pe, ok := err.(*os.PathError); ok {
-			return fmt.Errorf("%s: %s", name, pe.Err)
-		}
 		return err
 	}
 	if r != os.Stdin {
 		defer r.Close()
 	}
-	return foldStream(bufio.NewReader(r), cfg, out)
+	return foldReader(r, cfg, w)
 }
 
-func openInput(name string) (*os.File, error) {
-	if name == "-" {
-		return os.Stdin, nil
+func main() {
+	sys.InstallSIGPIPEHandler()
+	cfg, args := parseFlags()
+
+	if len(args) == 0 {
+		args = []string{"-"}
 	}
-	return os.Open(name)
-}
 
-func foldStream(r *bufio.Reader, cfg config, out *bufio.Writer) error {
-	s := &foldState{out: out, cfg: cfg, blank: -1}
-	for {
-		c, err := r.ReadByte()
-		if err != nil {
-			if err == io.EOF {
-				return s.flush()
-			}
-			return err
-		}
-		if werr := s.processByte(c); werr != nil {
-			return werr
+	w := bufio.NewWriter(os.Stdout)
+	exitCode := 0
+
+	for _, name := range args {
+		if err := foldFile(name, cfg, w); err != nil {
+			fmt.Fprintf(os.Stderr, "fold: %s\n", err)
+			exitCode = 1
 		}
 	}
-}
 
-// processByte handles one input byte, folding when the column exceeds width.
-// R1.2: lines within width pass through unchanged.
-// R1.3: lines exceeding width are split by inserting newlines.
-// R2.1: -b counts bytes instead of columns.
-// R2.2: tabs advance to next tab stop; backspace decrements column.
-// R2.3: carriage return resets column to zero.
-func (s *foldState) processByte(c byte) error {
-	if c == '\n' {
-		s.buf = append(s.buf, '\n')
-		return s.writeBuf()
+	// best-effort flush; SIGPIPE handler covers broken pipe
+	if err := w.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "fold: write error\n")
+		exitCode = 1
 	}
-	newCol := columnAfter(s.col, c, s.cfg.byteMode)
-	if newCol > s.cfg.width && len(s.buf) > 0 {
-		return s.handleFold(c)
-	}
-	if s.cfg.spaceBreak && c == ' ' {
-		s.blank = len(s.buf)
-	}
-	s.buf = append(s.buf, c)
-	s.col = newCol
-	return nil
-}
 
-func (s *foldState) handleFold(c byte) error {
-	if s.cfg.spaceBreak {
-		return s.handleSpaceFold(c)
-	}
-	return s.hardFold(c)
-}
-
-// handleSpaceFold implements -s: prefer breaking at the last space.
-// R3.1: break at last blank within width.
-// R3.2: if no blank exists within width, fall back to hard break.
-// R3.4: compatible with -b; space detection uses byte positions when -b is active.
-func (s *foldState) handleSpaceFold(c byte) error {
-	if s.blank >= 0 {
-		return s.breakAtBlank(c)
-	}
-	if c == ' ' {
-		s.buf = append(s.buf, '\n')
-		return s.writeBuf()
-	}
-	return s.hardFold(c)
-}
-
-// breakAtBlank splits the pending buffer at the last saved space position.
-// R3.3: the space is written as the last character of the current output line.
-func (s *foldState) breakAtBlank(c byte) error {
-	breakIdx := s.blank + 1
-	if _, err := s.out.Write(s.buf[:breakIdx]); err != nil {
-		return err
-	}
-	if err := s.out.WriteByte('\n'); err != nil {
-		return err
-	}
-	rest := append([]byte(nil), s.buf[breakIdx:]...)
-	s.buf = rest
-	s.col = recalcCol(rest, s.cfg.byteMode)
-	s.blank = lastSpaceIn(rest)
-	return s.processByte(c)
-}
-
-// hardFold writes the pending buffer followed by a newline, then reprocesses c.
-func (s *foldState) hardFold(c byte) error {
-	s.buf = append(s.buf, '\n')
-	if err := s.writeBuf(); err != nil {
-		return err
-	}
-	return s.processByte(c)
-}
-
-func (s *foldState) writeBuf() error {
-	_, err := s.out.Write(s.buf)
-	s.buf = s.buf[:0]
-	s.col = 0
-	s.blank = -1
-	return err
-}
-
-// flush writes any remaining pending bytes (for input without trailing newline).
-// R1.4: final segment retains the original newline presence or absence.
-func (s *foldState) flush() error {
-	if len(s.buf) > 0 {
-		_, err := s.out.Write(s.buf)
-		s.buf = s.buf[:0]
-		return err
-	}
-	return nil
-}
-
-// columnAfter returns the display column after outputting byte c at column col.
-// R2.1: in byte mode, every byte counts as 1.
-// R2.2: tabs advance to the next tab stop (every 8 columns); backspace
-// decrements the column by 1 (minimum 0).
-// R2.3: carriage return resets the column to zero.
-func columnAfter(col int, c byte, byteMode bool) int {
-	if byteMode {
-		return col + 1
-	}
-	switch c {
-	case '\t':
-		return col + tabStop - col%tabStop
-	case '\b':
-		if col > 0 {
-			return col - 1
-		}
-		return 0
-	case '\r':
-		return 0
-	default:
-		return col + 1
-	}
-}
-
-func recalcCol(data []byte, byteMode bool) int {
-	col := 0
-	for _, c := range data {
-		col = columnAfter(col, c, byteMode)
-	}
-	return col
-}
-
-func lastSpaceIn(data []byte) int {
-	for i := len(data) - 1; i >= 0; i-- {
-		if data[i] == ' ' {
-			return i
-		}
-	}
-	return -1
-}
-
-func parseArgs(args []string) config {
-	cfg := config{width: defaultWidth}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "--" {
-			cfg.files = append(cfg.files, args[i+1:]...)
-			break
-		}
-		if a == "-" || len(a) == 0 || a[0] != '-' {
-			cfg.files = append(cfg.files, a)
-			continue
-		}
-		i = parseFlags(a[1:], args, i, &cfg)
-	}
-	if len(cfg.files) == 0 {
-		cfg.files = []string{"-"}
-	}
-	return cfg
-}
-
-func parseFlags(flags string, args []string, idx int, cfg *config) int {
-	for j := 0; j < len(flags); j++ {
-		switch flags[j] {
-		case 'b':
-			cfg.byteMode = true
-		case 's':
-			cfg.spaceBreak = true
-		case 'w':
-			rest := flags[j+1:]
-			if rest == "" {
-				idx++
-				if idx >= len(args) {
-					die("option requires an argument -- 'w'")
-				}
-				rest = args[idx]
-			}
-			w, err := strconv.Atoi(rest)
-			if err != nil || w < 0 {
-				die(fmt.Sprintf("invalid number of columns: '%s'", rest))
-			}
-			if w == 0 {
-				// R2.1: GNU fold reports "Result too large" for width 0.
-				die(fmt.Sprintf("invalid number of columns: '%s': Result too large", rest))
-			}
-			cfg.width = w
-			return idx
-		default:
-			die(fmt.Sprintf("invalid option -- '%c'", flags[j]))
-		}
-	}
-	return idx
-}
-
-func die(msg string) {
-	fmt.Fprintf(os.Stderr, "fold: %s\n", msg)
-	os.Exit(1)
+	os.Exit(exitCode)
 }

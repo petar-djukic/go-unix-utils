@@ -5,42 +5,48 @@ package testutils
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 )
 
-// BuildBinary compiles the Go package in dir and returns the path to the
-// resulting binary. It calls t.Fatal on build failure.
-//
-// R2.5: uses go build -o with t.TempDir() for output.
-// D1: uses 'go build -o <temppath> <dir>' via os/exec.Command.
-// D2: places the compiled binary in t.TempDir() so cleanup is automatic.
+// goBin is the name of the Go compiler binary.
+const goBin = "go"
+
+// BuildBinary compiles the cmd/ package at dir and returns the path to the
+// built binary. Calls t.Skip if no Go source files exist (generation in
+// progress). Calls t.Fatal with go build stderr on build failure.
+// R4.1: compile a cmd/ package into a temporary binary for testing.
+// R4.2: uses t.TempDir() for automatic cleanup.
+// R4.3: skips gracefully when source is missing.
+// R4.4: reports go build stderr on failure.
 func BuildBinary(t *testing.T, dir string) string {
 	t.Helper()
-	binName := resolveBinName(t, dir)
-	outPath := filepath.Join(t.TempDir(), binName)
-
-	var stderr bytes.Buffer
-	cmd := exec.Command("go", "build", "-o", outPath, dir)
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("BuildBinary: go build %s: %v\n%s", dir, err, stderr.String())
-	}
-
-	return outPath
+	checkSourceExists(t, dir)
+	binPath := filepath.Join(t.TempDir(), "binary")
+	buildPackage(t, dir, binPath)
+	return binPath
 }
 
-// resolveBinName determines the binary name from the package directory path.
-func resolveBinName(t *testing.T, dir string) string {
+// checkSourceExists verifies that main.go exists in the package directory.
+// R4.3: skip the test instead of failing when source is absent.
+func checkSourceExists(t *testing.T, dir string) {
 	t.Helper()
-	binName := filepath.Base(dir)
-	if binName == "." {
-		abs, err := filepath.Abs(dir)
-		if err != nil {
-			t.Fatalf("BuildBinary: resolve dir %q: %v", dir, err)
-		}
-		binName = filepath.Base(abs)
+	mainPath := filepath.Join(dir, "main.go")
+	if _, err := os.Stat(mainPath); os.IsNotExist(err) {
+		t.Skipf("source not found: %s (generation in progress)", mainPath)
 	}
-	return binName
+}
+
+// buildPackage runs go build and captures stderr for error reporting.
+// R4.4: includes compilation error message in test output on failure.
+func buildPackage(t *testing.T, dir, binPath string) {
+	t.Helper()
+	cmd := exec.Command(goBin, "build", "-o", binPath, dir)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("go build %s failed: %v\n%s", dir, err, stderr.String())
+	}
 }

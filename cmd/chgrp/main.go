@@ -1,514 +1,439 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chgrp implements GNU chgrp: change group ownership of files.
-//
-// Implements prd090-chgrp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
+// Package main implements cmd/chgrp: change group ownership.
+// Implements srd090 R1.1-R1.4 (group ownership change),
+// R2.1-R2.3 (recursive and symlink handling),
+// R3.1-R3.3 (output control and exit codes).
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const progName = "chgrp"
+const programName = "chgrp"
 
-const helpText = `Usage: chgrp [OPTION]... GROUP FILE...
-  or:  chgrp [OPTION]... --reference=RFILE FILE...
-Change the group of each FILE to GROUP.
+// errAlreadyReported signals that errors were already printed to stderr
+// by the recursive walker, so the caller should not print again.
+var errAlreadyReported = fmt.Errorf("errors already reported")
 
-  -c, --changes       like verbose but report only when a change is made
-  -f, --silent, --quiet  suppress most error messages
-  -v, --verbose       output a diagnostic for every file processed
-      --no-dereference  affect symbolic links instead of referenced files
-  -h                  same as --no-dereference
-  -R, --recursive     operate on files and directories recursively
-  -H                  if a command line argument is a symbolic link to
-                        a directory, traverse it (with -R)
-  -L                  traverse every symbolic link to a directory encountered
-                        (with -R)
-  -P                  do not traverse any symbolic links (default with -R)
-      --reference=RFILE  use RFILE's group rather than specifying a GROUP value
-      --help        display this help and exit
-      --version     output version information and exit
-`
-
-const versionText = "chgrp (go-unix-utils) 0.1\n"
-
-// symMode controls symlink traversal during recursive operation.
-type symMode int
+// symlinkPolicy controls how symlinks are handled during recursive traversal.
+type symlinkPolicy int
 
 const (
-	symP symMode = iota // R2.3: never follow symlinks (default with -R)
-	symH                // R2.3: follow symlinks on command line only
-	symL                // R2.3: follow all symlinks
+	symlinkNone    symlinkPolicy = iota // -P: don't follow symlinks (default with -R)
+	symlinkCmdLine                      // -H: follow command-line symlinks only
+	symlinkAll                          // -L: follow all symlinks
 )
 
-// options holds parsed command-line options.
+// TODO: Task requested --preserve-root/--no-preserve-root, but srd090
+// non_goals explicitly states "cmd/chgrp does not implement --preserve-root".
+// Skipped per E6.
+
+// options holds parsed command-line flags for chgrp.
 type options struct {
-	reference string  // R1.2: --reference=RFILE
-	recursive bool    // R2.1: -R
-	noDerefer bool    // R2.2: -h / --no-dereference
-	symlink   symMode // R2.3: -H, -L, -P
-	verbose   bool    // R3.1: -v
-	changes   bool    // R3.1: -c
-	silent    bool    // R3.1: -f
+	recursive   bool          // R2.1: -R/--recursive
+	verbose     bool          // R3.1: -v/--verbose
+	changes     bool          // R3.1: -c/--changes
+	silent      bool          // R3.1: -f/--silent/--quiet
+	noDerefer   bool          // R2.2: -h/--no-dereference
+	reference   string        // R1.2: --reference=RFILE
+	symlinks    symlinkPolicy // R2.3: -H/-L/-P symlink traversal
+	dereference bool          // R2.2: --dereference (default behavior)
 }
 
+// R3.3, R1.1: main entry with SIGPIPE handler and argument dispatch.
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+
+	opts, group, files := parseArgs(os.Args[1:])
+	if len(files) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: missing operand\n", programName)
+		os.Exit(1)
+	}
+
+	exitCode := run(opts, group, files)
+	os.Exit(exitCode)
 }
 
-// run executes chgrp logic and returns the exit code.
-func run(args []string, stdout, stderr *os.File) int {
-	opts, operands, err := parseArgs(args)
-	if err != nil {
-		printError(stderr, err.Error())
-		return 1
-	}
-	if opts.reference != "" {
-		return runWithReference(operands, opts, stdout, stderr)
-	}
-	return runWithGroup(operands, opts, stdout, stderr)
-}
-
-// runWithGroup handles the standard GROUP FILE... invocation.
-func runWithGroup(operands []string, opts options, stdout, stderr *os.File) int {
-	if len(operands) == 0 {
-		printError(stderr, "missing operand")
-		printTryHelp(stderr)
-		return 1
-	}
-	if len(operands) == 1 {
-		msg := fmt.Sprintf("missing operand after '%s'", operands[0])
-		printError(stderr, msg)
-		printTryHelp(stderr)
-		return 1
-	}
-	gid, err := resolveGroup(operands[0])
-	if err != nil {
-		printError(stderr, fmt.Sprintf("invalid group: '%s'", operands[0]))
-		return 1
-	}
-	return applyToFiles(operands[1:], gid, opts, stdout, stderr)
-}
-
-// runWithReference handles --reference=RFILE FILE... invocation.
-func runWithReference(operands []string, opts options, stdout, stderr *os.File) int {
-	if len(operands) == 0 {
-		printError(stderr, "missing operand")
-		printTryHelp(stderr)
-		return 1
-	}
-	gid, err := getFileGID(opts.reference)
-	if err != nil {
-		msg := fmt.Sprintf("failed to get attributes of '%s': %s",
-			opts.reference, sysErrorMsg(err))
-		printError(stderr, msg)
-		return 1
-	}
-	return applyToFiles(operands, gid, opts, stdout, stderr)
-}
-
-// applyToFiles changes group ownership for each file and returns exit code.
-func applyToFiles(files []string, gid int, opts options, stdout, stderr *os.File) int {
-	exitCode := 0
-	for _, file := range files {
-		if opts.recursive {
-			if chgrpRecursive(file, gid, opts, stdout, stderr) != 0 {
-				exitCode = 1
-			}
-		} else {
-			if err := chgrpSingle(file, gid, opts, stdout); err != nil {
-				if !opts.silent {
-					printError(stderr, err.Error())
-				}
-				exitCode = 1
-			}
-		}
-	}
-	return exitCode
-}
-
-// chgrpSingle changes the group of a single file with verbose/changes output.
-func chgrpSingle(path string, gid int, opts options, stdout *os.File) error {
-	oldGid, err := getFileGIDForChange(path, opts.noDerefer)
-	if err != nil {
-		return fmt.Errorf("cannot access '%s': %s", path, sysErrorMsg(err))
-	}
-	changed := oldGid != uint32(gid)
-	if err := doChgrp(path, gid, opts.noDerefer); err != nil {
-		return fmt.Errorf("changing group of '%s': %s", path, sysErrorMsg(err))
-	}
-	printDiag(stdout, opts, path, gid, oldGid, changed)
-	return nil
-}
-
-// doChgrp performs the actual group change syscall.
-// R2.2: with noDereference, changes the symlink itself via Lchown;
-// without it, follows symlinks via Chown.
-func doChgrp(path string, gid int, noDerefer bool) error {
-	if noDerefer {
-		return os.Lchown(path, -1, gid)
-	}
-	return os.Chown(path, -1, gid)
-}
-
-// chgrpRecursive walks a directory tree changing group ownership.
-// R2.1: -R recursive traversal.
-// R2.3: -H/-L/-P symlink traversal control.
-func chgrpRecursive(root string, gid int, opts options, stdout, stderr *os.File) int {
-	exitCode := 0
-	// R2.3: -H follows command-line symlinks, -L follows all
-	actualRoot := root
-	if opts.symlink == symH || opts.symlink == symL {
-		if resolved, err := resolveIfSymDir(root); err == nil {
-			actualRoot = resolved
-		}
-	}
-	walkPostOrder(actualRoot, root, gid, opts, stdout, stderr, &exitCode)
-	return exitCode
-}
-
-// walkPostOrder recursively processes a directory in depth-first post-order
-// to match GNU chgrp output ordering.
-func walkPostOrder(
-	realPath, dispPath string, gid int,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	entries, err := os.ReadDir(realPath)
-	if err != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot read directory '%s': %s", dispPath, sysErrorMsg(err)))
-		}
-		*exitCode = 1
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
-	processEntries(entries, realPath, dispPath, gid, opts, stdout, stderr, exitCode)
-	// Post-order: change the directory itself last
-	applyChange(realPath, dispPath, gid, false, opts, stdout, stderr, exitCode)
-}
-
-// processEntries handles each directory entry during recursive walk.
-func processEntries(
-	entries []os.DirEntry, realPath, dispPath string, gid int,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	for _, entry := range entries {
-		childReal := filepath.Join(realPath, entry.Name())
-		childDisp := joinDispPath(dispPath, entry.Name())
-		processOneEntry(childReal, childDisp, entry, gid, opts, stdout, stderr, exitCode)
-	}
-}
-
-// processOneEntry handles a single entry (file, dir, or symlink).
-func processOneEntry(
-	childReal, childDisp string, entry os.DirEntry, gid int,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	if entry.Type()&os.ModeSymlink != 0 {
-		handleSymlink(childReal, childDisp, gid, opts, stdout, stderr, exitCode)
-		return
-	}
-	if entry.IsDir() {
-		walkPostOrder(childReal, childDisp, gid, opts, stdout, stderr, exitCode)
-		return
-	}
-	applyChange(childReal, childDisp, gid, false, opts, stdout, stderr, exitCode)
-}
-
-// handleSymlink processes a symlink during recursive traversal.
-func handleSymlink(
-	realPath, dispPath string, gid int,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	// R2.3 -L: follow all symlinks
-	if opts.symlink == symL {
-		followSymlink(realPath, dispPath, gid, opts, stdout, stderr, exitCode)
-		return
-	}
-	// R2.3 -P (default): change the symlink itself
-	applyChange(realPath, dispPath, gid, true, opts, stdout, stderr, exitCode)
-}
-
-// followSymlink resolves and recurses into a symlinked directory.
-func followSymlink(
-	realPath, dispPath string, gid int,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	target, err := filepath.EvalSymlinks(realPath)
-	if err != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot access '%s': %s", dispPath, sysErrorMsg(err)))
-		}
-		*exitCode = 1
-		return
-	}
-	info, err := os.Stat(target)
-	if err != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot access '%s': %s", dispPath, sysErrorMsg(err)))
-		}
-		*exitCode = 1
-		return
-	}
-	if info.IsDir() {
-		walkPostOrder(target, dispPath, gid, opts, stdout, stderr, exitCode)
-		return
-	}
-	applyChange(target, dispPath, gid, false, opts, stdout, stderr, exitCode)
-}
-
-// applyChange changes group on a single path and prints diagnostics.
-func applyChange(
-	realPath, dispPath string, gid int, useLchown bool,
-	opts options, stdout, stderr *os.File, exitCode *int,
-) {
-	oldGid, err := getFileGIDForChange(realPath, useLchown)
-	if err != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("cannot access '%s': %s", dispPath, sysErrorMsg(err)))
-		}
-		*exitCode = 1
-		return
-	}
-	changed := oldGid != uint32(gid)
-	chownErr := os.Lchown(realPath, -1, gid)
-	if chownErr != nil {
-		if !opts.silent {
-			printError(stderr, fmt.Sprintf("changing group of '%s': %s", dispPath, sysErrorMsg(chownErr)))
-		}
-		*exitCode = 1
-		return
-	}
-	printDiag(stdout, opts, dispPath, gid, oldGid, changed)
-}
-
-// joinDispPath joins a display path with a child name, preserving "./" prefix.
-func joinDispPath(parent, child string) string {
-	if parent == "." {
-		return "./" + child
-	}
-	return parent + "/" + child
-}
-
-// resolveIfSymDir resolves path if it's a symlink to a directory.
-func resolveIfSymDir(path string) (string, error) {
-	target, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Stat(target)
-	if err != nil || !info.IsDir() {
-		return "", fmt.Errorf("not a symlink to directory")
-	}
-	return target, nil
-}
-
-// getFileGIDForChange returns the GID of a file, using Lstat or Stat.
-func getFileGIDForChange(path string, lstat bool) (uint32, error) {
-	var fi *sys.FileInfo
-	var err error
-	if lstat {
-		fi, err = sys.Lstat(path)
-	} else {
-		fi, err = sys.Stat(path)
-	}
-	if err != nil {
-		return 0, err
-	}
-	return fi.Gid, nil
-}
-
-// printDiag prints verbose or changes diagnostic output.
-// R3.1: -v prints every file, -c prints only changed files.
-func printDiag(stdout *os.File, opts options, path string, newGid int, oldGid uint32, changed bool) {
-	if opts.verbose {
-		printGroupMsg(stdout, path, newGid, oldGid, changed)
-	} else if opts.changes && changed {
-		printGroupMsg(stdout, path, newGid, oldGid, changed)
-	}
-}
-
-// printGroupMsg prints the group change diagnostic message.
-func printGroupMsg(stdout *os.File, path string, newGid int, oldGid uint32, changed bool) {
-	oldName := groupName(oldGid)
-	newName := groupName(uint32(newGid))
-	if changed {
-		fmt.Fprintf(stdout, "changed group of '%s' from %s to %s\n", path, oldName, newName) //nolint:errcheck
-	} else {
-		fmt.Fprintf(stdout, "group of '%s' retained as %s\n", path, newName) //nolint:errcheck
-	}
-}
-
-// groupName returns the group name for a GID, or the GID as a string.
-func groupName(gid uint32) string {
-	grp, err := user.LookupGroupId(strconv.Itoa(int(gid)))
-	if err != nil {
-		return strconv.Itoa(int(gid))
-	}
-	return grp.Name
-}
-
-// resolveGroup resolves a group name or numeric GID string to a numeric GID.
-func resolveGroup(group string) (int, error) {
-	if gid, err := strconv.Atoi(group); err == nil {
-		return gid, nil
-	}
-	grp, err := user.LookupGroup(group)
-	if err != nil {
-		return 0, fmt.Errorf("invalid group: '%s'", group)
-	}
-	return strconv.Atoi(grp.Gid)
-}
-
-// getFileGID returns the group ID of the given file, following symlinks.
-// R1.2: --reference uses the dereferenced file's group.
-func getFileGID(path string) (int, error) {
-	fi, err := sys.Stat(path)
-	if err != nil {
-		return 0, err
-	}
-	return int(fi.Gid), nil
-}
-
-// parseArgs separates flags from operands.
-func parseArgs(args []string) (options, []string, error) {
+// parseArgs separates flags, group argument, and file operands.
+// Supports short flags (-R, -v, -c, -f, -h, -H, -L, -P), combined short flags,
+// and long forms (--recursive, --verbose, --changes, --silent,
+// --quiet, --no-dereference, --dereference, --reference=RFILE).
+func parseArgs(rawArgs []string) (options, string, []string) {
 	var opts options
-	var operands []string
+	var positional []string
 	endOfFlags := false
-	for _, arg := range args {
-		if endOfFlags || !isFlag(arg) {
-			operands = append(operands, arg)
+
+	for i := 0; i < len(rawArgs); i++ {
+		arg := rawArgs[i]
+		if endOfFlags {
+			positional = append(positional, arg)
 			continue
 		}
 		if arg == "--" {
 			endOfFlags = true
 			continue
 		}
-		var err error
-		opts, err = handleFlag(arg, opts)
-		if err != nil {
-			return opts, nil, err
+		if strings.HasPrefix(arg, "--") {
+			i = parseLongFlag(&opts, rawArgs, i)
+			continue
+		}
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			if isShortFlags(arg) {
+				parseShortFlags(&opts, arg[1:])
+				continue
+			}
+		}
+		positional = append(positional, arg)
+	}
+
+	// R1.2: when --reference is used, all positional args are files.
+	// R1.1: otherwise, first positional is GROUP, rest are files.
+	if opts.reference != "" {
+		return opts, "", positional
+	}
+	if len(positional) == 0 {
+		return opts, "", nil
+	}
+	return opts, positional[0], positional[1:]
+}
+
+// isShortFlags checks if arg (without leading -) contains only
+// valid short flag characters for chgrp.
+func isShortFlags(arg string) bool {
+	for _, c := range arg[1:] {
+		switch c {
+		case 'R', 'v', 'c', 'f', 'h', 'H', 'L', 'P':
+			// valid short flag
+		default:
+			return false
 		}
 	}
-	return opts, operands, nil
+	return true
 }
 
-// handleFlag processes a single flag argument.
-func handleFlag(arg string, opts options) (options, error) {
-	if strings.HasPrefix(arg, "--reference=") {
-		opts.reference = arg[len("--reference="):]
-		return opts, nil
-	}
-	switch arg {
-	case "--help":
-		fmt.Fprint(os.Stdout, helpText) //nolint:errcheck
-		os.Exit(0)
-	case "--version":
-		fmt.Fprint(os.Stdout, versionText) //nolint:errcheck
-		os.Exit(0)
-	case "-R", "--recursive":
+// parseLongFlag handles long-form flags for chgrp.
+func parseLongFlag(opts *options, rawArgs []string, idx int) int {
+	flag := rawArgs[idx]
+	switch {
+	case flag == "--recursive":
 		opts.recursive = true
-	case "-h", "--no-dereference":
-		opts.noDerefer = true
-	case "-H":
-		opts.symlink = symH
-	case "-L":
-		opts.symlink = symL
-	case "-P":
-		opts.symlink = symP
-	case "-v", "--verbose":
+	case flag == "--verbose":
 		opts.verbose = true
-	case "-c", "--changes":
+	case flag == "--changes":
 		opts.changes = true
-	case "-f", "--silent", "--quiet":
+	case flag == "--silent", flag == "--quiet":
 		opts.silent = true
-	default:
-		return handleShortFlags(arg, opts)
+	case flag == "--no-dereference":
+		opts.noDerefer = true
+	case flag == "--dereference":
+		opts.dereference = true
+	case strings.HasPrefix(flag, "--reference="):
+		// R1.2: --reference=RFILE
+		opts.reference = strings.TrimPrefix(flag, "--reference=")
 	}
-	return opts, nil
+	return idx
 }
 
-// handleShortFlags processes combined short flags like -Rv, -hc.
-func handleShortFlags(arg string, opts options) (options, error) {
-	if !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") {
-		return opts, fmt.Errorf("unrecognized option '%s'", arg)
-	}
-	for _, ch := range arg[1:] {
-		var err error
-		opts, err = applySingleFlag(ch, opts)
-		if err != nil {
-			return opts, err
+// parseShortFlags handles combined short flags like -Rvc.
+func parseShortFlags(opts *options, chars string) {
+	for _, c := range chars {
+		switch c {
+		case 'R':
+			opts.recursive = true
+		case 'v':
+			opts.verbose = true
+		case 'c':
+			opts.changes = true
+		case 'f':
+			opts.silent = true
+		case 'h':
+			opts.noDerefer = true
+		case 'H':
+			opts.symlinks = symlinkCmdLine
+		case 'L':
+			opts.symlinks = symlinkAll
+		case 'P':
+			opts.symlinks = symlinkNone
 		}
 	}
-	return opts, nil
 }
 
-// applySingleFlag applies a single short flag character.
-func applySingleFlag(ch rune, opts options) (options, error) {
-	switch ch {
-	case 'R':
-		opts.recursive = true
-	case 'h':
-		opts.noDerefer = true
-	case 'H':
-		opts.symlink = symH
-	case 'L':
-		opts.symlink = symL
-	case 'P':
-		opts.symlink = symP
-	case 'v':
-		opts.verbose = true
-	case 'c':
-		opts.changes = true
-	case 'f':
-		opts.silent = true
-	default:
-		return opts, fmt.Errorf("invalid option -- '%c'", ch)
+// run applies the group change to all files and returns the exit code.
+// R1.3: processes multiple FILE arguments.
+// R1.4: continues processing remaining files on error, exits 1.
+// R3.2: exits 0 when all files processed successfully, 1 on any error.
+func run(opts options, group string, files []string) int {
+	targetGID, err := resolveGroup(opts, group)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		return 1
 	}
-	return opts, nil
+
+	exitCode := 0
+	for _, file := range files {
+		if err := applyGroup(opts, targetGID, file); err != nil {
+			if !opts.silent && err != errAlreadyReported {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+			}
+			exitCode = 1
+		}
+	}
+	return exitCode
 }
 
-// isFlag returns true if arg starts with '-' and has content after it.
-func isFlag(arg string) bool {
-	return len(arg) > 1 && arg[0] == '-'
+// resolveGroup determines the target GID from --reference or group argument.
+// R1.1: accepts GROUP as name or numeric GID.
+// R1.2: --reference=RFILE sets each FILE's group to match RFILE's group.
+func resolveGroup(opts options, group string) (int, error) {
+	if opts.reference != "" {
+		return groupFromReference(opts.reference)
+	}
+	return parseGroup(group)
 }
 
-// sysErrorMsg extracts the underlying system error message from a Go error.
-func sysErrorMsg(err error) string {
-	var pathErr *os.PathError
-	if errors.As(err, &pathErr) {
-		return capitalizeFirst(pathErr.Err.Error())
+// groupFromReference reads the group from a reference file.
+// R1.2: --reference=RFILE sets each FILE's group to match RFILE's group.
+// D3: uses pkg/sys.Stat to read the GID from the reference file.
+func groupFromReference(rfile string) (int, error) {
+	fi, err := sys.Stat(rfile)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get attributes of %q: %s",
+			rfile, unwrapPathError(err))
+	}
+	return int(fi.Gid), nil
+}
+
+// parseGroup parses a group name or numeric GID string.
+// R1.1: accepts GROUP as name (via os/user.LookupGroup) or numeric GID
+// (via strconv.Atoi). Returns an error for unknown groups.
+func parseGroup(group string) (int, error) {
+	// D1: try numeric GID first
+	if gid, err := strconv.Atoi(group); err == nil {
+		return gid, nil
+	}
+	// D1: fall back to name lookup
+	g, err := user.LookupGroup(group)
+	if err != nil {
+		return 0, fmt.Errorf("invalid group: '%s'", group)
+	}
+	gid, err := strconv.Atoi(g.Gid)
+	if err != nil {
+		return 0, fmt.Errorf("invalid group ID %q for group %q", g.Gid, group)
+	}
+	return gid, nil
+}
+
+// applyGroup applies the group change to a single file or recursively.
+// R2.1: when recursive, traverses directories.
+func applyGroup(opts options, gid int, path string) error {
+	if opts.recursive {
+		return applyGroupRecursive(opts, gid, path)
+	}
+	return changeGroup(opts, gid, path)
+}
+
+// applyGroupRecursive recursively applies group changes to a directory tree.
+// R2.1: -R/--recursive changes group for directories and their contents.
+// R2.3: respects -H/-L/-P symlink traversal policy.
+func applyGroupRecursive(opts options, gid int, root string) error {
+	hadError := false
+	walkChgrp(opts, gid, root, true, &hadError)
+	if hadError {
+		return errAlreadyReported
+	}
+	return nil
+}
+
+// walkChgrp recursively applies group changes, respecting symlink policy.
+// R2.3: -P (default) skips symlinks for traversal.
+// R2.3: -H follows command-line symlinks, -L follows all symlinks.
+// R2.2: --no-dereference changes symlink itself via lchown.
+func walkChgrp(opts options, gid int, path string, isRoot bool, hadErr *bool) {
+	fi, isSymlink := resolveEntry(opts, path, isRoot, hadErr)
+	if fi == nil {
+		return
+	}
+	// R2.2: for unfollowed symlinks, change symlink itself if --no-dereference
+	if isSymlink && !shouldFollowSymlink(opts.symlinks, isRoot) {
+		changeSymlinkGroup(opts, gid, path, hadErr)
+		return
+	}
+	if err := changeGroup(opts, gid, path); err != nil {
+		reportFileError(opts, err, hadErr)
+	}
+	if fi.IsDir() {
+		walkChildren(opts, gid, path, hadErr)
+	}
+}
+
+// resolveEntry checks the path and decides how to process it.
+// Returns the file info and whether the entry is a symlink.
+// A nil fi means an error occurred (already reported) or the entry
+// is a non-followed symlink without --no-dereference.
+func resolveEntry(opts options, path string, isRoot bool, hadErr *bool) (os.FileInfo, bool) {
+	lfi, err := os.Lstat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	if lfi.Mode()&os.ModeSymlink == 0 {
+		return lfi, false
+	}
+	// Entry is a symlink
+	if !shouldFollowSymlink(opts.symlinks, isRoot) {
+		return lfi, true
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return nil, false
+	}
+	return fi, true
+}
+
+// shouldFollowSymlink returns true if the symlink should be followed
+// based on the policy and whether the path is a command-line argument.
+// R2.3: -H follows command-line only, -L follows all, -P follows none.
+func shouldFollowSymlink(policy symlinkPolicy, isRoot bool) bool {
+	return policy == symlinkAll || (policy == symlinkCmdLine && isRoot)
+}
+
+// changeSymlinkGroup changes the group of a symlink itself via lchown.
+// R2.2: --no-dereference changes the symlink, not its target.
+func changeSymlinkGroup(opts options, gid int, path string, hadErr *bool) {
+	fi, err := sys.Lstat(path)
+	if err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return
+	}
+	oldGID := int(fi.Gid)
+	uid := int(fi.Uid)
+	if err := os.Lchown(path, uid, gid); err != nil {
+		reportWalkError(opts, path, err, hadErr)
+		return
+	}
+	printDiagnostic(opts, path, oldGID, gid)
+}
+
+// walkChildren reads directory entries and recurses into each child.
+func walkChildren(opts options, gid int, dir string, hadErr *bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		reportWalkError(opts, dir, err, hadErr)
+		return
+	}
+	for _, e := range entries {
+		walkChgrp(opts, gid, filepath.Join(dir, e.Name()), false, hadErr)
+	}
+}
+
+// reportWalkError prints a directory traversal error to stderr.
+func reportWalkError(opts options, path string, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %s\n",
+			programName, path, unwrapPathError(err))
+	}
+	*hadErr = true
+}
+
+// reportFileError prints a file group change error to stderr.
+func reportFileError(opts options, err error, hadErr *bool) {
+	if !opts.silent {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+	}
+	*hadErr = true
+}
+
+// changeGroup changes the group ownership of a single file.
+// R1.1: changes file's group to GID, preserving existing UID.
+// R1.4: --dereference (default) follows symlinks via os.Chown.
+// R1.4/R2.2: --no-dereference (-h) changes symlink itself via os.Lchown.
+// D2: uses os.Chown for regular mode, os.Lchown for --no-dereference.
+// D3: uses pkg/sys.Stat or pkg/sys.Lstat to read current UID.
+func changeGroup(opts options, gid int, path string) error {
+	fi, err := statForOpts(opts, path)
+	if err != nil {
+		return fmt.Errorf("cannot access '%s': %s",
+			path, unwrapPathError(err))
+	}
+
+	oldGID := int(fi.Gid)
+	uid := int(fi.Uid)
+
+	if err := chownForOpts(opts, path, uid, gid); err != nil {
+		return fmt.Errorf("changing group of '%s': %s",
+			path, unwrapPathError(err))
+	}
+
+	printDiagnostic(opts, path, oldGID, gid)
+	return nil
+}
+
+// statForOpts calls sys.Lstat or sys.Stat depending on dereference mode.
+// R2.2: --no-dereference uses Lstat; default (dereference) uses Stat.
+func statForOpts(opts options, path string) (*sys.FileInfo, error) {
+	if opts.noDerefer {
+		return sys.Lstat(path)
+	}
+	return sys.Stat(path)
+}
+
+// chownForOpts calls os.Lchown or os.Chown depending on dereference mode.
+// D2: --no-dereference uses os.Lchown; default uses os.Chown.
+func chownForOpts(opts options, path string, uid, gid int) error {
+	if opts.noDerefer {
+		return os.Lchown(path, uid, gid)
+	}
+	return os.Chown(path, uid, gid)
+}
+
+// printDiagnostic prints a verbose or changes-only diagnostic message.
+// R3.1: -v prints a diagnostic for every file processed.
+// R3.1: -c prints a diagnostic only when changes are made.
+func printDiagnostic(opts options, path string, oldGID, newGID int) {
+	if !opts.verbose && !opts.changes {
+		return
+	}
+	changed := oldGID != newGID
+	if opts.changes && !changed {
+		return
+	}
+	oldName := groupName(oldGID)
+	newName := groupName(newGID)
+	if changed {
+		fmt.Fprintf(os.Stdout,
+			"changed group of '%s' from %s to %s\n",
+			path, oldName, newName)
+	} else {
+		fmt.Fprintf(os.Stdout,
+			"group of '%s' retained as %s\n",
+			path, newName)
+	}
+}
+
+// groupName returns the group name for a GID, or the numeric string if
+// the name cannot be looked up.
+func groupName(gid int) string {
+	g, err := user.LookupGroupId(strconv.Itoa(gid))
+	if err != nil {
+		return strconv.Itoa(gid)
+	}
+	return g.Name
+}
+
+// unwrapPathError extracts the underlying error message from *os.PathError.
+func unwrapPathError(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
 	}
 	return err.Error()
-}
-
-// capitalizeFirst capitalizes the first letter of a string.
-func capitalizeFirst(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
-}
-
-// printError prints a formatted error to stderr.
-func printError(stderr *os.File, msg string) {
-	fmt.Fprintf(stderr, "%s: %s\n", progName, msg) //nolint:errcheck
-}
-
-// printTryHelp prints the "Try ... --help" hint to stderr.
-func printTryHelp(stderr *os.File) {
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
 }

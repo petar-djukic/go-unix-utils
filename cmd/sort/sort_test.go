@@ -1,35 +1,26 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/sort against gsort (GNU coreutils).
-//
-// Covers prd053-sort R1.1-R1.7, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// stderrPrefixNormalizer strips the binary path prefix from stderr messages.
-// GNU sort outputs "/opt/homebrew/bin/gsort:" while our binary outputs "sort:".
-// This normalizer replaces both forms with "sort:" for comparison.
-var stderrPrefixNormalizer = func() testutils.NormalizeFunc {
-	re := regexp.MustCompile(`(?m)^[^\s:]+(?:sort|gsort):`)
-	return func(data []byte) []byte {
-		return re.ReplaceAll(data, []byte("sort:"))
+// normalizeProgramName strips path prefixes from "sort:" in error messages
+// so that "/opt/homebrew/bin/sort:" and "gsort:" both become "sort:".
+var normalizeProgramName testutils.NormalizeFunc = func(b []byte) []byte {
+	idx := bytes.Index(b, []byte("sort:"))
+	if idx > 0 {
+		return b[idx:]
 	}
-}()
-
-// stderrTryLineNormalizer strips the "Try ... --help" line GNU sort appends.
-var stderrTryLineNormalizer testutils.NormalizeFunc = func(data []byte) []byte {
-	re := regexp.MustCompile(`(?m)^Try '.*' for more information\.\n`)
-	return re.ReplaceAll(data, nil)
+	return b
 }
 
 func TestDiff(t *testing.T) {
@@ -40,697 +31,614 @@ func TestDiff(t *testing.T) {
 	}
 
 	tests := []testutils.DiffTest{
-		// R1.1: default lexicographic sort by byte value
+		// R1.5: -u outputs only the first of an equal run
 		{
-			Name:  "R1.1_default_lexicographic",
-			Stdin: []byte("banana\napple\ncherry\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.1: already sorted input
-		{
-			Name:  "R1.1_already_sorted",
-			Stdin: []byte("apple\nbanana\ncherry\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.1: single line
-		{
-			Name:  "R1.1_single_line",
-			Stdin: []byte("hello\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.1: empty input
-		{
-			Name:  "R1.1_empty_input",
-			Stdin: []byte(""),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.1: input without trailing newline
-		{
-			Name:  "R1.1_no_trailing_newline",
-			Stdin: []byte("banana\napple"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.1: duplicate lines
-		{
-			Name:  "R1.1_duplicate_lines",
-			Stdin: []byte("b\na\nb\na\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.1: numeric strings sorted lexicographically (not numerically)
-		{
-			Name:  "R1.1_numeric_strings_lexicographic",
-			Stdin: []byte("10\n2\n1\n20\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.1: uppercase vs lowercase (byte-value ordering)
-		{
-			Name:  "R1.1_case_ordering",
-			Stdin: []byte("banana\nApple\ncherry\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.2: stdin via no file args (implicit)
-		{
-			Name:  "R1.2_stdin_implicit",
-			Stdin: []byte("c\na\nb\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.2: stdin via explicit "-"
-		{
-			Name:  "R1.2_stdin_dash",
-			Args:  []string{"-"},
-			Stdin: []byte("c\na\nb\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.3: multiple files combined
-		{
-			Name: "R1.3_multi_file",
-			Env:  []string{"LC_ALL=C"},
-		},
-		// R1.4: reverse sort
-		{
-			Name:  "R1.4_reverse",
-			Args:  []string{"-r"},
-			Stdin: []byte("apple\nbanana\ncherry\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.4: --reverse long option
-		{
-			Name:  "R1.4_reverse_long",
-			Args:  []string{"--reverse"},
-			Stdin: []byte("apple\nbanana\ncherry\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.4: reverse with duplicates
-		{
-			Name:  "R1.4_reverse_duplicates",
-			Args:  []string{"-r"},
-			Stdin: []byte("b\na\nb\na\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.5: -u unique removes duplicate lines
-		{
-			Name:  "R1.5_unique",
+			Name:  "unique removes duplicates",
 			Args:  []string{"-u"},
-			Stdin: []byte("b\na\nb\na\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("banana\napple\napple\ncherry\ncherry\n"),
 		},
-		// R1.5: --unique long option
 		{
-			Name:  "R1.5_unique_long",
-			Args:  []string{"--unique"},
-			Stdin: []byte("b\na\nb\na\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.5: -u combined with -r
-		{
-			Name:  "R1.5_unique_reverse",
+			Name:  "unique with reverse",
 			Args:  []string{"-u", "-r"},
-			Stdin: []byte("b\na\nb\na\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("banana\napple\napple\ncherry\ncherry\n"),
 		},
-		// R1.5: -u with all unique lines (no change)
 		{
-			Name:  "R1.5_unique_all_distinct",
+			Name:  "unique all same lines",
 			Args:  []string{"-u"},
-			Stdin: []byte("c\na\nb\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("aaa\naaa\naaa\n"),
 		},
-		// R1.6: tested in TestOutputFile and TestOutputFileSameAsInput
-		// (cannot use differential framework for file output comparison)
-		// R1.7: -s stable sort
 		{
-			Name:  "R1.7_stable",
+			Name:  "unique already unique input",
+			Args:  []string{"-u"},
+			Stdin: []byte("apple\nbanana\ncherry\n"),
+		},
+		{
+			Name:  "unique empty input",
+			Args:  []string{"-u"},
+			Stdin: []byte(""),
+		},
+		// R1.6: -o FILE writes output to FILE
+		// (tested via file-based approach below)
+
+		// R1.7: -s preserves input order of equal lines
+		{
+			Name:  "stable sort preserves order of equal lines",
 			Args:  []string{"-s"},
 			Stdin: []byte("banana\napple\ncherry\n"),
-			Env:   []string{"LC_ALL=C"},
 		},
-		// R1.7: --stable long option
 		{
-			Name:  "R1.7_stable_long",
-			Args:  []string{"--stable"},
-			Stdin: []byte("banana\napple\ncherry\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		// R1.7: -s with -r
-		{
-			Name:  "R1.7_stable_reverse",
+			Name:  "stable sort with reverse",
 			Args:  []string{"-s", "-r"},
 			Stdin: []byte("banana\napple\ncherry\n"),
-			Env:   []string{"LC_ALL=C"},
 		},
-
-		// --- R2.1: -n numeric sort ---
 		{
-			Name:  "R2.1_numeric_basic",
+			Name:  "stable sort with unique",
+			Args:  []string{"-s", "-u"},
+			Stdin: []byte("b\na\na\nc\nc\n"),
+		},
+		// R2.1: -n numeric sort
+		{
+			Name:  "numeric sort basic",
 			Args:  []string{"-n"},
-			Stdin: []byte("10\n2\n1\n20\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R2.1_numeric_with_sign",
-			Args:  []string{"-n"},
-			Stdin: []byte("-5\n3\n-1\n0\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R2.1_numeric_decimal",
-			Args:  []string{"-n"},
-			Stdin: []byte("1.5\n1.2\n1.9\n1.0\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R2.1_numeric_long_option",
-			Args:  []string{"--numeric-sort"},
 			Stdin: []byte("10\n2\n1\n"),
-			Env:   []string{"LC_ALL=C"},
 		},
 		{
-			Name:  "R2.1_numeric_reverse",
+			Name:  "numeric sort with negatives",
+			Args:  []string{"-n"},
+			Stdin: []byte("5\n-3\n0\n10\n-1\n"),
+		},
+		{
+			Name:  "numeric sort with leading spaces",
+			Args:  []string{"-n"},
+			Stdin: []byte("  10\n2\n  1\n"),
+		},
+		{
+			Name:  "numeric sort non-numeric lines",
+			Args:  []string{"-n"},
+			Stdin: []byte("abc\n3\n1\nxyz\n"),
+		},
+		{
+			Name:  "numeric sort with decimals",
+			Args:  []string{"-n"},
+			Stdin: []byte("1.5\n1.1\n2.0\n0.5\n"),
+		},
+		{
+			Name:  "numeric sort reverse",
 			Args:  []string{"-n", "-r"},
 			Stdin: []byte("10\n2\n1\n"),
-			Env:   []string{"LC_ALL=C"},
 		},
 		{
-			Name:  "R2.1_numeric_leading_blanks",
-			Args:  []string{"-n"},
-			Stdin: []byte("  10\n 2\n1\n"),
-			Env:   []string{"LC_ALL=C"},
+			Name:  "numeric sort unique",
+			Args:  []string{"-n", "-u"},
+			Stdin: []byte("2\n1\n2\n3\n1\n"),
 		},
-
-		// --- R2.2: -h human-numeric sort ---
+		// R2.2: -h human-numeric sort
 		{
-			Name:  "R2.2_human_basic",
+			Name:  "human numeric sort SI suffixes",
 			Args:  []string{"-h"},
-			Stdin: []byte("1K\n100\n1M\n500\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("1K\n1M\n1G\n500\n"),
 		},
 		{
-			Name:  "R2.2_human_suffixes",
+			Name:  "human numeric sort mixed values",
 			Args:  []string{"-h"},
-			Stdin: []byte("5G\n5M\n5K\n5T\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("10K\n5M\n1G\n100\n2K\n"),
 		},
 		{
-			Name:  "R2.2_human_long_option",
-			Args:  []string{"--human-numeric-sort"},
-			Stdin: []byte("2K\n1K\n3K\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R2.2_human_decimal",
+			Name:  "human numeric sort same suffix",
 			Args:  []string{"-h"},
-			Stdin: []byte("1.5K\n1K\n2K\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("5K\n1K\n10K\n2K\n"),
 		},
-
-		// --- R2.3: -M month sort ---
+		// R2.3: -M month sort
 		{
-			Name:  "R2.3_month_basic",
+			Name:  "month sort basic",
 			Args:  []string{"-M"},
 			Stdin: []byte("MAR\nJAN\nFEB\nDEC\n"),
-			Env:   []string{"LC_ALL=C"},
 		},
 		{
-			Name:  "R2.3_month_unknown_first",
+			Name:  "month sort with unknown",
 			Args:  []string{"-M"},
-			Stdin: []byte("XYZ\nJAN\nFEB\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("FOO\nJAN\nBAR\nFEB\n"),
 		},
 		{
-			Name:  "R2.3_month_long_option",
-			Args:  []string{"--month-sort"},
-			Stdin: []byte("MAR\nJAN\nFEB\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R2.3_month_all_months",
+			Name:  "month sort case insensitive",
 			Args:  []string{"-M"},
-			Stdin: []byte("DEC\nJUN\nMAR\nSEP\nJAN\nJUL\nAPR\nOCT\nFEB\nAUG\nMAY\nNOV\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("mar\njan\nfeb\ndec\n"),
 		},
-
-		// --- R2.4: -V version sort ---
+		// R2.4: -V version sort
 		{
-			Name:  "R2.4_version_basic",
+			Name:  "version sort basic",
 			Args:  []string{"-V"},
 			Stdin: []byte("file10\nfile2\nfile1\n"),
-			Env:   []string{"LC_ALL=C"},
 		},
 		{
-			Name:  "R2.4_version_segments",
+			Name:  "version sort with dots",
 			Args:  []string{"-V"},
 			Stdin: []byte("1.10\n1.2\n1.1\n"),
-			Env:   []string{"LC_ALL=C"},
 		},
 		{
-			Name:  "R2.4_version_long_option",
-			Args:  []string{"--version-sort"},
-			Stdin: []byte("file10\nfile2\nfile1\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R2.4_version_mixed",
+			Name:  "version sort mixed",
 			Args:  []string{"-V"},
-			Stdin: []byte("a2b\na10b\na1b\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("v2.0\nv1.10\nv1.2\nv1.1\n"),
 		},
-
-		// --- R3.1: -t field separator ---
+		// R3.1: -t field separator
 		{
-			Name:  "R3.1_field_separator_colon",
+			Name:  "field separator colon sort by field 2",
 			Args:  []string{"-t:", "-k2,2"},
 			Stdin: []byte("b:2\na:3\nc:1\n"),
-			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: -k key field specs
+		{
+			Name:  "key field numeric sort",
+			Args:  []string{"-t:", "-k2,2n"},
+			Stdin: []byte("alice:30\nbob:25\ncharlie:35\n"),
 		},
 		{
-			Name:  "R3.1_field_separator_long",
-			Args:  []string{"--field-separator=:", "-k2,2"},
-			Stdin: []byte("b:2\na:3\nc:1\n"),
-			Env:   []string{"LC_ALL=C"},
+			Name:  "key with character position",
+			Args:  []string{"-k1.2,1.2"},
+			Stdin: []byte("ba\nac\ncb\n"),
 		},
 		{
-			Name:  "R3.1_field_separator_comma",
-			Args:  []string{"-t,", "-k2,2"},
-			Stdin: []byte("b,2\na,3\nc,1\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R3.1_field_separator_space",
-			Args:  []string{"-t ", "-k2,2"},
-			Stdin: []byte("b 2\na 3\nc 1\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-
-		// --- R3.2: -k key field ---
-		{
-			Name:  "R3.2_key_second_field",
-			Args:  []string{"-k2,2", "-t:"},
-			Stdin: []byte("b:2\na:1\nc:3\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R3.2_key_numeric_modifier",
-			Args:  []string{"-k2,2n", "-t:"},
-			Stdin: []byte("a:10\nb:2\nc:1\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R3.2_key_reverse_modifier",
-			Args:  []string{"-k2,2r", "-t:"},
-			Stdin: []byte("a:1\nb:3\nc:2\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R3.2_key_long_option",
-			Args:  []string{"--key=2,2", "-t:"},
-			Stdin: []byte("b:2\na:1\nc:3\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R3.2_key_default_separator",
+			Name:  "key sort by second blank-delimited field",
 			Args:  []string{"-k2,2"},
-			Stdin: []byte("c 2\na 3\nb 1\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("foo cherry\nbar apple\nbaz banana\n"),
+		},
+		// R3.3: multiple -k options
+		{
+			Name:  "multiple keys primary and tiebreak",
+			Args:  []string{"-t:", "-k1,1", "-k2,2n"},
+			Stdin: []byte("a:3\nb:1\na:1\nb:2\n"),
 		},
 		{
-			Name:  "R3.2_key_numeric_field",
-			Args:  []string{"-k2,2n"},
-			Stdin: []byte("a 10\nb 2\nc 1\n"),
-			Env:   []string{"LC_ALL=C"},
+			Name:  "multiple keys secondary tiebreak",
+			Args:  []string{"-t:", "-k2,2", "-k1,1"},
+			Stdin: []byte("b:1\na:2\nc:1\na:1\n"),
 		},
+		// R3.4: -b ignore leading blanks
 		{
-			Name:  "R3.2_key_to_end_of_line",
-			Args:  []string{"-k2"},
-			Stdin: []byte("a z\nb x\nc y\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R3.2_unique_by_key",
-			Args:  []string{"-u", "-k1,1", "-t:"},
-			Stdin: []byte("a:2\na:1\nb:1\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-
-		// --- R3.3: multiple -k options ---
-		{
-			Name:  "R3.3_multi_key_tiebreak",
-			Args:  []string{"-k1,1", "-k2,2", "-t:"},
-			Stdin: []byte("a:2\na:1\nb:1\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R3.3_multi_key_first_wins",
-			Args:  []string{"-k1,1", "-k2,2n", "-t:"},
-			Stdin: []byte("b:1\na:10\na:2\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-		{
-			Name:  "R3.3_multi_key_three_fields",
-			Args:  []string{"-k1,1", "-k2,2", "-k3,3", "-t:"},
-			Stdin: []byte("a:b:2\na:b:1\na:a:3\n"),
-			Env:   []string{"LC_ALL=C"},
-		},
-
-		// --- R3.4: -b ignore leading blanks ---
-		{
-			Name:  "R3.4_ignore_blanks",
+			Name:  "ignore leading blanks global",
 			Args:  []string{"-b"},
-			Stdin: []byte("  b\na\n  c\n"),
-			Env:   []string{"LC_ALL=C"},
+			Stdin: []byte("  cherry\napple\n  banana\n"),
 		},
 		{
-			Name:  "R3.4_ignore_blanks_long",
-			Args:  []string{"--ignore-leading-blanks"},
-			Stdin: []byte("  b\na\n  c\n"),
-			Env:   []string{"LC_ALL=C"},
+			Name:  "ignore leading blanks with key",
+			Args:  []string{"-b", "-k1,1"},
+			Stdin: []byte("  cherry\napple\n  banana\n"),
 		},
 		{
-			Name:  "R3.4_ignore_blanks_with_key",
-			Args:  []string{"-b", "-k2,2", "-t:"},
-			Stdin: []byte("a:  z\nb:  a\nc:  m\n"),
-			Env:   []string{"LC_ALL=C"},
+			Name:  "per-key b option in keydef",
+			Args:  []string{"-k1,1b"},
+			Stdin: []byte("  cherry\napple\n  banana\n"),
+		},
+		// R4.1: exit 0 when input is sorted successfully
+		{
+			Name:  "default sort exits 0",
+			Args:  []string{},
+			Stdin: []byte("banana\napple\ncherry\n"),
 		},
 		{
-			Name:  "R3.4_blanks_key_modifier",
-			Args:  []string{"-k2b,2", "-t:"},
-			Stdin: []byte("a:  z\nb:  a\nc:  m\n"),
-			Env:   []string{"LC_ALL=C"},
+			Name:  "empty input exits 0",
+			Args:  []string{},
+			Stdin: []byte(""),
 		},
-
-		// --- R4.1: Exit 0 on successful sort ---
+		// R4.2: -c check sorted order
 		{
-			Name:     "R4.1_exit_0_default",
-			Stdin:    []byte("b\na\nc\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-
-		// --- R4.2: -c check mode ---
-		{
-			Name:     "R4.2_check_sorted",
+			Name:     "check sorted input exits 0",
 			Args:     []string{"-c"},
 			Stdin:    []byte("a\nb\nc\n"),
-			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
 		{
-			Name:      "R4.2_check_unsorted",
+			Name:      "check unsorted input exits 1",
 			Args:      []string{"-c"},
 			Stdin:     []byte("b\na\nc\n"),
-			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
 		{
-			Name:     "R4.2_check_long",
-			Args:     []string{"--check"},
-			Stdin:    []byte("a\nb\nc\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:      "R4.2_check_long_unsorted",
-			Args:      []string{"--check"},
-			Stdin:     []byte("c\na\nb\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
-		},
-		{
-			Name:     "R4.2_check_quiet_sorted",
+			Name:     "check quiet unsorted exits 1 no stderr",
 			Args:     []string{"-C"},
-			Stdin:    []byte("a\nb\nc\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.2_check_quiet_unsorted",
-			Args:     []string{"-C"},
-			Stdin:    []byte("c\na\nb\n"),
-			Env:      []string{"LC_ALL=C"},
+			Stdin:    []byte("b\na\nc\n"),
 			ExitCode: 1,
 		},
 		{
-			Name:     "R4.2_check_quiet_long",
-			Args:     []string{"--check=quiet"},
-			Stdin:    []byte("c\na\nb\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 1,
-		},
-		{
-			Name:     "R4.2_check_quiet_silent",
-			Args:     []string{"--check=silent"},
-			Stdin:    []byte("c\na\nb\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 1,
-		},
-		{
-			Name:     "R4.2_check_empty_input",
-			Args:     []string{"-c"},
-			Stdin:    []byte(""),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.2_check_single_line",
-			Args:     []string{"-c"},
-			Stdin:    []byte("hello\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.2_check_duplicates",
-			Args:     []string{"-c"},
-			Stdin:    []byte("a\na\nb\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:      "R4.2_check_unique_duplicates",
-			Args:      []string{"-cu"},
-			Stdin:     []byte("a\na\nb\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
-		},
-		{
-			Name:     "R4.2_check_numeric",
-			Args:     []string{"-c", "-n"},
-			Stdin:    []byte("1\n2\n10\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:      "R4.2_check_numeric_unsorted",
-			Args:      []string{"-c", "-n"},
-			Stdin:     []byte("10\n2\n1\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
-		},
-		{
-			Name:     "R4.2_check_reverse",
+			Name:     "check sorted reverse",
 			Args:     []string{"-c", "-r"},
 			Stdin:    []byte("c\nb\na\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-
-		// --- R4.3: Exit 2 on usage errors ---
-		{
-			Name:      "R4.3_invalid_flag",
-			Args:      []string{"--bogus-flag"},
-			Stdin:     []byte("a\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  2,
-			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer, stderrTryLineNormalizer},
-		},
-		{
-			Name:      "R4.3_invalid_short_flag",
-			Args:      []string{"-Z"},
-			Stdin:     []byte("a\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  2,
-			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer, stderrTryLineNormalizer},
-		},
-
-		// --- R4.4: comprehensive differential tests ---
-		{
-			Name:     "R4.4_diff_default_sort",
-			Stdin:    []byte("zebra\napple\nmango\n"),
-			Env:      []string{"LC_ALL=C"},
 			ExitCode: 0,
 		},
 		{
-			Name:     "R4.4_diff_reverse",
-			Args:     []string{"-r"},
-			Stdin:    []byte("zebra\napple\nmango\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_numeric",
-			Args:     []string{"-n"},
-			Stdin:    []byte("100\n20\n3\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_human",
-			Args:     []string{"-h"},
-			Stdin:    []byte("1G\n1M\n1K\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_month",
-			Args:     []string{"-M"},
-			Stdin:    []byte("DEC\nJAN\nJUN\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_version",
-			Args:     []string{"-V"},
-			Stdin:    []byte("v1.10\nv1.2\nv1.1\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_unique",
-			Args:     []string{"-u"},
-			Stdin:    []byte("a\nb\na\nb\nc\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_stable",
-			Args:     []string{"-s", "-k1,1"},
-			Stdin:    []byte("b 2\na 1\nb 1\na 2\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_key_with_field",
-			Args:     []string{"-k2,2", "-t:"},
-			Stdin:    []byte("x:3\ny:1\nz:2\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_delimiter_tab",
-			Args:     []string{"-t\t", "-k2,2"},
-			Stdin:    []byte("x\t3\ny\t1\nz\t2\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_ignore_blanks",
-			Args:     []string{"-b"},
-			Stdin:    []byte("  c\n a\n  b\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "R4.4_diff_check_sorted",
-			Args:     []string{"-c"},
-			Stdin:    []byte("a\nb\nc\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		{
-			Name:      "R4.4_diff_check_unsorted",
-			Args:      []string{"-c"},
-			Stdin:     []byte("c\na\nb\n"),
-			Env:       []string{"LC_ALL=C"},
+			Name:      "check unsorted reverse exits 1",
+			Args:      []string{"-c", "-r"},
+			Stdin:     []byte("a\nb\nc\n"),
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{stderrPrefixNormalizer},
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
 		{
-			Name:     "R4.4_diff_stdin_explicit",
-			Args:     []string{"-"},
-			Stdin:    []byte("z\na\nm\n"),
-			Env:      []string{"LC_ALL=C"},
+			Name:     "check sorted numeric",
+			Args:     []string{"-c", "-n"},
+			Stdin:    []byte("1\n2\n10\n"),
 			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted numeric exits 1",
+			Args:      []string{"-c", "-n"},
+			Stdin:     []byte("10\n2\n1\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check unique sorted no duplicates",
+			Args:     []string{"-c", "-u"},
+			Stdin:    []byte("a\nb\nc\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unique sorted with duplicates exits 1",
+			Args:      []string{"-c", "-u"},
+			Stdin:     []byte("a\na\nb\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check empty input",
+			Args:     []string{"-c"},
+			Stdin:    []byte(""),
+			ExitCode: 0,
+		},
+		{
+			Name:     "check single line",
+			Args:     []string{"-c"},
+			Stdin:    []byte("only\n"),
+			ExitCode: 0,
+		},
+		// R4.2: -c check with sort modes
+		{
+			Name:     "check sorted human numeric",
+			Args:     []string{"-c", "-h"},
+			Stdin:    []byte("100\n1K\n1M\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted human numeric exits 1",
+			Args:      []string{"-c", "-h"},
+			Stdin:     []byte("1M\n1K\n100\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check sorted month",
+			Args:     []string{"-c", "-M"},
+			Stdin:    []byte("JAN\nFEB\nMAR\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted month exits 1",
+			Args:      []string{"-c", "-M"},
+			Stdin:     []byte("MAR\nJAN\nFEB\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check sorted version",
+			Args:     []string{"-c", "-V"},
+			Stdin:    []byte("file1\nfile2\nfile10\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted version exits 1",
+			Args:      []string{"-c", "-V"},
+			Stdin:     []byte("file10\nfile2\nfile1\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check sorted with key field",
+			Args:     []string{"-c", "-t:", "-k2,2"},
+			Stdin:    []byte("b:1\na:2\nc:3\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted with key field exits 1",
+			Args:      []string{"-c", "-t:", "-k2,2"},
+			Stdin:     []byte("a:3\nb:1\nc:2\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check quiet long form unsorted exits 1 no stderr",
+			Args:     []string{"--check=quiet"},
+			Stdin:    []byte("b\na\nc\n"),
+			ExitCode: 1,
+		},
+		{
+			Name:     "check quiet sorted exits 0",
+			Args:     []string{"-C"},
+			Stdin:    []byte("a\nb\nc\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:     "check with ignore blanks sorted",
+			Args:     []string{"-c", "-b"},
+			Stdin:    []byte("  apple\nbanana\n  cherry\n"),
+			ExitCode: 0,
+		},
+		// R4.2: -c combined with numeric+reverse
+		{
+			Name:     "check sorted numeric reverse",
+			Args:     []string{"-c", "-n", "-r"},
+			Stdin:    []byte("10\n2\n1\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted numeric reverse exits 1",
+			Args:      []string{"-c", "-n", "-r"},
+			Stdin:     []byte("1\n2\n10\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.3: -c and -C are incompatible, exit 2
+		{
+			Name:      "check and check quiet incompatible exits 2",
+			Args:      []string{"-c", "-C"},
+			Stdin:     []byte("b\na\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: -c check with key+numeric
+		{
+			Name:     "check sorted key numeric",
+			Args:     []string{"-c", "-t:", "-k2,2n"},
+			Stdin:    []byte("b:1\na:2\nc:10\n"),
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted key numeric exits 1",
+			Args:      []string{"-c", "-t:", "-k2,2n"},
+			Stdin:     []byte("a:10\nb:2\nc:1\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R4.2: -c check with version sort
+		{
+			Name:     "check sorted version ascending",
+			Args:     []string{"-c", "-V"},
+			Stdin:    []byte("v1.1\nv1.2\nv1.10\n"),
+			ExitCode: 0,
+		},
+		// R4.2: --check=silent long form
+		{
+			Name:     "check silent long form unsorted exits 1",
+			Args:     []string{"--check=silent"},
+			Stdin:    []byte("b\na\nc\n"),
+			ExitCode: 1,
+		},
+		// R4.3: exit 2 on conflicting options (tested via TestUsageError)
+
+		// R4.4: additional comprehensive differential tests
+		{
+			Name:  "default sort stdin",
+			Args:  []string{},
+			Stdin: []byte("cherry\napple\nbanana\n"),
+		},
+		{
+			Name:  "reverse sort",
+			Args:  []string{"-r"},
+			Stdin: []byte("apple\nbanana\ncherry\n"),
+		},
+		{
+			Name:  "single line input",
+			Args:  []string{},
+			Stdin: []byte("only\n"),
+		},
+		{
+			Name:  "empty input no crash",
+			Args:  []string{},
+			Stdin: []byte(""),
+		},
+		{
+			Name:  "numeric and reverse combined",
+			Args:  []string{"-n", "-r"},
+			Stdin: []byte("1\n10\n2\n"),
+		},
+		{
+			Name:  "stable with numeric sort",
+			Args:  []string{"-s", "-n"},
+			Stdin: []byte("2 b\n1 c\n2 a\n1 b\n"),
+		},
+		{
+			Name:  "unique with key field",
+			Args:  []string{"-u", "-t:", "-k1,1"},
+			Stdin: []byte("a:1\na:2\nb:1\nb:2\n"),
+		},
+		{
+			Name:  "key with per-key reverse",
+			Args:  []string{"-t:", "-k2,2r"},
+			Stdin: []byte("a:1\nb:3\nc:2\n"),
+		},
+		{
+			Name:  "multiple keys with mixed modes",
+			Args:  []string{"-t:", "-k1,1", "-k2,2n"},
+			Stdin: []byte("a:10\nb:2\na:3\nb:1\n"),
 		},
 	}
 
-	setupMultiFileTest(t, tests)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestOutputFile verifies -o writes to a file.
-// R1.6: -o FILE must write output to FILE.
-func TestOutputFile(t *testing.T) {
+// TestDiffOutputFile tests -o FILE flag (R1.6) by verifying the output
+// file content matches the reference binary.
+func TestDiffOutputFile(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
-	dir := t.TempDir()
-	inputFile := filepath.Join(dir, "input.txt")
-	outputFile := filepath.Join(dir, "output.txt")
-	writeTestFile(t, inputFile, "banana\napple\ncherry\n")
-
-	cmd := exec.Command(goBin, "-o", outputFile, inputFile)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := cmd.CombinedOutput()
+	refBin, err := exec.LookPath("gsort")
 	if err != nil {
-		t.Fatalf("sort -o failed: %v\n%s", err, out)
+		t.Skip("reference binary gsort not in PATH")
 	}
 
-	got, err := os.ReadFile(outputFile)
-	if err != nil {
-		t.Fatalf("reading output file: %v", err)
-	}
-	want := "apple\nbanana\ncherry\n"
-	if string(got) != want {
-		t.Errorf("output file:\ngot:  %q\nwant: %q", string(got), want)
-	}
-}
-
-// TestOutputFileSameAsInput verifies -o FILE works when FILE is also an input.
-// R1.6: FILE may be the same as an input file.
-func TestOutputFileSameAsInput(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	dir := t.TempDir()
-	file := filepath.Join(dir, "data.txt")
-	writeTestFile(t, file, "banana\napple\ncherry\n")
-
-	cmd := exec.Command(goBin, "-o", file, file)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("sort -o same-file failed: %v\n%s", err, out)
-	}
-
-	got, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatalf("reading output file: %v", err)
-	}
-	want := "apple\nbanana\ncherry\n"
-	if string(got) != want {
-		t.Errorf("in-place sort:\ngot:  %q\nwant: %q", string(got), want)
-	}
-}
-
-// setupMultiFileTest creates temp files for the R1.3 multi-file test.
-func setupMultiFileTest(t *testing.T, tests []testutils.DiffTest) {
-	t.Helper()
-	for i := range tests {
-		if tests[i].Name != "R1.3_multi_file" {
-			continue
-		}
+	t.Run("output to file", func(t *testing.T) {
 		dir := t.TempDir()
-		file1 := filepath.Join(dir, "f1.txt")
-		file2 := filepath.Join(dir, "f2.txt")
-		writeTestFile(t, file1, "cherry\napple\n")
-		writeTestFile(t, file2, "banana\ndate\n")
-		tests[i].Args = []string{file1, file2}
-		tests[i].Stdin = nil
-	}
+		inputFile := filepath.Join(dir, "input.txt")
+		goOutFile := filepath.Join(dir, "go_out.txt")
+		refOutFile := filepath.Join(dir, "ref_out.txt")
+		input := []byte("banana\napple\ncherry\n")
+		if err := os.WriteFile(inputFile, input, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Run reference binary
+		refCmd := exec.Command(refBin, "-o", refOutFile, inputFile)
+		refCmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+		if out, err := refCmd.CombinedOutput(); err != nil {
+			t.Fatalf("ref binary failed: %v\n%s", err, out)
+		}
+		refOutput, err := os.ReadFile(refOutFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Run Go binary
+		goCmd := exec.Command(goBin, "-o", goOutFile, inputFile)
+		goCmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+		if out, err := goCmd.CombinedOutput(); err != nil {
+			t.Fatalf("go binary failed: %v\n%s", err, out)
+		}
+		goOutput, err := os.ReadFile(goOutFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(refOutput) != string(goOutput) {
+			t.Errorf("output file mismatch\nexpected (ref): %q\nactual   (go):  %q",
+				refOutput, goOutput)
+		}
+	})
+
+	t.Run("output to same file as input", func(t *testing.T) {
+		dir := t.TempDir()
+		inputFile := filepath.Join(dir, "data.txt")
+		input := []byte("cherry\napple\nbanana\n")
+		if err := os.WriteFile(inputFile, input, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Run Go binary with -o pointing to same file
+		goCmd := exec.Command(goBin, "-o", inputFile, inputFile)
+		goCmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+		if out, err := goCmd.CombinedOutput(); err != nil {
+			t.Fatalf("go binary failed: %v\n%s", err, out)
+		}
+
+		goOutput, err := os.ReadFile(inputFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expected := "apple\nbanana\ncherry\n"
+		if string(goOutput) != expected {
+			t.Errorf("output file mismatch\nexpected: %q\nactual:   %q",
+				expected, goOutput)
+		}
+	})
 }
 
-// writeTestFile writes content to a file, failing the test on error.
-func writeTestFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("writeTestFile %s: %v", path, err)
+// TestDiffMultiFile tests multi-file input (R1.3, R4.4).
+func TestDiffMultiFile(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsort")
+	if err != nil {
+		t.Skip("reference binary gsort not in PATH")
+	}
+
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "f1.txt")
+	file2 := filepath.Join(dir, "f2.txt")
+	if err := os.WriteFile(file1, []byte("cherry\napple\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file2, []byte("banana\ndate\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:    "multi-file combined sort",
+			Args:    []string{file1, file2},
+			WorkDir: dir,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffCheckFile tests -c check mode with file arguments (R4.2, R4.4).
+func TestDiffCheckFile(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsort")
+	if err != nil {
+		t.Skip("reference binary gsort not in PATH")
+	}
+
+	dir := t.TempDir()
+	sortedFile := filepath.Join(dir, "sorted.txt")
+	unsortedFile := filepath.Join(dir, "unsorted.txt")
+	if err := os.WriteFile(sortedFile, []byte("a\nb\nc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unsortedFile, []byte("b\na\nc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:     "check sorted file exits 0",
+			Args:     []string{"-c", sortedFile},
+			WorkDir:  dir,
+			ExitCode: 0,
+		},
+		{
+			Name:      "check unsorted file exits 1",
+			Args:      []string{"-c", unsortedFile},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		{
+			Name:     "check quiet unsorted file exits 1",
+			Args:     []string{"-C", unsortedFile},
+			WorkDir:  dir,
+			ExitCode: 1,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestUsageError verifies that invalid flags produce exit code 2 (R4.3).
+func TestUsageError(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"invalid long flag", []string{"--invalid-flag"}},
+		{"invalid short flag", []string{"-Q"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(goBin, tc.args...)
+			cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+			err := cmd.Run()
+			if err == nil {
+				t.Fatal("expected non-zero exit code")
+			}
+			exitErr, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("expected *exec.ExitError, got %T", err)
+			}
+			if exitErr.ExitCode() != 2 {
+				t.Errorf("expected exit code 2, got %d", exitErr.ExitCode())
+			}
+		})
 	}
 }

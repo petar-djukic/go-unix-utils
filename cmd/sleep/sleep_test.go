@@ -4,235 +4,217 @@
 package main
 
 import (
-	"math"
+	"bytes"
+	"context"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-func discardAll(data []byte) []byte {
-	return nil
-}
-
+// TestDiff verifies sleep exit code parity against gsleep (GNU coreutils).
+// Uses short durations (0 or 0.01) to avoid slow test execution (R4.3).
+// R1.1: single numeric argument. R1.2: fractional seconds.
+// R1.3: suffix multipliers. R1.4: multiple arguments summed.
+// R2.1: zero duration. R2.2: no args error. R2.3: invalid/negative error.
+// R3.1: no output under normal operation. R3.2: no stdin reading.
+// R3.3: --help exits 0. R3.4: --version exits 0.
+// R4.1: exit 0 after sleeping. R4.2: exit 1 on invalid args.
+// R4.3: differential exit code comparison. R4.4: full case coverage.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsleep")
 	if err != nil {
-		t.Skipf("reference binary gsleep not in PATH: %v", err)
+		t.Skip("reference binary gsleep not in PATH")
 	}
+	stderrNorm := makeBinaryNameNormalizer(refBin)
+	errNorms := []testutils.NormalizeFunc{stderrNorm}
+	// For --help and --version, stdout content differs between binaries.
+	// Normalize stdout to a fixed marker so only exit code is compared.
+	stdoutBlank := []testutils.NormalizeFunc{replaceNonEmpty}
 
 	tests := []testutils.DiffTest{
-		// R1.1, R2.1, R4.1, R4.4: zero duration exits immediately with 0.
+		// R1.1, R4.1, R4.4: zero duration exits immediately with 0.
 		{
-			Name:     "zero_duration",
-			Args:     []string{"0"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.1, R4.1, R4.4: single numeric argument.
-		{
-			Name:     "short_duration",
-			Args:     []string{"0.01"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "zero-duration",
+			Args: []string{"0"},
 		},
 		// R1.2, R4.1, R4.4: fractional seconds.
 		{
-			Name:     "fractional_seconds",
-			Args:     []string{"0.001"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "fractional-seconds",
+			Args: []string{"0.01"},
 		},
-		// R1.3, R4.1, R4.4: suffix s (seconds).
+		// R1.3, R4.1, R4.4: suffix multipliers.
 		{
-			Name:     "suffix_s",
-			Args:     []string{"0.001s"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "suffix-s",
+			Args: []string{"0.01s"},
 		},
-		// R1.3, R4.1, R4.4: suffix m (minutes).
 		{
-			Name:     "suffix_m",
-			Args:     []string{"0.0001m"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "suffix-m",
+			Args: []string{"0.001m"},
 		},
-		// R1.3, R4.1, R4.4: suffix h (hours).
 		{
-			Name:     "suffix_h",
-			Args:     []string{"0.000001h"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "suffix-h",
+			Args: []string{"0.00001h"},
 		},
-		// R1.3, R4.1, R4.4: suffix d (days).
 		{
-			Name:     "suffix_d",
-			Args:     []string{"0.0000001d"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "suffix-d",
+			Args: []string{"0.000001d"},
 		},
 		// R1.4, R4.1, R4.4: multiple arguments summed.
 		{
-			Name:     "multiple_args_summed",
-			Args:     []string{"0", "0.001", "0.001s"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "multiple-args-summed",
+			Args: []string{"0", "0.01", "0"},
 		},
-		// R2.2, R4.2, R4.3, R4.4: no arguments → error (discard stderr, binary names differ).
 		{
-			Name:      "no_args_error",
+			Name: "multiple-args-with-suffix",
+			Args: []string{"0.005s", "0.005s"},
+		},
+		// R2.1: zero is a valid duration, returns immediately with exit 0.
+		{
+			Name: "zero-explicit",
+			Args: []string{"0.0"},
+		},
+		{
+			Name: "zero-with-suffix",
+			Args: []string{"0s"},
+		},
+		// R2.2, R4.2, R4.4: no arguments gives usage error, exit 1.
+		{
+			Name:      "no-args",
 			Args:      []string{},
-			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: errNorms,
 		},
-		// R2.3, R4.2, R4.3, R4.4: invalid argument → error.
+		// R2.3, R4.2, R4.4: non-numeric or negative argument gives error, exit 1.
 		{
-			Name:      "invalid_arg_error",
+			Name:      "invalid-arg",
 			Args:      []string{"abc"},
-			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: errNorms,
 		},
-		// R2.3, R4.2, R4.3, R4.4: negative argument → error.
 		{
-			Name:      "negative_arg_error",
+			Name:      "negative-arg",
 			Args:      []string{"-1"},
-			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: errNorms,
 		},
-		// R3.1: no output to stdout or stderr under normal operation.
 		{
-			Name:     "no_output_normal",
-			Args:     []string{"0.001"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:      "invalid-empty-suffix",
+			Args:      []string{"s"},
+			ExitCode:  1,
+			Normalize: errNorms,
 		},
-		// R3.2: must not read from stdin (stdin provided but ignored).
+		// R3.1: no stdout under normal operation (verified by zero-duration
+		// test above producing empty stdout). Adding explicit stdin test for R3.2.
 		{
-			Name:     "stdin_ignored",
-			Args:     []string{"0"},
-			Stdin:    []byte("this input should be ignored\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:  "no-stdin-read",
+			Args:  []string{"0"},
+			Stdin: []byte("this should be ignored\n"),
 		},
 		// R3.3: --help prints usage to stdout and exits 0.
 		{
-			Name:      "help_flag",
+			Name:      "help-flag",
 			Args:      []string{"--help"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: stdoutBlank,
 		},
 		// R3.4: --version prints version info to stdout and exits 0.
 		{
-			Name:      "version_flag",
+			Name:      "version-flag",
 			Args:      []string{"--version"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R4.1, R4.3: exit 0 after sleeping (explicit R4 trace).
-		{
-			Name:     "r4_exit_zero_after_sleep",
-			Args:     []string{"0.01"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R4.2, R4.3: exit 1 on empty string argument.
-		{
-			Name:      "r4_empty_string_arg_error",
-			Args:      []string{""},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R4.4: multiple mixed-suffix arguments summed.
-		{
-			Name:     "r4_mixed_suffix_sum",
-			Args:     []string{"0.001s", "0.0001m"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Normalize: stdoutBlank,
 		},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestParseDuration verifies duration parsing for cases that cannot be tested
-// via differential testing (e.g., infinity would hang both binaries).
-func TestParseDuration(t *testing.T) {
-	t.Parallel()
+// TestInfinity verifies that sleep accepts inf and infinity as valid
+// durations (R2.4). Since these sleep indefinitely, we start the process,
+// verify it does not exit with an error within a short window, then kill it.
+func TestInfinity(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
 
-	tests := []struct {
-		name    string
-		arg     string
-		wantInf bool
-		wantErr bool
-		wantSec float64
+	cases := []struct {
+		name string
+		arg  string
 	}{
-		// R2.1: zero duration.
-		{name: "zero", arg: "0", wantSec: 0},
-		// R2.4: infinity variants.
-		{name: "inf", arg: "inf", wantInf: true},
-		{name: "infinity", arg: "infinity", wantInf: true},
-		{name: "Inf", arg: "Inf", wantInf: true},
-		{name: "INF", arg: "INF", wantInf: true},
-		{name: "INFINITY", arg: "INFINITY", wantInf: true},
-		// R2.3: invalid arguments.
-		{name: "non_numeric", arg: "abc", wantErr: true},
-		{name: "negative", arg: "-1", wantErr: true},
+		{"inf", "inf"},
+		{"infinity", "infinity"},
 	}
-
-	for _, tc := range tests {
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := parseDuration(tc.arg)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("parseDuration(%q) = %v, want error", tc.arg, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("parseDuration(%q) unexpected error: %v", tc.arg, err)
-			}
-			if tc.wantInf {
-				if !math.IsInf(got, 1) {
-					t.Fatalf("parseDuration(%q) = %v, want +Inf", tc.arg, got)
-				}
-				return
-			}
-			if got != tc.wantSec {
-				t.Fatalf("parseDuration(%q) = %v, want %v", tc.arg, got, tc.wantSec)
-			}
+			assertSleepsIndefinitely(t, goBin, tc.arg)
 		})
 	}
 }
 
-// TestSumDurationsInfinity verifies that infinity arguments produce the
-// maximum duration (R2.4). This cannot be tested via RunDiffTests because
-// both binaries would sleep forever.
-func TestSumDurationsInfinity(t *testing.T) {
-	t.Parallel()
-
-	dur, err := sumDurations([]string{"inf"})
+// TestHelpContent verifies that --help produces a usage message containing
+// expected keywords. R3.3.
+func TestHelpContent(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("sumDurations([inf]) unexpected error: %v", err)
+		t.Fatalf("--help exited with error: %v", err)
 	}
-	if dur != time.Duration(math.MaxInt64) {
-		t.Fatalf("sumDurations([inf]) = %v, want max duration", dur)
+	if !bytes.Contains(out, []byte("Usage:")) {
+		t.Errorf("--help output missing 'Usage:': %q", out)
 	}
+	if !bytes.Contains(out, []byte("NUMBER")) {
+		t.Errorf("--help output missing 'NUMBER': %q", out)
+	}
+}
 
-	dur, err = sumDurations([]string{"0.01", "infinity"})
+// TestVersionContent verifies that --version produces version information
+// containing the program name. R3.4.
+func TestVersionContent(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("sumDurations([0.01, infinity]) unexpected error: %v", err)
+		t.Fatalf("--version exited with error: %v", err)
 	}
-	if dur != time.Duration(math.MaxInt64) {
-		t.Fatalf("sumDurations([0.01, infinity]) = %v, want max duration", dur)
+	if !bytes.Contains(out, []byte("sleep")) {
+		t.Errorf("--version output missing 'sleep': %q", out)
 	}
+}
+
+// assertSleepsIndefinitely starts the binary with the given arg, waits
+// briefly, and verifies it is still running (not exited with an error).
+func assertSleepsIndefinitely(t *testing.T, bin, arg string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, arg)
+	err := cmd.Run()
+	// The context should have killed it; a deadline-exceeded error is expected.
+	if ctx.Err() != context.DeadlineExceeded {
+		t.Fatalf("expected process to still be running after timeout, got err: %v", err)
+	}
+}
+
+// makeBinaryNameNormalizer returns a NormalizeFunc that replaces the reference
+// binary path with "sleep" so stderr error messages match between gsleep and
+// our binary.
+func makeBinaryNameNormalizer(refBin string) testutils.NormalizeFunc {
+	refBase := filepath.Base(refBin)
+	return func(b []byte) []byte {
+		b = bytes.ReplaceAll(b, []byte(refBin), []byte(progName))
+		b = bytes.ReplaceAll(b, []byte(refBase), []byte(progName))
+		return b
+	}
+}
+
+// replaceNonEmpty replaces any non-empty output with a fixed marker.
+// Used for --help and --version diff tests where stdout content differs
+// between the Go binary and the reference binary, but both should produce
+// non-empty output and exit 0.
+func replaceNonEmpty(b []byte) []byte {
+	if len(b) > 0 {
+		return []byte("OK\n")
+	}
+	return b
 }

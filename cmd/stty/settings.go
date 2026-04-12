@@ -1,368 +1,264 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Setting application logic for cmd/stty.
-//
-// Implements prd105-stty R4.1, R5.1, R6.1, R6.2.
+// Settings modification for cmd/stty.
+// Implements srd105-stty R4.1, R5.1, R6.1, R6.2.
 package main
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
 )
 
-// settingOp modifies termios state.
-type settingOp func(t *unix.Termios)
-
-// flagField identifies which termios field a flag belongs to.
-type flagField int
+// flagCategory identifies which termios field a flag belongs to.
+type flagCategory int
 
 const (
-	fieldCflag flagField = iota
-	fieldIflag
-	fieldOflag
-	fieldLflag
+	catControl flagCategory = iota
+	catInput
+	catOutput
+	catLocal
 )
 
-// flagSpec describes a flag's termios field and bitmask.
-type flagSpec struct {
-	field flagField
-	bits  uint64
+// flagTableEntry pairs a flag table with its category.
+type flagTableEntry struct {
+	entries []displayEntry
+	cat     flagCategory
 }
 
-// flagMap maps known flag names to their field and bitmask.
-var flagMap = buildFlagMap()
-
-// ccMap maps special character names to their cc entry.
-var ccMap = buildCCMap()
-
-// negatableCombos lists combination settings that accept a - prefix.
-var negatableCombos = map[string]bool{
-	"raw": true, "cooked": true,
-	"evenp": true, "parity": true, "oddp": true,
+// allFlagTables lists all flag tables for lookup.
+var allFlagTables = []flagTableEntry{
+	{controlFlags, catControl},
+	{inputFlags, catInput},
+	{outputFlags, catOutput},
+	{localFlags, catLocal},
 }
 
-// comboNames lists all recognized combination setting names.
-var comboNames = map[string]bool{
-	"sane": true, "raw": true, "cooked": true,
-	"evenp": true, "parity": true, "oddp": true,
+// flagFieldPtr returns a pointer to the termios field for a category.
+func flagFieldPtr(t *unix.Termios, cat flagCategory) *uint64 {
+	switch cat {
+	case catControl:
+		return &t.Cflag
+	case catInput:
+		return &t.Iflag
+	case catOutput:
+		return &t.Oflag
+	case catLocal:
+		return &t.Lflag
+	}
+	return nil
 }
 
-func buildFlagMap() map[string]flagSpec {
-	m := make(map[string]flagSpec)
-	for _, f := range controlFlags {
-		m[f.name] = flagSpec{fieldCflag, f.bits}
-	}
-	for _, f := range inputFlags {
-		m[f.name] = flagSpec{fieldIflag, f.bits}
-	}
-	for _, f := range outputFlags {
-		m[f.name] = flagSpec{fieldOflag, f.bits}
-	}
-	for _, f := range localFlags {
-		m[f.name] = flagSpec{fieldLflag, f.bits}
-	}
-	return m
-}
-
-func buildCCMap() map[string]*ccEntry {
-	m := make(map[string]*ccEntry, len(specialChars))
-	for i := range specialChars {
-		m[specialChars[i].name] = &specialChars[i]
-	}
-	return m
-}
-
-// parseSetting parses a setting from args and appends ops to cfg.
-// Returns the number of args consumed.
-func parseSetting(cfg *config, args []string) (int, error) {
-	if op, ok := parseSingleArg(args[0]); ok {
-		cfg.ops = append(cfg.ops, op)
-		return 1, nil
-	}
-	return parsePairArg(cfg, args)
-}
-
-// parseSingleArg tries to parse a single-argument setting.
-// R4.1: flag names and -flag names. R6.1: combination names.
-// R6.2: numeric speed. Also handles saved -g settings.
-func parseSingleArg(arg string) (settingOp, bool) {
-	if comboNames[arg] {
-		return comboOp(arg), true
-	}
-	if strings.HasPrefix(arg, "-") && negatableCombos[arg[1:]] {
-		return negComboOp(arg[1:]), true
-	}
-	if op, ok := parseCSize(arg); ok {
-		return op, true
-	}
-	if spec, ok := flagMap[arg]; ok {
-		return setFlagOp(spec, true), true
-	}
-	if strings.HasPrefix(arg, "-") {
-		if spec, ok := flagMap[arg[1:]]; ok {
-			return setFlagOp(spec, false), true
+// lookupFlag finds a named flag across all flag tables.
+func lookupFlag(name string) (*displayEntry, flagCategory, bool) {
+	for _, ft := range allFlagTables {
+		for i, e := range ft.entries {
+			if e.Name == name {
+				return &ft.entries[i], ft.cat, true
+			}
 		}
 	}
-	if speed, err := strconv.ParseUint(arg, 10, 64); err == nil {
-		return bothSpeedOp(speed), true
+	return nil, 0, false
+}
+
+// lookupMultiValue finds a multi-value option (e.g., cs8, nl0).
+func lookupMultiValue(name string) (*displayEntry, uint64, flagCategory, bool) {
+	for _, ft := range allFlagTables {
+		for i, e := range ft.entries {
+			for _, v := range e.Values {
+				if v.Name == name {
+					return &ft.entries[i], v.Value, ft.cat, true
+				}
+			}
+		}
 	}
-	if isSavedSettings(arg) {
-		if op, err := restoreOp(arg); err == nil {
-			return op, true
+	return nil, 0, 0, false
+}
+
+// lookupSpecialChar finds a special character by name.
+func lookupSpecialChar(name string) (*specialChar, bool) {
+	for i, sc := range specialCharDisplay {
+		if sc.Name == name {
+			return &specialCharDisplay[i], true
 		}
 	}
 	return nil, false
 }
 
-// parsePairArg tries to parse a two-argument setting.
-// R5.1: special character name followed by value.
-// R6.2: ispeed/ospeed followed by baud rate.
-func parsePairArg(cfg *config, args []string) (int, error) {
-	arg := args[0]
-	if cc, ok := ccMap[arg]; ok {
-		if len(args) < 2 {
-			return 0, fmt.Errorf("missing argument to '%s'", arg)
-		}
-		val, err := parseCharValue(args[1], cc.isNum)
-		if err != nil {
-			return 0, err
-		}
-		cfg.ops = append(cfg.ops, setCCOp(cc.index, val))
-		return 2, nil
+// parseCharValue converts a character value string to a byte.
+// Accepts: ^C (control char), ^? (DEL), ^- or undef (disable),
+// a literal character, or a numeric value.
+func parseCharValue(s string) (uint8, error) {
+	if s == "undef" || s == "^-" {
+		return 0xFF, nil
 	}
-	if arg == "ispeed" || arg == "ospeed" {
-		if len(args) < 2 {
-			return 0, fmt.Errorf("missing argument to '%s'", arg)
-		}
-		speed, err := parseSpeed(args[1])
-		if err != nil {
-			return 0, err
-		}
-		cfg.ops = append(cfg.ops, oneSpeedOp(arg, speed))
-		return 2, nil
+	if len(s) == 2 && s[0] == '^' {
+		return parseControlChar(s[1])
 	}
-	return 0, fmt.Errorf("invalid argument '%s'", arg)
+	if len(s) == 1 {
+		return s[0], nil
+	}
+	val, err := strconv.ParseUint(s, 0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("invalid integer argument '%s'", s)
+	}
+	return uint8(val), nil
 }
 
-// setFlagOp returns an op that sets or clears a termios flag.
-// R4.1: enable with name, disable with -name.
-func setFlagOp(spec flagSpec, set bool) settingOp {
-	return func(t *unix.Termios) {
-		field := flagFieldPtr(t, spec.field)
-		if set {
-			*field |= spec.bits
+// parseControlChar converts a control character suffix to a byte.
+func parseControlChar(c byte) (uint8, error) {
+	if c == '?' {
+		return 0x7F, nil
+	}
+	if c >= 'a' && c <= 'z' {
+		c -= 0x20
+	}
+	if c >= '@' && c <= '_' {
+		return c - '@', nil
+	}
+	return 0, fmt.Errorf("invalid control character: ^%c", c)
+}
+
+// saneCharDefaults maps special character indices to sane default values.
+var saneCharDefaults = map[int]uint8{
+	unix.VINTR:    0x03, // ^C
+	unix.VQUIT:    0x1C, // ^\
+	unix.VERASE:   0x7F, // ^?
+	unix.VKILL:    0x15, // ^U
+	unix.VEOF:     0x04, // ^D
+	unix.VEOL:     0xFF, // <undef>
+	unix.VEOL2:    0xFF, // <undef>
+	unix.VSTART:   0x11, // ^Q
+	unix.VSTOP:    0x13, // ^S
+	unix.VSUSP:    0x1A, // ^Z
+	unix.VDSUSP:   0x19, // ^Y
+	unix.VREPRINT: 0x12, // ^R
+	unix.VWERASE:  0x17, // ^W
+	unix.VLNEXT:   0x16, // ^V
+	unix.VDISCARD: 0x0F, // ^O
+	unix.VSTATUS:  0x14, // ^T
+	unix.VMIN:     1,
+	unix.VTIME:    0,
+}
+
+// resetFlagsToDefault sets all flags in a table to their sane defaults.
+func resetFlagsToDefault(entries []displayEntry, field *uint64) {
+	for _, e := range entries {
+		if len(e.Values) > 0 {
+			*field = (*field &^ e.Mask) | e.DefVal
+		} else if e.DefOn {
+			*field |= e.Mask
 		} else {
-			*field &^= spec.bits
+			*field &^= e.Mask
 		}
 	}
 }
 
-// flagFieldPtr returns a pointer to the appropriate termios field.
-func flagFieldPtr(t *unix.Termios, f flagField) *uint64 {
-	switch f {
-	case fieldIflag:
-		return &t.Iflag
-	case fieldOflag:
-		return &t.Oflag
-	case fieldLflag:
-		return &t.Lflag
-	default:
-		return &t.Cflag
-	}
-}
-
-// setCCOp returns an op that sets a special character value.
-// R5.1: set special character slot to given value.
-func setCCOp(index, val byte) settingOp {
-	return func(t *unix.Termios) {
-		t.Cc[index] = val
-	}
-}
-
-// oneSpeedOp returns an op that sets ispeed or ospeed.
-// R6.2: ispeed N or ospeed N.
-func oneSpeedOp(which string, speed uint64) settingOp {
-	return func(t *unix.Termios) {
-		if which == "ispeed" {
-			t.Ispeed = speed
-		} else {
-			t.Ospeed = speed
-		}
-	}
-}
-
-// bothSpeedOp returns an op that sets both ispeed and ospeed.
-// R6.2: N alone sets both speeds.
-func bothSpeedOp(speed uint64) settingOp {
-	return func(t *unix.Termios) {
-		t.Ispeed = speed
-		t.Ospeed = speed
-	}
-}
-
-// parseCSize parses cs5, cs6, cs7, cs8 character-size settings.
-func parseCSize(arg string) (settingOp, bool) {
-	var bits uint64
-	switch arg {
-	case "cs5":
-		bits = unix.CS5
-	case "cs6":
-		bits = unix.CS6
-	case "cs7":
-		bits = unix.CS7
-	case "cs8":
-		bits = unix.CS8
-	default:
-		return nil, false
-	}
-	return func(t *unix.Termios) {
-		t.Cflag &^= unix.CSIZE
-		t.Cflag |= bits
-	}, true
-}
-
-// comboOp returns an op for a named combination setting.
-// R6.1: sane, raw, cooked, evenp/parity, oddp.
-func comboOp(name string) settingOp {
-	switch name {
-	case "sane":
-		return applySane
-	case "raw":
-		return applyRaw
-	case "cooked":
-		return applyCooked
-	case "evenp", "parity":
-		return applyEvenParity
-	case "oddp":
-		return applyOddParity
-	default:
-		return func(*unix.Termios) {}
-	}
-}
-
-// negComboOp returns an op for a negated combination setting.
-func negComboOp(name string) settingOp {
-	switch name {
-	case "raw":
-		return applyCooked
-	case "cooked":
-		return applyRaw
-	case "evenp", "parity", "oddp":
-		return applyNoParity
-	default:
-		return func(*unix.Termios) {}
-	}
-}
-
-// applySane resets terminal to sane defaults.
-// R6.1: sane resets all flags and special characters.
+// R6.1: applySane resets terminal settings to reasonable defaults.
 func applySane(t *unix.Termios) {
-	for _, cc := range specialChars {
-		t.Cc[cc.index] = cc.saneVal
+	for idx, val := range saneCharDefaults {
+		t.Cc[idx] = val
 	}
-	t.Iflag = unix.BRKINT | unix.ICRNL | unix.IMAXBEL | unix.IUTF8
-	t.Oflag = unix.OPOST | unix.ONLCR
-	t.Cflag = (t.Cflag &^ (unix.CSIZE | unix.PARODD | unix.PARENB)) | unix.CS8 | unix.CREAD
-	t.Lflag = unix.ISIG | unix.ICANON | unix.IEXTEN | unix.ECHO |
-		unix.ECHOE | unix.ECHOK | unix.ECHOCTL | unix.ECHOKE
+	resetFlagsToDefault(controlFlags, &t.Cflag)
+	resetFlagsToDefault(inputFlags, &t.Iflag)
+	resetFlagsToDefault(outputFlags, &t.Oflag)
+	resetFlagsToDefault(localFlags, &t.Lflag)
 }
 
-// applyRaw sets raw mode: no input processing, byte-at-a-time.
-// R6.1: raw clears input flags, disables canonical and signal processing.
+// R6.1: applyRaw disables all input/output processing for raw mode.
 func applyRaw(t *unix.Termios) {
-	t.Iflag = 0
+	t.Iflag &^= unix.IGNBRK | unix.BRKINT | unix.IGNPAR | unix.PARMRK |
+		unix.INPCK | unix.ISTRIP | unix.INLCR | unix.IGNCR |
+		unix.ICRNL | unix.IXON | unix.IXOFF | unix.IXANY |
+		unix.IMAXBEL | darwinIUTF8
 	t.Oflag &^= unix.OPOST
-	t.Lflag &^= unix.ISIG | unix.ICANON
+	t.Lflag &^= unix.ISIG | unix.ICANON | unix.IEXTEN
 	t.Cc[unix.VMIN] = 1
 	t.Cc[unix.VTIME] = 0
 }
 
-// applyCooked reverses raw mode: line-buffered, processing enabled.
-// R6.1: cooked (same as -raw) restores line discipline.
+// R6.1: applyCooked restores cooked mode (opposite of raw).
 func applyCooked(t *unix.Termios) {
 	t.Iflag |= unix.BRKINT | unix.IGNPAR | unix.ISTRIP | unix.ICRNL | unix.IXON
 	t.Oflag |= unix.OPOST
 	t.Lflag |= unix.ISIG | unix.ICANON
 	t.Cc[unix.VEOF] = 0x04
-	t.Cc[unix.VEOL] = posixVDisable
+	t.Cc[unix.VEOL] = 0xFF
 }
 
-// applyEvenParity enables even parity with 7-bit characters.
-// R6.1: evenp/parity sets CS7 + PARENB, clears PARODD.
+// R6.1: applyEvenParity sets even parity mode.
 func applyEvenParity(t *unix.Termios) {
-	t.Cflag &^= unix.CSIZE | unix.PARODD
-	t.Cflag |= unix.CS7 | unix.PARENB
+	t.Cflag |= unix.PARENB
+	t.Cflag &^= unix.PARODD
+	t.Cflag = (t.Cflag &^ unix.CSIZE) | uint64(unix.CS7)
 }
 
-// applyOddParity enables odd parity with 7-bit characters.
-// R6.1: oddp sets CS7 + PARENB + PARODD.
+// R6.1: applyOddParity sets odd parity mode.
 func applyOddParity(t *unix.Termios) {
-	t.Cflag &^= unix.CSIZE
-	t.Cflag |= unix.CS7 | unix.PARENB | unix.PARODD
+	t.Cflag |= unix.PARENB | unix.PARODD
+	t.Cflag = (t.Cflag &^ unix.CSIZE) | uint64(unix.CS7)
 }
 
-// applyNoParity disables parity and sets 8-bit characters.
-// R6.1: -evenp/-parity/-oddp clears PARENB, sets CS8.
-func applyNoParity(t *unix.Termios) {
-	t.Cflag &^= unix.PARENB | unix.CSIZE
-	t.Cflag |= unix.CS8
+// clearParity removes parity and sets 8-bit character size.
+func clearParity(t *unix.Termios) {
+	t.Cflag &^= unix.PARENB
+	t.Cflag = (t.Cflag &^ unix.CSIZE) | uint64(unix.CS8)
 }
 
-// parseCharValue parses a special character value.
-// R5.1: ^C for control chars, ^? for DEL, ^-/undef for disabled.
-func parseCharValue(s string, isNum bool) (byte, error) {
-	if isNum {
-		val, err := strconv.ParseUint(s, 10, 8)
-		if err != nil {
-			return 0, fmt.Errorf("invalid integer argument '%s'", s)
+// combinationNames lists recognized combination setting names.
+var combinationNames = map[string]bool{
+	"sane": true, "cooked": true, "raw": true,
+	"evenp": true, "parity": true, "oddp": true,
+}
+
+// applyCombinationSetting applies a named combination setting.
+func applyCombinationSetting(t *unix.Termios, name string, enable bool) {
+	switch name {
+	case "sane":
+		applySane(t)
+	case "raw":
+		if enable {
+			applyRaw(t)
+		} else {
+			applyCooked(t)
 		}
-		return byte(val), nil
+	case "cooked":
+		if enable {
+			applyCooked(t)
+		} else {
+			applyRaw(t)
+		}
+	case "evenp", "parity":
+		if enable {
+			applyEvenParity(t)
+		} else {
+			clearParity(t)
+		}
+	case "oddp":
+		if enable {
+			applyOddParity(t)
+		} else {
+			clearParity(t)
+		}
 	}
-	if s == "^-" || s == "undef" {
-		return posixVDisable, nil
-	}
-	if len(s) == 2 && s[0] == '^' {
-		return parseCtrlChar(s[1])
-	}
-	if len(s) == 1 {
-		return s[0], nil
-	}
-	return 0, fmt.Errorf("invalid character '%s'", s)
 }
 
-// parseCtrlChar converts a control character notation to its byte value.
-func parseCtrlChar(c byte) (byte, error) {
-	if c == '?' {
-		return 0x7f, nil
-	}
-	if c >= '@' && c <= '_' {
-		return c - '@', nil
-	}
-	if c >= 'a' && c <= 'z' {
-		return c - 'a' + 1, nil
-	}
-	return 0, fmt.Errorf("invalid control character '^%c'", c)
-}
-
-// parseSpeed parses a baud rate string.
-// R6.2: speed must be a non-negative integer.
+// parseSpeed validates and returns a speed value.
 func parseSpeed(s string) (uint64, error) {
-	speed, err := strconv.ParseUint(s, 10, 64)
+	val, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid argument '%s'", s)
+		return 0, fmt.Errorf("invalid integer argument '%s'", s)
 	}
-	return speed, nil
+	return val, nil
 }
 
-// isSavedSettings returns true if s looks like -g output (colon-separated hex).
-func isSavedSettings(s string) bool {
+// isSavedFormat checks if a string looks like saved stty settings.
+func isSavedFormat(s string) bool {
 	parts := strings.Split(s, ":")
-	if len(parts) < 6 {
+	if len(parts) < 5 {
 		return false
 	}
 	for _, p := range parts {
@@ -373,60 +269,145 @@ func isSavedSettings(s string) bool {
 	return true
 }
 
-// restoreOp creates a settingOp from saved -g output.
-func restoreOp(s string) (settingOp, error) {
+// restoreSaved restores terminal settings from a saved (-g) format string.
+func restoreSaved(t *unix.Termios, s string) error {
 	parts := strings.Split(s, ":")
-	vals := make([]uint64, len(parts))
-	for i, p := range parts {
-		v, err := strconv.ParseUint(p, 16, 64)
+	expected := 4 + len(t.Cc)
+	if len(parts) != expected {
+		return fmt.Errorf("invalid argument '%s'", s)
+	}
+	fields := []*uint64{&t.Iflag, &t.Oflag, &t.Cflag, &t.Lflag}
+	for i, f := range fields {
+		val, err := strconv.ParseUint(parts[i], 16, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid saved setting: %s", s)
+			return fmt.Errorf("invalid argument '%s'", s)
 		}
-		vals[i] = v
+		*f = val
 	}
-	return func(t *unix.Termios) { restoreTermios(t, vals) }, nil
+	for i := range t.Cc {
+		val, err := strconv.ParseUint(parts[4+i], 16, 8)
+		if err != nil {
+			return fmt.Errorf("invalid argument '%s'", s)
+		}
+		t.Cc[i] = uint8(val)
+	}
+	return nil
 }
 
-// restoreTermios applies saved settings values to a termios struct.
-// Format: iflag:oflag:cflag:lflag:cc[0]..cc[N]:ispeed:ospeed.
-func restoreTermios(t *unix.Termios, vals []uint64) {
-	if len(vals) < 4 {
-		return
+// tryApplySettingArg processes one or two arguments as a setting change.
+// Returns the number of arguments consumed and any error.
+func tryApplySettingArg(t *unix.Termios, args []string) (int, error) {
+	arg := args[0]
+	if isSavedFormat(arg) {
+		return 1, restoreSaved(t, arg)
 	}
-	t.Iflag = vals[0]
-	t.Oflag = vals[1]
-	t.Cflag = vals[2]
-	t.Lflag = vals[3]
-	ccEnd := len(vals) - 2
-	for i := 4; i < ccEnd && i-4 < len(t.Cc); i++ {
-		t.Cc[i-4] = byte(vals[i])
+	if n, err := trySpeedKeyword(t, args); n > 0 || err != nil {
+		return n, err
 	}
-	if len(vals) >= 6 {
-		t.Ispeed = vals[len(vals)-2]
-		t.Ospeed = vals[len(vals)-1]
+	enable := true
+	name := arg
+	if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+		enable = false
+		name = arg[1:]
+	}
+	return tryNamedSetting(t, args, name, enable)
+}
+
+// trySpeedKeyword handles ispeed/ospeed keywords.
+func trySpeedKeyword(t *unix.Termios, args []string) (int, error) {
+	arg := args[0]
+	if arg != "ispeed" && arg != "ospeed" {
+		return 0, nil
+	}
+	if len(args) < 2 {
+		return 0, fmt.Errorf("missing argument to '%s'", arg)
+	}
+	speed, err := parseSpeed(args[1])
+	if err != nil {
+		return 0, err
+	}
+	if arg == "ispeed" {
+		t.Ispeed = speed
+	} else {
+		t.Ospeed = speed
+	}
+	return 2, nil
+}
+
+// tryNamedSetting attempts to apply a named setting (flag, special char,
+// combination, multi-value, or bare speed).
+func tryNamedSetting(t *unix.Termios, args []string, name string, enable bool) (int, error) {
+	if combinationNames[name] {
+		applyCombinationSetting(t, name, enable)
+		return 1, nil
+	}
+	if sc, ok := lookupSpecialChar(name); ok {
+		return applySpecialCharArg(t, sc, args, name, enable)
+	}
+	if entry, cat, ok := lookupFlag(name); ok {
+		applyFlagBit(t, entry, cat, enable)
+		return 1, nil
+	}
+	return tryMultiValueOrSpeed(t, args, name, enable)
+}
+
+// applyFlagBit enables or disables a single flag bit in the termios struct.
+func applyFlagBit(t *unix.Termios, entry *displayEntry, cat flagCategory, enable bool) {
+	field := flagFieldPtr(t, cat)
+	if enable {
+		*field |= entry.Mask
+	} else {
+		*field &^= entry.Mask
 	}
 }
 
-// applySettings opens the terminal, applies ops, and sets attributes.
-// R4.1, R5.1, R6.1, R6.2: setting application entry point.
-func applySettings(cfg *config, stderr *os.File) int {
-	fd, cleanup, source, err := openTermFD(cfg.device)
+// applySpecialCharArg sets a special character from the argument list.
+func applySpecialCharArg(t *unix.Termios, sc *specialChar, args []string, name string, enable bool) (int, error) {
+	if !enable {
+		return 0, fmt.Errorf("invalid argument '-%s'", name)
+	}
+	if len(args) < 2 {
+		return 0, fmt.Errorf("missing argument to '%s'", name)
+	}
+	val, err := parseCharValue(args[1])
 	if err != nil {
-		printQuotedErr(stderr, source, err)
-		return 1
+		return 0, err
 	}
-	defer cleanup()
-	termios, err := unix.IoctlGetTermios(fd, unix.TIOCGETA)
+	t.Cc[sc.Index] = val
+	return 2, nil
+}
+
+// tryMultiValueOrSpeed tries multi-value flags, then bare speed, then errors.
+func tryMultiValueOrSpeed(t *unix.Termios, args []string, name string, enable bool) (int, error) {
+	if entry, val, cat, ok := lookupMultiValue(name); ok {
+		if !enable {
+			return 0, fmt.Errorf("invalid argument '-%s'", name)
+		}
+		field := flagFieldPtr(t, cat)
+		*field = (*field &^ entry.Mask) | val
+		return 1, nil
+	}
+	if speed, err := parseSpeed(args[0]); err == nil {
+		t.Ispeed = speed
+		t.Ospeed = speed
+		return 1, nil
+	}
+	return 0, fmt.Errorf("invalid argument '%s'", args[0])
+}
+
+// processSettings reads terminal settings, applies changes, and writes back.
+func processSettings(fd int, settings []string) error {
+	t, err := unix.IoctlGetTermios(fd, unix.TIOCGETA)
 	if err != nil {
-		printQuotedErr(stderr, source, err)
-		return 1
+		return err
 	}
-	for _, op := range cfg.ops {
-		op(termios)
+	i := 0
+	for i < len(settings) {
+		consumed, applyErr := tryApplySettingArg(t, settings[i:])
+		if applyErr != nil {
+			return applyErr
+		}
+		i += consumed
 	}
-	if err := unix.IoctlSetTermios(fd, unix.TIOCSETA, termios); err != nil {
-		printQuotedErr(stderr, source, err)
-		return 1
-	}
-	return 0
+	return unix.IoctlSetTermios(fd, unix.TIOCSETA, t)
 }

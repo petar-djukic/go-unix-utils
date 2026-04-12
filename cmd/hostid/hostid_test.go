@@ -1,20 +1,40 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/hostid (prd048 R3.1, R3.2, R3.3).
-package main_test
+// Package main provides differential tests for cmd/hostid.
+// Tests cover srd048-hostid R3.1, R3.2, R3.3.
+package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-// Used for error messages where GNU includes the full binary path,
-// causing unavoidable divergence.
-func discardAll(data []byte) []byte {
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+// R3.2: replaces binary paths with "PROG" so error message structure
+// can be compared between Go and GNU binaries.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	return b
+}
+
+// discardOutput normalizes by discarding all output, used when
+// output content differs by design (--version, --help) and only
+// exit code comparison is meaningful.
+func discardOutput(b []byte) []byte {
 	return nil
 }
 
@@ -22,43 +42,37 @@ func TestDiff(t *testing.T) {
 	t.Parallel()
 
 	goBin := testutils.BuildBinary(t, ".")
-
 	refBin, err := exec.LookPath("ghostid")
 	if err != nil {
 		t.Skipf("reference binary ghostid not in PATH: %v", err)
 	}
 
-	env := []string{"LC_ALL=C"}
-
-	// R3.1: compare stdout and exit codes via RunDiffTests.
-	// R3.2: cover normal invocation, extra operand error, unknown flag error.
-	// R3.3: all tests set LC_ALL=C.
 	tests := []testutils.DiffTest{
+		// R3.1: default invocation, no arguments.
 		{
-			Name: "no arguments",
-			Args: []string{},
-			Env:  env,
+			Name: "default_no_args",
 		},
+
+		// R3.2: --help flag exits 0.
 		{
-			Name:      "extra operand",
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
+		},
+
+		// R3.2: --version flag exits 0.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
+		},
+
+		// R3.2: extra operand produces error and exit 1.
+		{
+			Name:      "extra_operand",
 			Args:      []string{"extraarg"},
-			Env:       env,
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		{
-			Name:      "unknown short flag",
-			Args:      []string{"-x"},
-			Env:       env,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		{
-			Name:      "unknown long flag",
-			Args:      []string{"--bogus"},
-			Env:       env,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 	}
 

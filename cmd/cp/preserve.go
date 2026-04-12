@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Attribute preservation for cmd/cp.
-//
-// Implements prd056-cp R3.1-R3.3.
+// Implements srd056-cp R3.1 (preserve mode/ownership/timestamps),
+// R3.3 (--preserve=ATTR_LIST with comma-separated attributes).
 package main
 
 import (
@@ -14,171 +14,119 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// preserveSet tracks which file attributes to preserve during copy.
-// R3.1: mode, ownership, timestamps via -p.
-// R3.3: individual attribute selection via --preserve=ATTR_LIST.
+// preserveSet holds which file attributes to preserve during copy.
+// R3.3: parsed from comma-separated --preserve=ATTR_LIST.
 type preserveSet struct {
-	mode, ownership, timestamps, links bool
+	mode       bool
+	ownership  bool
+	timestamps bool
+	links      bool
 }
 
-// inodeKey identifies a unique file by device and inode number.
-type inodeKey struct{ dev, ino uint64 }
-
-// defaultPreserve returns the set for -p (mode, ownership, timestamps).
-// R3.1: -p preserves mode, ownership, and timestamps.
-func defaultPreserve() preserveSet {
-	return preserveSet{mode: true, ownership: true, timestamps: true}
+// devIno identifies a file by device and inode for hard link tracking.
+// R3.3: used with --preserve=links to recreate hard link structure.
+type devIno struct {
+	dev uint64
+	ino uint64
 }
 
-// allPreserve returns the full set for --preserve=all.
-// R3.2: -a uses --preserve=all.
-func allPreserve() preserveSet {
-	return preserveSet{
-		mode: true, ownership: true, timestamps: true, links: true,
+// parsePreserve parses a comma-separated attribute list.
+// R3.3: supported: mode, ownership, timestamps, links, all.
+func parsePreserve(s string) preserveSet {
+	if s == "" {
+		return preserveSet{}
 	}
+	if s == "all" {
+		return preserveSet{true, true, true, true}
+	}
+	return parseAttrs(s)
 }
 
-// parsePreserveList parses a comma-separated attribute list.
-// R3.3: accepts mode, ownership, timestamps, links, all.
-func parsePreserveList(list string) (preserveSet, error) {
-	if list == "all" {
-		return allPreserve(), nil
-	}
-	var p preserveSet
-	for _, attr := range strings.Split(list, ",") {
-		switch strings.TrimSpace(attr) {
+// parseAttrs maps individual attribute names to preserve flags.
+func parseAttrs(s string) preserveSet {
+	var ps preserveSet
+	for _, a := range strings.Split(s, ",") {
+		switch strings.TrimSpace(a) {
 		case "mode":
-			p.mode = true
+			ps.mode = true
 		case "ownership":
-			p.ownership = true
+			ps.ownership = true
 		case "timestamps":
-			p.timestamps = true
+			ps.timestamps = true
 		case "links":
-			p.links = true
-		default:
-			return p, fmt.Errorf(
-				"invalid --preserve attribute '%s'", attr)
+			ps.links = true
 		}
 	}
-	return p, nil
+	return ps
 }
 
-// preserveFileAttrs preserves selected attributes from src on dest.
-// Returns true if all requested attributes were successfully applied.
-func preserveFileAttrs(
-	src, dest string, p preserveSet, stderr *os.File,
-) bool {
-	if !p.mode && !p.ownership && !p.timestamps {
-		return true
-	}
-	fi, err := sys.Stat(src)
-	if err != nil {
-		printError(stderr, fmt.Sprintf(
-			"failed to get attributes of '%s': %s",
-			src, stripPathError(err)))
-		return false
-	}
-	return applyAttrs(fi, dest, p, stderr)
+// active reports whether any attribute preservation is requested.
+func (ps preserveSet) active() bool {
+	return ps.mode || ps.ownership || ps.timestamps || ps.links
 }
 
-// preserveDirAttrs preserves attributes on a directory after its entries
-// are copied, so that timestamps reflect the original directory.
-func preserveDirAttrs(
-	src, dest string, p preserveSet, stderr *os.File,
-) bool {
-	if !p.mode && !p.ownership && !p.timestamps {
-		return true
+// applyFilePreserve applies requested attributes from srcInfo to dest.
+// R3.1: mode, ownership, timestamps applied in that order.
+func applyFilePreserve(ps preserveSet, dest string, info *sys.FileInfo) error {
+	if !ps.active() {
+		return nil
 	}
-	fi, err := sys.Stat(src)
-	if err != nil {
-		return true // stat failure on directory after copy is non-fatal
-	}
-	return applyAttrs(fi, dest, p, stderr)
-}
-
-// applyAttrs applies the requested attributes from fi to dest.
-func applyAttrs(
-	fi *sys.FileInfo, dest string, p preserveSet, stderr *os.File,
-) bool {
-	ok := true
-	if p.mode {
-		if err := os.Chmod(dest, fi.Mode.Perm()); err != nil {
-			printError(stderr, fmt.Sprintf(
-				"preserving permissions for '%s': %s",
-				dest, stripPathError(err)))
-			ok = false
+	if ps.mode {
+		if err := preserveMode(dest, info); err != nil {
+			return err
 		}
 	}
-	if p.ownership {
-		if err := os.Lchown(dest, int(fi.Uid), int(fi.Gid)); err != nil {
-			printError(stderr, fmt.Sprintf(
-				"preserving ownership for '%s': %s",
-				dest, stripPathError(err)))
-			ok = false
+	if ps.timestamps {
+		if err := preserveTimestamps(dest, info); err != nil {
+			return err
 		}
 	}
-	if p.timestamps {
-		if err := os.Chtimes(dest, fi.AccessTime, fi.ModTime); err != nil {
-			printError(stderr, fmt.Sprintf(
-				"preserving times for '%s': %s",
-				dest, stripPathError(err)))
-			ok = false
-		}
+	if ps.ownership {
+		preserveOwnership(dest, info)
 	}
-	return ok
+	return nil
 }
 
-// preserveSymlinkOwner preserves ownership on a symlink.
-func preserveSymlinkOwner(src, dest string, stderr *os.File) bool {
-	fi, err := sys.Lstat(src)
-	if err != nil {
-		return true
+// preserveMode sets the file permission bits on dest.
+func preserveMode(dest string, info *sys.FileInfo) error {
+	perm := info.Mode.Perm()
+	special := info.Mode & (os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+	if err := os.Chmod(dest, perm|special); err != nil {
+		return fmt.Errorf("preserving permissions for '%s': %s",
+			dest, sysErrMsg(err))
 	}
-	if err := os.Lchown(dest, int(fi.Uid), int(fi.Gid)); err != nil {
-		printError(stderr, fmt.Sprintf(
-			"preserving ownership for '%s': %s",
-			dest, stripPathError(err)))
-		return false
-	}
-	return true
+	return nil
 }
 
-// tryHardLink checks if src shares an inode with a previously copied file
-// and creates a hard link if so. Returns true if a link was created.
-func tryHardLink(src, dest string, inodeMap map[inodeKey]string) bool {
-	fi, err := sys.Lstat(src)
-	if err != nil || fi.Nlink < 2 {
-		return false
+// preserveTimestamps sets access and modification times on dest.
+func preserveTimestamps(dest string, info *sys.FileInfo) error {
+	if err := os.Chtimes(dest, info.AccessTime, info.ModTime); err != nil {
+		return fmt.Errorf("preserving times for '%s': %s",
+			dest, sysErrMsg(err))
 	}
-	key := inodeKey{dev: fi.Dev, ino: fi.Ino}
-	if existing, ok := inodeMap[key]; ok {
-		if err := os.Link(existing, dest); err == nil {
-			return true
-		}
-	}
-	return false
+	return nil
 }
 
-// recordInode records the destination path for a source file's inode.
-func recordInode(src, dest string, inodeMap map[inodeKey]string) {
-	if inodeMap == nil {
-		return
-	}
-	fi, err := sys.Lstat(src)
-	if err != nil {
-		return
-	}
-	key := inodeKey{dev: fi.Dev, ino: fi.Ino}
-	if _, ok := inodeMap[key]; !ok {
-		inodeMap[key] = dest
+// preserveOwnership sets uid/gid on dest. Warnings are printed on
+// failure because ownership changes typically require root privileges.
+func preserveOwnership(dest string, info *sys.FileInfo) {
+	if err := os.Lchown(dest, int(info.Uid), int(info.Gid)); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: preserving ownership for '%s': %s\n",
+			programName, dest, sysErrMsg(err))
 	}
 }
 
-// setArchiveMode configures options for -a (archive) mode.
-// R3.2: -a is equivalent to -dR --preserve=all.
-func setArchiveMode(opts *cpOptions) {
-	opts.recursive = true
-	opts.noDereference = true
-	opts.dereference = false
-	opts.preserve = allPreserve()
+// checkHardLink checks if srcInfo represents a hard-linked file that
+// was already copied. Returns the previous destination and true if so.
+// R3.3: used with --preserve=links.
+func checkHardLink(cs *copyState, info *sys.FileInfo, dest string) (string, bool) {
+	if !cs.prs.links || info.Nlink <= 1 {
+		return "", false
+	}
+	di := devIno{dev: info.Dev, ino: info.Ino}
+	if prev, ok := cs.hardLinks[di]; ok {
+		return prev, true
+	}
+	cs.hardLinks[di] = dest
+	return "", false
 }

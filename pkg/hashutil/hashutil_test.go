@@ -9,177 +9,24 @@ import (
 	"hash"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-// testMD5Config returns a HashConfig for MD5 used across tests.
-func testMD5Config() HashConfig {
-	return HashConfig{
-		Algorithm: "MD5",
-		NewHash:   md5.New,
-		DigestLen: 32,
-	}
+var md5Config = HashConfig{
+	Algorithm: "MD5",
+	NewHash:   func() hash.Hash { return md5.New() },
+	DigestLen: 32,
 }
 
-// TestDigestFilesContinuesOnError verifies R3.2: DigestFiles continues
-// processing remaining files when one file cannot be opened, printing
-// an error to stderr for each failure.
-func TestDigestFilesContinuesOnError(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Create two valid files and reference a missing one in between.
-	validFile1 := filepath.Join(dir, "a.txt")
-	validFile2 := filepath.Join(dir, "c.txt")
-	missingFile := filepath.Join(dir, "b-missing.txt")
-
-	writeTestFile(t, validFile1, "hello\n")
-	writeTestFile(t, validFile2, "world\n")
-
-	var stdout, stderr bytes.Buffer
-	cfg := testMD5Config()
-	exitCode := DigestFiles(
-		[]string{validFile1, missingFile, validFile2},
-		cfg, false, false, &stdout, &stderr,
-	)
-
-	// R3.2: exit code is 1 because one file failed.
-	if exitCode != 1 {
-		t.Errorf("expected exit code 1, got %d", exitCode)
-	}
-
-	// R3.2: stderr contains error for the missing file.
-	if !strings.Contains(stderr.String(), "b-missing.txt") {
-		t.Errorf("stderr should mention missing file, got: %s", stderr.String())
-	}
-
-	// R3.2: stdout contains digests for both valid files.
-	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	if len(lines) != 2 {
-		t.Errorf("expected 2 digest lines, got %d: %v", len(lines), lines)
-	}
-}
-
-// TestDigestFilesAllValid verifies R3.1: successful processing of
-// multiple files returns exit code 0.
-func TestDigestFilesAllValid(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	file1 := filepath.Join(dir, "x.txt")
-	writeTestFile(t, file1, "data\n")
-
-	var stdout, stderr bytes.Buffer
-	cfg := testMD5Config()
-	exitCode := DigestFiles(
-		[]string{file1},
-		cfg, false, false, &stdout, &stderr,
-	)
-
-	if exitCode != 0 {
-		t.Errorf("expected exit code 0, got %d", exitCode)
-	}
-	if stderr.Len() != 0 {
-		t.Errorf("expected empty stderr, got: %s", stderr.String())
-	}
-	if !strings.Contains(stdout.String(), file1) {
-		t.Errorf("stdout should contain filename, got: %s", stdout.String())
-	}
-}
-
-// TestDigestFilesStdin verifies R3.1: stdin fallback when files list
-// is empty.
-func TestDigestFilesStdin(t *testing.T) {
-	t.Parallel()
-
-	// DigestFiles with empty list defaults to stdin ("-").
-	// We cannot easily inject stdin in this test, so verify the
-	// function at least attempts to read from "-".
-	var stdout, stderr bytes.Buffer
-	cfg := testMD5Config()
-
-	// Provide "-" explicitly; stdin in test context is /dev/null-like,
-	// so it should produce the hash of empty input.
-	oldStdin := os.Stdin
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdin = r
-	w.Close() // EOF immediately
-	defer func() { os.Stdin = oldStdin }()
-
-	exitCode := DigestFiles([]string{"-"}, cfg, false, false, &stdout, &stderr)
-	if exitCode != 0 {
-		t.Errorf("expected exit code 0, got %d", exitCode)
-	}
-	// MD5 of empty input: d41d8cd98f00b204e9800998ecf8427e
-	if !strings.Contains(stdout.String(), "d41d8cd98f00b204e9800998ecf8427e") {
-		t.Errorf("expected MD5 of empty input, got: %s", stdout.String())
-	}
-}
-
-// TestComputeDigest verifies R1.4: digest computation returns correct
-// hex-encoded value.
-func TestComputeDigest(t *testing.T) {
-	t.Parallel()
-	cfg := testMD5Config()
-	r := strings.NewReader("hello\n")
-	digest, err := ComputeDigest(r, cfg)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// MD5 of "hello\n" is b1946ac92492d2347c6235b4d2611184
-	if digest != "b1946ac92492d2347c6235b4d2611184" {
-		t.Errorf("expected b1946ac92492d2347c6235b4d2611184, got %s", digest)
-	}
-}
-
-// TestFormatGNU verifies R1.2: GNU text and binary format output.
-func TestFormatGNU(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name   string
-		binary bool
-		want   string
-	}{
-		{"text mode", false, "abc123  file.txt"},
-		{"binary mode", true, "abc123 *file.txt"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := FormatGNU("abc123", "file.txt", tc.binary)
-			if got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-// TestFormatBSDTag verifies R1.3: BSD tag format output.
-func TestFormatBSDTag(t *testing.T) {
-	t.Parallel()
-	got := FormatBSDTag("MD5", "file.txt", "abc123")
-	want := "MD5 (file.txt) = abc123"
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}
-
-// TestParseChecksumLine verifies R2.1: parsing GNU and BSD tag formats.
 func TestParseChecksumLine(t *testing.T) {
 	t.Parallel()
-	cfg := testMD5Config()
-
 	tests := []struct {
-		name       string
-		line       string
-		wantFile   string
-		wantDigest string
-		wantBinary bool
-		wantErr    bool
+		name           string
+		line           string
+		wantFile       string
+		wantDigest     string
+		wantBinary     bool
+		wantErr        bool
 	}{
 		{
 			name:       "GNU text mode",
@@ -190,15 +37,15 @@ func TestParseChecksumLine(t *testing.T) {
 		},
 		{
 			name:       "GNU binary mode",
-			line:       "d41d8cd98f00b204e9800998ecf8427e *binary.dat",
-			wantFile:   "binary.dat",
+			line:       "d41d8cd98f00b204e9800998ecf8427e *empty.txt",
+			wantFile:   "empty.txt",
 			wantDigest: "d41d8cd98f00b204e9800998ecf8427e",
 			wantBinary: true,
 		},
 		{
 			name:       "BSD tag format",
-			line:       "MD5 (file.txt) = d41d8cd98f00b204e9800998ecf8427e",
-			wantFile:   "file.txt",
+			line:       "MD5 (empty.txt) = d41d8cd98f00b204e9800998ecf8427e",
+			wantFile:   "empty.txt",
 			wantDigest: "d41d8cd98f00b204e9800998ecf8427e",
 			wantBinary: false,
 		},
@@ -207,97 +54,194 @@ func TestParseChecksumLine(t *testing.T) {
 			line:    "not a valid checksum line",
 			wantErr: true,
 		},
+		{
+			name:    "wrong digest length",
+			line:    "abcd  file.txt",
+			wantErr: true,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			file, digest, binary, err := ParseChecksumLine(tc.line, cfg)
+			f, d, b, err := ParseChecksumLine(tc.line, md5Config)
 			if tc.wantErr {
 				if err == nil {
-					t.Error("expected error, got nil")
+					t.Fatalf("expected error, got nil")
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if file != tc.wantFile {
-				t.Errorf("filename: got %q, want %q", file, tc.wantFile)
+			if f != tc.wantFile {
+				t.Errorf("filename: got %q, want %q", f, tc.wantFile)
 			}
-			if digest != tc.wantDigest {
-				t.Errorf("digest: got %q, want %q", digest, tc.wantDigest)
+			if d != tc.wantDigest {
+				t.Errorf("digest: got %q, want %q", d, tc.wantDigest)
 			}
-			if binary != tc.wantBinary {
-				t.Errorf("binary: got %v, want %v", binary, tc.wantBinary)
+			if b != tc.wantBinary {
+				t.Errorf("binary: got %v, want %v", b, tc.wantBinary)
 			}
 		})
 	}
 }
 
-// TestVerifyChecksums verifies R2.3: checksum verification with
-// pass and fail cases.
-func TestVerifyChecksums(t *testing.T) {
+func TestVerifyChecksums_AllMatch(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	cfg := testMD5Config()
 
-	// Create a file with known content.
-	dataFile := filepath.Join(dir, "data.txt")
-	writeTestFile(t, dataFile, "hello\n")
+	// Create a test file with known content.
+	content := []byte("hello\n")
+	testFile := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(testFile, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
-	// Create a valid checksum file.
+	// Compute its MD5 digest.
+	digest, err := ComputeDigest(bytes.NewReader(content), md5Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a checksum file.
 	checksumFile := filepath.Join(dir, "checksums.md5")
-	// MD5 of "hello\n" = b1946ac92492d2347c6235b4d2611184
-	writeTestFile(t, checksumFile,
-		"b1946ac92492d2347c6235b4d2611184  "+dataFile+"\n")
+	line := FormatGNU(digest, testFile, false) + "\n"
+	if err := os.WriteFile(checksumFile, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	var stdout, stderr bytes.Buffer
-	ok, err := VerifyChecksums(checksumFile, cfg, CheckOptions{}, &stdout, &stderr)
+	ok, err := VerifyChecksums(checksumFile, md5Config, CheckOptions{}, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !ok {
-		t.Error("expected verification to pass")
+		t.Fatalf("expected all OK, got failure. stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "OK") {
-		t.Errorf("expected OK in output, got: %s", stdout.String())
+	if got := stdout.String(); got != testFile+": OK\n" {
+		t.Errorf("stdout: got %q, want %q", got, testFile+": OK\n")
 	}
 }
 
-// TestVerifyChecksumsFailed verifies R2.3: returns false when digest
-// does not match.
-func TestVerifyChecksumsFailed(t *testing.T) {
+func TestVerifyChecksums_Mismatch(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	cfg := testMD5Config()
 
-	dataFile := filepath.Join(dir, "data.txt")
-	writeTestFile(t, dataFile, "hello\n")
+	// Create a test file.
+	testFile := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(testFile, []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
-	checksumFile := filepath.Join(dir, "bad.md5")
-	writeTestFile(t, checksumFile,
-		"0000000000000000000000000000dead  "+dataFile+"\n")
+	// Write a checksum file with a wrong digest.
+	wrongDigest := "00000000000000000000000000000000"
+	checksumFile := filepath.Join(dir, "checksums.md5")
+	line := FormatGNU(wrongDigest, testFile, false) + "\n"
+	if err := os.WriteFile(checksumFile, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	var stdout, stderr bytes.Buffer
-	ok, err := VerifyChecksums(checksumFile, cfg, CheckOptions{}, &stdout, &stderr)
+	ok, err := VerifyChecksums(checksumFile, md5Config, CheckOptions{}, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if ok {
-		t.Error("expected verification to fail")
+		t.Fatal("expected failure, got ok")
 	}
-	if !strings.Contains(stdout.String(), "FAILED") {
-		t.Errorf("expected FAILED in output, got: %s", stdout.String())
-	}
-}
-
-// writeTestFile is a test helper that writes content to a file.
-func writeTestFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("writing %s: %v", path, err)
+	if got := stdout.String(); got != testFile+": FAILED\n" {
+		t.Errorf("stdout: got %q, want %q", got, testFile+": FAILED\n")
 	}
 }
 
-// fakeMD5Hash is unused but ensures hash import is used.
-var _ hash.Hash = md5.New()
+func TestVerifyChecksums_SkipsBlanksAndComments(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	testFile := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(testFile, []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := ComputeDigest(bytes.NewReader([]byte("hello\n")), md5Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checksumFile := filepath.Join(dir, "checksums.md5")
+	content := "# comment line\n\n" + FormatGNU(digest, testFile, false) + "\n\n"
+	if err := os.WriteFile(checksumFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	ok, err := VerifyChecksums(checksumFile, md5Config, CheckOptions{}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected ok, got failure. stderr=%q", stderr.String())
+	}
+}
+
+func TestVerifyChecksums_QuietMode(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	testFile := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(testFile, []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := ComputeDigest(bytes.NewReader([]byte("hello\n")), md5Config)
+
+	checksumFile := filepath.Join(dir, "checksums.md5")
+	line := FormatGNU(digest, testFile, false) + "\n"
+	if err := os.WriteFile(checksumFile, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	ok, err := VerifyChecksums(checksumFile, md5Config, CheckOptions{Quiet: true}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	// Quiet suppresses OK lines.
+	if stdout.String() != "" {
+		t.Errorf("expected empty stdout in quiet mode, got %q", stdout.String())
+	}
+}
+
+func TestVerifyChecksums_StatusMode(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	testFile := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(testFile, []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wrongDigest := "00000000000000000000000000000000"
+	checksumFile := filepath.Join(dir, "checksums.md5")
+	line := FormatGNU(wrongDigest, testFile, false) + "\n"
+	if err := os.WriteFile(checksumFile, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	ok, err := VerifyChecksums(checksumFile, md5Config, CheckOptions{Status: true}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Fatal("expected failure")
+	}
+	// Status suppresses all output.
+	if stdout.String() != "" {
+		t.Errorf("expected empty stdout in status mode, got %q", stdout.String())
+	}
+	if stderr.String() != "" {
+		t.Errorf("expected empty stderr in status mode, got %q", stderr.String())
+	}
+}

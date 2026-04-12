@@ -1,11 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/cat implements GNU cat: concatenate files to stdout.
-//
-// Implements prd006-cat R1.1, R1.2, R1.3, R1.4, R1.5,
-// R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3,
-// R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9,
+// Package main implements cmd/cat: concatenate and display files.
+// Implements srd006-cat R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9,
 // R5.1, R5.2, R5.3, R5.4.
 package main
 
@@ -15,67 +13,34 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// catOptions holds parsed flag state.
-type catOptions struct {
-	numberAll      bool // -n: number all lines
-	numberNonBlank bool // -b: number non-blank lines (overrides -n)
-	squeeze        bool // -s: suppress repeated blank lines
-	showNonPrint   bool // -v: show non-printing characters
-	showEnds       bool // -E: show $ at end of each line
-	showTabs       bool // -T: show tabs as ^I
+// options holds parsed command-line flags.
+type options struct {
+	numberAll       bool // -n: number all output lines
+	numberNonBlank  bool // -b: number non-blank lines only
+	squeezeBlanks   bool // -s: R3.1, R3.2, R3.3
+	showNonPrinting bool // -v: R4.1, R4.2
+	showEnds        bool // -E: R4.3
+	showTabs        bool // -T: R4.4
 }
 
-// catState tracks mutable state across file boundaries.
-// R3.2: prevBlank persists across files for cross-boundary squeezing.
-type catState struct {
-	lineNum   int
-	prevBlank bool
-}
-
-func main() {
-	sys.InstallSIGPIPEHandler()
-
-	exitCode := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
-	os.Exit(exitCode)
-}
-
-// run parses flags and concatenates files to stdout.
-func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
-	opts, files := parseArgs(args)
-
-	if len(files) == 0 {
-		files = []string{"-"}
-	}
-
-	exitCode := 0
-	state := catState{lineNum: 1}
-	for _, name := range files {
-		err := catFile(name, stdin, stdout, opts, &state)
-		if err != nil {
-			// R5.4: broken pipe (EPIPE) means downstream closed; exit 0.
-			if isBrokenPipe(err) {
-				return 0
-			}
-			fmt.Fprintf(stderr, "cat: %s: %v\n", name, unwrapErr(err))
-			exitCode = 1
-		}
-	}
-	return exitCode
+// needsLineProcessing returns true when flags require line-by-line processing.
+func (o *options) needsLineProcessing() bool {
+	return o.numberAll || o.numberNonBlank || o.squeezeBlanks ||
+		o.showNonPrinting || o.showEnds || o.showTabs
 }
 
 // parseArgs separates flags from file arguments.
-func parseArgs(args []string) (catOptions, []string) {
-	var opts catOptions
+func parseArgs(args []string) (options, []string) {
+	var opts options
 	var files []string
 	flagsDone := false
 
 	for _, arg := range args {
-		if flagsDone {
+		if flagsDone || arg == "-" || len(arg) < 2 || arg[0] != '-' {
 			files = append(files, arg)
 			continue
 		}
@@ -83,277 +48,266 @@ func parseArgs(args []string) (catOptions, []string) {
 			flagsDone = true
 			continue
 		}
-		if arg == "-" || !isFlag(arg) {
-			files = append(files, arg)
-			continue
+		if err := parseFlags(&opts, arg[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "cat: %s\n", err)
+			os.Exit(1)
 		}
-		parseFlags(&opts, arg[1:])
 	}
-
 	return opts, files
 }
 
-// parseFlags processes flag characters from a single argument.
-// R4.1: -v shows non-printing characters.
-// R4.3: -E shows $ at end of lines.
-// R4.4: -T shows tabs as ^I.
-func parseFlags(opts *catOptions, chars string) {
-	for _, ch := range chars {
+// parseFlags processes the characters in a combined flag string.
+func parseFlags(opts *options, flags string) error {
+	for _, ch := range flags {
 		switch ch {
 		case 'n':
 			opts.numberAll = true
 		case 'b':
 			opts.numberNonBlank = true
 		case 's':
-			opts.squeeze = true
+			// R3.1: squeeze repeated blank lines.
+			opts.squeezeBlanks = true
 		case 'v':
-			opts.showNonPrint = true
+			opts.showNonPrinting = true
 		case 'E':
 			opts.showEnds = true
 		case 'T':
 			opts.showTabs = true
 		case 'A':
-			// R4.5: -A is equivalent to -v -E -T
-			opts.showNonPrint = true
+			// R4.5: -A is equivalent to -v -E -T combined.
+			opts.showNonPrinting = true
 			opts.showEnds = true
 			opts.showTabs = true
 		case 'e':
-			// R4.6: -e is equivalent to -v -E
-			opts.showNonPrint = true
+			// R4.6: -e is equivalent to -v -E combined.
+			opts.showNonPrinting = true
 			opts.showEnds = true
 		case 't':
-			// R4.7: -t is equivalent to -v -T
-			opts.showNonPrint = true
+			// R4.7: -t is equivalent to -v -T combined.
+			opts.showNonPrinting = true
 			opts.showTabs = true
 		case 'u':
-			// R4.8: accepted, no effect
+			// R4.8: accepted but ignored.
+		default:
+			return fmt.Errorf("invalid option -- '%c'", ch)
 		}
 	}
+	return nil
 }
 
-// isFlag returns true if the argument looks like a flag.
-func isFlag(arg string) bool {
-	return len(arg) >= 2 && arg[0] == '-'
+// catState tracks state that persists across files during line processing.
+type catState struct {
+	lineNum  int
+	wasBlank bool // R3.2: squeeze tracks across file boundaries
 }
 
-// unwrapErr extracts the underlying syscall error from os.PathError.
-// R5.2: produces error messages matching GNU cat format.
-func unwrapErr(err error) error {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
-		return pe.Err
-	}
-	return err
-}
-
-// isBrokenPipe reports whether an error is caused by writing to a broken pipe.
-// R5.4: EPIPE from stdout means downstream consumer closed; exit 0.
-func isBrokenPipe(err error) bool {
-	return errors.Is(err, syscall.EPIPE)
-}
-
-// needsLineProcessing reports whether flags require line-by-line processing.
-func needsLineProcessing(opts catOptions) bool {
-	return opts.numberAll || opts.numberNonBlank || opts.squeeze ||
-		opts.showNonPrint || opts.showEnds || opts.showTabs
-}
-
-// catFile copies one file (or stdin if name is "-") to stdout.
-func catFile(
-	name string, stdin io.Reader, stdout io.Writer,
-	opts catOptions, state *catState,
-) error {
-	r, closer, err := openInput(name, stdin)
+// catPassthrough copies file contents verbatim to stdout.
+// R1.1: writes contents verbatim. R1.4, R1.5: preserves all bytes and newlines.
+func catPassthrough(name string, w io.Writer) error {
+	r, err := openInput(name)
 	if err != nil {
 		return err
 	}
-	if closer != nil {
-		defer closer.Close()
+	if r != os.Stdin {
+		defer r.Close()
 	}
-
-	if !needsLineProcessing(opts) {
-		// R1.4, R1.5: pass through without corruption or newline changes
-		_, cpErr := io.Copy(stdout, r)
-		return cpErr
-	}
-
-	return catLines(r, stdout, opts, state)
+	_, err = io.Copy(w, r)
+	return err
 }
 
-// openInput returns a reader and optional closer for the given filename.
-func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
-	if name == "-" {
-		return stdin, nil, nil
-	}
-	f, err := os.Open(name)
+// catLines processes a file with line-by-line transformations.
+func catLines(name string, w io.Writer, opts *options, state *catState) error {
+	r, err := openInput(name)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	return f, f, nil
+	if r != os.Stdin {
+		defer r.Close()
+	}
+	return processLines(r, w, opts, state)
 }
 
-// catLines processes input line by line, applying squeezing and numbering.
-// R1.5: does not add or remove newlines.
-// R3.1: suppresses repeated blank lines.
-// R3.3: squeeze is applied before numbering.
-func catLines(
-	r io.Reader, w io.Writer,
-	opts catOptions, state *catState,
-) error {
-	br := bufio.NewReaderSize(r, 64*1024)
+// processLines reads from r line by line and applies transformations to w.
+// R4.9 order: squeeze (-s), then -v/-T, then -E, then -n/-b.
+func processLines(r io.Reader, w io.Writer, opts *options, state *catState) error {
+	reader := bufio.NewReader(r)
 	bw := bufio.NewWriter(w)
-	atLineStart := true
-
 	for {
-		line, err := br.ReadBytes('\n')
+		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
-			atLineStart = processLine(bw, line, opts, state, atLineStart)
+			if werr := writeTransformedLine(bw, line, opts, state); werr != nil {
+				return werr
+			}
 		}
 		if err == io.EOF {
-			break
+			return bw.Flush()
 		}
 		if err != nil {
+			_ = bw.Flush() // best-effort flush
 			return err
 		}
 	}
-
-	return bw.Flush()
 }
 
-// isBlankLine reports whether a line is blank.
-// R2.4: blank = line containing only \n (zero non-newline bytes).
-func isBlankLine(line []byte) bool {
-	return len(line) == 1 && line[0] == '\n'
-}
+// writeTransformedLine writes a single line with display transformations and numbering.
+// R4.9 order: squeeze blanks (-s), then -v/-T, then -E, then -n/-b.
+func writeTransformedLine(w *bufio.Writer, line []byte, opts *options, state *catState) error {
+	// R2.4: blank = line containing only a newline character.
+	isBlank := len(line) == 1 && line[0] == '\n'
 
-// processLine writes a single chunk with optional squeezing and numbering.
-// R3.1: suppress consecutive blank lines when squeeze is active.
-// R3.3: squeezing before numbering.
-// R4.9: order is squeeze → transform (-v/-T) → end marker (-E) → number.
-// Returns whether the next chunk starts a new line.
-func processLine(
-	bw *bufio.Writer, line []byte,
-	opts catOptions, state *catState, atLineStart bool,
-) bool {
-	blank := isBlankLine(line)
-
-	// R3.1: suppress repeated blank lines
-	if opts.squeeze && blank && state.prevBlank {
-		return true // still at line start, line suppressed
-	}
-	state.prevBlank = blank
-
-	if atLineStart {
-		state.lineNum = writeLineNumber(bw, opts, state.lineNum, blank)
-	}
-
-	writeLine(bw, line, opts)
-
-	// If line ends with \n, next chunk starts a new line
-	return line[len(line)-1] == '\n'
-}
-
-// writeLineNumber writes a line number prefix if appropriate.
-// R2.2, R2.3: -b skips numbering blank lines.
-func writeLineNumber(
-	bw *bufio.Writer, opts catOptions,
-	lineNum int, blank bool,
-) int {
-	if opts.numberNonBlank {
-		if blank {
-			return lineNum
+	// R3.1: squeeze repeated blank lines (applied first per R4.9).
+	if opts.squeezeBlanks && isBlank {
+		if state.wasBlank {
+			return nil
 		}
-		fmt.Fprintf(bw, "%6d\t", lineNum)
-		return lineNum + 1
+		state.wasBlank = true
+	} else {
+		state.wasBlank = false
 	}
 
-	if opts.numberAll {
-		fmt.Fprintf(bw, "%6d\t", lineNum)
-		return lineNum + 1
+	// R4.9: prepend line number last in application order.
+	if err := writeNumberPrefix(w, opts, state, isBlank); err != nil {
+		return err
 	}
 
-	return lineNum
+	if !opts.showNonPrinting && !opts.showEnds && !opts.showTabs {
+		_, err := w.Write(line)
+		return err
+	}
+	return writeDisplayBytes(w, line, opts)
 }
 
-// writeLine writes a line with optional -v, -T, -E transformations.
-// R4.1: non-printing chars shown as ^X / M-^X / M-X.
-// R4.2: -v exempts tab and newline.
-// R4.3: -E appends $ before newline.
-// R4.4: -T shows tab as ^I.
-func writeLine(bw *bufio.Writer, line []byte, opts catOptions) {
-	needsTransform := opts.showNonPrint || opts.showEnds || opts.showTabs
-	if !needsTransform {
-		bw.Write(line) //nolint:errcheck // error caught on flush
-		return
+// writeNumberPrefix writes the line number prefix if numbering is active.
+// R2.1: format "%6d\t" for numbered lines.
+// R2.2: blank lines get no prefix when numberNonBlank is set.
+func writeNumberPrefix(w *bufio.Writer, opts *options, state *catState, isBlank bool) error {
+	if !opts.numberAll && !opts.numberNonBlank {
+		return nil
 	}
+	// R2.3: -b takes precedence over -n.
+	if opts.numberNonBlank && isBlank {
+		return nil
+	}
+	if _, err := fmt.Fprintf(w, "%6d\t", state.lineNum); err != nil {
+		return err
+	}
+	state.lineNum++
+	return nil
+}
 
+// writeDisplayBytes writes line bytes with -v, -T, -E transformations applied.
+func writeDisplayBytes(w *bufio.Writer, line []byte, opts *options) error {
 	for _, b := range line {
-		writeTransformedByte(bw, b, opts)
+		if b == '\n' {
+			// R4.3: append $ before newline.
+			if opts.showEnds {
+				if err := w.WriteByte('$'); err != nil {
+					return err
+				}
+			}
+			if err := w.WriteByte('\n'); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := writeDisplayByte(w, b, opts); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-// writeTransformedByte writes a single byte with -v/-E/-T transformations.
-// R4.1: caret and M- notation for non-printing characters.
-// R4.2: tab and newline exempt from -v.
-// R4.3: $ before newline when -E active.
-// R4.4: tab shown as ^I when -T active.
-func writeTransformedByte(bw *bufio.Writer, b byte, opts catOptions) {
-	if b == '\n' {
-		if opts.showEnds {
-			bw.WriteByte('$') //nolint:errcheck
-		}
-		bw.WriteByte('\n') //nolint:errcheck
-		return
-	}
-
+// writeDisplayByte writes a single non-newline byte with -v and -T transformations.
+func writeDisplayByte(w *bufio.Writer, b byte, opts *options) error {
+	// R4.4: tab -> ^I when showTabs is active.
 	if b == '\t' {
 		if opts.showTabs {
-			bw.WriteString("^I") //nolint:errcheck
-		} else {
-			bw.WriteByte('\t') //nolint:errcheck
+			_, err := w.WriteString("^I")
+			return err
 		}
-		return
+		return w.WriteByte(b)
 	}
-
-	if !opts.showNonPrint {
-		bw.WriteByte(b) //nolint:errcheck
-		return
+	// R4.2: -v does not alter tab or newline (newline handled by caller).
+	if !opts.showNonPrinting {
+		return w.WriteByte(b)
 	}
-
-	writeNonPrintByte(bw, b)
+	return writeNonPrintingByte(w, b)
 }
 
-// writeNonPrintByte writes a byte using caret/M- notation per R4.1.
-// 0x00-0x1F (except tab/newline handled above): ^X
-// 0x7F: ^?
-// 0x80-0x9F: M-^X
-// 0xA0-0xFE: M-X
-// 0xFF: M-^?
-func writeNonPrintByte(bw *bufio.Writer, b byte) {
+// writeNonPrintingByte writes a byte using caret notation and M- prefix per R4.1.
+func writeNonPrintingByte(w *bufio.Writer, b byte) error {
 	if b < 0x20 {
-		bw.WriteByte('^')          //nolint:errcheck
-		bw.WriteByte(b + '@')     //nolint:errcheck
-		return
+		// Control chars 0x00-0x1F (tab handled by caller).
+		if err := w.WriteByte('^'); err != nil {
+			return err
+		}
+		return w.WriteByte(b + 64)
 	}
 	if b == 0x7F {
-		bw.WriteString("^?") //nolint:errcheck
-		return
+		_, err := w.WriteString("^?")
+		return err
 	}
 	if b >= 0x80 {
-		bw.WriteString("M-") //nolint:errcheck
-		if b < 0xA0 {
-			// 0x80-0x9F: M-^X
-			bw.WriteByte('^')              //nolint:errcheck
-			bw.WriteByte(b - 0x80 + '@')  //nolint:errcheck
-		} else if b == 0xFF {
-			// 0xFF: M-^?
-			bw.WriteString("^?") //nolint:errcheck
-		} else {
-			// 0xA0-0xFE: M-X
-			bw.WriteByte(b - 0x80) //nolint:errcheck
+		if _, err := w.WriteString("M-"); err != nil {
+			return err
 		}
-		return
+		// Recurse on the low 7 bits to reuse ^X / ^? / printable logic.
+		return writeNonPrintingByte(w, b&0x7F)
 	}
-	// Printable ASCII 0x20-0x7E
-	bw.WriteByte(b) //nolint:errcheck
+	// Printable ASCII 0x20-0x7E.
+	return w.WriteByte(b)
+}
+
+// openInput returns os.Stdin for "-", otherwise opens the named file.
+// R1.2: stdin when filename is "-".
+// R5.2: on failure, returns error formatted as "<name>: <reason>".
+func openInput(name string) (*os.File, error) {
+	if name == "-" {
+		return os.Stdin, nil
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, formatOpenError(name, err)
+	}
+	return f, nil
+}
+
+// formatOpenError extracts the underlying error from os.PathError to produce
+// GNU-compatible error messages: "<name>: <reason>".
+func formatOpenError(name string, err error) error {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return fmt.Errorf("%s: %s", name, pe.Err)
+	}
+	return fmt.Errorf("%s: %s", name, err)
+}
+
+func main() {
+	sys.InstallSIGPIPEHandler()
+
+	opts, args := parseArgs(os.Args[1:])
+
+	// R1.2: no arguments means read stdin.
+	if len(args) == 0 {
+		args = []string{"-"}
+	}
+
+	exitCode := 0
+	state := catState{lineNum: 1}
+	for _, name := range args {
+		var err error
+		if opts.needsLineProcessing() {
+			err = catLines(name, os.Stdout, &opts, &state)
+		} else {
+			err = catPassthrough(name, os.Stdout)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cat: %s\n", err)
+			// R5.2: continue processing remaining files.
+			// R5.3: write errors also cause exit 1.
+			exitCode = 1
+		}
+	}
+	// R5.1: exit 0 on success. R5.2, R5.3: exit 1 on any error.
+	os.Exit(exitCode)
 }

@@ -1,12 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/ln implements GNU ln: create links between files.
-//
-// Implements prd037-ln R1.1-R1.4, R2.1-R2.4, R3.1-R3.6, R4.1-R4.3.
+// Package main implements cmd/ln: create links between files.
+// Implements srd037 R1.1-R1.4, R2.1-R2.4,
+// R3.1 (-f/--force), R3.2 (-n/--no-dereference), R3.3 (-i/--interactive),
+// R3.4 (-v/--verbose), R3.5 (-b/--backup), R3.6 (-S/--suffix),
+// R4.1-R4.3 (differential testing).
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,215 +19,108 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const progName = "ln"
+// errDeclined indicates the user declined an interactive prompt.
+// This is not printed but causes a non-zero exit code.
+var errDeclined = errors.New("declined")
 
-// helpText is the usage message printed when --help is passed.
-// R4.3: --help prints usage information to stdout and exits 0.
-const helpText = `Usage: ln [OPTION]... [-T] TARGET LINK_NAME
-  or:  ln [OPTION]... TARGET
-  or:  ln [OPTION]... TARGET... DIRECTORY
-In the 1st form, create a link to TARGET with the name LINK_NAME.
-In the 2nd form, create a link to TARGET in the current directory.
-In the 3rd form, create links to each TARGET in DIRECTORY.
-Create hard links by default, symbolic links with --symbolic.
-By default, each destination (name of new link) should not already exist.
-When creating hard links, each TARGET must exist.
+const programName = "ln"
+const defaultBackupSuffix = "~"
 
-Mandatory arguments to long options are mandatory for short options too.
-  -b                         like --backup but does not accept an argument
-      --backup[=CONTROL]     make a backup of each existing destination file
-  -f, --force                remove existing destination files
-  -n, --no-dereference       treat LINK_NAME as a normal file if
-                               it is a symbolic link to a directory
-  -i, --interactive          prompt whether to remove destinations
-  -r, --relative             with -s, create relative symbolic links
-  -s, --symbolic             make symbolic links instead of hard links
-  -S, --suffix=SUFFIX        override the usual backup suffix
-  -v, --verbose              print name of each linked file
-      --help        display this help and exit
-      --version     output version information and exit
-`
-
-// versionText is printed when --version is passed.
-// R4.3: --version prints version information to stdout and exits 0.
-const versionText = "ln (go-unix-utils) 0.1\n"
-
-// parseResult signals how argument parsing concluded.
-type parseResult int
-
-const (
-	parseOK   parseResult = iota
-	parseHelp             // --help requested
-	parseVer              // --version requested
-)
-
-// lnOptions holds parsed command-line flags.
-type lnOptions struct {
-	symbolic      bool
-	relative      bool
-	force         bool
-	interactive   bool
-	noDereference bool
-	verbose       bool
-	backup        bool
-	backupMethod  string // "simple", "numbered", "existing", "none"
-	suffix        string
+// options holds parsed command-line flags for ln.
+type options struct {
+	symbolic      bool   // R2.1: -s/--symbolic
+	relative      bool   // R2.4: -r/--relative
+	force         bool   // R3.1: -f/--force
+	interactive   bool   // R3.3: -i/--interactive
+	noDereference bool   // R3.2: -n/--no-dereference
+	verbose       bool   // R3.4: -v/--verbose
+	backup        bool   // R3.5: -b/--backup
+	backupMethod  string // R3.5: numbered, existing, simple, none
+	suffix        string // R3.6: -S/--suffix
 }
 
+// R1.1: main entry with SIGPIPE handler and argument dispatch.
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+
+	opts, args := parseArgs(os.Args[1:])
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: missing file operand\n", programName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+		os.Exit(1)
+	}
+
+	exitCode := run(opts, args)
+	os.Exit(exitCode)
 }
 
-// run executes the ln logic and returns the exit code.
-func run(args []string, stdout, stderr *os.File) int {
-	opts, operands, result, err := parseArgs(args)
-	switch result {
-	case parseHelp:
-		fmt.Fprint(stdout, helpText) //nolint:errcheck
-		return 0
-	case parseVer:
-		fmt.Fprint(stdout, versionText) //nolint:errcheck
-		return 0
+// parseArgs separates flags from positional arguments.
+// Supports short flags (-s, -f, -i, -n, -v, -b, -r, -S), combined short flags,
+// and long forms (--symbolic, --force, --interactive, --no-dereference,
+// --verbose, --backup, --backup=METHOD, --suffix=SUFFIX, --relative).
+// R3.3: when -f and -i both appear, the last one on the command line wins.
+func parseArgs(rawArgs []string) (options, []string) {
+	opts := options{
+		suffix:       defaultBackupSuffix,
+		backupMethod: "existing",
 	}
+	var positional []string
 
-	if err != nil {
-		printError(stderr, err.Error())
-		printTryHelp(stderr)
-		return 1
-	}
-
-	if len(operands) == 0 {
-		printError(stderr, "missing file operand")
-		printTryHelp(stderr)
-		return 1
-	}
-
-	if len(operands) == 1 {
-		return createLink(operands[0], filepath.Base(operands[0]), opts, stderr)
-	}
-
-	return dispatchLink(operands, opts, stderr)
-}
-
-// dispatchLink routes to directory or single-link creation.
-func dispatchLink(operands []string, opts lnOptions, stderr *os.File) int {
-	dest := operands[len(operands)-1]
-	targets := operands[:len(operands)-1]
-
-	if shouldLinkIntoDir(dest, opts) {
-		return linkIntoDir(targets, dest, opts, stderr)
-	}
-
-	if len(targets) > 1 {
-		printError(stderr, fmt.Sprintf("target '%s' is not a directory", dest))
-		return 1
-	}
-
-	return createLink(targets[0], dest, opts, stderr)
-}
-
-// shouldLinkIntoDir checks if dest is a directory, respecting -n.
-func shouldLinkIntoDir(dest string, opts lnOptions) bool {
-	if opts.noDereference {
-		info, err := os.Lstat(dest)
-		if err != nil {
-			return false
-		}
-		return info.IsDir()
-	}
-	return isDir(dest)
-}
-
-// parseArgs separates flags from operands.
-func parseArgs(args []string) (lnOptions, []string, parseResult, error) {
-	opts := lnOptions{suffix: "~"}
-	var operands []string
-	endOfFlags := false
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if endOfFlags || arg == "-" || !isFlag(arg) {
-			operands = append(operands, arg)
-			continue
-		}
+	for i := 0; i < len(rawArgs); i++ {
+		arg := rawArgs[i]
 		if arg == "--" {
-			endOfFlags = true
+			positional = append(positional, rawArgs[i+1:]...)
+			break
+		}
+		if strings.HasPrefix(arg, "--") {
+			parseLongFlag(&opts, arg)
 			continue
 		}
-		if isLongFlag(arg) {
-			consumed, result, err := parseLongFlag(arg, args[i+1:], &opts)
-			if result != parseOK {
-				return opts, nil, result, nil
-			}
-			if err != nil {
-				return opts, nil, parseOK, err
-			}
-			i += consumed
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			i = parseShortFlags(&opts, rawArgs, i)
 			continue
 		}
-		consumed, err := parseShortFlags(arg[1:], args[i+1:], &opts)
-		if err != nil {
-			return opts, nil, parseOK, err
-		}
-		i += consumed
+		positional = append(positional, arg)
 	}
-
-	return opts, operands, parseOK, nil
+	return opts, positional
 }
 
-// parseLongFlag handles long-form flags including --backup[=METHOD] and --suffix=SUFFIX.
-func parseLongFlag(flag string, remaining []string, opts *lnOptions) (int, parseResult, error) {
-	name, value, hasValue := splitLongFlag(flag)
-	switch name {
-	case "--help":
-		return 0, parseHelp, nil
-	case "--version":
-		return 0, parseVer, nil
-	case "--symbolic":
+// parseLongFlag handles long-form flags.
+// R3.3: --force and --interactive are mutually exclusive; last wins.
+// R3.5: --backup without =METHOD uses the default method (existing).
+func parseLongFlag(opts *options, flag string) {
+	switch {
+	case flag == "--symbolic":
 		opts.symbolic = true
-	case "--relative":
+	case flag == "--relative":
 		opts.relative = true
-	case "--force":
+	case flag == "--force":
 		opts.force = true
 		opts.interactive = false
-	case "--interactive":
+	case flag == "--interactive":
 		opts.interactive = true
 		opts.force = false
-	case "--no-dereference":
+	case flag == "--no-dereference":
 		opts.noDereference = true
-	case "--verbose":
+	case flag == "--verbose":
 		opts.verbose = true
-	case "--backup":
+	case flag == "--backup":
 		opts.backup = true
-		if hasValue {
-			if err := validateBackupMethod(value); err != nil {
-				return 0, parseOK, err
-			}
-			opts.backupMethod = normalizeBackupMethod(value)
-		} else {
-			opts.backupMethod = "existing"
-		}
-	case "--suffix":
-		if hasValue {
-			opts.suffix = value
-		} else if len(remaining) > 0 {
-			opts.suffix = remaining[0]
-			return 1, parseOK, nil
-		} else {
-			return 0, parseOK, fmt.Errorf("option '--suffix' requires an argument")
-		}
-	default:
-		return 0, parseOK, fmt.Errorf("unrecognized option '%s'", flag)
+	case strings.HasPrefix(flag, "--backup="):
+		opts.backup = true
+		opts.backupMethod = strings.TrimPrefix(flag, "--backup=")
+	case strings.HasPrefix(flag, "--suffix="):
+		opts.suffix = strings.TrimPrefix(flag, "--suffix=")
 	}
-	return 0, parseOK, nil
 }
 
-// parseShortFlags handles -s, -r, -f, -v, -b, -n, -i, -S and combined forms.
-func parseShortFlags(flags string, remaining []string, opts *lnOptions) (int, error) {
-	consumed := 0
-	for i := 0; i < len(flags); i++ {
-		switch flags[i] {
+// parseShortFlags handles combined short flags like -sf.
+// R3.3: -f and -i are mutually exclusive; the rightmost character wins.
+// R3.6: -S consumes the remainder of the flag or the next argument as suffix.
+func parseShortFlags(opts *options, rawArgs []string, idx int) int {
+	chars := rawArgs[idx][1:]
+	for j := 0; j < len(chars); j++ {
+		switch chars[j] {
 		case 's':
 			opts.symbolic = true
 		case 'r':
@@ -240,271 +137,323 @@ func parseShortFlags(flags string, remaining []string, opts *lnOptions) (int, er
 			opts.verbose = true
 		case 'b':
 			opts.backup = true
-			opts.backupMethod = "existing"
 		case 'S':
-			rest := flags[i+1:]
-			if rest != "" {
+			rest := chars[j+1:]
+			if len(rest) > 0 {
 				opts.suffix = rest
-			} else if len(remaining) > consumed {
-				opts.suffix = remaining[consumed]
-				consumed++
-			} else {
-				return consumed, fmt.Errorf("option requires an argument -- 'S'")
+			} else if idx+1 < len(rawArgs) {
+				idx++
+				opts.suffix = rawArgs[idx]
 			}
-			return consumed, nil
-		default:
-			return consumed, fmt.Errorf("invalid option -- '%c'", flags[i])
+			return idx
 		}
 	}
-	return consumed, nil
+	return idx
 }
 
-// splitLongFlag splits --name=value into components.
-func splitLongFlag(flag string) (string, string, bool) {
-	name, value, ok := strings.Cut(flag, "=")
-	if ok {
-		return name, value, true
-	}
-	return flag, "", false
-}
-
-// validateBackupMethod checks if method is a valid backup control value.
-func validateBackupMethod(method string) error {
-	switch method {
-	case "none", "off", "numbered", "t",
-		"existing", "nil", "simple", "never":
-		return nil
+// run dispatches to the correct link form based on argument count.
+func run(opts options, args []string) int {
+	switch len(args) {
+	case 1:
+		return linkSingleArg(opts, args[0])
+	case 2:
+		return linkTwoArgs(opts, args[0], args[1])
 	default:
-		return fmt.Errorf("invalid backup type '%s'", method)
+		return linkMultiArgs(opts, args)
 	}
 }
 
-// normalizeBackupMethod maps aliases to canonical names.
-func normalizeBackupMethod(method string) string {
-	switch method {
-	case "t":
-		return "numbered"
-	case "nil":
-		return "existing"
-	case "never":
-		return "simple"
-	case "off":
-		return "none"
-	default:
-		return method
+// linkSingleArg implements the single-argument form: ln TARGET.
+// R1.4: creates a link in the current directory with the same basename.
+func linkSingleArg(opts options, target string) int {
+	linkName := filepath.Base(target)
+	return handleLinkResult(createLink(opts, target, linkName))
+}
+
+// linkTwoArgs implements the two-argument form: ln TARGET LINK_NAME.
+// R1.1: creates a link named linkName pointing to target.
+// If linkName is an existing directory, creates the link inside it.
+func linkTwoArgs(opts options, target, linkName string) int {
+	if isDirDest(opts, linkName) {
+		linkName = filepath.Join(linkName, filepath.Base(target))
 	}
+	return handleLinkResult(createLink(opts, target, linkName))
 }
 
-// isFlag returns true if arg starts with '-' and has content after it.
-func isFlag(arg string) bool {
-	return len(arg) > 1 && arg[0] == '-'
-}
+// linkMultiArgs implements the multi-argument form: ln TARGET... DIRECTORY.
+// R1.2: creates links in directory for each target.
+func linkMultiArgs(opts options, args []string) int {
+	dir := args[len(args)-1]
+	targets := args[:len(args)-1]
 
-// isLongFlag returns true if arg starts with '--'.
-func isLongFlag(arg string) bool {
-	return len(arg) > 2 && arg[0] == '-' && arg[1] == '-'
-}
-
-// createLink creates a single link (hard or symbolic).
-// R3.4: prints verbose output to stdout on success.
-func createLink(target, linkName string, opts lnOptions, stderr *os.File) int {
-	if !handleExisting(linkName, opts, stderr) {
+	if !isDirDest(opts, dir) {
+		fmt.Fprintf(os.Stderr, "%s: target '%s': Not a directory\n",
+			programName, dir)
 		return 1
 	}
-	var effectiveTarget string
-	var exitCode int
-	if opts.symbolic {
-		effectiveTarget, exitCode = createSymlink(target, linkName, opts, stderr)
-	} else {
-		effectiveTarget = target
-		exitCode = createHardLink(target, linkName, stderr)
-	}
-	if exitCode == 0 && opts.verbose {
-		printVerbose(linkName, effectiveTarget, opts.symbolic)
-	}
-	return exitCode
-}
 
-// handleExisting manages an existing destination: backup and/or removal.
-// R3.1: -f removes existing destination.
-// R3.5: -b creates backup before removal.
-func handleExisting(dest string, opts lnOptions, stderr *os.File) bool {
-	if _, err := os.Lstat(dest); err != nil {
-		return true // doesn't exist; let link creation proceed
-	}
-
-	if !opts.force {
-		return true // let link creation fail with EEXIST
-	}
-
-	if opts.backup && opts.backupMethod != "none" {
-		if err := makeBackup(dest, opts); err != nil {
-			printError(stderr, fmt.Sprintf("cannot backup '%s': %s", dest, err))
-			return false
-		}
-		return true // backup renames dest, so it's already gone
-	}
-
-	if err := os.Remove(dest); err != nil {
-		printError(stderr, fmt.Sprintf("cannot remove '%s': %s", dest, err))
-		return false
-	}
-	return true
-}
-
-// makeBackup creates a backup of path according to the backup method.
-// R3.5: backup creation with method selection.
-func makeBackup(path string, opts lnOptions) error {
-	switch opts.backupMethod {
-	case "numbered":
-		return createNumberedBackup(path)
-	case "existing":
-		if hasNumberedBackup(path) {
-			return createNumberedBackup(path)
-		}
-		return os.Rename(path, path+opts.suffix)
-	default: // "simple" or fallback
-		return os.Rename(path, path+opts.suffix)
-	}
-}
-
-// createNumberedBackup renames path to path.~N~ with the next available N.
-func createNumberedBackup(path string) error {
-	for n := 1; ; n++ {
-		backup := fmt.Sprintf("%s.~%d~", path, n)
-		if _, err := os.Lstat(backup); os.IsNotExist(err) {
-			return os.Rename(path, backup)
-		}
-	}
-}
-
-// hasNumberedBackup checks if any numbered backup (path.~N~) exists.
-func hasNumberedBackup(path string) bool {
-	matches, _ := filepath.Glob(path + ".~[0-9]*~")
-	return len(matches) > 0
-}
-
-// createHardLink creates a hard link.
-// R1.1: hard link creation.
-// R1.3: rejects directories.
-// R1.4: rejects existing destinations.
-func createHardLink(target, linkName string, stderr *os.File) int {
-	if err := validateHardLinkTarget(target); err != nil {
-		printError(stderr, fmt.Sprintf("hard link not allowed for directory '%s'", target))
-		return 1
-	}
-	if err := os.Link(target, linkName); err != nil {
-		printLinkError(stderr, linkName, err)
-		return 1
-	}
-	return 0
-}
-
-// createSymlink creates a symbolic link, returning the effective target and exit code.
-// R2.1: -s creates symbolic links.
-// R2.2: allows symlinks to directories.
-// R2.3: stores target string as-is (unless -r).
-// R2.4: -r computes relative path from link location to target.
-func createSymlink(target, linkName string, opts lnOptions, stderr *os.File) (string, int) {
-	linkTarget := target
-	if opts.relative {
-		rel, err := computeRelativePath(target, linkName)
-		if err != nil {
-			printError(stderr, err.Error())
-			return "", 1
-		}
-		linkTarget = rel
-	}
-	if err := os.Symlink(linkTarget, linkName); err != nil {
-		printSymlinkError(stderr, linkName, err)
-		return "", 1
-	}
-	return linkTarget, 0
-}
-
-// computeRelativePath computes the relative path from linkName's directory to target.
-// R2.4: relative symlink path computation.
-func computeRelativePath(target, linkName string) (string, error) {
-	absTarget, err := filepath.Abs(target)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve '%s': %w", target, err)
-	}
-	linkDir := filepath.Dir(linkName)
-	absLinkDir, err := filepath.Abs(linkDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve '%s': %w", linkDir, err)
-	}
-	rel, err := filepath.Rel(absLinkDir, absTarget)
-	if err != nil {
-		return "", fmt.Errorf("failed to compute relative path: %w", err)
-	}
-	return rel, nil
-}
-
-// linkIntoDir creates links for each target inside dir.
-// R1.2: multiple targets into a directory.
-func linkIntoDir(targets []string, dir string, opts lnOptions, stderr *os.File) int {
 	exitCode := 0
 	for _, target := range targets {
 		linkName := filepath.Join(dir, filepath.Base(target))
-		if createLink(target, linkName, opts, stderr) != 0 {
-			exitCode = 1
+		if rc := handleLinkResult(createLink(opts, target, linkName)); rc != 0 {
+			exitCode = rc
 		}
 	}
 	return exitCode
 }
 
-// validateHardLinkTarget returns an error if target is a directory.
-// R1.3: hard links to directories are not allowed.
-func validateHardLinkTarget(target string) error {
-	info, err := os.Stat(target)
-	if err != nil {
-		return nil // Let os.Link report the actual error.
+// handleLinkResult converts a createLink error to an exit code.
+// R3.3: errDeclined causes exit code 1 without printing an error message.
+func handleLinkResult(err error) int {
+	if err == nil {
+		return 0
 	}
-	if info.IsDir() {
-		return fmt.Errorf("directory")
+	if errors.Is(err, errDeclined) {
+		return 1
+	}
+	printError(err)
+	return 1
+}
+
+// createLink creates a hard or symbolic link from target to linkName.
+// R2.4: computes relative path when --relative is set.
+// R3.4: prints verbose output after successful link creation.
+func createLink(opts options, target, linkName string) error {
+	if err := handleExisting(opts, linkName); err != nil {
+		return err
+	}
+	effectiveTarget := target
+	if opts.symbolic && opts.relative {
+		rel, err := computeRelativePath(target, linkName)
+		if err != nil {
+			return err
+		}
+		effectiveTarget = rel
+	}
+	if opts.symbolic {
+		if err := createSymLink(effectiveTarget, linkName); err != nil {
+			return err
+		}
+	} else {
+		if err := createHardLink(target, linkName); err != nil {
+			return err
+		}
+	}
+	if opts.verbose {
+		printVerbose(opts, effectiveTarget, linkName)
 	}
 	return nil
 }
 
-// isDir reports whether path is an existing directory.
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
+// computeRelativePath computes the relative path from the link directory
+// to the target, matching GNU ln -r behavior.
+// R2.4: resolves both paths to absolute form before computing rel path.
+func computeRelativePath(target, linkName string) (string, error) {
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve target '%s': %s",
+			target, err)
+	}
+	absLinkDir, err := filepath.Abs(filepath.Dir(linkName))
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve link directory '%s': %s",
+			linkName, err)
+	}
+	rel, err := filepath.Rel(absLinkDir, absTarget)
+	if err != nil {
+		return "", fmt.Errorf("cannot compute relative path: %s", err)
+	}
+	return rel, nil
 }
 
-// printVerbose prints the verbose link creation message to stdout.
-// R3.4: -v prints each link created.
-func printVerbose(linkName, target string, symbolic bool) {
+// handleExisting handles pre-existing destination files.
+// R3.1: force removes unconditionally (with optional backup).
+// R3.3: interactive prompts before removing (with optional backup).
+func handleExisting(opts options, linkName string) error {
+	if !pathExists(linkName) {
+		return nil
+	}
+	if opts.force {
+		return backupAndRemove(opts, linkName)
+	}
+	if opts.interactive {
+		if !promptReplace(linkName) {
+			return errDeclined
+		}
+		return backupAndRemove(opts, linkName)
+	}
+	return nil
+}
+
+// backupAndRemove creates a backup (if enabled) then removes the file.
+// R3.5: backup is created before removal when -b or --backup is active.
+func backupAndRemove(opts options, path string) error {
+	if needsBackup(opts) {
+		if err := createBackup(opts, path); err != nil {
+			return err
+		}
+	}
+	removeExisting(path)
+	return nil
+}
+
+// needsBackup returns true when backup is enabled and method is not "none".
+func needsBackup(opts options) bool {
+	m := opts.backupMethod
+	return opts.backup && m != "none" && m != "off"
+}
+
+// createBackup renames path to its computed backup name.
+// R3.5: supports numbered, existing, simple, and none methods.
+func createBackup(opts options, path string) error {
+	bp := computeBackupPath(opts, path)
+	if err := os.Rename(path, bp); err != nil {
+		return fmt.Errorf("cannot backup '%s': %s",
+			path, unwrapOSError(err))
+	}
+	return nil
+}
+
+// computeBackupPath determines the backup filename for path.
+// R3.5: numbered → path.~N~, existing → numbered if any exist else simple,
+// simple → path + suffix.
+func computeBackupPath(opts options, path string) string {
+	switch opts.backupMethod {
+	case "numbered", "t":
+		return nextNumberedBackup(path)
+	case "existing", "nil":
+		if hasNumberedBackup(path) {
+			return nextNumberedBackup(path)
+		}
+		return path + opts.suffix
+	default: // "simple", "never", or unrecognized
+		return path + opts.suffix
+	}
+}
+
+// nextNumberedBackup returns the next available path.~N~ name.
+func nextNumberedBackup(path string) string {
+	for i := 1; ; i++ {
+		bp := fmt.Sprintf("%s.~%d~", path, i)
+		if !pathExists(bp) {
+			return bp
+		}
+	}
+}
+
+// hasNumberedBackup checks if any path.~N~ backup file exists.
+func hasNumberedBackup(path string) bool {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	prefix := base + ".~"
+	for _, e := range entries {
+		n := e.Name()
+		if strings.HasPrefix(n, prefix) && strings.HasSuffix(n, "~") {
+			return true
+		}
+	}
+	return false
+}
+
+// printVerbose prints the link creation to stdout.
+// R3.4: format is 'LINK' -> 'TARGET' for symlinks,
+// 'LINK' => 'TARGET' for hard links.
+func printVerbose(opts options, target, linkName string) {
 	arrow := "=>"
-	if symbolic {
+	if opts.symbolic {
 		arrow = "->"
 	}
 	fmt.Printf("'%s' %s '%s'\n", linkName, arrow, target)
 }
 
-// printError prints a formatted error to stderr.
-func printError(stderr *os.File, msg string) {
-	fmt.Fprintf(stderr, "%s: %s\n", progName, msg) //nolint:errcheck
+// promptReplace prompts the user on stderr before removing a destination.
+// R3.3: format is "ln: replace 'DEST'? ". Reads one line from stdin.
+// Proceeds if response starts with 'y' or 'Y'; declines otherwise.
+func promptReplace(dest string) bool {
+	fmt.Fprintf(os.Stderr, "%s: replace '%s'? ", programName, dest)
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && len(line) == 0 {
+		return false
+	}
+	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
 }
 
-// printTryHelp prints the "try help" hint to stderr.
-func printTryHelp(stderr *os.File) {
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
+// pathExists checks whether a path exists using Lstat (does not follow symlinks).
+func pathExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }
 
-// printLinkError prints a hard link failure error to stderr.
-func printLinkError(stderr *os.File, linkName string, err error) {
-	fmt.Fprintf(stderr, "%s: failed to create hard link '%s': %s\n", progName, linkName, err) //nolint:errcheck
+// removeExisting removes the destination file if it exists.
+// R3.1: best-effort removal; errors are ignored because the
+// subsequent link call will report a meaningful error if needed.
+func removeExisting(path string) {
+	// best-effort removal; link creation reports errors if path remains
+	os.Remove(path)
 }
 
-// printSymlinkError prints a symlink failure error to stderr.
-func printSymlinkError(stderr *os.File, linkName string, err error) {
-	fmt.Fprintf(stderr, "%s: failed to create symbolic link '%s': %s\n", progName, linkName, err) //nolint:errcheck
+// createSymLink creates a symbolic link.
+// R2.1, R2.2, R2.3: symbolic link stores target as-is.
+func createSymLink(target, linkName string) error {
+	if err := os.Symlink(target, linkName); err != nil {
+		return fmt.Errorf("failed to create symbolic link '%s': %s",
+			linkName, unwrapOSError(err))
+	}
+	return nil
 }
 
-// TODO: prd037-ln non_goals: -L (--logical) and -P (--physical) dereference modes
-// are explicitly excluded. Do not implement.
+// createHardLink creates a hard link from target to linkName.
+// R1.3: returns error when target is a directory.
+// R1.4: returns error when linkName already exists.
+func createHardLink(target, linkName string) error {
+	if err := os.Link(target, linkName); err != nil {
+		if isHardLinkDirError(target) {
+			return fmt.Errorf("%s: hard link not allowed for directory",
+				target)
+		}
+		return fmt.Errorf("failed to create hard link '%s': %s",
+			linkName, unwrapOSError(err))
+	}
+	return nil
+}
 
-// TODO: prd037-ln non_goals: -t DIRECTORY and -T (--no-target-directory) flags
-// are explicitly excluded. Do not implement.
+// isHardLinkDirError checks if target is a directory, indicating the
+// link failure is due to hard-linking a directory (R1.3).
+func isHardLinkDirError(target string) bool {
+	fi, err := os.Stat(target)
+	return err == nil && fi.IsDir()
+}
+
+// unwrapOSError extracts the underlying message from an *os.PathError or
+// *os.LinkError.
+func unwrapOSError(err error) string {
+	if le, ok := err.(*os.LinkError); ok {
+		return le.Err.Error()
+	}
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+// printError prints a formatted error to stderr in GNU ln style.
+func printError(err error) {
+	fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+}
+
+// isDirDest checks if path is a directory for destination resolution.
+// R3.2: when noDereference is true, uses Lstat so a symlink to a directory
+// is treated as a regular file rather than followed.
+func isDirDest(opts options, path string) bool {
+	if opts.noDereference {
+		fi, err := os.Lstat(path)
+		return err == nil && fi.IsDir()
+	}
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
+}

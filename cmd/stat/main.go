@@ -1,354 +1,477 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/stat displays file and filesystem status information.
-// Implements prd082-stat R1.1, R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R5.1, R6.1, R7.1, R7.2, R7.3.
+// Package main implements cmd/stat: display file status.
+// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2, R5.1, R6.1, R7.1-R7.3.
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+const programName = "stat"
+
+// blockSize is the fundamental block size for st_blocks (POSIX 512 bytes).
+const blockSize = 512
+
+// versionStr is the version string printed by --version.
+const versionStr = "stat (go-unix-utils) 1.0"
+
+// helpMsg is the usage text printed by --help.
+// R7.3: --help prints usage information.
+const helpMsg = `Usage: stat [OPTION]... FILE...
+Display file or file system status.
+
+  -L, --dereference     follow links
+  -f, --file-system     display file system status instead of file status
+  -c  --format=FORMAT   use the specified FORMAT instead of the default;
+                          output a newline after each use of FORMAT
+  -t, --terse           print the information in terse form
+      --help        display this help and exit
+      --version     output version information and exit
+`
+
 // options holds parsed command-line flags.
 type options struct {
-	dereference bool
-	fileSystem  bool
-	terse       bool
-	format      string
-	printfFmt   string
-	version     bool
-	help        bool
-	files       []string
+	deref  bool
+	fsys   bool
+	terse  bool
+	format string
+	files  []string
 }
 
-// R7.3: SIGPIPE handler for piped output.
+// main entry point with SIGPIPE handler and argument dispatch.
+// R7.3: InstallSIGPIPEHandler for graceful SIGPIPE exit.
 func main() {
 	sys.InstallSIGPIPEHandler()
-	opts, err := parseArgs(os.Args[1:])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "stat: %v\n", err)
+	opts := parseArgs(os.Args[1:])
+	if len(opts.files) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: missing operand\n", programName)
+		fmt.Fprintf(os.Stderr,
+			"Try '%s --help' for more information.\n", programName)
 		os.Exit(1)
 	}
-	if opts.version {
-		printVersion()
-		return
+	exitCode := 0
+	for _, f := range opts.files {
+		if err := processFile(f, opts); err != nil {
+			exitCode = 1
+		}
 	}
-	if opts.help {
-		printUsage()
-		return
-	}
-	os.Exit(run(opts))
+	os.Exit(exitCode)
 }
 
-// parseArgs processes command-line arguments into options.
-func parseArgs(args []string) (options, error) {
+// parseArgs parses command-line arguments into options.
+// R2.1: accepts multiple file operands in order.
+// R7.3: --version and --help exit immediately.
+func parseArgs(args []string) options {
 	var opts options
 	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "--" {
+		arg := args[i]
+		if arg == "--" {
 			opts.files = append(opts.files, args[i+1:]...)
 			break
 		}
 		switch {
-		case a == "--dereference":
-			opts.dereference = true
-		case a == "--file-system":
-			opts.fileSystem = true
-		case a == "--terse":
+		case arg == "--version":
+			fmt.Println(versionStr)
+			os.Exit(0)
+		case arg == "--help":
+			fmt.Print(helpMsg)
+			os.Exit(0)
+		case arg == "-L" || arg == "--dereference":
+			opts.deref = true
+		case arg == "-f" || arg == "--file-system":
+			opts.fsys = true
+		case arg == "-t" || arg == "--terse":
 			opts.terse = true
-		case strings.HasPrefix(a, "--format="):
-			opts.format = a[len("--format="):]
-		case a == "--format":
+		case arg == "-c" || arg == "--format":
 			i++
-			if i >= len(args) {
-				return opts, fmt.Errorf("option '--format' requires an argument")
+			if i < len(args) {
+				opts.format = args[i]
 			}
-			opts.format = args[i]
-		case a == "--version":
-			opts.version = true
-			return opts, nil
-		case a == "--help":
-			opts.help = true
-			return opts, nil
-		case strings.HasPrefix(a, "--printf="):
-			opts.printfFmt = a[len("--printf="):]
-		case a == "--printf":
-			i++
-			if i >= len(args) {
-				return opts, fmt.Errorf("option '--printf' requires an argument")
-			}
-			opts.printfFmt = args[i]
-		case len(a) > 1 && a[0] == '-' && a[1] != '-':
-			var err error
-			i, err = parseShortGroup(args, i, &opts)
-			if err != nil {
-				return opts, err
-			}
-		case strings.HasPrefix(a, "--"):
-			return opts, fmt.Errorf("unrecognized option '%s'", a)
+		case strings.HasPrefix(arg, "-c"):
+			opts.format = arg[2:]
+		case strings.HasPrefix(arg, "--format="):
+			opts.format = arg[len("--format="):]
+		case strings.HasPrefix(arg, "-") && len(arg) > 1 &&
+			!strings.HasPrefix(arg, "--"):
+			i = parseShortFlags(arg[1:], args, i, &opts)
 		default:
-			opts.files = append(opts.files, a)
+			opts.files = append(opts.files, arg)
 		}
 	}
-	if !opts.version && !opts.help && len(opts.files) == 0 {
-		return opts, fmt.Errorf("missing operand")
-	}
-	return opts, nil
+	return opts
 }
 
-// parseShortGroup handles combined short flags like -Lt or -c FORMAT.
-func parseShortGroup(args []string, idx int, opts *options) (int, error) {
-	flags := args[idx][1:]
+// parseShortFlags handles combined short flags like -Lt.
+func parseShortFlags(flags string, args []string, i int, opts *options) int {
 	for j := 0; j < len(flags); j++ {
 		switch flags[j] {
 		case 'L':
-			opts.dereference = true
+			opts.deref = true
 		case 'f':
-			opts.fileSystem = true
+			opts.fsys = true
 		case 't':
 			opts.terse = true
 		case 'c':
 			if j+1 < len(flags) {
 				opts.format = flags[j+1:]
-			} else {
-				idx++
-				if idx >= len(args) {
-					return idx, fmt.Errorf("option requires an argument -- 'c'")
-				}
-				opts.format = args[idx]
+			} else if i+1 < len(args) {
+				i++
+				opts.format = args[i]
 			}
-			return idx, nil
+			return i
 		default:
-			return idx, fmt.Errorf("invalid option -- '%c'", flags[j])
+			fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n",
+				programName, flags[j])
+			fmt.Fprintf(os.Stderr,
+				"Try '%s --help' for more information.\n", programName)
+			os.Exit(1)
 		}
 	}
-	return idx, nil
+	return i
 }
 
-// activeFormat returns the active format string and whether it's printf mode.
-func activeFormat(opts options) (string, bool) {
-	if opts.printfFmt != "" {
-		return opts.printfFmt, true
+// processFile stats a file and prints output according to options.
+// R2.3: returns error on stat failure, prints error to stderr.
+// R5.1: dispatches to filesystem stat when -f is set.
+func processFile(path string, opts options) error {
+	if opts.fsys {
+		return processFileFsys(path, opts)
 	}
-	if opts.format != "" {
-		return opts.format, false
-	}
-	return "", false
-}
-
-// R2.1: process multiple files; R2.3, R7.1, R7.2: exit code handling.
-func run(opts options) int {
-	exitCode := 0
-	fmtStr, isPrintf := activeFormat(opts)
-	for _, path := range opts.files {
-		var err error
-		switch {
-		case fmtStr != "":
-			err = printFormatted(path, fmtStr, isPrintf, opts)
-		case opts.fileSystem:
-			err = printFileSystem(path, opts.terse)
-		default:
-			err = printFileStat(path, opts.dereference, opts.terse)
-		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			exitCode = 1
-		}
-	}
-	return exitCode
-}
-
-// printFormatted dispatches to file or filesystem format expansion.
-func printFormatted(path, fmtStr string, isPrintf bool, opts options) error {
-	if opts.fileSystem {
-		return printFSFormatted(path, fmtStr, isPrintf)
-	}
-	return printFileFormatted(path, fmtStr, isPrintf, opts.dereference)
-}
-
-// printFileFormatted outputs file status using a format string.
-// R3.1: --format appends newline; R4.1: --printf does not.
-func printFileFormatted(path, fmtStr string, isPrintf, deref bool) error {
-	fi, err := statPath(path, deref)
+	fi, err := statFile(path, opts.deref)
 	if err != nil {
-		return fmt.Errorf("stat: cannot stat '%s': %s", path, formatOSError(err))
+		reportError(path, err)
+		return err
 	}
-	output := expandFileFormat(fmtStr, path, fi, isPrintf)
-	if !isPrintf {
-		output += "\n"
-	}
-	fmt.Print(output)
-	return nil
-}
-
-// printFSFormatted outputs filesystem status using a format string.
-// R5.1: filesystem format with --format or --printf.
-func printFSFormatted(path, fmtStr string, isPrintf bool) error {
-	fsi, err := getStatfs(path)
-	if err != nil {
-		return fmt.Errorf("stat: cannot read file system information for '%s': %s",
-			path, capitalizeFirst(err.Error()))
-	}
-	output := expandFSFormat(fmtStr, path, fsi, isPrintf)
-	if !isPrintf {
-		output += "\n"
-	}
-	fmt.Print(output)
-	return nil
-}
-
-// printFileStat displays file status for a single path.
-func printFileStat(path string, deref, terse bool) error {
-	fi, err := statPath(path, deref)
-	if err != nil {
-		return fmt.Errorf("stat: cannot stat '%s': %s", path, formatOSError(err))
-	}
-	if terse {
-		printTerseFile(path, fi)
-	} else {
-		printDefaultFile(path, fi)
+	switch {
+	case opts.format != "":
+		fmt.Println(expandFormat(opts.format, fi, path))
+	case opts.terse:
+		fmt.Print(formatTerse(fi, path))
+	default:
+		fmt.Print(expandFormat(defaultFormat(fi, path), fi, path))
 	}
 	return nil
 }
 
-// statPath calls Stat or Lstat based on the dereference flag.
-// R2.2: -L follows symlinks via sys.Stat.
-func statPath(path string, deref bool) (*sys.FileInfo, error) {
+// statFile returns file info using Stat (with -L) or Lstat (without).
+// R2.2: -L follows symlinks.
+func statFile(path string, deref bool) (*sys.FileInfo, error) {
 	if deref {
 		return sys.Stat(path)
 	}
 	return sys.Lstat(path)
 }
 
-// printFileSystem displays filesystem status for a single path.
-// R5.1: filesystem information via statfs.
-func printFileSystem(path string, terse bool) error {
-	fsi, err := getStatfs(path)
-	if err != nil {
-		return fmt.Errorf("stat: cannot read file system information for '%s': %s",
-			path, capitalizeFirst(err.Error()))
+// reportError prints a stat error to stderr matching GNU format.
+func reportError(path string, err error) {
+	msg := err.Error()
+	if pe, ok := err.(*os.PathError); ok {
+		msg = pe.Err.Error()
 	}
-	if terse {
-		printTerseFS(path, fsi)
-	} else {
-		printDefaultFS(path, fsi)
-	}
-	return nil
+	fmt.Fprintf(os.Stderr, "%s: cannot stat '%s': %s\n",
+		programName, path, msg)
 }
 
-// R1.1: default multi-line file status output matching GNU stat.
-func printDefaultFile(path string, fi *sys.FileInfo) {
-	fmt.Printf("  File: %s\n", formatFileName(path, fi))
-	fmt.Printf("  Size: %-10d\tBlocks: %-10d IO Block: %-6d %s\n",
-		fi.Size, fi.Blocks, fi.Blksize, fileTypeStr(fi))
-	printDeviceLine(fi)
-	fmt.Printf("Access: (%04o/%s)  Uid: (%5d/%8s)   Gid: (%5d/%8s)\n",
-		unixPerms(fi.Mode), modeString(fi.Mode),
-		fi.Uid, lookupUser(fi.Uid), fi.Gid, lookupGroup(fi.Gid))
-	fmt.Printf("Access: %s\n", formatTime(fi.AccessTime))
-	fmt.Printf("Modify: %s\n", formatTime(fi.ModTime))
-	fmt.Printf("Change: %s\n", formatTime(fi.ChangeTime))
-	fmt.Printf(" Birth: %s\n", formatBirthTime(fi))
+// formatSpec holds a parsed format directive with optional width/flags.
+type formatSpec struct {
+	flags     string
+	width     string
+	precision string
+	directive byte
 }
 
-// printDeviceLine outputs the Device/Inode/Links line.
-func printDeviceLine(fi *sys.FileInfo) {
-	maj, min := deviceMajor(fi.Dev), deviceMinor(fi.Dev)
+// defaultFormat returns the default format string for file stat output.
+// R1.1: multi-line format matching GNU stat default (unquoted names,
+// device as major,minor decimal).
+func defaultFormat(fi *sys.FileInfo, path string) string {
+	fileName := strings.ReplaceAll(
+		defaultFileName(fi, path), "%", "%%")
+	major := deviceMajor(fi.Dev)
+	minor := deviceMinor(fi.Dev)
+	base := fmt.Sprintf("  File: %s\n", fileName) +
+		"  Size: %-10s\tBlocks: %-10b IO Block: %-6o %F\n" +
+		fmt.Sprintf("Device: %d,%d\tInode: %%-10i  Links: %%h\n",
+			major, minor)
 	if fi.Mode&os.ModeDevice != 0 {
-		fmt.Printf("Device: %d,%d\tInode: %-10d  Links: %-5d Device type: %x,%x\n",
-			maj, min, fi.Ino, fi.Nlink,
-			deviceMajor(fi.Rdev), deviceMinor(fi.Rdev))
-	} else {
-		fmt.Printf("Device: %d,%d\tInode: %-10d  Links: %d\n",
-			maj, min, fi.Ino, fi.Nlink)
+		base += "Device type: %t,%T\n"
 	}
+	base += "Access: (%04a/%10.10A)  Uid: (%5u/%8U)   Gid: (%5g/%8G)\n" +
+		"Access: %x\n" +
+		"Modify: %y\n" +
+		"Change: %z\n" +
+		" Birth: %w\n"
+	return base
 }
 
-// R4.2: terse output format for files.
-func printTerseFile(path string, fi *sys.FileInfo) {
-	birthEpoch := int64(0)
-	if bt, ok := getBirthTime(fi.Info); ok {
-		birthEpoch = bt.Unix()
-	}
-	fmt.Printf("%s %d %d %x %d %d %x %d %d %x %x %d %d %d %d %d\n",
-		path, fi.Size, fi.Blocks, rawMode(fi.Info),
-		fi.Uid, fi.Gid, fi.Dev, fi.Ino, fi.Nlink,
-		deviceMajor(fi.Rdev), deviceMinor(fi.Rdev),
-		fi.AccessTime.Unix(), fi.ModTime.Unix(),
-		fi.ChangeTime.Unix(), birthEpoch, fi.Blksize)
-}
-
-// R5.1: default multi-line filesystem status output.
-func printDefaultFS(path string, fsi *statfsInfo) {
-	fmt.Printf("  File: \"%s\"\n", path)
-	fmt.Printf("    ID: %-8s Namelen: %-7s Type: %s\n",
-		fsi.fsIDHex, fsi.maxName, fsi.typeName)
-	fmt.Printf("Block size: %-10d Fundamental block size: %d\n",
-		fsi.blockSize, fsi.fundBlockSize)
-	fmt.Printf("Blocks: Total: %-10d Free: %-10d Available: %d\n",
-		fsi.blocks, fsi.blocksFree, fsi.blocksAvail)
-	fmt.Printf("Inodes: Total: %-10d Free: %d\n",
-		fsi.files, fsi.filesFree)
-}
-
-// R4.2, R5.1: terse output format for filesystem.
-func printTerseFS(path string, fsi *statfsInfo) {
-	fmt.Printf("%s %s %s %x %d %d %d %d %d %d %d\n",
-		path, fsi.fsIDHex, fsi.maxName, fsi.typeNum,
-		fsi.blockSize, fsi.fundBlockSize,
-		fsi.blocks, fsi.blocksFree, fsi.blocksAvail,
-		fsi.files, fsi.filesFree)
-}
-
-// formatFileName returns the File: line content.
-// Symlinks show path -> target; other types show path.
-func formatFileName(path string, fi *sys.FileInfo) string {
+// defaultFileName returns the unquoted filename for the default File: line.
+// For symlinks, includes " -> target".
+func defaultFileName(fi *sys.FileInfo, path string) string {
 	if fi.Mode&os.ModeSymlink != 0 {
 		target, err := os.Readlink(path)
 		if err != nil {
 			return path
 		}
-		return fmt.Sprintf("%s -> %s", path, target)
+		return path + " -> " + target
 	}
 	return path
 }
 
-// fileTypeStr returns a human-readable file type string.
-func fileTypeStr(fi *sys.FileInfo) string {
-	m := fi.Mode
-	switch {
-	case m.IsRegular():
-		if fi.Size == 0 {
-			return "regular empty file"
+// formatTerse formats file status in terse mode.
+// R4.2: single line of space-separated fields matching GNU stat --terse.
+func formatTerse(fi *sys.FileInfo, path string) string {
+	return fmt.Sprintf(
+		"%s %d %d %x %d %d %x %d %d %x %x %d %d %d %d %d\n",
+		path, fi.Size, fi.Blocks, rawMode(fi),
+		fi.Uid, fi.Gid, fi.Dev, fi.Ino, fi.Nlink,
+		deviceMajor(fi.Rdev), deviceMinor(fi.Rdev),
+		fi.AccessTime.Unix(), fi.ModTime.Unix(),
+		fi.ChangeTime.Unix(), birthEpoch(fi), fi.Blksize)
+}
+
+// expandFormatWith expands format directives using the provided handler.
+// Shared by file stat and filesystem stat expansion.
+func expandFormatWith(
+	format string, handler func(formatSpec) string,
+) string {
+	var buf strings.Builder
+	for i := 0; i < len(format); {
+		if format[i] != '%' {
+			buf.WriteByte(format[i])
+			i++
+			continue
 		}
+		i++ // skip '%'
+		if i >= len(format) {
+			buf.WriteByte('%')
+			break
+		}
+		if format[i] == '%' {
+			buf.WriteByte('%')
+			i++
+			continue
+		}
+		spec, n := parseSpec(format[i:])
+		i += n
+		buf.WriteString(handler(spec))
+	}
+	return buf.String()
+}
+
+// expandFormat expands format directives in the format string.
+// R3.1: supports all standard format directives.
+func expandFormat(format string, fi *sys.FileInfo, path string) string {
+	return expandFormatWith(format, func(spec formatSpec) string {
+		return applyDirective(spec, fi, path)
+	})
+}
+
+// parseSpec parses flags, width, precision, and directive letter.
+func parseSpec(s string) (formatSpec, int) {
+	var spec formatSpec
+	i := 0
+	for i < len(s) && strings.ContainsRune("-+0# ", rune(s[i])) {
+		spec.flags += string(s[i])
+		i++
+	}
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		spec.width += string(s[i])
+		i++
+	}
+	if i < len(s) && s[i] == '.' {
+		spec.precision = "."
+		i++
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			spec.precision += string(s[i])
+			i++
+		}
+	}
+	if i < len(s) {
+		spec.directive = s[i]
+		i++
+	}
+	return spec, i
+}
+
+// applyDirective formats a single directive value with width/flags.
+func applyDirective(spec formatSpec, fi *sys.FileInfo, path string) string {
+	d := spec.directive
+	prefix := "%" + spec.flags + spec.width + spec.precision
+	if isNumericDirective(d) {
+		val := numericValue(d, fi, path)
+		base := directiveBase(d)
+		switch base {
+		case 8:
+			return fmt.Sprintf(prefix+"o", val)
+		case 16:
+			return fmt.Sprintf(prefix+"x", val)
+		default:
+			return fmt.Sprintf(prefix+"d", val)
+		}
+	}
+	if isStringDirective(d) {
+		return fmt.Sprintf(prefix+"s", stringValue(d, fi, path))
+	}
+	return "%" + string(d)
+}
+
+// isNumericDirective returns true for directives that produce numeric values.
+func isNumericDirective(d byte) bool {
+	switch d {
+	case 'a', 'b', 'B', 'd', 'D', 'f', 'g', 'h', 'i',
+		'o', 's', 't', 'T', 'u', 'W', 'X', 'Y', 'Z':
+		return true
+	}
+	return false
+}
+
+// isStringDirective returns true for directives that produce string values.
+func isStringDirective(d byte) bool {
+	switch d {
+	case 'A', 'F', 'G', 'm', 'n', 'N', 'U', 'w', 'x', 'y', 'z':
+		return true
+	}
+	return false
+}
+
+// directiveBase returns the numeric base for a directive (8, 10, or 16).
+func directiveBase(d byte) int {
+	switch d {
+	case 'a':
+		return 8
+	case 'D', 'f', 't', 'T':
+		return 16
+	default:
+		return 10
+	}
+}
+
+// numericValue returns the numeric value for a format directive.
+func numericValue(d byte, fi *sys.FileInfo, _ string) int64 {
+	switch d {
+	case 'a':
+		return int64(rawMode(fi) & 07777)
+	case 'b':
+		return fi.Blocks
+	case 'B':
+		return blockSize
+	case 'd':
+		return int64(fi.Dev)
+	case 'D':
+		return int64(fi.Dev)
+	case 'f':
+		return int64(rawMode(fi))
+	case 'g':
+		return int64(fi.Gid)
+	case 'h':
+		return int64(fi.Nlink)
+	case 'i':
+		return int64(fi.Ino)
+	case 'o':
+		return fi.Blksize
+	case 's':
+		return fi.Size
+	case 't':
+		return int64(deviceMajor(fi.Rdev))
+	case 'T':
+		return int64(deviceMinor(fi.Rdev))
+	case 'u':
+		return int64(fi.Uid)
+	case 'W':
+		return birthEpoch(fi)
+	case 'X':
+		return fi.AccessTime.Unix()
+	case 'Y':
+		return fi.ModTime.Unix()
+	case 'Z':
+		return fi.ChangeTime.Unix()
+	default:
+		return 0
+	}
+}
+
+// stringValue returns the string value for a format directive.
+func stringValue(d byte, fi *sys.FileInfo, path string) string {
+	switch d {
+	case 'A':
+		return humanPerms(fi)
+	case 'F':
+		return fileTypeName(fi)
+	case 'G':
+		return lookupGroup(fi.Gid)
+	case 'm':
+		return mountPoint(path)
+	case 'n':
+		return path
+	case 'N':
+		return quotedName(fi, path)
+	case 'U':
+		return lookupUser(fi.Uid)
+	case 'w':
+		return birthTimeStr(fi)
+	case 'x':
+		return formatTime(fi.AccessTime)
+	case 'y':
+		return formatTime(fi.ModTime)
+	case 'z':
+		return formatTime(fi.ChangeTime)
+	default:
+		return ""
+	}
+}
+
+// rawMode returns the raw Unix st_mode value from syscall.Stat_t.
+func rawMode(fi *sys.FileInfo) uint32 {
+	if stat, ok := fi.Info.Sys().(*syscall.Stat_t); ok {
+		return uint32(stat.Mode)
+	}
+	return uint32(fi.Mode.Perm())
+}
+
+// deviceMajor extracts the major device number (Darwin encoding).
+func deviceMajor(rdev uint64) uint32 { return uint32((rdev >> 24) & 0xff) }
+
+// deviceMinor extracts the minor device number (Darwin encoding).
+func deviceMinor(rdev uint64) uint32 { return uint32(rdev & 0xffffff) }
+
+// fileTypeName returns the human-readable file type name.
+// R1.1: matches GNU stat file type names.
+func fileTypeName(fi *sys.FileInfo) string {
+	mode := fi.Mode
+	switch {
+	case mode.IsRegular() && fi.Size == 0:
+		return "regular empty file"
+	case mode.IsRegular():
 		return "regular file"
-	case m.IsDir():
+	case mode.IsDir():
 		return "directory"
-	case m&os.ModeSymlink != 0:
+	case mode&os.ModeSymlink != 0:
 		return "symbolic link"
-	case m&os.ModeCharDevice != 0:
-		return "character special file"
-	case m&os.ModeDevice != 0:
-		return "block special file"
-	case m&os.ModeNamedPipe != 0:
+	case mode&os.ModeNamedPipe != 0:
 		return "fifo"
-	case m&os.ModeSocket != 0:
+	case mode&os.ModeSocket != 0:
 		return "socket"
+	case mode&os.ModeDevice != 0 && mode&os.ModeCharDevice != 0:
+		return "character special file"
+	case mode&os.ModeDevice != 0:
+		return "block special file"
 	default:
 		return "weird file"
 	}
 }
 
-// fileTypeChar returns the single-character file type indicator.
-func fileTypeChar(mode os.FileMode) byte {
+// typeChar returns the file type character for the permission string.
+func typeChar(mode os.FileMode) byte {
 	switch {
 	case mode.IsDir():
 		return 'd'
@@ -358,7 +481,7 @@ func fileTypeChar(mode os.FileMode) byte {
 		return 'p'
 	case mode&os.ModeSocket != 0:
 		return 's'
-	case mode&os.ModeCharDevice != 0:
+	case mode&os.ModeDevice != 0 && mode&os.ModeCharDevice != 0:
 		return 'c'
 	case mode&os.ModeDevice != 0:
 		return 'b'
@@ -367,25 +490,31 @@ func fileTypeChar(mode os.FileMode) byte {
 	}
 }
 
-// modeString returns the 10-character permission string (e.g. -rw-r--r--).
-func modeString(mode os.FileMode) string {
-	var buf [10]byte
-	buf[0] = fileTypeChar(mode)
-	const rwx = "rwxrwxrwx"
-	perm := mode.Perm()
-	for i := 0; i < 9; i++ {
-		if perm&(1<<uint(8-i)) != 0 {
-			buf[1+i] = rwx[i]
-		} else {
-			buf[1+i] = '-'
-		}
+// humanPerms returns the human-readable permission string like -rwxr-xr-x.
+// R3.1: %A directive.
+func humanPerms(fi *sys.FileInfo) string {
+	raw := rawMode(fi)
+	buf := [10]byte{
+		typeChar(fi.Mode),
+		'-', '-', '-', '-', '-', '-', '-', '-', '-',
 	}
-	applySpecialBits(&buf, mode)
+	permBits(raw, buf[:])
+	specialBits(fi.Mode, buf[:])
 	return string(buf[:])
 }
 
-// applySpecialBits applies setuid/setgid/sticky to the permission string.
-func applySpecialBits(buf *[10]byte, mode os.FileMode) {
+// permBits fills the 9 permission characters from raw mode bits.
+func permBits(raw uint32, buf []byte) {
+	const chars = "rwx"
+	for i := 0; i < 9; i++ {
+		if raw&(1<<uint(8-i)) != 0 {
+			buf[i+1] = chars[i%3]
+		}
+	}
+}
+
+// specialBits applies setuid, setgid, and sticky bit overrides.
+func specialBits(mode os.FileMode, buf []byte) {
 	if mode&os.ModeSetuid != 0 {
 		if buf[3] == 'x' {
 			buf[3] = 's'
@@ -409,22 +538,49 @@ func applySpecialBits(buf *[10]byte, mode os.FileMode) {
 	}
 }
 
-// unixPerms returns the Unix-style octal permission bits (0-4095).
-func unixPerms(mode os.FileMode) uint32 {
-	perm := uint32(mode.Perm())
-	if mode&os.ModeSetuid != 0 {
-		perm |= 04000
-	}
-	if mode&os.ModeSetgid != 0 {
-		perm |= 02000
-	}
-	if mode&os.ModeSticky != 0 {
-		perm |= 01000
-	}
-	return perm
+// formatTime formats a time in GNU stat's human-readable format.
+// R3.1: %x, %y, %z, %w directives.
+func formatTime(t time.Time) string {
+	return t.Format("2006-01-02 15:04:05") +
+		fmt.Sprintf(".%09d ", t.Nanosecond()) +
+		t.Format("-0700")
 }
 
-// lookupUser returns the username for a uid, or the uid string if lookup fails.
+// birthTimeStr returns the birth time as a human-readable string, or "-".
+func birthTimeStr(fi *sys.FileInfo) string {
+	bt, ok := birthTime(fi)
+	if !ok {
+		return "-"
+	}
+	return formatTime(bt)
+}
+
+// birthEpoch returns the birth time as epoch seconds, or 0.
+func birthEpoch(fi *sys.FileInfo) int64 {
+	bt, ok := birthTime(fi)
+	if !ok {
+		return 0
+	}
+	return bt.Unix()
+}
+
+// quotedName returns the filename quoted, with symlink target for links.
+// R3.1: %N directive.
+func quotedName(fi *sys.FileInfo, path string) string {
+	if fi.Mode&os.ModeSymlink != 0 {
+		target, err := os.Readlink(path)
+		if err != nil {
+			return quoteStr(path)
+		}
+		return quoteStr(path) + " -> " + quoteStr(target)
+	}
+	return quoteStr(path)
+}
+
+// quoteStr wraps s in single quotes.
+func quoteStr(s string) string { return "'" + s + "'" }
+
+// lookupUser returns the username for a UID, or the UID string.
 func lookupUser(uid uint32) string {
 	u, err := user.LookupId(strconv.FormatUint(uint64(uid), 10))
 	if err != nil {
@@ -433,7 +589,7 @@ func lookupUser(uid uint32) string {
 	return u.Username
 }
 
-// lookupGroup returns the group name for a gid, or the gid string if lookup fails.
+// lookupGroup returns the group name for a GID, or the GID string.
 func lookupGroup(gid uint32) string {
 	g, err := user.LookupGroupId(strconv.FormatUint(uint64(gid), 10))
 	if err != nil {
@@ -442,53 +598,39 @@ func lookupGroup(gid uint32) string {
 	return g.Name
 }
 
-// formatTime formats a timestamp matching GNU stat output.
-func formatTime(t time.Time) string {
-	return t.Format("2006-01-02 15:04:05.000000000 -0700")
-}
-
-// formatBirthTime returns the birth time string, or "-" if unavailable.
-func formatBirthTime(fi *sys.FileInfo) string {
-	bt, ok := getBirthTime(fi.Info)
-	if !ok {
-		return "-"
+// mountPoint returns the mount point for the given path.
+// R3.1: %m directive.
+func mountPoint(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
 	}
-	return formatTime(bt)
-}
-
-// formatOSError extracts and capitalizes the underlying OS error message.
-func formatOSError(err error) string {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
-		return capitalizeFirst(pe.Err.Error())
+	dev := deviceOfPath(abs)
+	if dev == 0 {
+		return abs
 	}
-	return capitalizeFirst(err.Error())
+	return walkToMount(abs, dev)
 }
 
-// capitalizeFirst uppercases the first character of a string.
-func capitalizeFirst(s string) string {
-	if s == "" {
-		return s
+// deviceOfPath returns the device ID for a path via syscall.Stat.
+func deviceOfPath(path string) uint64 {
+	var st syscall.Stat_t
+	if err := syscall.Stat(path, &st); err != nil {
+		return 0
 	}
-	return strings.ToUpper(s[:1]) + s[1:]
+	return uint64(st.Dev)
 }
 
-// printVersion outputs version information to stdout.
-func printVersion() {
-	fmt.Println("stat (go-unix-utils)")
-}
-
-// printUsage outputs help information to stdout.
-func printUsage() {
-	fmt.Print(`Usage: stat [OPTION]... FILE...
-Display file or file system status.
-
-  -L, --dereference     follow links
-  -f, --file-system     display file system status instead of file status
-  -c  --format=FORMAT   use the specified FORMAT instead of the default
-      --printf=FORMAT   like --format, but interpret backslash escapes
-  -t, --terse           print the information in terse form
-      --help            display this help and exit
-      --version         output version information and exit
-`)
+// walkToMount walks up the directory tree until the device ID changes.
+func walkToMount(path string, dev uint64) string {
+	for {
+		parent := filepath.Dir(path)
+		if parent == path {
+			return path
+		}
+		if deviceOfPath(parent) != dev {
+			return path
+		}
+		path = parent
+	}
 }

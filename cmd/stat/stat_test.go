@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/stat against gstat reference binary.
-// Implements prd082-stat AC1-AC5.
+// Differential tests for cmd/stat against gstat (GNU coreutils).
+// Implements srd082 R1.1, R2.1-R2.3, R3.1, R4.2, R5.1, R6.1, R7.1-R7.3.
 package main
 
 import (
@@ -10,287 +10,399 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normProgramName normalizes the binary name prefix in stderr messages
-// so that "gstat:" and our "stat:" match during comparison.
-func normProgramName(data []byte) []byte {
-	return bytes.ReplaceAll(data, []byte("gstat:"), []byte("stat:"))
+const refBinName = "gstat"
+
+// makeNormalizer creates a NormalizeFunc that replaces binary-specific names
+// and normalizes syscall error message capitalization.
+func makeNormalizer(refBin string) testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		b = bytes.ReplaceAll(b, []byte(refBin), []byte(programName))
+		b = bytes.ReplaceAll(b, []byte(refBinName), []byte(programName))
+		b = normalizeSyscallErrors(b)
+		return b
+	}
 }
 
+// normalizeFsLiveValues replaces large decimal numbers (7+ digits) with
+// a placeholder. Live filesystem stats (free blocks, inodes) change
+// between the reference and Go binary invocations.
+func normalizeFsLiveValues(b []byte) []byte {
+	re := regexp.MustCompile(`\d{7,}`)
+	return re.ReplaceAll(b, []byte("NNNNNNN"))
+}
+
+// normalizeSyscallErrors lowercases known syscall error messages that
+// differ in case between C strerror() and Go syscall.Errno.Error().
+func normalizeSyscallErrors(b []byte) []byte {
+	replacements := []struct{ from, to string }{
+		{"No such file or directory", "no such file or directory"},
+		{"Not a directory", "not a directory"},
+		{"Permission denied", "permission denied"},
+		{"Operation not permitted", "operation not permitted"},
+	}
+	for _, r := range replacements {
+		b = bytes.ReplaceAll(b, []byte(r.from), []byte(r.to))
+	}
+	return b
+}
+
+// setupFixtures creates test files in dir for differential testing.
+func setupFixtures(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.WriteFile(
+		filepath.Join(dir, "hello.txt"),
+		[]byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.Symlink("hello.txt",
+		filepath.Join(dir, "link")); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+}
+
+// TestDiff runs differential tests comparing cmd/stat against gstat.
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gstat")
+	refBin, err := exec.LookPath(refBinName)
 	if err != nil {
-		t.Skip("reference binary gstat not in PATH")
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
 	}
 
-	dir := t.TempDir()
+	workDir := t.TempDir()
+	setupFixtures(t, workDir)
 
-	regFile := filepath.Join(dir, "regular.txt")
-	if err := os.WriteFile(regFile, []byte("hello world\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	norm := makeNormalizer(refBin)
+	norms := []testutils.NormalizeFunc{norm}
 
-	emptyFile := filepath.Join(dir, "empty.txt")
-	if err := os.WriteFile(emptyFile, nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	t.Run("default", func(t *testing.T) {
+		t.Parallel()
+		runDefaultTests(t, goBin, refBin, workDir, norms)
+	})
+	t.Run("format", func(t *testing.T) {
+		t.Parallel()
+		runFormatTests(t, goBin, refBin, workDir, norms)
+	})
+	t.Run("modes", func(t *testing.T) {
+		t.Parallel()
+		runModeTests(t, goBin, refBin, workDir, norms)
+	})
+	t.Run("filesystem", func(t *testing.T) {
+		t.Parallel()
+		runFilesystemTests(t, goBin, refBin, workDir, norms)
+	})
+	t.Run("dereference", func(t *testing.T) {
+		t.Parallel()
+		runDereferenceTests(t, goBin, refBin, workDir, norms)
+	})
+	t.Run("errors", func(t *testing.T) {
+		t.Parallel()
+		runErrorTests(t, goBin, refBin, workDir, norms)
+	})
+}
 
-	subDir := filepath.Join(dir, "subdir")
-	if err := os.Mkdir(subDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	symLink := filepath.Join(dir, "link")
-	if err := os.Symlink(regFile, symLink); err != nil {
-		t.Fatal(err)
-	}
-
+// runDefaultTests tests default multi-line stat output.
+func runDefaultTests(
+	t *testing.T, goBin, refBin, workDir string,
+	norms []testutils.NormalizeFunc,
+) {
+	t.Helper()
 	tests := []testutils.DiffTest{
-		// Default output tests (R1.1, R2.1, R2.2, R2.3)
 		{
-			Name: "regular file default",
-			Args: []string{regFile},
+			Name: "regular_file", Args: []string{"hello.txt"},
+			WorkDir: workDir, Normalize: norms,
 		},
 		{
-			Name: "empty file default",
-			Args: []string{emptyFile},
+			Name: "directory", Args: []string{"subdir"},
+			WorkDir: workDir, Normalize: norms,
 		},
 		{
-			Name: "directory default",
-			Args: []string{subDir},
+			Name: "symlink", Args: []string{"link"},
+			WorkDir: workDir, Normalize: norms,
 		},
 		{
-			Name: "symlink default",
-			Args: []string{symLink},
-		},
-		{
-			Name: "dereference symlink",
-			Args: []string{"-L", symLink},
-		},
-		{
-			Name: "terse regular file",
-			Args: []string{"-t", regFile},
-		},
-		{
-			Name: "terse directory",
-			Args: []string{"-t", subDir},
-		},
-		{
-			Name: "filesystem default",
-			Args: []string{"-f", dir},
-		},
-		{
-			Name: "filesystem terse",
-			Args: []string{"-f", "-t", dir},
-		},
-		{
-			Name: "multiple files",
-			Args: []string{regFile, subDir},
-		},
-		{
-			Name: "combined flags -Lt",
-			Args: []string{"-Lt", symLink},
-		},
-		{
-			Name:      "nonexistent file",
-			Args:      []string{filepath.Join(dir, "nonexistent")},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normProgramName},
-		},
-		{
-			Name:      "nonexistent with valid file",
-			Args:      []string{filepath.Join(dir, "nonexistent"), regFile},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normProgramName},
-		},
-
-		// Format string tests (R3.1)
-		{
-			Name: "format name and size",
-			Args: []string{"-c", "%n %s", regFile},
-		},
-		{
-			Name: "format permissions octal and human",
-			Args: []string{"-c", "%a %A", regFile},
-		},
-		{
-			Name: "format user and group names",
-			Args: []string{"-c", "%U %G", regFile},
-		},
-		{
-			Name: "format user and group ids",
-			Args: []string{"-c", "%u %g", regFile},
-		},
-		{
-			Name: "format inode and links",
-			Args: []string{"-c", "%i %h", regFile},
-		},
-		{
-			Name: "format file type",
-			Args: []string{"-c", "%F", regFile},
-		},
-		{
-			Name: "format directory type",
-			Args: []string{"-c", "%F", subDir},
-		},
-		{
-			Name: "format raw mode hex",
-			Args: []string{"-c", "%f", regFile},
-		},
-		{
-			Name: "format device decimal and hex",
-			Args: []string{"-c", "%d %D", regFile},
-		},
-		{
-			Name: "format blocks and block size",
-			Args: []string{"-c", "%b %B %o", regFile},
-		},
-		{
-			Name: "format symlink quoted name",
-			Args: []string{"-c", "%N", symLink},
-		},
-		{
-			Name: "format regular quoted name",
-			Args: []string{"-c", "%N", regFile},
-		},
-		{
-			Name: "format timestamps human",
-			Args: []string{"-c", "%x|%y|%z", regFile},
-		},
-		{
-			Name: "format timestamps epoch",
-			Args: []string{"-c", "%X %Y %Z", regFile},
-		},
-		{
-			Name: "format birth time",
-			Args: []string{"-c", "%w %W", regFile},
-		},
-		{
-			Name: "format device type major minor",
-			Args: []string{"-c", "%t %T", regFile},
-		},
-		{
-			Name: "format mount point",
-			Args: []string{"-c", "%m", regFile},
-		},
-		{
-			Name: "format percent literal",
-			Args: []string{"-c", "%%", regFile},
-		},
-		{
-			Name: "format long flag syntax",
-			Args: []string{"--format=%n %s", regFile},
-		},
-		{
-			Name: "format multiple files",
-			Args: []string{"-c", "%n %s", regFile, subDir},
-		},
-
-		// Printf tests (R4.1, R4.2)
-		{
-			Name: "printf no trailing newline",
-			Args: []string{"--printf=%n", regFile},
-		},
-		{
-			Name: "printf with newline escape",
-			Args: []string{"--printf=%n\\n", regFile},
-		},
-		{
-			Name: "printf with tab escape",
-			Args: []string{"--printf=%n\\t%s\\n", regFile},
-		},
-		{
-			Name: "printf backslash literal",
-			Args: []string{"--printf=%n\\\\%s\\n", regFile},
-		},
-
-		// Filesystem format tests (R5.1, R6.1)
-		{
-			Name: "fs format total blocks",
-			Args: []string{"-f", "-c", "%b", dir},
-		},
-		{
-			Name: "fs format total inodes",
-			Args: []string{"-f", "-c", "%c", dir},
-		},
-		{
-			Name: "fs format type name",
-			Args: []string{"-f", "-c", "%T", dir},
-		},
-		{
-			Name: "fs format name",
-			Args: []string{"-f", "-c", "%n", dir},
-		},
-		{
-			Name: "fs format block sizes",
-			Args: []string{"-f", "-c", "%s %S", dir},
-		},
-		{
-			Name: "fs format fsid",
-			Args: []string{"-f", "-c", "%i", dir},
-		},
-		{
-			Name: "fs format type hex",
-			Args: []string{"-f", "-c", "%t", dir},
-		},
-		// Multi-file edge cases (R6.1, R7.1, R7.2)
-		{
-			Name: "three regular files",
-			Args: []string{regFile, emptyFile, regFile},
-		},
-		{
-			Name:      "all nonexistent",
-			Args:      []string{filepath.Join(dir, "no1"), filepath.Join(dir, "no2")},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normProgramName},
-		},
-		{
-			Name:      "valid between nonexistent",
-			Args:      []string{filepath.Join(dir, "no1"), regFile, filepath.Join(dir, "no2")},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normProgramName},
-		},
-		{
-			Name: "filesystem format free blocks and inodes",
-			Args: []string{"-f", "-c", "%a %d %f", dir},
-		},
-		{
-			Name: "filesystem format max namelen",
-			Args: []string{"-f", "-c", "%l", dir},
+			Name: "multiple_files",
+			Args:    []string{"hello.txt", "subdir"},
+			WorkDir: workDir, Normalize: norms,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestVersion verifies --version prints output and exits 0.
-func TestVersion(t *testing.T) {
+// runFormatTests tests -c format string expansion.
+func runFormatTests(
+	t *testing.T, goBin, refBin, workDir string,
+	norms []testutils.NormalizeFunc,
+) {
+	t.Helper()
+	tests := []testutils.DiffTest{
+		{
+			Name: "size_name",
+			Args:    []string{"-c", "%s %n", "hello.txt"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name: "perms",
+			Args:    []string{"-c", "%a %A", "hello.txt"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name: "ids",
+			Args:    []string{"-c", "%u %U %g %G", "hello.txt"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name: "device_inode",
+			Args:    []string{"-c", "%d %D %i %h", "hello.txt"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name: "file_type",
+			Args:    []string{"-c", "%F", "hello.txt"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name: "blocks_size",
+			Args:    []string{"-c", "%b %B %o %f", "hello.txt"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name: "epoch_times",
+			Args:    []string{"-c", "%X %Y %Z %W", "hello.txt"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name: "human_times",
+			Args:    []string{"-c", "%x", "hello.txt"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name: "quoted_name",
+			Args:    []string{"-c", "%N", "link"},
+			WorkDir: workDir, Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runModeTests tests terse mode, dereference, and error cases.
+func runModeTests(
+	t *testing.T, goBin, refBin, workDir string,
+	norms []testutils.NormalizeFunc,
+) {
+	t.Helper()
+	tests := []testutils.DiffTest{
+		{
+			Name: "terse", Args: []string{"-t", "hello.txt"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name: "dereference", Args: []string{"-L", "link"},
+			WorkDir: workDir, Normalize: norms,
+		},
+		{
+			Name:      "missing_file",
+			Args:      []string{"nonexistent"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "mixed_valid_invalid",
+			Args:      []string{"hello.txt", "nonexistent", "subdir"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runFilesystemTests tests -f filesystem stat mode.
+// R5.1: filesystem status via -f flag.
+// R6.1: filesystem format directives.
+func runFilesystemTests(
+	t *testing.T, goBin, refBin, workDir string,
+	norms []testutils.NormalizeFunc,
+) {
+	t.Helper()
+	// Filesystem stats (free blocks, inodes) change between runs.
+	// Add a normalizer to replace large numbers with a placeholder.
+	fsNorms := append(norms, normalizeFsLiveValues)
+	tests := []testutils.DiffTest{
+		{
+			Name:      "fs_default",
+			Args:      []string{"-f", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_blocks",
+			Args:      []string{"-f", "-c", "%a %b %f", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_inodes",
+			Args:      []string{"-f", "-c", "%c %d", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_sizes",
+			Args:      []string{"-f", "-c", "%s %S", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_type",
+			Args:      []string{"-f", "-c", "%t %T", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_id_namelen",
+			Args:      []string{"-f", "-c", "%i %l", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_format_name",
+			Args:      []string{"-f", "-c", "%n", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_terse",
+			Args:      []string{"-f", "-t", "."},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+		{
+			Name:      "fs_on_file",
+			Args:      []string{"-f", "hello.txt"},
+			WorkDir:   workDir,
+			Normalize: fsNorms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runDereferenceTests tests -L dereference mode.
+// R2.2: -L follows symlinks and reports target file status.
+func runDereferenceTests(
+	t *testing.T, goBin, refBin, workDir string,
+	norms []testutils.NormalizeFunc,
+) {
+	t.Helper()
+	tests := []testutils.DiffTest{
+		{
+			Name:      "deref_default",
+			Args:      []string{"-L", "link"},
+			WorkDir:   workDir,
+			Normalize: norms,
+		},
+		{
+			Name:      "deref_format_type",
+			Args:      []string{"-L", "-c", "%F", "link"},
+			WorkDir:   workDir,
+			Normalize: norms,
+		},
+		{
+			Name:      "deref_format_size",
+			Args:      []string{"-L", "-c", "%s %n", "link"},
+			WorkDir:   workDir,
+			Normalize: norms,
+		},
+		{
+			Name:      "deref_terse",
+			Args:      []string{"-L", "-t", "link"},
+			WorkDir:   workDir,
+			Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// runErrorTests tests error handling and edge cases.
+// R7.1: exit 0 when all files processed successfully.
+// R7.2: exit 1 when any file cannot be accessed.
+func runErrorTests(
+	t *testing.T, goBin, refBin, workDir string,
+	norms []testutils.NormalizeFunc,
+) {
+	t.Helper()
+	tests := []testutils.DiffTest{
+		{
+			Name:      "no_operand",
+			Args:      []string{},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "multiple_missing",
+			Args:      []string{"nofile1", "nofile2"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "valid_then_missing",
+			Args:      []string{"hello.txt", "no_such_file"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+		{
+			Name:      "missing_then_valid",
+			Args:      []string{"no_such_file", "hello.txt"},
+			WorkDir:   workDir,
+			ExitCode:  1,
+			Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestVersionFlag verifies that --version prints version info and exits 0.
+// R7.3: --version flag support.
+func TestVersionFlag(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
 	cmd := exec.Command(goBin, "--version")
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("--version failed: %v", err)
+		t.Fatalf("--version exited with error: %v", err)
 	}
 	if len(out) == 0 {
 		t.Fatal("--version produced no output")
 	}
+	if !bytes.Contains(out, []byte("stat")) {
+		t.Errorf("--version output does not contain 'stat': %q", out)
+	}
 }
 
-// TestHelp verifies --help prints output and exits 0.
-func TestHelp(t *testing.T) {
+// TestHelpFlag verifies that --help prints usage info and exits 0.
+// R7.3: --help flag support.
+func TestHelpFlag(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
 	cmd := exec.Command(goBin, "--help")
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("--help failed: %v", err)
+		t.Fatalf("--help exited with error: %v", err)
 	}
 	if !bytes.Contains(out, []byte("Usage:")) {
-		t.Fatal("--help output missing Usage header")
+		t.Errorf("--help output does not contain 'Usage:': %q", out)
 	}
 }

@@ -1,13 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/readlink implements GNU readlink: print symlink target or canonical path.
-//
-// Implements prd050-readlink R1.1, R1.2, R1.3, R1.4, R1.5, R1.6,
-// R2.1, R2.2, R3.1, R3.2.
+// Package main implements cmd/readlink: print symlink target or canonical path.
+// Implements srd050-readlink R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R3.1, R3.2.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,257 +17,260 @@ import (
 
 const progName = "readlink"
 
-// mode represents the canonicalization mode.
-type mode int
+const helpText = `Usage: readlink [OPTION]... FILE...
+Print value of a symbolic link or canonical file name
+
+  -f, --canonicalize            canonicalize by following every symlink in
+                                every component of the given name recursively;
+                                all but the last component must exist
+  -e, --canonicalize-existing   canonicalize by following every symlink in
+                                every component of the given name recursively,
+                                all components must exist
+  -m, --canonicalize-missing    canonicalize by following every symlink in
+                                every component of the given name recursively,
+                                without requirements on components existence
+  -n, --no-newline              do not output the trailing delimiter
+      --help     display this help and exit
+      --version  output version information and exit
+`
+
+const versionText = progName + " (go-unix-utils)"
+
+// canonMode controls how path resolution handles existence and symlinks.
+type canonMode int
 
 const (
-	// R1.1, R1.2: default — print immediate symlink target.
-	modeDefault mode = iota
-	// R1.3: -f, resolve full canonical path; last component may be missing.
+	// modeDefault prints the immediate symlink target without canonicalization.
+	modeDefault canonMode = iota
+	// modeCanon resolves all symlinks; all but the last component must exist (-f).
 	modeCanon
-	// R1.4: -e, resolve full canonical path; every component must exist.
-	modeStrict
-	// R1.5: -m, resolve full canonical path; no component need exist.
+	// modeExisting resolves all symlinks; every component must exist (-e).
+	modeExisting
+	// modeMissing resolves all symlinks; no component need exist (-m).
 	modeMissing
 )
 
-// config holds all parsed command-line options.
-type config struct {
-	mode      mode
-	noNewline bool // R1.6: -n
+// options holds parsed command-line options.
+type options struct {
+	mode      canonMode
+	noNewline bool
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	exitCode := run(os.Args[1:], os.Stdout, os.Stderr)
-	os.Exit(exitCode)
-}
-
-// run parses arguments and resolves paths. Returns 0 on success, 1 on error.
-func run(args []string, stdout, stderr *os.File) int {
-	cfg, paths, err := parseArgs(args)
+	opts, operands, err := parseArgs(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", progName, err) //nolint:errcheck
-		printTryHelp(stderr)
-		return 1
-	}
-	if len(paths) == 0 {
-		printMissingOperand(stderr)
-		return 1
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
 	}
 
-	// R2.2: ignore -n with multiple operands; GNU prints a warning.
-	if cfg.noNewline && len(paths) > 1 {
-		fmt.Fprintf(stderr, "%s: ignoring --no-newline with multiple arguments\n", progName) //nolint:errcheck
-		cfg.noNewline = false
+	// R3.1: no operand provided must print usage error to stderr and exit 1.
+	if len(operands) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
 	}
 
-	return processOperands(paths, cfg, stdout, stderr)
+	os.Exit(run(opts, operands))
 }
 
-// processOperands resolves each operand and prints results.
-func processOperands(paths []string, cfg config, stdout, stderr *os.File) int {
+// run processes each operand and returns the exit code.
+func run(opts options, operands []string) int {
 	exitCode := 0
-	for _, p := range paths {
-		result, resolveErr := resolve(p, cfg)
-		if resolveErr != nil {
-			printResolveError(stderr, cfg.mode, p, resolveErr)
+	for _, op := range operands {
+		result, err := processOperand(opts.mode, op)
+		if err != nil {
+			// R1.2: default mode prints nothing on failure.
+			if opts.mode != modeDefault {
+				printError(op, err)
+			}
 			exitCode = 1
 			continue
 		}
-		printResult(stdout, result, cfg, len(paths))
+		// R2.2: -n is ignored when multiple operands are given.
+		suppressNL := opts.noNewline && len(operands) == 1
+		printResult(result, suppressNL)
 	}
 	return exitCode
 }
 
-// printResolveError prints error to stderr for canonicalization modes.
-// In default mode and -e mode, GNU readlink silently exits 1 on failure.
-func printResolveError(stderr *os.File, m mode, p string, err error) {
-	if m == modeDefault || m == modeStrict {
+// printError writes a formatted error message to stderr.
+func printError(path string, err error) {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, path, pathErr.Err)
 		return
 	}
-	fmt.Fprintf(stderr, "%s: %s: %s\n", progName, p, err) //nolint:errcheck
+	fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, path, err)
 }
 
-// printMissingOperand writes the missing-operand error to stderr.
-func printMissingOperand(stderr *os.File) {
-	fmt.Fprintf(stderr, "%s: missing operand\n", progName) //nolint:errcheck
-	printTryHelp(stderr)
-}
-
-// printTryHelp writes the "Try --help" hint to stderr.
-func printTryHelp(stderr *os.File) {
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
-}
-
-// printResult writes a resolved path to stdout, respecting -n.
-func printResult(stdout *os.File, result string, cfg config, total int) {
-	if cfg.noNewline && total == 1 {
-		fmt.Fprint(stdout, result) //nolint:errcheck
+// printResult writes a resolved path to stdout.
+func printResult(result string, suppressNewline bool) {
+	if suppressNewline {
+		fmt.Print(result)
 	} else {
-		fmt.Fprintln(stdout, result) //nolint:errcheck
+		fmt.Println(result)
 	}
 }
 
-// resolve dispatches to the appropriate resolution function.
-func resolve(p string, cfg config) (string, error) {
-	switch cfg.mode {
+// processOperand resolves a single operand according to the canonicalization mode.
+func processOperand(m canonMode, path string) (string, error) {
+	switch m {
 	case modeCanon:
-		return resolveCanon(p)
-	case modeStrict:
-		return resolveStrict(p)
+		return resolveCanon(path)
+	case modeExisting:
+		return resolveExisting(path)
 	case modeMissing:
-		return resolveMissing(p)
+		return resolveMissing(path)
 	default:
-		return resolveDefault(p)
+		return readSymlink(path)
 	}
 }
 
-// resolveDefault reads the immediate symlink target (R1.1, R1.2).
-func resolveDefault(p string) (string, error) {
-	target, err := os.Readlink(p)
+// readSymlink returns the immediate target of a symbolic link (R1.1).
+// Returns an error if the operand is not a symlink (R1.2).
+func readSymlink(path string) (string, error) {
+	return os.Readlink(path)
+}
+
+// resolveCanon resolves with -f semantics (R1.3): follow all symlinks,
+// all but the last component must exist.
+func resolveCanon(path string) (string, error) {
+	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", err
 	}
-	return target, nil
+	// Try resolving the full path including the last component.
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err == nil {
+		return resolved, nil
+	}
+	// Last component may not exist; resolve the parent directory.
+	dir := filepath.Dir(abs)
+	base := filepath.Base(abs)
+	resolvedDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(resolvedDir, base), nil
 }
 
-// resolveCanon resolves -f: full canonical path, last may not exist.
-func resolveCanon(p string) (string, error) {
-	abs, err := filepath.Abs(p)
+// resolveExisting resolves with -e semantics (R1.4): follow all symlinks,
+// every component must exist.
+func resolveExisting(path string) (string, error) {
+	abs, err := filepath.Abs(path)
 	if err != nil {
-		return "", errMessage(err)
+		return "", err
+	}
+	return filepath.EvalSymlinks(abs)
+}
+
+// resolveMissing resolves with -m semantics (R1.5): follow all symlinks,
+// no component need exist.
+func resolveMissing(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	return resolvePartial(abs), nil
+}
+
+// resolvePartial resolves symlinks for existing path components and
+// preserves non-existent trailing components.
+func resolvePartial(abs string) string {
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err == nil {
+		return resolved
 	}
 	dir := filepath.Dir(abs)
 	base := filepath.Base(abs)
-
-	resolvedDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return "", errMessage(err)
+	if dir == abs {
+		return abs
 	}
-	full := filepath.Join(resolvedDir, base)
-	if resolved, evalErr := filepath.EvalSymlinks(full); evalErr == nil {
-		return resolved, nil
-	}
-	return full, nil
+	return filepath.Join(resolvePartial(dir), base)
 }
 
-// resolveStrict resolves -e: every component must exist (R1.4).
-func resolveStrict(p string) (string, error) {
-	resolved, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		return "", errMessage(err)
-	}
-	abs, err := filepath.Abs(resolved)
-	if err != nil {
-		return "", errMessage(err)
-	}
-	return abs, nil
-}
-
-// resolveMissing resolves -m: no component need exist (R1.5).
-func resolveMissing(p string) (string, error) {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", errMessage(err)
-	}
-	return resolveExistingPrefix(abs), nil
-}
-
-// resolveExistingPrefix walks from the root, resolving symlinks for
-// components that exist and appending the rest literally.
-func resolveExistingPrefix(abs string) string {
-	parts := strings.Split(abs, string(filepath.Separator))
-	resolved := "/"
-	for i := 1; i < len(parts); i++ {
-		if parts[i] == "" {
-			continue
-		}
-		candidate := filepath.Join(resolved, parts[i])
-		real, err := filepath.EvalSymlinks(candidate)
-		if err != nil {
-			remaining := filepath.Join(parts[i:]...)
-			return filepath.Join(resolved, remaining)
-		}
-		resolved = real
-	}
-	return resolved
-}
-
-// parseArgs extracts the config and path operands from arguments.
-func parseArgs(args []string) (config, []string, error) {
-	cfg := config{}
-	var paths []string
+// parseArgs processes command-line arguments into options and operands.
+// R3.2: unknown flags produce an error.
+func parseArgs(args []string) (options, []string, error) {
+	var opts options
+	var operands []string
 	endOfFlags := false
 
 	for _, arg := range args {
 		if endOfFlags || !strings.HasPrefix(arg, "-") || arg == "-" {
-			paths = append(paths, arg)
+			operands = append(operands, arg)
 			continue
 		}
 		if arg == "--" {
 			endOfFlags = true
 			continue
 		}
-		if parsed, err := parseLong(arg, &cfg); parsed {
-			if err != nil {
-				return cfg, nil, err
-			}
-			continue
-		}
-		if err := parseShort(arg, &cfg); err != nil {
-			return cfg, nil, err
+		if err := handleFlag(arg, &opts); err != nil {
+			return options{}, nil, err
 		}
 	}
-	return cfg, paths, nil
+	return opts, operands, nil
 }
 
-// parseLong handles long flags. Returns true if the arg was a long flag.
-func parseLong(arg string, cfg *config) (bool, error) {
+// handleFlag processes a single flag argument, updating options.
+// Supports long flags and bundled short flags (e.g., -fn).
+// R3.2: unknown flags produce an error matching GNU format.
+func handleFlag(arg string, opts *options) error {
+	if strings.HasPrefix(arg, "--") {
+		return handleLongFlag(arg, opts)
+	}
+	return handleShortFlags(arg, opts)
+}
+
+// handleLongFlag processes a long flag (--name).
+func handleLongFlag(arg string, opts *options) error {
 	switch arg {
 	case "--canonicalize":
-		cfg.mode = modeCanon
-		return true, nil
+		opts.mode = modeCanon
 	case "--canonicalize-existing":
-		cfg.mode = modeStrict
-		return true, nil
+		opts.mode = modeExisting
 	case "--canonicalize-missing":
-		cfg.mode = modeMissing
-		return true, nil
+		opts.mode = modeMissing
 	case "--no-newline":
-		cfg.noNewline = true
-		return true, nil
+		opts.noNewline = true
+	case "--help":
+		fmt.Print(helpText)
+		os.Exit(0)
+	case "--version":
+		fmt.Println(versionText)
+		os.Exit(0)
+	default:
+		return fmt.Errorf("unrecognized option '%s'", arg)
 	}
-	if strings.HasPrefix(arg, "--") {
-		return true, fmt.Errorf("unrecognized option '%s'", arg)
-	}
-	return false, nil
+	return nil
 }
 
-// parseShort handles short flag bundles like -fn, -e.
-func parseShort(arg string, cfg *config) error {
+// handleShortFlags processes bundled short flags (e.g., -fn parses as -f -n).
+func handleShortFlags(arg string, opts *options) error {
 	for _, ch := range arg[1:] {
-		switch ch {
-		case 'f':
-			cfg.mode = modeCanon
-		case 'e':
-			cfg.mode = modeStrict
-		case 'm':
-			cfg.mode = modeMissing
-		case 'n':
-			cfg.noNewline = true
-		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
+		if err := applyShortFlag(ch, opts); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// errMessage extracts the inner message from a *os.PathError.
-func errMessage(err error) error {
-	if pe, ok := err.(*os.PathError); ok {
-		return pe.Err
+// applyShortFlag applies a single short flag character to options.
+func applyShortFlag(ch rune, opts *options) error {
+	switch ch {
+	case 'f':
+		opts.mode = modeCanon
+	case 'e':
+		opts.mode = modeExisting
+	case 'm':
+		opts.mode = modeMissing
+	case 'n':
+		opts.noNewline = true
+	default:
+		return fmt.Errorf("invalid option -- '%c'", ch)
 	}
-	return err
+	return nil
 }

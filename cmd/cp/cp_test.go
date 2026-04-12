@@ -2,619 +2,712 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/cp against gcp (GNU coreutils).
-//
-// Covers prd056-cp R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
+// Implements srd056 R4.4 (differential testing) for R1.1-R1.4, R2.1-R2.4,
+// R3.1-R3.4, R4.1-R4.3.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code and file state.
-// Used for error messages where the binary name prefix differs.
-func discardAll(data []byte) []byte {
-	return nil
+const refBinName = "gcp"
+
+// writeTestFile creates a file with the given content in dir.
+func writeTestFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write test file %s: %v", path, err)
+	}
 }
 
-// TestDiff runs differential tests for cp against gcp.
-// R1.1: single file copy, multi-file copy into directory.
-// R1.2: -i interactive (skipped — requires tty).
-// R1.3: -f force remove and retry.
-// R1.4: -n no-clobber.
-// R2.1: -r/-R recursive directory copy.
-// R2.2: directory without -r error.
-// R2.3: -L dereference symlinks.
-// R2.4: -P no-dereference preserves symlinks.
-// R3.1: -p preserve mode, ownership, timestamps.
-// R3.2: -a archive mode.
-// R3.3: --preserve=ATTR_LIST.
-// R3.4: -v verbose (covered in verbose_output).
-// R4.1: exit 0 on success (covered by all successful copy tests).
-// R4.2: exit 1 on failure (covered by error_cases, partial_failure).
-// R4.3: -t/--target-directory (covered in target_directory, target_dir_long).
-// R4.4: comprehensive differential tests across all flag combinations.
+// mkTestDir creates a subdirectory in dir.
+func mkTestDir(t *testing.T, dir, name string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("failed to create test dir %s: %v", path, err)
+	}
+}
+
+// mkSymlink creates a symbolic link in dir.
+func mkSymlink(t *testing.T, dir, name, target string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatalf("failed to create symlink %s -> %s: %v", path, target, err)
+	}
+}
+
+// programNameRe matches a program name or path prefix before ": " in error lines.
+var programNameRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// tryHelpRe matches "Try 'BINARY --help'" with any binary path.
+var tryHelpRe = regexp.MustCompile(`Try '[^']+' for`)
+
+// stderrNormalizer replaces program name/path prefixes in error output
+// so that gcp and cp produce identical normalized stderr.
+func stderrNormalizer(data []byte) []byte {
+	data = programNameRe.ReplaceAll(data, []byte("cp:"))
+	data = tryHelpRe.ReplaceAll(data, []byte("Try 'cp --help' for"))
+	return data
+}
+
+// pathPrefixRe replaces the full binary path in interactive prompts.
+var pathPrefixRe = regexp.MustCompile(`/[^\s:]+/g?cp:`)
+
+// promptNormalizer replaces full binary paths in interactive prompts.
+func promptNormalizer(data []byte) []byte {
+	data = pathPrefixRe.ReplaceAll(data, []byte("cp:"))
+	return bytes.ReplaceAll(data, []byte("gcp:"), []byte("cp:"))
+}
+
+// TestDiff runs differential tests comparing cmd/cp against gcp.
+// R4.4: covers single file copy, multi-file copy, -i, -f, -n, -p, -a, -v,
+// --preserve, symlink handling, and error cases.
 func TestDiff(t *testing.T) {
 	t.Parallel()
-
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gcp")
+	refBin, err := exec.LookPath(refBinName)
 	if err != nil {
-		t.Skip("reference binary gcp not in PATH")
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
 	}
 
-	t.Run("error_cases", func(t *testing.T) {
-		t.Parallel()
-		runErrorTests(t, goBin, refBin)
+	norm := []testutils.NormalizeFunc{stderrNormalizer}
+	promptNorm := []testutils.NormalizeFunc{promptNormalizer}
+
+	// R1.1: single file copy
+	t.Run("R1.1_single_file_copy", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "hello world\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "copy",
+			Args:    []string{"src.txt", "dest.txt"},
+			WorkDir: dir,
+		}})
 	})
 
-	t.Run("single_copy", func(t *testing.T) {
-		t.Parallel()
-		runSingleCopyTest(t, goBin, refBin)
+	// R1.1: copy overwrites existing destination by default
+	t.Run("R1.1_overwrite_existing", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "new content\n")
+		writeTestFile(t, dir, "dest.txt", "old content\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "overwrite",
+			Args:    []string{"src.txt", "dest.txt"},
+			WorkDir: dir,
+		}})
 	})
 
-	t.Run("multi_copy_into_dir", func(t *testing.T) {
-		t.Parallel()
-		runMultiCopyTest(t, goBin, refBin)
+	// R1.1: multi-file copy into directory
+	t.Run("R1.1_multi_file_copy", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "a.txt", "file a\n")
+		writeTestFile(t, dir, "b.txt", "file b\n")
+		mkTestDir(t, dir, "destdir")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "multi",
+			Args:    []string{"a.txt", "b.txt", "destdir"},
+			WorkDir: dir,
+		}})
 	})
 
-	t.Run("no_clobber", func(t *testing.T) {
-		t.Parallel()
-		runNoClobberTest(t, goBin, refBin)
+	// R1.1: single file copy into existing directory
+	t.Run("R1.1_copy_into_directory", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "data\n")
+		mkTestDir(t, dir, "destdir")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "into_dir",
+			Args:    []string{"src.txt", "destdir"},
+			WorkDir: dir,
+		}})
 	})
 
-	t.Run("force_overwrite", func(t *testing.T) {
-		t.Parallel()
-		runForceTest(t, goBin, refBin)
+	// R1.1: multi-file copy, target not a directory
+	t.Run("R1.1_target_not_directory", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "a.txt", "file a\n")
+		writeTestFile(t, dir, "b.txt", "file b\n")
+		writeTestFile(t, dir, "notdir", "not a dir\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "notdir",
+			Args:      []string{"a.txt", "b.txt", "notdir"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
 	})
 
+	// R1.1: missing source file
+	t.Run("R1.1_missing_source", func(t *testing.T) {
+		dir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "missing",
+			Args:      []string{"nonexistent.txt", "dest.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R1.4: no-clobber with existing destination
+	t.Run("R1.4_no_clobber_existing", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "new content\n")
+		writeTestFile(t, dir, "dest.txt", "old content\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "noclobber",
+			Args:    []string{"-n", "src.txt", "dest.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R1.4: no-clobber with non-existing destination (should copy)
+	t.Run("R1.4_no_clobber_new", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "content\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "noclobber_new",
+			Args:    []string{"-n", "src.txt", "dest.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R1.3: force copy with existing writable destination
+	t.Run("R1.3_force", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "new data\n")
+		writeTestFile(t, dir, "dest.txt", "old data\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "force",
+			Args:    []string{"-f", "src.txt", "dest.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R1.2: interactive with "y" answer
+	t.Run("R1.2_interactive_yes", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "new data\n")
+		writeTestFile(t, dir, "dest.txt", "old data\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "interactive_yes",
+			Args:      []string{"-i", "src.txt", "dest.txt"},
+			Stdin:     []byte("y\n"),
+			WorkDir:   dir,
+			Normalize: promptNorm,
+		}})
+	})
+
+	// R1.2: interactive with "n" answer
+	t.Run("R1.2_interactive_no", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "new data\n")
+		writeTestFile(t, dir, "dest.txt", "old data\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "interactive_no",
+			Args:      []string{"-i", "src.txt", "dest.txt"},
+			Stdin:     []byte("n\n"),
+			WorkDir:   dir,
+			Normalize: promptNorm,
+		}})
+	})
+
+	// R1.4: no-clobber overrides interactive
+	t.Run("R1.4_noclobber_overrides_interactive", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "new data\n")
+		writeTestFile(t, dir, "dest.txt", "old data\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "in_precedence",
+			Args:    []string{"-i", "-n", "src.txt", "dest.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R1.1: missing operand
+	t.Run("R1.1_missing_operand", func(t *testing.T) {
+		dir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "no_args",
+			Args:      []string{},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R1.1: missing destination operand
+	t.Run("R1.1_missing_dest", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "data\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "one_arg",
+			Args:      []string{"src.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R2.2: directory without -r produces error
+	t.Run("R2.2_dir_without_recursive", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/file.txt", "content\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "dir_no_r",
+			Args:      []string{"srcdir", "destdir"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R2.1: recursive directory copy
+	t.Run("R2.1_recursive_copy", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/a.txt", "file a\n")
+		writeTestFile(t, dir, "srcdir/b.txt", "file b\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "recursive",
+			Args:    []string{"-r", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.1: recursive copy with nested subdirectories
+	t.Run("R2.1_recursive_nested", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir/sub1")
+		mkTestDir(t, dir, "srcdir/sub2")
+		writeTestFile(t, dir, "srcdir/top.txt", "top\n")
+		writeTestFile(t, dir, "srcdir/sub1/deep.txt", "deep\n")
+		writeTestFile(t, dir, "srcdir/sub2/other.txt", "other\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "nested",
+			Args:    []string{"-r", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.1: recursive copy into existing directory
+	t.Run("R2.1_recursive_into_existing", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/a.txt", "file a\n")
+		mkTestDir(t, dir, "destdir")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "r_into_dir",
+			Args:    []string{"-r", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.3: -L follows symlinks (copies target content, not symlink)
+	t.Run("R2.3_dereference_file", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "real.txt", "real content\n")
+		mkSymlink(t, dir, "link.txt", "real.txt")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "deref",
+			Args:    []string{"-L", "link.txt", "dest.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.3: -rL follows symlinks within directory during recursive copy
+	t.Run("R2.3_recursive_dereference", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/real.txt", "data\n")
+		mkSymlink(t, dir, "srcdir/link.txt", "real.txt")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "rL_deref",
+			Args:    []string{"-rL", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.4: -rP preserves symlinks in directory copy
+	t.Run("R2.4_no_deref_preserves_symlink", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/real.txt", "data\n")
+		mkSymlink(t, dir, "srcdir/link.txt", "real.txt")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "preserve_link",
+			Args:    []string{"-rP", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.4: -r defaults to -P (preserves symlinks)
+	t.Run("R2.4_recursive_default_noderef", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/real.txt", "data\n")
+		mkSymlink(t, dir, "srcdir/link.txt", "real.txt")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "r_default_P",
+			Args:    []string{"-r", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R2.1: -R long form works same as -r
+	t.Run("R2.1_uppercase_R", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/a.txt", "file a\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "upper_R",
+			Args:    []string{"-R", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R3.1: -p preserves mode and timestamps
+	t.Run("R3.1_preserve_p", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "preserve test\n")
+		if err := os.Chmod(filepath.Join(dir, "src.txt"), 0o755); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "preserve",
+			Args:      []string{"-p", "src.txt", "dest.txt"},
+			WorkDir:   dir,
+			Normalize: norm,
+		}})
+	})
+
+	// R3.1: -p with recursive directory copy
+	t.Run("R3.1_preserve_recursive", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/a.txt", "data\n")
+		if err := os.Chmod(filepath.Join(dir, "srcdir/a.txt"), 0o700); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "preserve_r",
+			Args:      []string{"-rp", "srcdir", "destdir"},
+			WorkDir:   dir,
+			Normalize: norm,
+		}})
+	})
+
+	// R3.2: -a archive mode (recursive + preserve all + no-dereference)
+	t.Run("R3.2_archive", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/a.txt", "file a\n")
+		mkSymlink(t, dir, "srcdir/link.txt", "a.txt")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "archive",
+			Args:      []string{"-a", "srcdir", "destdir"},
+			WorkDir:   dir,
+			Normalize: norm,
+		}})
+	})
+
+	// R3.2: -a preserves file mode
+	t.Run("R3.2_archive_mode", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/exec.sh", "#!/bin/sh\n")
+		if err := os.Chmod(filepath.Join(dir, "srcdir/exec.sh"), 0o755); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "archive_mode",
+			Args:      []string{"-a", "srcdir", "destdir"},
+			WorkDir:   dir,
+			Normalize: norm,
+		}})
+	})
+
+	// R3.3: --preserve=mode,timestamps
+	t.Run("R3.3_preserve_mode_timestamps", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "data\n")
+		if err := os.Chmod(filepath.Join(dir, "src.txt"), 0o700); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "preserve_mt",
+			Args:      []string{"--preserve=mode,timestamps", "src.txt", "dest.txt"},
+			WorkDir:   dir,
+			Normalize: norm,
+		}})
+	})
+
+	// R3.3: --preserve=timestamps only
+	t.Run("R3.3_preserve_timestamps_only", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "timestamp test\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "preserve_ts",
+			Args:      []string{"--preserve=timestamps", "src.txt", "dest.txt"},
+			WorkDir:   dir,
+			Normalize: norm,
+		}})
+	})
+
+	// R3.4: -v verbose single file copy
+	t.Run("R3.4_verbose_single", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "hello\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "verbose",
+			Args:    []string{"-v", "src.txt", "dest.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R3.4: -v verbose multi-file copy
+	t.Run("R3.4_verbose_multi", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "a.txt", "file a\n")
+		writeTestFile(t, dir, "b.txt", "file b\n")
+		mkTestDir(t, dir, "destdir")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "verbose_multi",
+			Args:    []string{"-v", "a.txt", "b.txt", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R3.4: -rv verbose recursive copy (pre-create destdir so both
+	// binaries see the same initial state in the shared WorkDir)
+	t.Run("R3.4_verbose_recursive", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/a.txt", "file a\n")
+		mkTestDir(t, dir, "destdir")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "verbose_r",
+			Args:    []string{"-rv", "srcdir", "destdir"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R3.4: -v verbose with preserve
+	t.Run("R3.4_verbose_preserve", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "data\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "verbose_p",
+			Args:      []string{"-vp", "src.txt", "dest.txt"},
+			WorkDir:   dir,
+			Normalize: norm,
+		}})
+	})
+
+	// R4.1: successful copy exits 0
+	t.Run("R4.1_exit_0_success", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "exit zero\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:     "exit_0",
+			Args:     []string{"src.txt", "dest.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+		}})
+	})
+
+	// R4.2: missing source exits 1
+	t.Run("R4.2_exit_1_missing_source", func(t *testing.T) {
+		dir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "exit_1_nosrc",
+			Args:      []string{"nonexistent.txt", "dest.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R4.2: copying directory without -r exits 1
+	t.Run("R4.2_exit_1_dir_no_recursive", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "exit_1_dir",
+			Args:      []string{"srcdir", "destdir"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R4.2: permission denied exits 1
+	t.Run("R4.2_exit_1_permission_denied", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "data\n")
+		noWriteDir := filepath.Join(dir, "nowrite")
+		mkTestDir(t, dir, "nowrite")
+		if err := os.Chmod(noWriteDir, 0o555); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		t.Cleanup(func() {
+			os.Chmod(noWriteDir, 0o755) // best-effort restore for cleanup
+		})
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "exit_1_perm",
+			Args:      []string{"src.txt", "nowrite/dest.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: norm,
+		}})
+	})
+
+	// R4.3: -t DIRECTORY copies sources into directory
+	t.Run("R4.3_target_directory_short", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "a.txt", "file a\n")
+		writeTestFile(t, dir, "b.txt", "file b\n")
+		mkTestDir(t, dir, "dest")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "t_short",
+			Args:    []string{"-t", "dest", "a.txt", "b.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R4.3: --target-directory=DIRECTORY long form
+	t.Run("R4.3_target_directory_long", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "content\n")
+		mkTestDir(t, dir, "dest")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "t_long",
+			Args:    []string{"--target-directory=dest", "src.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R4.3: -t with verbose
+	t.Run("R4.3_target_directory_verbose", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "data\n")
+		mkTestDir(t, dir, "dest")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "t_verbose",
+			Args:    []string{"-v", "-t", "dest", "src.txt"},
+			WorkDir: dir,
+		}})
+	})
+
+	// R4.3: -t with recursive directory copy
+	t.Run("R4.3_target_directory_recursive", func(t *testing.T) {
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/file.txt", "data\n")
+		mkTestDir(t, dir, "dest")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "t_recursive",
+			Args:    []string{"-r", "-t", "dest", "srcdir"},
+			WorkDir: dir,
+		}})
+	})
+}
+
+// TestPreserveAttributes verifies that preservation actually sets attributes.
+func TestPreserveAttributes(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	// R3.1: verify mode is preserved with -p
+	t.Run("mode_preserved", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		srcPath := filepath.Join(dir, "src.txt")
+		if err := os.WriteFile(srcPath, []byte("data\n"), 0o755); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		cmd := exec.Command(goBin, "-p", "src.txt", "dest.txt")
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cp -p failed: %v\n%s", err, out)
+		}
+		destInfo, err := os.Stat(filepath.Join(dir, "dest.txt"))
+		if err != nil {
+			t.Fatalf("stat dest: %v", err)
+		}
+		if destInfo.Mode().Perm() != 0o755 {
+			t.Errorf("mode: got %o, want 0755", destInfo.Mode().Perm())
+		}
+	})
+
+	// R3.3: verify --preserve=mode sets mode
+	t.Run("preserve_mode_flag", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		srcPath := filepath.Join(dir, "src.txt")
+		if err := os.WriteFile(srcPath, []byte("data\n"), 0o700); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		cmd := exec.Command(goBin, "--preserve=mode", "src.txt", "dest.txt")
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cp --preserve=mode failed: %v\n%s", err, out)
+		}
+		destInfo, err := os.Stat(filepath.Join(dir, "dest.txt"))
+		if err != nil {
+			t.Fatalf("stat dest: %v", err)
+		}
+		if destInfo.Mode().Perm() != 0o700 {
+			t.Errorf("mode: got %o, want 0700", destInfo.Mode().Perm())
+		}
+	})
+
+	// R3.4: verify verbose output format
 	t.Run("verbose_output", func(t *testing.T) {
 		t.Parallel()
-		runVerboseTest(t, goBin, refBin)
+		dir := t.TempDir()
+		writeTestFile(t, dir, "src.txt", "data\n")
+		cmd := exec.Command(goBin, "-v", "src.txt", "dest.txt")
+		cmd.Dir = dir
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("cp -v failed: %v", err)
+		}
+		expected := "'src.txt' -> 'dest.txt'\n"
+		if string(out) != expected {
+			t.Errorf("verbose: got %q, want %q", out, expected)
+		}
 	})
 
-	t.Run("target_directory", func(t *testing.T) {
+	// R3.2: verify -a copies symlinks as symlinks
+	t.Run("archive_symlinks", func(t *testing.T) {
 		t.Parallel()
-		runTargetDirTest(t, goBin, refBin)
+		dir := t.TempDir()
+		mkTestDir(t, dir, "srcdir")
+		writeTestFile(t, dir, "srcdir/real.txt", "data\n")
+		mkSymlink(t, dir, "srcdir/link.txt", "real.txt")
+		cmd := exec.Command(goBin, "-a", "srcdir", "destdir")
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("cp -a failed: %v\n%s", err, out)
+		}
+		linkPath := filepath.Join(dir, "destdir", "link.txt")
+		target, err := os.Readlink(linkPath)
+		if err != nil {
+			t.Fatalf("readlink: %v", err)
+		}
+		if target != "real.txt" {
+			t.Errorf("symlink target: got %q, want %q", target, "real.txt")
+		}
 	})
-
-	t.Run("target_dir_long", func(t *testing.T) {
-		t.Parallel()
-		runTargetDirLongFormTest(t, goBin, refBin)
-	})
-
-	t.Run("target_dir_multi", func(t *testing.T) {
-		t.Parallel()
-		runTargetDirMultiTest(t, goBin, refBin)
-	})
-
-	t.Run("partial_failure", func(t *testing.T) {
-		t.Parallel()
-		runPartialFailureTest(t, goBin, refBin)
-	})
-
-	t.Run("recursive_copy", func(t *testing.T) {
-		t.Parallel()
-		runRecursiveCopyTest(t, goBin, refBin)
-	})
-
-	t.Run("recursive_R_alias", func(t *testing.T) {
-		t.Parallel()
-		runRecursiveRAliasTest(t, goBin, refBin)
-	})
-
-	t.Run("dereference_recursive", func(t *testing.T) {
-		t.Parallel()
-		runDerefRecursiveTest(t, goBin, refBin)
-	})
-
-	t.Run("no_deref_symlink", func(t *testing.T) {
-		t.Parallel()
-		runNoDerefTest(t, goBin, refBin)
-	})
-
-	t.Run("preserve_mode_timestamps", func(t *testing.T) {
-		t.Parallel()
-		runPreserveModeTimestampsTest(t, goBin, refBin)
-	})
-
-	t.Run("preserve_mode_only", func(t *testing.T) {
-		t.Parallel()
-		runPreserveModeOnlyTest(t, goBin, refBin)
-	})
-
-	t.Run("preserve_p_flag", func(t *testing.T) {
-		t.Parallel()
-		runPreservePTest(t, goBin, refBin)
-	})
-
-	t.Run("archive_copy", func(t *testing.T) {
-		t.Parallel()
-		runArchiveCopyTest(t, goBin, refBin)
-	})
-}
-
-// runErrorTests tests error cases with discarded stderr (binary name differs).
-func runErrorTests(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	tests := []testutils.DiffTest{
-		{
-			Name:      "no_arguments",
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		{
-			Name:      "missing_dest",
-			Args:      []string{"onlyfile"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		{
-			Name:      "source_not_found",
-			Args:      []string{"nonexistent", "dest"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runSingleCopyTest verifies R1.1: single file copy.
-func runSingleCopyTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "src.txt"), "hello world\n")
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "single_file_copy",
-			Args:     []string{"src.txt", "dst.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"dst.txt": []byte("hello world\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runMultiCopyTest verifies R1.1: multi-file copy into directory.
-func runMultiCopyTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "a.txt"), "aaa\n")
-	writeFile(t, filepath.Join(workDir, "b.txt"), "bbb\n")
-	mkdirAll(t, filepath.Join(workDir, "dest"))
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "multi_file_into_dir",
-			Args:     []string{"a.txt", "b.txt", "dest"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"dest/a.txt": []byte("aaa\n"),
-				"dest/b.txt": []byte("bbb\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runNoClobberTest verifies R1.4: -n does not overwrite existing files.
-func runNoClobberTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "src.txt"), "new content\n")
-	writeFile(t, filepath.Join(workDir, "existing.txt"), "old content\n")
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "no_clobber",
-			Args:     []string{"-n", "src.txt", "existing.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"existing.txt": []byte("old content\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runForceTest verifies R1.3: -f removes dest and retries.
-func runForceTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "src.txt"), "forced content\n")
-	writeFile(t, filepath.Join(workDir, "dst.txt"), "old\n")
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "force_overwrite",
-			Args:     []string{"-f", "src.txt", "dst.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"dst.txt": []byte("forced content\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runVerboseTest verifies R3.4: verbose output matches between binaries.
-func runVerboseTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "v.txt"), "verbose\n")
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "verbose_copy",
-			Args:     []string{"-v", "v.txt", "v_copy.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"v_copy.txt": []byte("verbose\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runTargetDirTest verifies -t DIRECTORY copies sources into directory.
-func runTargetDirTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "t1.txt"), "target dir\n")
-	mkdirAll(t, filepath.Join(workDir, "tdir"))
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "target_directory_flag",
-			Args:     []string{"-t", "tdir", "t1.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"tdir/t1.txt": []byte("target dir\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestDiffDirWithoutR verifies R2.2 behavior (omitting directory without -r).
-func TestDiffDirWithoutR(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gcp")
-	if err != nil {
-		t.Skip("reference binary gcp not in PATH")
-	}
-
-	workDir := t.TempDir()
-	mkdirAll(t, filepath.Join(workDir, "srcdir"))
-
-	tests := []testutils.DiffTest{
-		{
-			Name:      "dir_without_recursive",
-			Args:      []string{"srcdir", "destdir"},
-			WorkDir:   workDir,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runRecursiveCopyTest verifies R2.1: -r copies directories recursively.
-func runRecursiveCopyTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	mkdirAll(t, filepath.Join(workDir, "srcdir", "sub"))
-	writeFile(t, filepath.Join(workDir, "srcdir", "top.txt"), "top\n")
-	writeFile(t, filepath.Join(workDir, "srcdir", "sub", "deep.txt"), "deep\n")
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "recursive_copy",
-			Args:     []string{"-r", "srcdir", "destdir"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"destdir/top.txt":      []byte("top\n"),
-				"destdir/sub/deep.txt": []byte("deep\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runRecursiveRAliasTest verifies R2.1: -R is an alias for -r.
-func runRecursiveRAliasTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	mkdirAll(t, filepath.Join(workDir, "srcdir"))
-	writeFile(t, filepath.Join(workDir, "srcdir", "file.txt"), "content\n")
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "recursive_R_flag",
-			Args:     []string{"-R", "srcdir", "destdir"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"destdir/file.txt": []byte("content\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runDerefRecursiveTest verifies R2.3: -L follows symlinks during recursive copy.
-func runDerefRecursiveTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	mkdirAll(t, filepath.Join(workDir, "srcdir"))
-	writeFile(t, filepath.Join(workDir, "srcdir", "real.txt"), "real\n")
-	if err := os.Symlink("real.txt",
-		filepath.Join(workDir, "srcdir", "link.txt")); err != nil {
-		t.Fatal(err)
-	}
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "deref_recursive",
-			Args:     []string{"-rL", "srcdir", "destdir"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"destdir/real.txt": []byte("real\n"),
-				"destdir/link.txt": []byte("real\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runNoDerefTest verifies R2.4: -P preserves symlinks as symlinks.
-func runNoDerefTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "target.txt"), "target\n")
-	if err := os.Symlink("target.txt",
-		filepath.Join(workDir, "link.txt")); err != nil {
-		t.Fatal(err)
-	}
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "no_deref_copy",
-			Args:     []string{"-P", "link.txt", "link_copy.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"link_copy.txt": []byte("target\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runPreserveModeTimestampsTest verifies R3.3: --preserve=mode,timestamps.
-func runPreserveModeTimestampsTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	srcPath := filepath.Join(workDir, "src.txt")
-	writeFile(t, srcPath, "preserve me\n")
-	os.Chmod(srcPath, 0o755) //nolint:errcheck
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "preserve_mode_timestamps",
-			Args:     []string{"--preserve=mode,timestamps", "src.txt", "dst.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"dst.txt": []byte("preserve me\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runPreserveModeOnlyTest verifies R3.3: --preserve=mode.
-func runPreserveModeOnlyTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	srcPath := filepath.Join(workDir, "src.txt")
-	writeFile(t, srcPath, "mode only\n")
-	os.Chmod(srcPath, 0o755) //nolint:errcheck
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "preserve_mode_only",
-			Args:     []string{"--preserve=mode", "src.txt", "dst.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"dst.txt": []byte("mode only\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runPreservePTest verifies R3.1: -p preserves mode, ownership, timestamps.
-// Ownership preservation fails as non-root; stderr is normalized.
-func runPreservePTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "src.txt"), "p flag\n")
-
-	tests := []testutils.DiffTest{
-		{
-			Name:      "preserve_p",
-			Args:      []string{"-p", "src.txt", "dst.txt"},
-			WorkDir:   workDir,
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-			ExpectedFiles: map[string][]byte{
-				"dst.txt": []byte("p flag\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runArchiveCopyTest verifies R3.2: -a archive mode (recursive + preserve).
-func runArchiveCopyTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	mkdirAll(t, filepath.Join(workDir, "srcdir", "sub"))
-	writeFile(t, filepath.Join(workDir, "srcdir", "file.txt"), "archive\n")
-	writeFile(t, filepath.Join(workDir, "srcdir", "sub", "deep.txt"),
-		"deep archive\n")
-
-	tests := []testutils.DiffTest{
-		{
-			Name:      "archive_recursive",
-			Args:      []string{"-a", "srcdir", "destdir"},
-			WorkDir:   workDir,
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-			ExpectedFiles: map[string][]byte{
-				"destdir/file.txt":     []byte("archive\n"),
-				"destdir/sub/deep.txt": []byte("deep archive\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runTargetDirLongFormTest verifies R4.3: --target-directory=DIR long form.
-func runTargetDirLongFormTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "f1.txt"), "long form\n")
-	mkdirAll(t, filepath.Join(workDir, "tdir"))
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "target_dir_long_form",
-			Args:     []string{"--target-directory=tdir", "f1.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"tdir/f1.txt": []byte("long form\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runTargetDirMultiTest verifies R4.3: -t with multiple source files.
-func runTargetDirMultiTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "m1.txt"), "multi1\n")
-	writeFile(t, filepath.Join(workDir, "m2.txt"), "multi2\n")
-	mkdirAll(t, filepath.Join(workDir, "mdir"))
-
-	tests := []testutils.DiffTest{
-		{
-			Name:     "target_dir_multi_sources",
-			Args:     []string{"-t", "mdir", "m1.txt", "m2.txt"},
-			WorkDir:  workDir,
-			ExitCode: 0,
-			ExpectedFiles: map[string][]byte{
-				"mdir/m1.txt": []byte("multi1\n"),
-				"mdir/m2.txt": []byte("multi2\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// runPartialFailureTest verifies R4.2: exit 1 when any copy fails.
-// One valid source and one non-existent source; exit code must be 1.
-func runPartialFailureTest(t *testing.T, goBin, refBin string) {
-	t.Helper()
-
-	workDir := t.TempDir()
-	writeFile(t, filepath.Join(workDir, "good.txt"), "good\n")
-	mkdirAll(t, filepath.Join(workDir, "dest"))
-
-	tests := []testutils.DiffTest{
-		{
-			Name:      "partial_failure_exit_1",
-			Args:      []string{"good.txt", "nonexistent.txt", "dest"},
-			WorkDir:   workDir,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-			ExpectedFiles: map[string][]byte{
-				"dest/good.txt": []byte("good\n"),
-			},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// writeFile creates a file with the given content.
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// mkdirAll creates a directory and all parents.
-func mkdirAll(t *testing.T, path string) {
-	t.Helper()
-	if err := os.MkdirAll(path, 0o755); err != nil {
-		t.Fatal(err)
-	}
 }

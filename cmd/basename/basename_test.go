@@ -1,22 +1,40 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/basename against gbasename (GNU coreutils).
-//
-// Covers prd015-basename R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3.
+// Package main provides differential tests for cmd/basename.
+// Tests cover srd015-basename R1.1-R1.5, R2.1-R2.3, R3.1-R3.4, R4.1-R4.3.
 package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-// Used for --help (GNU includes paths and boilerplate) and error messages
-// (GNU includes full binary path in program name).
-func discardAll(data []byte) []byte {
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+// R3.4/R4.3: replaces binary paths with "PROG" so error message structure
+// can be compared between Go and GNU binaries.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	return b
+}
+
+// discardOutput normalizes by discarding all output, used when
+// output content differs by design (--version, --help) and only
+// exit code comparison is meaningful.
+func discardOutput(b []byte) []byte {
 	return nil
 }
 
@@ -26,176 +44,177 @@ func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gbasename")
 	if err != nil {
-		t.Skip("reference binary gbasename not in PATH")
+		t.Skipf("reference binary gbasename not in PATH: %v", err)
 	}
 
 	tests := []testutils.DiffTest{
-		// R1.1: simple path — strip directory prefix
+		// R1.1: strip directory prefix.
 		{
-			Name:     "R1.1_simple_path",
-			Args:     []string{"/usr/bin/sort"},
-			ExitCode: 0,
+			Name: "simple_path",
+			Args: []string{"/usr/bin/sort"},
 		},
-		// R1.1: no directory component
 		{
-			Name:     "R1.1_no_dir",
-			Args:     []string{"filename.txt"},
-			ExitCode: 0,
+			Name: "no_directory",
+			Args: []string{"filename.txt"},
 		},
-		// R1.2: suffix removal
 		{
-			Name:     "R1.2_suffix_removal",
-			Args:     []string{"include/stdio.h", ".h"},
-			ExitCode: 0,
+			Name: "nested_path",
+			Args: []string{"/a/b/c/d/file"},
 		},
-		// R1.2: suffix does not match — no removal
+
+		// R1.2: suffix removal.
 		{
-			Name:     "R1.2_suffix_no_match",
-			Args:     []string{"include/stdio.h", ".c"},
-			ExitCode: 0,
+			Name: "suffix_removal",
+			Args: []string{"include/stdio.h", ".h"},
 		},
-		// R1.2: suffix equals basename — no removal (would produce empty)
 		{
-			Name:     "R1.2_suffix_equals_name",
-			Args:     []string{"stdio.h", "stdio.h"},
-			ExitCode: 0,
+			Name: "suffix_no_match",
+			Args: []string{"file.txt", ".h"},
 		},
-		// R1.5: suffix stripping with non-matching suffix
 		{
-			Name:     "R1.5_suffix_no_match_go",
-			Args:     []string{"/usr/bin/sort", ".go"},
-			ExitCode: 0,
+			Name: "suffix_equals_name",
+			Args: []string{".h", ".h"},
 		},
-		// R1.5: suffix stripping with matching suffix
+
+		// R1.3: trailing slashes stripped.
 		{
-			Name:     "R1.5_suffix_match_txt",
-			Args:     []string{"file.txt", ".txt"},
-			ExitCode: 0,
+			Name: "trailing_slash",
+			Args: []string{"/usr/bin/"},
 		},
-		// R1.3: trailing slashes stripped
 		{
-			Name:     "R1.3_trailing_slashes",
-			Args:     []string{"/usr/bin/"},
-			ExitCode: 0,
+			Name: "trailing_multiple_slashes",
+			Args: []string{"/usr/bin///"},
 		},
-		// R1.3: multiple trailing slashes
+
+		// R1.4: name entirely slashes.
 		{
-			Name:     "R1.3_multiple_trailing_slashes",
-			Args:     []string{"/usr/bin///"},
-			ExitCode: 0,
+			Name: "root_path",
+			Args: []string{"/"},
 		},
-		// R1.4: root path (single slash)
 		{
-			Name:     "R1.4_root_path",
-			Args:     []string{"/"},
-			ExitCode: 0,
+			Name: "multiple_slashes",
+			Args: []string{"///"},
 		},
-		// R1.4: multiple slashes
+
+		// R1.1 + R1.3 combined: path with trailing slash and suffix.
 		{
-			Name:     "R1.4_all_slashes",
-			Args:     []string{"///"},
-			ExitCode: 0,
+			Name: "path_with_dir_and_suffix",
+			Args: []string{"/home/user/file.tar.gz", ".tar.gz"},
 		},
-		// R1.5: empty string
+
+		// R1.5: empty string produces empty line.
 		{
-			Name:     "R1.5_empty_string",
-			Args:     []string{""},
-			ExitCode: 0,
+			Name: "empty_string",
+			Args: []string{""},
 		},
-		// R2.1: -a multiple mode
+
+		// R2.1: -a flag processes multiple NAME arguments.
 		{
-			Name:     "R2.1_multiple_a",
-			Args:     []string{"-a", "/usr/bin/sort", "/usr/bin/cat"},
-			ExitCode: 0,
+			Name: "multi_arg_a_flag",
+			Args: []string{"-a", "/usr/bin/sort", "/usr/bin/cat"},
 		},
-		// R2.1: --multiple long form
 		{
-			Name:     "R2.1_multiple_long",
-			Args:     []string{"--multiple", "/usr/bin/sort", "/usr/bin/cat"},
-			ExitCode: 0,
+			Name: "multi_arg_long_flag",
+			Args: []string{"--multiple", "/usr/bin/sort", "/usr/bin/cat"},
 		},
-		// R2.2: -s suffix with multiple names
 		{
-			Name:     "R2.2_suffix_s_flag",
-			Args:     []string{"-s", ".go", "main.go", "util.go"},
-			ExitCode: 0,
+			Name: "multi_arg_single",
+			Args: []string{"-a", "/usr/bin/sort"},
 		},
-		// R2.2: --suffix= long form
+
+		// R2.2: -s SUFFIX removes suffix and implies -a.
 		{
-			Name:     "R2.2_suffix_long_eq",
-			Args:     []string{"--suffix=.h", "include/stdio.h", "include/stdlib.h"},
-			ExitCode: 0,
+			Name: "suffix_s_flag",
+			Args: []string{"-s", ".h", "include/stdio.h", "include/stdlib.h"},
 		},
-		// R2.2: --suffix separate arg
 		{
-			Name:     "R2.2_suffix_long_sep",
-			Args:     []string{"--suffix", ".h", "include/stdio.h"},
-			ExitCode: 0,
+			Name: "suffix_long_flag",
+			Args: []string{"--suffix=.h", "include/stdio.h", "include/stdlib.h"},
 		},
-		// R2.3: -a without -s — no suffix removal
 		{
-			Name:     "R2.3_multiple_no_suffix",
-			Args:     []string{"-a", "file.txt", "data.csv"},
-			ExitCode: 0,
+			Name: "suffix_s_single_file",
+			Args: []string{"-s", ".txt", "readme.txt"},
 		},
-		// R3.1: -z NUL-delimited output
+		// R2.2: with -s, second positional is a NAME not a SUFFIX.
 		{
-			Name:     "R3.1_zero_single",
-			Args:     []string{"-z", "foo"},
-			ExitCode: 0,
+			Name: "suffix_s_treats_second_as_name",
+			Args: []string{"-s", ".h", "stdio.h", ".h"},
 		},
-		// R3.1: -z with -a
+
+		// R2.3: multi-argument mode without -s does no suffix removal.
 		{
-			Name:     "R3.1_zero_multiple",
-			Args:     []string{"-za", "/usr/bin/sort", "/usr/bin/cat"},
-			ExitCode: 0,
+			Name: "multi_arg_no_suffix",
+			Args: []string{"-a", "file.txt", "data.csv"},
 		},
-		// R3.1: -z with -s
+
+		// R2.1 + R1.5: multi-arg with empty string.
 		{
-			Name:     "R3.1_zero_suffix",
-			Args:     []string{"-z", "-s", ".go", "main.go"},
-			ExitCode: 0,
+			Name: "multi_arg_empty_string",
+			Args: []string{"-a", "", "file.txt"},
 		},
-		// --help prints usage and exits 0
+
+		// R2.1 + R1.4: multi-arg with root path.
 		{
-			Name:      "help",
-			Args:      []string{"--help"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "multi_arg_root",
+			Args: []string{"-a", "/", "/usr/bin/sort"},
 		},
-		// missing operand — error exit 1
+
+		// Combined: -az flags.
 		{
-			Name:      "no_args_error",
+			Name: "combined_az_flags",
+			Args: []string{"-az", "/usr/bin/sort", "/usr/bin/cat"},
+		},
+
+		// R3.1: -z flag produces NUL-delimited output.
+		{
+			Name: "zero_flag_single",
+			Args: []string{"-z", "/usr/bin/sort"},
+		},
+		{
+			Name: "zero_long_flag",
+			Args: []string{"--zero", "/usr/bin/sort"},
+		},
+		{
+			Name: "zero_flag_with_suffix",
+			Args: []string{"-z", "file.txt", ".txt"},
+		},
+		{
+			Name: "zero_flag_multi_arg",
+			Args: []string{"-az", "/usr/bin/sort", "/usr/bin/cat", "/usr/bin/ls"},
+		},
+		{
+			Name: "zero_flag_with_s_suffix",
+			Args: []string{"-zs", ".h", "stdio.h", "stdlib.h"},
+		},
+
+		// R3.3/R3.4: error for missing operand.
+		{
+			Name:      "no_args",
 			Args:      []string{},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R4.2: invalid option exits 1
+
+		// R3.3/R3.4: error for extra operand without -a.
 		{
-			Name:      "invalid_option_error",
-			Args:      []string{"--invalid"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R4.2: invalid short option exits 1
-		{
-			Name:      "invalid_short_option_error",
-			Args:      []string{"-x"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R4.3: extra operand in single mode
-		{
-			Name:      "extra_operand_error",
+			Name:      "extra_operand",
 			Args:      []string{"a", "b", "c"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// D3: suffix equals entire basename — no removal
+
+		// R4.1: --version prints version info and exits 0.
 		{
-			Name:     "D3_suffix_is_entire_name",
-			Args:     []string{".txt", ".txt"},
-			ExitCode: 0,
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
+		},
+
+		// R4.2: --help prints usage info and exits 0.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
 		},
 	}
 

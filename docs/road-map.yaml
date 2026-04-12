@@ -583,7 +583,7 @@ releases:
           status: implemented
     - version: "15.0"
       name: "Batch 15.0 — complex utilities (ts, stty, pr, ptx)"
-      status: spec_complete
+      status: implemented
       depends_on: ["00.0"]
       description: |
         Implement four complex utilities that require extended stitch time due to
@@ -601,4 +601,4 @@ releases:
         - id: rel15.0-uc003-pr
           status: implemented
         - id: rel15.0-uc004-ptx
-          status: spec_complete
+          status: implemented

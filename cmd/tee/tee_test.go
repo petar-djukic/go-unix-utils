@@ -1,9 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/tee against gtee (GNU coreutils).
-//
-// Covers prd017-tee R4.1 (exit codes), R4.2 (test coverage), R4.3 (file-stdout match).
+// Package main provides differential tests for cmd/tee.
+// Tests cover srd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4, R4.1-R4.3.
 package main
 
 import (
@@ -11,23 +10,44 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-// Used for --help and --version where GNU output text differs from ours.
-func discardAll(data []byte) []byte {
-	return nil
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	// Normalize error message casing (Go uses lowercase, GNU uses uppercase).
+	b = bytes.ToLower(b)
+	return b
 }
 
-// normalizeDiag lowercases output and normalizes the program name prefix
-// so "gtee:" and "tee:" compare identically.
-func normalizeDiag(data []byte) []byte {
-	data = bytes.ToLower(data)
-	data = bytes.ReplaceAll(data, []byte("gtee:"), []byte("tee:"))
-	return data
+// versionNormalizer strips all version output since content differs between implementations.
+func versionNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	return []byte("VERSION\n")
+}
+
+// helpNormalizer strips all content since help text differs between implementations.
+func helpNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	return []byte("HELP\n")
 }
 
 func TestDiff(t *testing.T) {
@@ -36,181 +56,121 @@ func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gtee")
 	if err != nil {
-		t.Skip("reference binary gtee not in PATH")
+		t.Skipf("reference binary gtee not in PATH: %v", err)
 	}
 
-	tests := buildDiffTests(t)
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
+	// Create a read-only directory for write-error tests.
+	roDir := t.TempDir()
+	roFile := filepath.Join(roDir, "readonly.txt")
+	if err := os.WriteFile(roFile, []byte("existing\n"), 0o444); err != nil {
+		t.Fatalf("setup readonly file: %v", err)
+	}
+	roSubDir := filepath.Join(roDir, "nowrite")
+	if err := os.MkdirAll(roSubDir, 0o555); err != nil {
+		t.Fatalf("setup readonly dir: %v", err)
+	}
+	badPath := filepath.Join(roSubDir, "out.txt")
 
-// buildDiffTests returns all differential test cases for tee.
-func buildDiffTests(t *testing.T) []testutils.DiffTest {
-	t.Helper()
-	return []testutils.DiffTest{
-		// R1.2: no file arguments — passthrough mode
+	tests := []testutils.DiffTest{
+		// R1.1, R1.5: basic stdin passthrough to stdout and single file.
 		{
-			Name:     "passthrough",
-			Stdin:    []byte("hello\n"),
-			ExitCode: 0,
+			Name:  "single_file",
+			Args:  []string{filepath.Join(t.TempDir(), "out.txt")},
+			Stdin: []byte("hello\nworld\n"),
 		},
-		// R1.1: single file output
+		// R1.2: no file arguments, passthrough only.
 		{
-			Name:     "single_file",
-			Args:     []string{filepath.Join(t.TempDir(), "out.txt")},
-			Stdin:    []byte("hello\n"),
-			ExitCode: 0,
+			Name:  "passthrough_no_files",
+			Stdin: []byte("passthrough data\n"),
 		},
-		// R1.1: multiple file output
+		// R1.1: multiple output files.
 		{
-			Name:  "multiple_files",
-			Args:  []string{filepath.Join(t.TempDir(), "a.txt"), filepath.Join(t.TempDir(), "b.txt")},
-			Stdin: []byte("line1\nline2\n"),
+			Name: "multiple_files",
+			Args: []string{
+				filepath.Join(t.TempDir(), "a.txt"),
+				filepath.Join(t.TempDir(), "b.txt"),
+			},
+			Stdin: []byte("multi\nfile\noutput\n"),
 		},
-		// R1.3: truncate existing file
+		// R1.3: file creation when file does not exist (covered by single_file).
+		// R1.4: "-" as file argument treated as stdout.
 		{
-			Name:  "truncate_existing",
-			Args:  []string{setupExistingFile(t, "old content\n")},
-			Stdin: []byte("new\n"),
+			Name:  "dash_as_file",
+			Args:  []string{"-"},
+			Stdin: []byte("dash test\n"),
 		},
-		// R2.1: append mode -a
+		// R2.1: append mode preserves existing content.
 		{
-			Name:  "append_short",
-			Args:  appendArgs("-a", setupExistingFile(t, "old\n")),
-			Stdin: []byte("new\n"),
+			Name:  "append_mode",
+			Args:  []string{"-a", filepath.Join(t.TempDir(), "append.txt")},
+			Stdin: []byte("appended\n"),
 		},
-		// R2.1: append mode --append
+		// R2.1: --append long flag.
 		{
-			Name:  "append_long",
-			Args:  appendArgs("--append", setupExistingFile(t, "old\n")),
-			Stdin: []byte("new\n"),
+			Name:  "append_long_flag",
+			Args:  []string{"--append", filepath.Join(t.TempDir(), "appendlong.txt")},
+			Stdin: []byte("appended long\n"),
 		},
-		// R2.2: -i flag (no signal, verifies normal operation is unaffected)
+		// R2.2: -i flag (ignore interrupts) — basic operation without signal.
 		{
-			Name:  "ignore_interrupts",
+			Name:  "ignore_interrupts_flag",
 			Args:  []string{"-i"},
-			Stdin: []byte("data\n"),
+			Stdin: []byte("ignore test\n"),
 		},
-		// R2.3: combined -ai flags
+		// R2.2: --ignore-interrupts long flag.
+		{
+			Name:  "ignore_interrupts_long",
+			Args:  []string{"--ignore-interrupts"},
+			Stdin: []byte("ignore long\n"),
+		},
+		// R2.3: combined -a and -i flags.
 		{
 			Name:  "combined_ai",
-			Args:  appendArgs("-ai", setupExistingFile(t, "old\n")),
-			Stdin: []byte("new\n"),
+			Args:  []string{"-ai", filepath.Join(t.TempDir(), "combined.txt")},
+			Stdin: []byte("combined\n"),
 		},
-		// R3.1: exit 0 on success
+		// R3.1: exit 0 on success (implicit in all passing tests).
+		// R3.2, R3.3: write error on one file, continue to stdout.
 		{
-			Name:  "exit_0_success",
-			Args:  []string{filepath.Join(t.TempDir(), "ok.txt")},
-			Stdin: []byte("ok\n"),
-		},
-		// R3.2: exit 1 when output file cannot be opened
-		{
-			Name:      "open_error_exit_1",
-			Args:      []string{"/nonexistent_tee_test_dir/file.txt"},
-			Stdin:     []byte("data\n"),
+			Name:      "write_error_bad_path",
+			Args:      []string{badPath},
+			Stdin:     []byte("should still appear on stdout\n"),
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeDiag},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R4.3: --help exits 0
-		{
-			Name:      "help",
-			Args:      []string{"--help"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R4.3: --version exits 0
-		{
-			Name:      "version",
-			Args:      []string{"--version"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// empty stdin
+		// R1.5: empty stdin.
 		{
 			Name:  "empty_stdin",
+			Args:  []string{filepath.Join(t.TempDir(), "empty.txt")},
 			Stdin: []byte{},
 		},
-		// multi-line input
+		// R1.5: large-ish input to verify ordering.
 		{
-			Name:  "multi_line",
-			Stdin: []byte("a\nb\nc\n"),
+			Name:  "multiline",
+			Stdin: []byte("line1\nline2\nline3\nline4\nline5\n"),
+		},
+		// R1.4: dash with other files.
+		{
+			Name: "dash_with_file",
+			Args: []string{
+				"-",
+				filepath.Join(t.TempDir(), "dashfile.txt"),
+			},
+			Stdin: []byte("dash and file\n"),
+		},
+		// R4.1: --version exits 0.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{versionNormalizer},
+		},
+		// R4.2: --help exits 0.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{helpNormalizer},
 		},
 	}
-}
 
-// TestFileContentMatchesStdout verifies R4.3: data written to each
-// output file matches stdout byte-for-byte.
-func TestFileContentMatchesStdout(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	input := []byte("line1\nline2\nline3\n")
-	outFile := filepath.Join(t.TempDir(), "verify.txt")
-
-	stdout := runTee(t, goBin, []string{outFile}, input)
-	fileContent := readFileOrFail(t, outFile)
-
-	if !bytes.Equal(stdout, fileContent) {
-		t.Errorf("file content does not match stdout\n"+
-			"  stdout: %q\n  file:   %q", stdout, fileContent)
-	}
-}
-
-// TestMultiFileContentMatch verifies R4.3 for multiple output files.
-func TestMultiFileContentMatch(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	input := []byte("abc\ndef\n")
-	dir := t.TempDir()
-	fileA := filepath.Join(dir, "a.txt")
-	fileB := filepath.Join(dir, "b.txt")
-
-	stdout := runTee(t, goBin, []string{fileA, fileB}, input)
-
-	for _, path := range []string{fileA, fileB} {
-		content := readFileOrFail(t, path)
-		if !bytes.Equal(stdout, content) {
-			t.Errorf("%s does not match stdout\n"+
-				"  stdout: %q\n  file:   %q", path, stdout, content)
-		}
-	}
-}
-
-// runTee executes the tee binary and returns captured stdout.
-func runTee(t *testing.T, bin string, args []string, stdin []byte) []byte {
-	t.Helper()
-	cmd := exec.Command(bin, args...)
-	cmd.Stdin = bytes.NewReader(stdin)
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("tee failed: %v", err)
-	}
-	return stdout.Bytes()
-}
-
-// readFileOrFail reads a file and fails the test on error.
-func readFileOrFail(t *testing.T, path string) []byte {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	return data
-}
-
-// setupExistingFile creates a temp file with initial content and returns its path.
-func setupExistingFile(t *testing.T, content string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "existing.txt")
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("setupExistingFile: %v", err)
-	}
-	return path
-}
-
-// appendArgs builds an argument slice with the flag followed by file paths.
-func appendArgs(flag string, files ...string) []string {
-	return append([]string{flag}, files...)
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

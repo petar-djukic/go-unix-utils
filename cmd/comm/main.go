@@ -1,21 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/comm implements GNU comm: compare two sorted files line by line.
-//
-// Implements prd029-comm R1.1 (three-column output), R1.2 (sorted-order comparison),
-// R1.3 (file exhaustion handling), R1.4 (byte-for-byte LC_ALL=C comparison),
-// R2.1 (-1 suppresses column 1), R2.2 (-2 suppresses column 2),
-// R2.3 (-3 suppresses column 3), R2.4 (indentation adjusts for suppressed columns),
-// R3.1 (default order check with warning), R3.2 (--check-order fatal),
-// R3.3 (--nocheck-order disables check), R3.4 (--output-delimiter),
-// R4.1 (exit 0 on success), R4.2 (exit 1 on file open error),
-// R4.3 (exit 1 on write error), R4.4 (SIGPIPE handling).
+// Package main implements cmd/comm: compare two sorted files line by line.
+// Implements srd029-comm R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,150 +16,474 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const programName = "comm"
+const (
+	programName  = "comm"
+	defaultDelim = "\t"
+)
 
-// errFatalOrder signals --check-order detected unsorted input.
-var errFatalOrder = errors.New("fatal order violation")
-
-// commConfig holds the parsed flags for a comm invocation.
-type commConfig struct {
-	suppress1      bool
-	suppress2      bool
-	suppress3      bool
-	checkOrder     bool
-	noCheckOrder   bool
-	outputDelim    string
-	hasOutputDelim bool
-	file1          string
-	file2          string
+// config holds parsed command-line options for comm.
+type config struct {
+	suppress1     bool   // -1: suppress column 1
+	suppress2     bool   // -2: suppress column 2
+	suppress3     bool   // -3: suppress column 3
+	checkOrder    int    // 0=default(warn), 1=fatal, -1=nocheck
+	outputDelim   string // --output-delimiter
+	hasOutputDelim bool  // R3.4: true when --output-delimiter was explicitly set
+	total         bool   // --total
+	zeroTerm      bool   // --zero-terminated
+	showHelp      bool
+	showVersion   bool
+	files         []string
 }
 
-// columnPrefixes holds the computed indentation prefix for each column.
-// R2.4: when columns are suppressed, remaining columns shift left.
-type columnPrefixes struct {
-	col1 string
-	col2 string
-	col3 string
+// lineReader wraps a bufio.Scanner with a "peek" line buffer so
+// the merge loop can test the current line without consuming it.
+type lineReader struct {
+	sc       *bufio.Scanner
+	line     string
+	valid    bool
+	prevLine string // for order checking
 }
 
-// orderChecker tracks sort order for one file and reports violations.
-type orderChecker struct {
-	prev    string
-	hasPrev bool
-	warned  bool
-	label   string
-	stderr  io.Writer
-	fatal   bool
-	disable bool
+// next advances the reader. Returns true if a line is available.
+func (lr *lineReader) next() bool {
+	lr.valid = lr.sc.Scan()
+	if lr.valid {
+		lr.line = lr.sc.Text()
+	}
+	return lr.valid
 }
 
+// R4.4: SIGPIPE handler installed at start.
+// R1.1: main entry with flag parsing.
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+
+	cfg, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		os.Exit(1)
+	}
+
+	if cfg.showVersion {
+		printVersion()
+		return
+	}
+	if cfg.showHelp {
+		printUsage()
+		return
+	}
+
+	if err := run(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		os.Exit(1)
+	}
 }
 
-// run parses arguments, opens files, and performs the three-column comparison.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	cfg, err := parseArgs(args)
+// printVersion prints version to stdout.
+func printVersion() {
+	fmt.Println("comm (go-unix-utils) 0.1.0")
+}
+
+// printUsage prints the help message to stdout.
+func printUsage() {
+	fmt.Print(`Usage: comm [OPTION]... FILE1 FILE2
+Compare sorted files FILE1 and FILE2 line by line.
+
+  -1              suppress column 1 (lines unique to FILE1)
+  -2              suppress column 2 (lines unique to FILE2)
+  -3              suppress column 3 (lines common to both)
+  --check-order   check that the input is correctly sorted
+  --nocheck-order do not check that the input is correctly sorted
+  --output-delimiter=STR  separate columns with STR
+  --total         output a summary
+  --zero-terminated       line delimiter is NUL, not newline
+  --help          display this help and exit
+  --version       output version information and exit
+`)
+}
+
+// run executes the comm comparison logic.
+// R4.1: returns nil on success (exit 0).
+func run(cfg config) error {
+	r1, err := openFile(cfg.files[0])
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-		return 1
+		return err
 	}
-	r1, c1, err := openFile(cfg.file1, stdin)
+	defer closeFile(r1, cfg.files[0])
+
+	r2, err := openFile(cfg.files[1])
 	if err != nil {
-		printFileError(stderr, err)
-		return 1
+		return err
 	}
-	if c1 != nil {
-		defer c1.Close() // best-effort close
+	defer closeFile(r2, cfg.files[1])
+
+	w := bufio.NewWriter(os.Stdout)
+	delim := resolveDelim(cfg)
+	terminator := resolveTerminator(cfg)
+
+	err = compareFiles(r1, r2, w, cfg, delim, terminator)
+	if flushErr := w.Flush(); flushErr != nil && err == nil {
+		err = flushErr
 	}
-	r2, c2, err := openFile(cfg.file2, stdin)
-	if err != nil {
-		printFileError(stderr, err)
-		return 1
-	}
-	if c2 != nil {
-		defer c2.Close() // best-effort close
-	}
-	delim := "\t"
+	return err
+}
+
+// resolveDelim returns the column delimiter string.
+// R3.4: --output-delimiter replaces the default tab, even if empty.
+func resolveDelim(cfg config) string {
 	if cfg.hasOutputDelim {
-		delim = cfg.outputDelim
+		return cfg.outputDelim
 	}
-	prefixes := computePrefixes(cfg, delim)
-	return runCompare(r1, r2, stdout, stderr, cfg, prefixes)
+	return defaultDelim
 }
 
-// runCompare executes comparison and translates errors to exit codes.
-func runCompare(r1, r2 io.Reader, stdout, stderr io.Writer, cfg commConfig, p columnPrefixes) int {
-	orderViolation, err := compare(r1, r2, stdout, stderr, cfg, p)
+// resolveTerminator returns the line terminator byte.
+func resolveTerminator(cfg config) byte {
+	if cfg.zeroTerm {
+		return 0
+	}
+	return '\n'
+}
+
+// openFile opens a file for reading; "-" means stdin.
+// R4.2: returns error if the file cannot be opened.
+func openFile(name string) (io.ReadCloser, error) {
+	if name == "-" {
+		return os.Stdin, nil
+	}
+	f, err := os.Open(name)
 	if err != nil {
-		if errors.Is(err, errFatalOrder) {
-			return 1
-		}
-		fmt.Fprintf(stderr, "%s: write error: %v\n", programName, err)
-		return 1
+		return nil, fmt.Errorf("%s: %s", name, unwrapPathErr(err))
 	}
-	if orderViolation {
-		fmt.Fprintf(stderr, "%s: input is not in sorted order\n", programName)
-		return 1
-	}
-	return 0
+	return f, nil
 }
 
-// parseArgs extracts flags and the two file operands.
-func parseArgs(args []string) (commConfig, error) {
-	var cfg commConfig
-	var files []string
+// closeFile closes a reader if it's not stdin.
+func closeFile(r io.ReadCloser, name string) {
+	if name != "-" {
+		r.Close() // best-effort close
+	}
+}
+
+// unwrapPathErr extracts the inner error from a PathError.
+func unwrapPathErr(err error) error {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err
+	}
+	return err
+}
+
+// compareState tracks the state of the two-file comparison.
+type compareState struct {
+	w              *bufio.Writer
+	cfg            config
+	delim          string
+	terminator     byte
+	total1         int
+	total2         int
+	total3         int
+	orderViolated  bool // R3.1: tracks if any order violation was detected
+}
+
+// compareFiles performs the merge-like comparison of two sorted readers.
+// R1.2: merge-compares lines from both files.
+// R1.3: remaining lines go to the appropriate column when one file exhausts.
+func compareFiles(r1, r2 io.ReadCloser, w *bufio.Writer, cfg config, delim string, terminator byte) error {
+	s := &compareState{w: w, cfg: cfg, delim: delim, terminator: terminator}
+	lr1 := newLineReader(r1, terminator)
+	lr2 := newLineReader(r2, terminator)
+
+	lr1.next()
+	lr2.next()
+
+	for lr1.valid && lr2.valid {
+		if err := s.checkOrders(lr1, lr2); err != nil {
+			return err
+		}
+		if err := s.mergePair(lr1, lr2); err != nil {
+			return err
+		}
+	}
+	if err := s.drainReader(lr1, 1); err != nil {
+		return err
+	}
+	if err := s.drainReader(lr2, 2); err != nil {
+		return err
+	}
+	if err := lr1.sc.Err(); err != nil {
+		return err
+	}
+	if err := lr2.sc.Err(); err != nil {
+		return err
+	}
+	if err := s.writeTotal(); err != nil {
+		return err
+	}
+	// R3.1: default mode exits non-zero after all processing if violations found
+	if s.orderViolated {
+		return fmt.Errorf("input is not in sorted order")
+	}
+	return nil
+}
+
+// newLineReader creates a lineReader with the appropriate split function.
+func newLineReader(r io.Reader, terminator byte) *lineReader {
+	sc := bufio.NewScanner(r)
+	if terminator == 0 {
+		sc.Split(scanNullTerminated)
+	}
+	return &lineReader{sc: sc}
+}
+
+// mergePair compares current lines and advances the appropriate reader(s).
+// R1.2: less = col1, greater = col2, equal = col3.
+func (s *compareState) mergePair(lr1, lr2 *lineReader) error {
+	cmp := strings.Compare(lr1.line, lr2.line)
+	switch {
+	case cmp < 0:
+		if err := s.writeColumn(1, lr1.line); err != nil {
+			return err
+		}
+		lr1.prevLine = lr1.line
+		lr1.next()
+	case cmp > 0:
+		if err := s.writeColumn(2, lr2.line); err != nil {
+			return err
+		}
+		lr2.prevLine = lr2.line
+		lr2.next()
+	default:
+		if err := s.writeColumn(3, lr1.line); err != nil {
+			return err
+		}
+		lr1.prevLine = lr1.line
+		lr2.prevLine = lr2.line
+		lr1.next()
+		lr2.next()
+	}
+	return nil
+}
+
+// checkOrders validates sort order for both files.
+// R3.3: --nocheck-order disables checking entirely.
+// R3.1: default warns on out-of-order.
+// R3.2: --check-order is fatal.
+func (s *compareState) checkOrders(lr1, lr2 *lineReader) error {
+	if s.cfg.checkOrder == -1 {
+		return nil
+	}
+	if err := s.checkOneOrder(lr1, 1); err != nil {
+		return err
+	}
+	return s.checkOneOrder(lr2, 2)
+}
+
+// checkOneOrder checks if the current line is in order relative to prev.
+func (s *compareState) checkOneOrder(lr *lineReader, fileNum int) error {
+	if lr.prevLine == "" || lr.line >= lr.prevLine {
+		return nil
+	}
+	msg := fmt.Sprintf("file %d is not in sorted order", fileNum)
+	if s.cfg.checkOrder == 1 {
+		return fmt.Errorf("%s", msg)
+	}
+	// R3.1: default mode prints warning to stderr, continues, exits non-zero at end
+	fmt.Fprintf(os.Stderr, "%s: %s\n", programName, msg)
+	s.orderViolated = true
+	return nil
+}
+
+// drainReader outputs all remaining lines from a reader.
+// R1.3: when one file is exhausted, remaining lines go to the right column.
+func (s *compareState) drainReader(lr *lineReader, col int) error {
+	for lr.valid {
+		if err := s.writeColumn(col, lr.line); err != nil {
+			return err
+		}
+		lr.next()
+	}
+	return nil
+}
+
+// writeColumn writes a line to the appropriate column with indentation.
+// R1.3: col1=no indent, col2=one delim, col3=two delims.
+// R2.4: suppressed columns shift indentation left.
+func (s *compareState) writeColumn(col int, line string) error {
+	switch col {
+	case 1:
+		s.total1++
+		if s.cfg.suppress1 {
+			return nil
+		}
+	case 2:
+		s.total2++
+		if s.cfg.suppress2 {
+			return nil
+		}
+	case 3:
+		s.total3++
+		if s.cfg.suppress3 {
+			return nil
+		}
+	}
+	prefix := s.columnPrefix(col)
+	_, err := fmt.Fprintf(s.w, "%s%s%c", prefix, line, s.terminator)
+	return err
+}
+
+// columnPrefix returns the delimiter prefix for a given column.
+// R2.4: indentation adjusts based on which columns are suppressed.
+func (s *compareState) columnPrefix(col int) string {
+	n := 0
+	switch col {
+	case 2:
+		if !s.cfg.suppress1 {
+			n = 1
+		}
+	case 3:
+		if !s.cfg.suppress1 {
+			n++
+		}
+		if !s.cfg.suppress2 {
+			n++
+		}
+	}
+	return strings.Repeat(s.delim, n)
+}
+
+// writeTotal outputs the --total summary line if requested.
+func (s *compareState) writeTotal() error {
+	if !s.cfg.total {
+		return nil
+	}
+	_, err := fmt.Fprintf(s.w, "%d%s%d%s%d%stotal%c",
+		s.total1, s.delim, s.total2, s.delim, s.total3, s.delim, s.terminator)
+	return err
+}
+
+// scanNullTerminated is a bufio.SplitFunc for NUL-terminated lines.
+func scanNullTerminated(data []byte, atEOF bool) (int, []byte, error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	for i, b := range data {
+		if b == 0 {
+			return i + 1, data[:i], nil
+		}
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
+// --- Flag parsing ---
+
+// parseArgs parses command-line arguments into config.
+// R1.1: parses -1, -2, -3, --check-order, --nocheck-order,
+// --output-delimiter, --total, --zero-terminated, --help, --version.
+func parseArgs(args []string) (config, error) {
+	cfg := config{}
+	flagsDone := false
+
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if flagsDone || (!strings.HasPrefix(arg, "-") && arg != "-") {
+			cfg.files = append(cfg.files, arg)
+			continue
+		}
 		if arg == "--" {
-			files = append(files, args[i+1:]...)
-			break
-		}
-		if parsed, err := parseLongFlag(arg, &cfg); parsed {
-			if err != nil {
-				return cfg, err
-			}
+			flagsDone = true
 			continue
 		}
-		if arg == "-" || !strings.HasPrefix(arg, "-") {
-			files = append(files, arg)
+		if arg == "-" {
+			cfg.files = append(cfg.files, arg)
 			continue
 		}
-		if !parseFlagArg(arg, &cfg) {
-			return cfg, fmt.Errorf("invalid option -- '%s'", arg)
+		skip, err := parseFlag(&cfg, arg, args, i)
+		if err != nil {
+			return config{}, err
 		}
+		i += skip
 	}
-	if len(files) != 2 {
-		return cfg, fmt.Errorf("missing operand")
-	}
-	cfg.file1 = files[0]
-	cfg.file2 = files[1]
-	return cfg, nil
+	return cfg, validateArgs(cfg)
 }
 
-// parseLongFlag handles --check-order, --nocheck-order, --output-delimiter=STR.
-func parseLongFlag(arg string, cfg *commConfig) (bool, error) {
+// validateArgs checks that exactly two file arguments were given.
+// R1.1: exit 1 if fewer or more than two files.
+func validateArgs(cfg config) error {
+	if cfg.showHelp || cfg.showVersion {
+		return nil
+	}
+	if len(cfg.files) < 2 {
+		if len(cfg.files) == 0 {
+			return fmt.Errorf("missing operand")
+		}
+		return fmt.Errorf("missing operand after '%s'", cfg.files[0])
+	}
+	if len(cfg.files) > 2 {
+		return fmt.Errorf("extra operand '%s'", cfg.files[2])
+	}
+	return nil
+}
+
+// parseFlag dispatches to long or short flag parsing.
+func parseFlag(cfg *config, arg string, args []string, i int) (int, error) {
+	if strings.HasPrefix(arg, "--") {
+		return parseLongFlag(cfg, arg, args, i)
+	}
+	return parseShortFlags(cfg, arg[1:])
+}
+
+// parseLongFlag handles --name and --name=value flags.
+func parseLongFlag(cfg *config, arg string, args []string, i int) (int, error) {
 	switch {
 	case arg == "--check-order":
-		cfg.checkOrder = true
-		return true, nil
+		cfg.checkOrder = 1
+		return 0, nil
 	case arg == "--nocheck-order":
-		cfg.noCheckOrder = true
-		return true, nil
-	case strings.HasPrefix(arg, "--output-delimiter="):
-		cfg.outputDelim = arg[len("--output-delimiter="):]
-		cfg.hasOutputDelim = true
-		return true, nil
-	case strings.HasPrefix(arg, "--"):
-		return true, fmt.Errorf("unrecognized option '%s'", arg)
+		cfg.checkOrder = -1
+		return 0, nil
+	case arg == "--total":
+		cfg.total = true
+		return 0, nil
+	case arg == "--zero-terminated":
+		cfg.zeroTerm = true
+		return 0, nil
+	case arg == "--help":
+		cfg.showHelp = true
+		return 0, nil
+	case arg == "--version":
+		cfg.showVersion = true
+		return 0, nil
+	case strings.HasPrefix(arg, "--output-delimiter"):
+		return parseOutputDelim(cfg, arg, args, i)
+	default:
+		return 0, fmt.Errorf("unrecognized option '%s'", arg)
 	}
-	return false, nil
 }
 
-// parseFlagArg parses a single flag argument like "-1", "-23", "-123".
-func parseFlagArg(arg string, cfg *commConfig) bool {
-	for _, ch := range arg[1:] {
+// parseOutputDelim parses --output-delimiter=STR or --output-delimiter STR.
+// R3.4: replaces tab with custom delimiter.
+func parseOutputDelim(cfg *config, arg string, args []string, i int) (int, error) {
+	if strings.HasPrefix(arg, "--output-delimiter=") {
+		cfg.outputDelim = arg[len("--output-delimiter="):]
+		cfg.hasOutputDelim = true
+		return 0, nil
+	}
+	if i+1 >= len(args) {
+		return 0, fmt.Errorf("option '--output-delimiter' requires an argument")
+	}
+	cfg.outputDelim = args[i+1]
+	cfg.hasOutputDelim = true
+	return 1, nil
+}
+
+// parseShortFlags processes bundled short flags like -12.
+// R1.1: -1, -2, -3 can be combined.
+func parseShortFlags(cfg *config, flags string) (int, error) {
+	for _, ch := range flags {
 		switch ch {
 		case '1':
 			cfg.suppress1 = true
@@ -175,224 +491,11 @@ func parseFlagArg(arg string, cfg *commConfig) bool {
 			cfg.suppress2 = true
 		case '3':
 			cfg.suppress3 = true
+		case 'z':
+			cfg.zeroTerm = true
 		default:
-			return false
+			return 0, fmt.Errorf("invalid option -- '%c'", ch)
 		}
 	}
-	return true
-}
-
-// computePrefixes calculates the tab prefix for each column based on
-// which columns are suppressed. R2.4: the leftmost visible column has
-// no leading delimiter; each subsequent visible column adds one delimiter.
-func computePrefixes(cfg commConfig, delim string) columnPrefixes {
-	var p columnPrefixes
-	p.col1 = ""
-	col2Offset := 0
-	if !cfg.suppress1 {
-		col2Offset = 1
-	}
-	p.col2 = strings.Repeat(delim, col2Offset)
-	col3Offset := 0
-	if !cfg.suppress1 {
-		col3Offset++
-	}
-	if !cfg.suppress2 {
-		col3Offset++
-	}
-	p.col3 = strings.Repeat(delim, col3Offset)
-	return p
-}
-
-// printFileError writes a GNU-compatible file error message to stderr.
-// R4.2: extracts path and underlying error from PathError for GNU-style formatting.
-func printFileError(stderr io.Writer, err error) {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
-		fmt.Fprintf(stderr, "%s: %s: %v\n", programName, pe.Path, pe.Err)
-		return
-	}
-	fmt.Fprintf(stderr, "%s: %v\n", programName, err)
-}
-
-// openFile opens a file for reading. "-" means stdin.
-func openFile(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
-	if name == "-" {
-		return stdin, nil, nil
-	}
-	f, err := os.Open(name)
-	if err != nil {
-		return nil, nil, err
-	}
-	return f, f, nil
-}
-
-// newOrderChecker creates an order checker for one file.
-func newOrderChecker(label string, stderr io.Writer, cfg commConfig) orderChecker {
-	return orderChecker{
-		label:   label,
-		stderr:  stderr,
-		fatal:   cfg.checkOrder,
-		disable: cfg.noCheckOrder,
-	}
-}
-
-// check validates that line is >= the previously checked line.
-// R3.1: default prints warning, returns false. R3.2: --check-order returns true (fatal).
-// R3.3: --nocheck-order skips check entirely.
-func (o *orderChecker) check(line string) bool {
-	if o.disable || !o.hasPrev || line >= o.prev {
-		o.prev = line
-		o.hasPrev = true
-		return false
-	}
-	fmt.Fprintf(o.stderr, "%s: %s is not in sorted order\n", programName, o.label)
-	o.warned = true
-	o.prev = line
-	return o.fatal
-}
-
-// compare reads two sorted inputs and writes column output.
-// Returns (orderViolation, error). orderViolation is true if non-fatal warnings were issued.
-func compare(r1, r2 io.Reader, w, stderr io.Writer, cfg commConfig, p columnPrefixes) (bool, error) {
-	s1 := bufio.NewScanner(r1)
-	s2 := bufio.NewScanner(r2)
-	bw := bufio.NewWriter(w)
-	oc1 := newOrderChecker("file 1", stderr, cfg)
-	oc2 := newOrderChecker("file 2", stderr, cfg)
-	have1 := s1.Scan()
-	have2 := s2.Scan()
-	if err := mainLoop(bw, s1, s2, &have1, &have2, cfg, p, &oc1, &oc2); err != nil {
-		bw.Flush() // best-effort flush of buffered output
-		return false, err
-	}
-	if err := checkScanErrors(s1, s2); err != nil {
-		return false, err
-	}
-	if err := drainFile(bw, s1, have1, p.col1, cfg.suppress1, &oc1); err != nil {
-		bw.Flush() // best-effort flush
-		return false, err
-	}
-	if err := drainFile(bw, s2, have2, p.col2, cfg.suppress2, &oc2); err != nil {
-		bw.Flush() // best-effort flush
-		return false, err
-	}
-	if err := bw.Flush(); err != nil {
-		return false, err
-	}
-	return oc1.warned || oc2.warned, nil
-}
-
-// mainLoop runs the comparison loop until one file is exhausted or an error occurs.
-func mainLoop(
-	bw *bufio.Writer, s1, s2 *bufio.Scanner,
-	have1, have2 *bool, cfg commConfig, p columnPrefixes,
-	oc1, oc2 *orderChecker,
-) error {
-	for *have1 && *have2 {
-		l1, l2 := s1.Text(), s2.Text()
-		if err := stepPair(bw, s1, s2, l1, l2, have1, have2, cfg, p, oc1, oc2); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// stepPair compares one line from each file and writes the appropriate column.
-func stepPair(
-	bw *bufio.Writer, s1, s2 *bufio.Scanner,
-	l1, l2 string, have1, have2 *bool,
-	cfg commConfig, p columnPrefixes,
-	oc1, oc2 *orderChecker,
-) error {
-	if l1 < l2 {
-		return stepCol1(bw, s1, l1, have1, cfg, p, oc1)
-	}
-	if l2 < l1 {
-		return stepCol2(bw, s2, l2, have2, cfg, p, oc2)
-	}
-	return stepCol3(bw, s1, s2, l1, l2, have1, have2, cfg, p, oc1, oc2)
-}
-
-// stepCol1 handles a line unique to file1.
-func stepCol1(bw *bufio.Writer, s1 *bufio.Scanner, l1 string, have1 *bool, cfg commConfig, p columnPrefixes, oc1 *orderChecker) error {
-	if oc1.check(l1) {
-		return errFatalOrder
-	}
-	if err := writeColumn(bw, p.col1, l1, cfg.suppress1); err != nil {
-		return err
-	}
-	*have1 = s1.Scan()
-	return nil
-}
-
-// stepCol2 handles a line unique to file2.
-func stepCol2(bw *bufio.Writer, s2 *bufio.Scanner, l2 string, have2 *bool, cfg commConfig, p columnPrefixes, oc2 *orderChecker) error {
-	if oc2.check(l2) {
-		return errFatalOrder
-	}
-	if err := writeColumn(bw, p.col2, l2, cfg.suppress2); err != nil {
-		return err
-	}
-	*have2 = s2.Scan()
-	return nil
-}
-
-// stepCol3 handles a line common to both files.
-func stepCol3(bw *bufio.Writer, s1, s2 *bufio.Scanner, l1, l2 string, have1, have2 *bool, cfg commConfig, p columnPrefixes, oc1, oc2 *orderChecker) error {
-	if oc1.check(l1) || oc2.check(l2) {
-		return errFatalOrder
-	}
-	if err := writeColumn(bw, p.col3, l1, cfg.suppress3); err != nil {
-		return err
-	}
-	*have1 = s1.Scan()
-	*have2 = s2.Scan()
-	return nil
-}
-
-// checkScanErrors checks both scanners for read errors.
-func checkScanErrors(s1, s2 *bufio.Scanner) error {
-	if err := s1.Err(); err != nil {
-		return err
-	}
-	return s2.Err()
-}
-
-// writeColumn writes a line with prefix unless the column is suppressed.
-func writeColumn(w *bufio.Writer, prefix, line string, suppress bool) error {
-	if suppress {
-		return nil
-	}
-	return writeLine(w, prefix, line)
-}
-
-// drainFile writes all remaining lines from a scanner with the given prefix.
-// R1.3: when one file is exhausted, remaining lines go to the appropriate column.
-func drainFile(w *bufio.Writer, s *bufio.Scanner, hasLine bool, prefix string, suppress bool, oc *orderChecker) error {
-	if suppress {
-		return nil
-	}
-	for hasLine {
-		line := s.Text()
-		if oc.check(line) {
-			return errFatalOrder
-		}
-		if err := writeLine(w, prefix, line); err != nil {
-			return err
-		}
-		hasLine = s.Scan()
-	}
-	return s.Err()
-}
-
-// writeLine writes a prefixed line followed by a newline.
-func writeLine(w *bufio.Writer, prefix, line string) error {
-	if _, err := w.WriteString(prefix); err != nil {
-		return err
-	}
-	if _, err := w.WriteString(line); err != nil {
-		return err
-	}
-	return w.WriteByte('\n')
+	return 0, nil
 }

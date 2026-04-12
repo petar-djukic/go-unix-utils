@@ -1,243 +1,260 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/uname prints system information fields.
-// Implements prd044-uname R1.1–R1.9, R2.1, R2.2, R3.1, R3.2.
+// Package main implements cmd/uname: print system information.
+// Implements srd044-uname R1.1-R1.9, R2.1, R2.2, R3.1, R3.2.
 package main
 
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
-	"syscall"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// programName is the name used in error messages.
-const programName = "uname"
+// progName is used in error messages.
+const progName = "uname"
 
-// version is set at build time via -ldflags "-X main.version=<tag>".
-var version = "dev"
+// versionText is printed when --version is passed.
+const versionText = progName + " (go-unix-utils)"
+
+// helpText is the usage message printed when --help is passed.
+const helpText = `Usage: uname [OPTION]...
+Print certain system information.  With no OPTION, same as -s.
+
+  -a, --all                print all information, in the following order,
+                             except omit -p and -i if unknown:
+  -s, --kernel-name        print the kernel name
+  -n, --nodename           print the network node hostname
+  -r, --kernel-release     print the kernel release
+  -v, --kernel-version     print the kernel version
+  -m, --machine            print the machine hardware name
+  -p, --processor          print the processor type or "unknown"
+  -i, --hardware-platform  print the hardware platform or "unknown"
+  -o, --operating-system   print the operating system
+      --help        display this help and exit
+      --version     output version information and exit
+`
+
+// flags tracks which information fields the user requested.
+type flags struct {
+	sysName  bool // -s: kernel name
+	nodeName bool // -n: network node hostname
+	release  bool // -r: kernel release
+	version  bool // -v: kernel version
+	machine  bool // -m: machine hardware name
+	proc     bool // -p: processor type
+	hwPlat   bool // -i: hardware platform
+	osName   bool // -o: operating system
+	allMode  bool // -a: omit unknown -p and -i
+}
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	var flags unameFlags
-	anyFlag := false
-
-	exit, done := parseFlags(os.Args[1:], &flags, &anyFlag)
-	if done {
-		os.Exit(exit)
-	}
-
-	// R1.1: no flags prints kernel name (equivalent to -s).
-	if !anyFlag {
-		flags.s = true
-	}
-
-	fields, err := collectFields(&flags)
+	f, err := parseFlags(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
 		os.Exit(1)
 	}
-	fmt.Println(strings.Join(fields, " "))
+
+	printFields(f)
 }
 
-// unameFlags holds the state of each individual flag.
-type unameFlags struct {
-	s, n, r, v, m, p, i, o bool
-	// allMode is true when -a was used; "unknown" fields are omitted.
-	allMode bool
-}
+// parseFlags processes command-line arguments and returns the selected flags.
+// R1.1: when no flags are given, defaults to -s.
+func parseFlags(args []string) (flags, error) {
+	var f flags
+	anySet := false
 
-// setAll sets every flag to true, used by -a (R2.1).
-func (f *unameFlags) setAll() {
-	f.s = true
-	f.n = true
-	f.r = true
-	f.v = true
-	f.m = true
-	f.p = true
-	f.i = true
-	f.o = true
-}
-
-// parseFlags processes argv for single-character flags and --version.
-// Returns (exitCode, true) when the program should exit immediately.
-func parseFlags(args []string, flags *unameFlags, anyFlag *bool) (int, bool) {
 	for _, arg := range args {
+		if arg == "--help" {
+			fmt.Print(helpText)
+			os.Exit(0)
+		}
+		if arg == "--version" {
+			fmt.Println(versionText)
+			os.Exit(0)
+		}
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			fmt.Fprintf(os.Stderr, "%s: extra operand '%s'\n", programName, arg)
-			return 1, true
+			return f, fmt.Errorf("extra operand '%s'", arg)
 		}
+		// R3.2: unrecognized long options are reported as such.
 		if strings.HasPrefix(arg, "--") {
-			return handleLongOption(arg)
+			return f, fmt.Errorf("unrecognized option '%s'", arg)
 		}
-		if err := parseFlagChars(arg[1:], flags, anyFlag); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
-			return 1, true
+		if err := setShortFlags(&f, arg[1:]); err != nil {
+			return f, err
 		}
+		anySet = true
 	}
-	return 0, false
+
+	if !anySet {
+		f.sysName = true
+	}
+	return f, nil
 }
 
-// handleLongOption handles --help, --version and rejects unknown long options.
-func handleLongOption(arg string) (int, bool) {
-	// R3.2: --help prints usage information to stdout and exits 0.
-	if arg == "--help" {
-		printHelp()
-		return 0, true
-	}
-	// --version prints version information and exits 0.
-	if arg == "--version" {
-		fmt.Printf("%s (go-unix-utils) %s\n", programName, version)
-		return 0, true
-	}
-	fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n", programName, arg)
-	return 1, true
-}
-
-// printHelp writes usage information to stdout (R3.2).
-func printHelp() {
-	fmt.Printf("Usage: %s [OPTION]...\n", programName)
-	fmt.Println("Print certain system information.  With no OPTION, same as -s.")
-	fmt.Println()
-	fmt.Println("  -a             print all information, in the following order:")
-	fmt.Println("  -s             print the kernel name")
-	fmt.Println("  -n             print the network node hostname")
-	fmt.Println("  -r             print the kernel release")
-	fmt.Println("  -v             print the kernel version")
-	fmt.Println("  -m             print the machine hardware name")
-	fmt.Println("  -p             print the processor type or \"unknown\"")
-	fmt.Println("  -i             print the hardware platform or \"unknown\"")
-	fmt.Println("  -o             print the operating system")
-	fmt.Println("      --help     display this help and exit")
-	fmt.Println("      --version  output version information and exit")
-}
-
-// parseFlagChars processes each character in a flag group.
-func parseFlagChars(chars string, flags *unameFlags, anyFlag *bool) error {
-	for _, ch := range chars {
-		switch ch {
+// setShortFlags parses a group of short flag characters (e.g., "snrvm").
+// R2.1: 'a' enables all fields.
+func setShortFlags(f *flags, chars string) error {
+	for _, c := range chars {
+		switch c {
 		case 'a':
-			flags.setAll()
-			flags.allMode = true
+			f.allMode = true
+			setAllFlags(f)
 		case 's':
-			flags.s = true
+			f.sysName = true
 		case 'n':
-			flags.n = true
+			f.nodeName = true
 		case 'r':
-			flags.r = true
+			f.release = true
 		case 'v':
-			flags.v = true
+			f.version = true
 		case 'm':
-			flags.m = true
+			f.machine = true
 		case 'p':
-			flags.p = true
+			f.proc = true
 		case 'i':
-			flags.i = true
+			f.hwPlat = true
 		case 'o':
-			flags.o = true
+			f.osName = true
 		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
+			return fmt.Errorf("invalid option -- '%c'", c)
 		}
-		*anyFlag = true
 	}
 	return nil
 }
 
-// collectFields gathers the requested uname fields in canonical order.
-// R2.2: fields are always emitted in canonical order regardless of
-// the order flags were specified.
-func collectFields(f *unameFlags) ([]string, error) {
-	var fields []string
-	// R1.2: kernel name (e.g., Darwin, Linux).
-	if f.s {
-		v, err := syscall.Sysctl("kern.ostype")
-		if err != nil {
-			return nil, fmt.Errorf("reading kernel name: %w", err)
-		}
-		fields = append(fields, v)
-	}
-	// R1.3: network node hostname.
-	if f.n {
-		v, err := syscall.Sysctl("kern.hostname")
-		if err != nil {
-			return nil, fmt.Errorf("reading hostname: %w", err)
-		}
-		fields = append(fields, v)
-	}
-	// R1.4: kernel release string.
-	if f.r {
-		v, err := syscall.Sysctl("kern.osrelease")
-		if err != nil {
-			return nil, fmt.Errorf("reading kernel release: %w", err)
-		}
-		fields = append(fields, v)
-	}
-	// R1.5: kernel version string.
-	if f.v {
-		v, err := syscall.Sysctl("kern.version")
-		if err != nil {
-			return nil, fmt.Errorf("reading kernel version: %w", err)
-		}
-		fields = append(fields, sanitizeVersion(v))
-	}
-	// R1.6: machine hardware name.
-	if f.m {
-		v, err := syscall.Sysctl("hw.machine")
-		if err != nil {
-			return nil, fmt.Errorf("reading machine: %w", err)
-		}
-		fields = append(fields, v)
-	}
-	// R1.7: processor type — derived from hw.machine on Darwin.
-	// In -a mode, "unknown" is omitted to match GNU uname behavior.
-	if f.p {
-		pt := processorType()
-		if !f.allMode || pt != "unknown" {
-			fields = append(fields, pt)
-		}
-	}
-	// R1.8: hardware platform ("unknown" on most platforms).
-	// In -a mode, "unknown" is omitted to match GNU uname behavior.
-	if f.i {
-		hp := "unknown"
-		if !f.allMode || hp != "unknown" {
-			fields = append(fields, hp)
-		}
-	}
-	// R1.9: operating system name.
-	if f.o {
-		fields = append(fields, osName())
-	}
-	return fields, nil
+// setAllFlags enables all information fields.
+// R2.1: -a is equivalent to -snrvmpio.
+func setAllFlags(f *flags) {
+	f.sysName = true
+	f.nodeName = true
+	f.release = true
+	f.version = true
+	f.machine = true
+	f.proc = true
+	f.hwPlat = true
+	f.osName = true
 }
 
-// processorType returns the processor type matching guname -p on Darwin.
-// GNU coreutils bakes in the processor at configure time; on Darwin
-// arm64 maps to "arm" and x86_64 maps to "x86_64".
-func processorType() string {
-	machine, err := syscall.Sysctl("hw.machine")
-	if err != nil {
+// printFields retrieves system info and prints the selected fields
+// space-separated on a single line.
+// R2.2: fields are printed in canonical order regardless of flag order.
+func printFields(f flags) {
+	var utsname unix.Utsname
+	if err := unix.Uname(&utsname); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: cannot get system information: %v\n", progName, err)
+		os.Exit(1)
+	}
+
+	var parts []string
+	if f.sysName {
+		parts = append(parts, bytesToString(utsname.Sysname[:]))
+	}
+	if f.nodeName {
+		parts = append(parts, bytesToString(utsname.Nodename[:]))
+	}
+	if f.release {
+		parts = append(parts, bytesToString(utsname.Release[:]))
+	}
+	if f.version {
+		parts = append(parts, bytesToString(utsname.Version[:]))
+	}
+	if f.machine {
+		parts = append(parts, bytesToString(utsname.Machine[:]))
+	}
+	if f.proc {
+		p := processorType(utsname)
+		// R2.1: -a omits processor if "unknown".
+		if !f.allMode || p != "unknown" {
+			parts = append(parts, p)
+		}
+	}
+	if f.hwPlat {
+		h := hardwarePlatform(utsname)
+		// R2.1: -a omits hardware platform if "unknown".
+		if !f.allMode || h != "unknown" {
+			parts = append(parts, h)
+		}
+	}
+	if f.osName {
+		parts = append(parts, operatingSystem())
+	}
+
+	fmt.Println(strings.Join(parts, " "))
+}
+
+// processorType returns the processor type.
+// R1.7: On Darwin, returns the CPU architecture name matching GNU coreutils
+// behavior (e.g., "arm" on ARM64). On Linux, matches the machine field.
+// Returns "unknown" if the information is not determinable.
+func processorType(uts unix.Utsname) string {
+	if runtime.GOOS == "darwin" {
+		return darwinProcessorType()
+	}
+	m := bytesToString(uts.Machine[:])
+	if m == "" {
 		return "unknown"
 	}
-	if machine == "arm64" {
-		return "arm"
+	return m
+}
+
+// darwinProcessorType returns the processor type on Darwin.
+// GNU coreutils on macOS returns the CPU architecture name (e.g., "arm")
+// which differs from the machine name (e.g., "arm64").
+func darwinProcessorType() string {
+	p, err := unix.Sysctl("hw.machine")
+	if err != nil || p == "" {
+		return "unknown"
 	}
-	return machine
+	// hw.machine returns "arm64" on Apple Silicon; GNU coreutils
+	// reports "arm" to match the base architecture family.
+	if base, found := strings.CutSuffix(p, "64"); found {
+		return base
+	}
+	return p
 }
 
-// osName returns the operating system name matching guname -o on Darwin.
-func osName() string {
-	return "Darwin"
+// hardwarePlatform returns the hardware platform.
+// R1.8: On Darwin, hardware platform is not determinable; returns "unknown"
+// matching GNU coreutils behavior. On Linux, matches the machine field.
+func hardwarePlatform(uts unix.Utsname) string {
+	if runtime.GOOS == "darwin" {
+		return "unknown"
+	}
+	m := bytesToString(uts.Machine[:])
+	if m == "" {
+		return "unknown"
+	}
+	return m
 }
 
-// sanitizeVersion removes trailing newlines and replaces internal
-// newlines with spaces, matching GNU uname -v behavior on Darwin
-// where kern.version may contain embedded newlines.
-func sanitizeVersion(v string) string {
-	v = strings.TrimRight(v, "\n")
-	return strings.ReplaceAll(v, "\n", " ")
+// operatingSystem returns the operating system name.
+// R1.9: On Darwin returns "Darwin"; on Linux returns "GNU/Linux".
+func operatingSystem() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "Darwin"
+	case "linux":
+		return "GNU/Linux"
+	default:
+		return runtime.GOOS
+	}
+}
+
+// bytesToString converts a null-terminated byte array to a Go string.
+func bytesToString(raw []byte) string {
+	for i, v := range raw {
+		if v == 0 {
+			return string(raw[:i])
+		}
+	}
+	return string(raw)
 }

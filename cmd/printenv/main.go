@@ -1,86 +1,122 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/printenv implements GNU printenv: print environment variables.
-//
-// Implements prd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
+// Package main implements cmd/printenv: print environment variables.
+// Implements srd040-printenv R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+const progName = "printenv"
+
+const helpText = `Usage: printenv [OPTION]... [VARIABLE]...
+Print the values of the specified environment VARIABLE(s).
+If no VARIABLE is specified, print name and value pairs for them all.
+
+  -0, --null     end each output line with NUL, not newline
+      --help     display this help and exit
+      --version  output version information and exit
+`
+
+const versionText = progName + " (go-unix-utils)"
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	exitCode := run(os.Args[1:], os.Stdout)
-	os.Exit(exitCode)
+	code := run(os.Args[1:])
+	os.Exit(code)
 }
 
-// run parses arguments and prints environment variables.
-// Returns 0 if all requested variables are found, 1 otherwise.
-func run(args []string, stdout *os.File) int {
-	nullTerminated, vars := parseArgs(args)
-	terminator := "\n"
-	if nullTerminated {
-		terminator = "\x00"
-	}
-
-	if len(vars) == 0 {
-		return printAll(stdout, terminator)
-	}
-	return printVars(vars, stdout, terminator)
+// printenvOptions holds parsed flag state for printenv.
+type printenvOptions struct {
+	nullTerm bool
+	names    []string
 }
 
-// parseArgs extracts the -0/--null flag and remaining variable names.
-func parseArgs(args []string) (nullTerm bool, vars []string) {
-	for _, arg := range args {
-		switch arg {
-		case "-0", "--null":
-			nullTerm = true
-		default:
-			vars = append(vars, arg)
-		}
+// run parses arguments and prints the requested environment variables.
+// Returns the exit code.
+func run(args []string) int {
+	opts, err := parseArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		return 2
 	}
-	return nullTerm, vars
+
+	if len(opts.names) == 0 {
+		return printAll(opts.nullTerm)
+	}
+	return printNamed(opts.names, opts.nullTerm)
 }
 
-// printAll prints every environment variable in NAME=VALUE format.
-// R1.1: prints all variables, one per line, exits 0.
-func printAll(stdout *os.File, terminator string) int {
-	for _, entry := range os.Environ() {
-		fmt.Fprint(stdout, entry+terminator) //nolint:errcheck // best-effort
+// printAll prints every environment variable in NAME=VALUE format. R1.1, R2.4.
+func printAll(nullTerm bool) int {
+	sep := terminator(nullTerm)
+	for _, e := range os.Environ() {
+		fmt.Print(e + sep)
 	}
 	return 0
 }
 
-// printVars prints the value of each named variable.
-// R1.2: prints only the value (no NAME= prefix), one per line.
-// R1.3: missing variables produce no output and no error.
-func printVars(vars []string, stdout *os.File, terminator string) int {
-	exitCode := 0
-	for _, name := range vars {
-		val, ok := lookupEnv(name)
+// printNamed prints values of named variables. R1.2, R1.3, R2.2, R2.3.
+func printNamed(names []string, nullTerm bool) int {
+	sep := terminator(nullTerm)
+	allFound := true
+	for _, name := range names {
+		val, ok := os.LookupEnv(name)
 		if !ok {
-			exitCode = 1
+			allFound = false
 			continue
 		}
-		fmt.Fprint(stdout, val+terminator) //nolint:errcheck // best-effort
+		fmt.Print(val + sep)
 	}
-	return exitCode
+	if !allFound {
+		return 1
+	}
+	return 0
 }
 
-// lookupEnv scans the process environment for the named variable.
-// R1.3: distinguishes unset from empty.
-func lookupEnv(name string) (string, bool) {
-	for _, entry := range os.Environ() {
-		if k, v, ok := strings.Cut(entry, "="); ok && k == name {
-			return v, true
-		}
+// terminator returns the line terminator based on the nullTerm flag. R2.1.
+func terminator(nullTerm bool) string {
+	if nullTerm {
+		return "\x00"
 	}
-	return "", false
+	return "\n"
+}
+
+// parseArgs separates flags from VARIABLE name arguments.
+func parseArgs(args []string) (printenvOptions, error) {
+	var opts printenvOptions
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--help" {
+			fmt.Print(helpText)
+			os.Exit(0)
+		}
+		if arg == "--version" {
+			fmt.Println(versionText)
+			os.Exit(0)
+		}
+		if arg == "-0" || arg == "--null" {
+			opts.nullTerm = true
+			i++
+			continue
+		}
+		if arg == "--" {
+			i++
+			break
+		}
+		if len(arg) > 1 && arg[0] == '-' {
+			return printenvOptions{}, fmt.Errorf("unrecognized option '%s'", arg)
+		}
+		break
+	}
+	opts.names = args[i:]
+	return opts, nil
 }

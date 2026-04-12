@@ -1,22 +1,40 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/nproc against gnproc (GNU coreutils).
-//
-// Covers prd046-nproc R3.2, R3.3.
+// Package main provides differential tests for cmd/nproc.
+// Tests cover srd046-nproc R3.1, R3.2, R3.3.
 package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-// Used for error messages and version/help output where GNU includes
-// the full binary path, causing unavoidable divergence.
-func discardAll(data []byte) []byte {
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+// R3.3: replaces binary paths with "PROG" so error message structure
+// can be compared between Go and GNU binaries.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	return b
+}
+
+// discardOutput normalizes by discarding all output, used when
+// output content differs by design (--version, --help) and only
+// exit code comparison is meaningful.
+func discardOutput(b []byte) []byte {
 	return nil
 }
 
@@ -24,97 +42,84 @@ func TestDiff(t *testing.T) {
 	t.Parallel()
 
 	goBin := testutils.BuildBinary(t, ".")
-	// R3.3: skip gracefully when gnproc reference binary is not found.
 	refBin, err := exec.LookPath("gnproc")
 	if err != nil {
-		t.Skip("reference binary gnproc not in PATH")
+		t.Skipf("reference binary gnproc not in PATH: %v", err)
 	}
 
-	env := []string{"LC_ALL=C"}
-
 	tests := []testutils.DiffTest{
-		// R3.2: no arguments — prints available CPU count.
+		// R3.1/R3.2: default invocation with no arguments.
 		{
-			Name:     "default_no_args",
-			Args:     []string{},
-			Env:      env,
-			ExitCode: 0,
+			Name: "default_no_args",
+			Args: []string{},
 		},
-		// R3.2: --all prints installed processor count.
+
+		// R3.2: --all flag prints installed processor count.
 		{
-			Name:     "flag_all",
-			Args:     []string{"--all"},
-			Env:      env,
-			ExitCode: 0,
+			Name: "flag_all",
+			Args: []string{"--all"},
 		},
-		// R3.2: --ignore=1 subtracts from available count.
+
+		// R3.2: --ignore=0 should not change the count.
 		{
-			Name:     "flag_ignore_1",
-			Args:     []string{"--ignore=1"},
-			Env:      env,
-			ExitCode: 0,
+			Name: "ignore_zero",
+			Args: []string{"--ignore=0"},
 		},
-		// R3.2: --all --ignore=2 combined.
+
+		// R3.2: --ignore=1 subtracts one from available count.
 		{
-			Name:     "flag_all_ignore_2",
-			Args:     []string{"--all", "--ignore=2"},
-			Env:      env,
-			ExitCode: 0,
+			Name: "ignore_one",
+			Args: []string{"--ignore=1"},
 		},
-		// R3.2: --ignore=0 has no effect.
+
+		// R3.2: --all --ignore=1 combined.
 		{
-			Name:     "flag_ignore_0",
-			Args:     []string{"--ignore=0"},
-			Env:      env,
-			ExitCode: 0,
+			Name: "all_ignore_one",
+			Args: []string{"--all", "--ignore=1"},
 		},
-		// R3.2: --ignore with large value floors to 1.
+
+		// R3.2: --ignore with value exceeding CPU count clamps to 1.
 		{
-			Name:     "flag_ignore_large",
-			Args:     []string{"--ignore=99999"},
-			Env:      env,
-			ExitCode: 0,
+			Name: "ignore_exceeds_cpus",
+			Args: []string{"--ignore=99999"},
 		},
-		// R3.2: --version exits 0 (output differs, check exit code only).
+
+		// R3.2: --all with large --ignore clamps to 1.
 		{
-			Name:      "flag_version",
-			Args:      []string{"--version"},
-			Env:       env,
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "all_ignore_exceeds_cpus",
+			Args: []string{"--all", "--ignore=99999"},
 		},
-		// R3.2: --help exits 0 (output differs, check exit code only).
+
+		// R3.2: --help flag exits 0.
 		{
-			Name:      "flag_help",
+			Name:      "help_flag",
 			Args:      []string{"--help"},
-			Env:       env,
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
 		},
-		// R3.2: unrecognized option exits 1.
+
+		// R3.2: --version flag exits 0.
 		{
-			Name:      "invalid_option",
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
+		},
+
+		// R3.3: unrecognized long flag produces error and exit 1.
+		{
+			Name:      "unknown_long_flag",
 			Args:      []string{"--bogus"},
-			Env:       env,
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+
+		// R3.3: invalid --ignore value (non-numeric) produces error and exit 1.
+		{
+			Name:      "ignore_non_numeric",
+			Args:      []string{"--ignore=abc"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestHelp verifies --help prints to stdout and exits 0.
-func TestHelp(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "--help")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("--help failed: %v", err)
-	}
-	if len(out) == 0 {
-		t.Fatal("--help produced no output")
-	}
 }

@@ -1,15 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/tee implements GNU tee: read stdin and write to stdout and files.
-//
-// Implements prd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4.
-//
-// TODO: --output-error modes (warn, warn-nopipe, exit, exit-nopipe) are listed
-// in prd017 non_goals and must not be implemented per article E6.
+// Package main implements cmd/tee: read stdin and write to stdout and files.
+// Implements srd017-tee R1.1-R1.5, R2.1-R2.3, R3.1-R3.4, R4.1-R4.3.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,210 +16,238 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const helpText = `Usage: tee [OPTION]... [FILE]...
-Copy standard input to each FILE, and also to standard output.
+// progName is used in diagnostic messages.
+const progName = "tee"
 
-  -a, --append             append to the given FILEs, do not overwrite
-  -i, --ignore-interrupts  ignore interrupt signals
-      --help        display this help and exit
-      --version     output version information and exit
-`
+// versionText is printed when --version is passed.
+// R4.1: prints version information and exits 0.
+const versionText = progName + " (go-unix-utils) dev"
 
-const versionText = "tee (go-unix-utils) 0.1\n"
-
-// stdoutName is the display name for stdout in error diagnostics.
-const stdoutName = "standard output"
+// TODO: -p flag and --output-error=MODE (warn, warn-nopipe, exit, exit-nopipe)
+// are listed in srd017 non_goals. Skipped per execution constitution E6.
 
 func main() {
+	// R4.3: install SIGPIPE handler to exit cleanly when piped to head, etc.
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
-}
 
-// run parses arguments and executes tee logic.
-func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
-	opts, result := parseArgs(args)
-	switch result {
-	case parseHelp:
-		fmt.Fprint(stdout, helpText) //nolint:errcheck // best-effort
-		return 0
-	case parseVer:
-		fmt.Fprint(stdout, versionText) //nolint:errcheck // best-effort
-		return 0
+	// R4.1/R4.2: handle --version and --help before argument parsing.
+	if handleInfoFlags(os.Args[1:]) {
+		return
 	}
 
-	// R2.2: ignore SIGINT when -i is set.
-	if opts.ignoreInterrupts {
-		signal.Ignore(syscall.SIGINT)
-	}
-
-	return copyToFiles(opts, stdin, stdout, stderr)
+	exitCode := run(os.Args[1:])
+	os.Exit(exitCode)
 }
 
-// parseResult signals how argument parsing concluded.
-type parseResult int
-
-const (
-	parseOK   parseResult = iota
-	parseHelp             // --help requested
-	parseVer              // --version requested
-)
-
-// options holds parsed command-line flags.
-type options struct {
-	appendMode       bool
-	ignoreInterrupts bool
-	files            []string
-}
-
-// parseArgs parses GNU-style tee arguments.
-func parseArgs(args []string) (*options, parseResult) {
-	opts := &options{}
-	i := 0
-	for i < len(args) {
-		arg := args[i]
-		if arg == "--help" {
-			return opts, parseHelp
-		}
-		if arg == "--version" {
-			return opts, parseVer
-		}
-		if arg == "--" {
-			opts.files = append(opts.files, args[i+1:]...)
-			return opts, parseOK
-		}
-		if arg == "--append" {
-			opts.appendMode = true
-			i++
-			continue
-		}
-		if arg == "--ignore-interrupts" {
-			opts.ignoreInterrupts = true
-			i++
-			continue
-		}
-		if len(arg) > 1 && arg[0] == '-' && arg[1] != '-' {
-			if parseShortFlags(arg, opts) {
-				i++
-				continue
-			}
-		}
-		// Not a flag -- this and all remaining args are file names.
-		opts.files = append(opts.files, args[i:]...)
-		return opts, parseOK
-	}
-	return opts, parseOK
-}
-
-// parseShortFlags handles short flags like -a, -i, -ai.
-// Returns true if the arg was handled as flags.
-func parseShortFlags(arg string, opts *options) bool {
-	for j := 1; j < len(arg); j++ {
-		switch arg[j] {
-		case 'a':
-			opts.appendMode = true
-		case 'i':
-			opts.ignoreInterrupts = true
-		default:
+// handleInfoFlags checks for --version and --help, prints and exits 0.
+// Returns true if a flag was handled (caller should return).
+func handleInfoFlags(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--version":
+			fmt.Println(versionText)
+			return true
+		case "--help":
+			printHelp()
+			return true
+		case "--":
 			return false
 		}
 	}
-	return true
+	return false
 }
 
-// dest represents a single output destination with error tracking.
-type dest struct {
-	name    string   // display name for diagnostics
-	file    *os.File // underlying writer
-	errored bool     // true after first write error
+// printHelp writes usage information to stdout.
+// R4.2: matches GNU tee --help structure.
+func printHelp() {
+	fmt.Print(`Usage: tee [OPTION]... [FILE]...
+Copy standard input to each FILE, and also to standard output.
+
+  -a, --append              append to the given FILEs, do not overwrite
+  -i, --ignore-interrupts   ignore interrupt signals
+      --help     display this help and exit
+      --version  output version information and exit
+`)
 }
 
-// copyToFiles reads stdin and writes to stdout and all output files.
-// R1.5: writes output in the order received from stdin.
-// R3.3: continues writing to remaining destinations when one fails.
-func copyToFiles(opts *options, stdin io.Reader, stdout, stderr *os.File) int {
-	dests, exitCode := openDests(opts, stdout, stderr)
-	defer closeDests(dests)
+// run executes the tee logic and returns the exit code.
+// R1.2: with no file arguments, acts as passthrough (stdin to stdout).
+// R1.1: writes stdin bytes to stdout and all named files simultaneously.
+// R3.1: returns 0 when all writes succeed.
+// R3.2, R3.4: returns 1 when any file or stdout write fails.
+func run(args []string) int {
+	appendMode, ignoreInt, fileArgs := parseFlags(args)
 
-	buf := make([]byte, 32*1024)
-	for {
-		n, readErr := stdin.Read(buf)
-		if n > 0 {
-			if writeErr := writeAll(dests, buf[:n], stderr); writeErr {
-				exitCode = 1
-			}
-		}
-		if readErr != nil {
-			break
-		}
+	// R2.2: when -i is specified, ignore SIGINT.
+	if ignoreInt {
+		signal.Ignore(syscall.SIGINT)
 	}
 
+	files, exitCode := openFiles(fileArgs, appendMode)
+	defer closeFiles(files)
+
+	// R3.3: use resilient writer that continues writing to remaining
+	// destinations when one fails.
+	rw := newResilientWriter(files)
+	if err := copyToAll(os.Stdin, rw); err != nil {
+		exitCode = 1
+	}
+	if rw.failed {
+		exitCode = 1
+	}
 	return exitCode
 }
 
-// openDests opens all output files and builds the destination list.
-// Stdout is always the first destination.
-// R3.2: open failures print a diagnostic and skip the file.
-func openDests(opts *options, stdout, stderr *os.File) ([]dest, int) {
-	flag := os.O_WRONLY | os.O_CREATE
-	if opts.appendMode {
-		flag |= os.O_APPEND
-	} else {
-		flag |= os.O_TRUNC
+// parseFlags extracts -a and -i flags from args, returning remaining file args.
+// R2.3: -a and -i may be combined; their effects are independent.
+func parseFlags(args []string) (appendMode, ignoreInt bool, fileArgs []string) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			fileArgs = append(fileArgs, args[i+1:]...)
+			return
+		}
+		if arg == "--append" {
+			appendMode = true
+			continue
+		}
+		if arg == "--ignore-interrupts" {
+			ignoreInt = true
+			continue
+		}
+		if len(arg) > 1 && arg[0] == '-' && arg[1] != '-' {
+			parseShortFlags(arg[1:], &appendMode, &ignoreInt)
+			continue
+		}
+		fileArgs = append(fileArgs, arg)
+	}
+	return
+}
+
+// parseShortFlags processes combined short flags like -ai.
+func parseShortFlags(flags string, appendMode, ignoreInt *bool) {
+	for _, c := range flags {
+		switch c {
+		case 'a':
+			*appendMode = true
+		case 'i':
+			*ignoreInt = true
+		default:
+			fmt.Fprintf(os.Stderr, "%s: invalid option -- '%c'\n", progName, c)
+		}
+	}
+}
+
+// openFiles opens each file argument for writing.
+// R1.3: creates files that do not exist.
+// R2.1: when appendMode is true, opens with O_APPEND; otherwise truncates.
+// R1.4: "-" is treated as stdout (not opened as a file).
+// R3.2: reports open failures to stderr and sets exit code 1.
+func openFiles(args []string, appendMode bool) ([]*os.File, int) {
+	var files []*os.File
+	exitCode := 0
+
+	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	if appendMode {
+		flags = os.O_WRONLY | os.O_CREATE | os.O_APPEND
 	}
 
-	exitCode := 0
-	dests := make([]dest, 0, 1+len(opts.files))
-	dests = append(dests, dest{name: stdoutName, file: stdout})
-
-	for _, name := range opts.files {
-		f, err := os.OpenFile(name, flag, 0o666)
+	for _, name := range args {
+		if name == "-" {
+			// R1.4: "-" means stdout; no additional file to open.
+			continue
+		}
+		f, err := os.OpenFile(name, flags, 0o666)
 		if err != nil {
-			// R3.1: GNU format 'tee: FILE: REASON'
-			printDiag(stderr, name, err)
+			reportError(name, err)
 			exitCode = 1
 			continue
 		}
-		dests = append(dests, dest{name: name, file: f})
+		files = append(files, f)
 	}
-	return dests, exitCode
+	return files, exitCode
 }
 
-// writeAll writes data to every non-errored destination.
-// Returns true if any write error occurred.
-func writeAll(dests []dest, data []byte, stderr *os.File) bool {
-	hadError := false
-	for i := range dests {
-		if dests[i].errored {
+// reportError prints a GNU-compatible diagnostic to stderr.
+// R3.2: format is "tee: <filename>: <reason>".
+func reportError(name string, err error) {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, name, pe.Err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, name, err)
+}
+
+// dest tracks a named write destination for resilient multi-write.
+type dest struct {
+	writer io.Writer
+	name   string
+	dead   bool
+}
+
+// resilientWriter writes to stdout and all files, continuing past failures.
+// R3.3: a single file failure does not stop output to other destinations.
+type resilientWriter struct {
+	dests  []dest
+	failed bool
+}
+
+// newResilientWriter builds a writer list with stdout first, then files.
+func newResilientWriter(files []*os.File) *resilientWriter {
+	rw := &resilientWriter{
+		dests: make([]dest, 0, 1+len(files)),
+	}
+	rw.dests = append(rw.dests, dest{writer: os.Stdout, name: "stdout"})
+	for _, f := range files {
+		rw.dests = append(rw.dests, dest{writer: f, name: f.Name()})
+	}
+	return rw
+}
+
+// Write writes p to all live destinations.
+// R3.3: skips destinations that have previously failed.
+// R3.2: reports write errors to stderr on first occurrence.
+// R3.4: tracks stdout write failures.
+func (rw *resilientWriter) Write(p []byte) (int, error) {
+	var stdoutErr error
+	for i := range rw.dests {
+		if rw.dests[i].dead {
 			continue
 		}
-		if _, err := dests[i].file.Write(data); err != nil {
-			// R3.1: GNU format 'tee: FILE: REASON'
-			printDiag(stderr, dests[i].name, err)
-			dests[i].errored = true
-			hadError = true
+		_, err := rw.dests[i].writer.Write(p)
+		if err != nil {
+			rw.dests[i].dead = true
+			rw.failed = true
+			if i == 0 {
+				// R3.4: stdout write error.
+				stdoutErr = err
+			}
+			reportWriteError(rw.dests[i].name, err)
 		}
 	}
-	return hadError
-}
-
-// printDiag writes a GNU-compatible diagnostic to stderr.
-// R3.1: format is 'tee: NAME: REASON'.
-// R3.4: always writes to stderr regardless of other flags.
-func printDiag(stderr *os.File, name string, err error) {
-	fmt.Fprintf(stderr, "tee: %s: %s\n", name, unwrapMsg(err)) //nolint:errcheck
-}
-
-// closeDests closes all opened file destinations (skips stdout).
-func closeDests(dests []dest) {
-	for i := 1; i < len(dests); i++ {
-		dests[i].file.Close() // best-effort close
+	// R3.4: propagate stdout error to stop io.Copy when stdout is broken.
+	if stdoutErr != nil {
+		return 0, stdoutErr
 	}
+	return len(p), nil
 }
 
-// unwrapMsg extracts the inner message from a *os.PathError.
-func unwrapMsg(err error) string {
-	if pe, ok := err.(*os.PathError); ok {
-		return pe.Err.Error()
+// reportWriteError prints a diagnostic for a write failure.
+func reportWriteError(name string, err error) {
+	fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, name, err)
+}
+
+// copyToAll reads from r and writes every byte to the resilient writer.
+// R1.5: output order matches stdin order.
+func copyToAll(r io.Reader, w io.Writer) error {
+	_, err := io.Copy(w, r)
+	return err
+}
+
+// closeFiles closes all open file handles.
+func closeFiles(files []*os.File) {
+	for _, f := range files {
+		f.Close() // best-effort close
 	}
-	return err.Error()
 }

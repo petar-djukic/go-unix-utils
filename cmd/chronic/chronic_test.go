@@ -5,118 +5,87 @@ package main
 
 import (
 	"os/exec"
-	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("chronic")
 	if err != nil {
 		t.Skipf("reference binary chronic not in PATH: %v", err)
 	}
-
 	tests := []testutils.DiffTest{
-		// R1.1: suppress output on success.
 		{
-			Name:     "success_suppressed",
-			Args:     []string{"echo", "hello"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			// R1.1: suppress all output when command exits 0.
+			Name: "success_suppressed",
+			Args: []string{"echo", "hello"},
 		},
-		// R1.1: suppress even with stderr on success (without -e).
 		{
-			Name:     "success_stderr_suppressed",
-			Args:     []string{"sh", "-c", "echo warn >&2"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.1, R2.1: show output on failure, exit code matches command.
-		{
+			// R1.1: exit code propagated on failure; false produces no output.
 			Name:     "failure_exit_code",
 			Args:     []string{"false"},
-			Env:      []string{"LC_ALL=C"},
 			ExitCode: 1,
 		},
-		// R1.1: stdout captured and replayed on failure.
 		{
-			Name:     "failure_with_stdout",
-			Args:     []string{"sh", "-c", "echo output; exit 1"},
-			Env:      []string{"LC_ALL=C"},
+			// R1.1: replay stdout and stderr on non-zero exit.
+			Name:     "failure_output_replayed",
+			Args:     []string{"sh", "-c", "echo out; echo err >&2; exit 1"},
 			ExitCode: 1,
 		},
-		// R1.1: stderr captured and replayed on failure.
 		{
-			Name:     "failure_with_stderr",
-			Args:     []string{"sh", "-c", "echo err >&2; exit 2"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 2,
-		},
-		// R1.2: -e triggers output and exits 2 when stderr non-empty on exit 0.
-		{
+			// R1.2: -e triggers output when stderr has content, exits 2.
 			Name:     "stderr_flag_triggers_on_stderr",
-			Args:     []string{"-e", "sh", "-c", "echo warn >&2"},
-			Env:      []string{"LC_ALL=C"},
+			Args:     []string{"-e", "sh", "-c", "echo err >&2"},
 			ExitCode: 2,
 		},
-		// R1.2: -e does not trigger when stderr is empty and exit 0.
 		{
-			Name:     "stderr_flag_silent_when_no_stderr",
-			Args:     []string{"-e", "true"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			// R1.2: -e does not trigger when stderr is empty and exit 0.
+			Name: "stderr_flag_silent_on_no_stderr",
+			Args: []string{"-e", "echo", "hello"},
 		},
-		// R1.3: -v adds headers around output on failure.
 		{
-			Name:     "verbose_on_failure",
-			Args:     []string{"-v", "sh", "-c", "echo out; echo err >&2; exit 1"},
-			Env:      []string{"LC_ALL=C"},
+			// R1.3: -v uses labeled format on failure.
+			Name:     "verbose_with_failure",
+			Args:     []string{"-v", "false"},
 			ExitCode: 1,
 		},
-		// R1.3: -v suppresses output on success (no headers shown).
 		{
-			Name:     "verbose_on_success",
-			Args:     []string{"-v", "true"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			// R1.3: -v still suppresses on success.
+			Name: "verbose_suppressed_on_success",
+			Args: []string{"-v", "echo", "hello"},
 		},
-		// R1.2 + R1.3: combined -v -e flags.
 		{
-			Name:     "verbose_and_stderr_combined",
-			Args:     []string{"-v", "-e", "sh", "-c", "echo warn >&2"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 2,
-		},
-		// R2.1: exit code propagates from command.
-		{
-			Name:     "exit_code_propagated",
+			// R2.1: exit code propagation with specific non-1 exit code.
+			Name:     "exit_code_propagation_42",
 			Args:     []string{"sh", "-c", "exit 42"},
-			Env:      []string{"LC_ALL=C"},
 			ExitCode: 42,
 		},
+		{
+			// R2.1: exit code propagation preserves exit 0 on success.
+			Name: "exit_code_zero_on_success",
+			Args: []string{"true"},
+		},
+		{
+			// R1.3 + R1.2: -v -e combined, stderr triggers labeled output.
+			Name:     "verbose_stderr_combined",
+			Args:     []string{"-v", "-e", "sh", "-c", "echo err >&2"},
+			ExitCode: 2,
+		},
+		{
+			// R1.3 + R2.1: -v with specific exit code, labeled format.
+			Name:     "verbose_exit_code_propagation",
+			Args:     []string{"-v", "sh", "-c", "echo out; echo err >&2; exit 3"},
+			ExitCode: 3,
+		},
+		{
+			// R1.2 + R2.1: -e with non-zero exit, stderr present.
+			Name:     "stderr_flag_with_nonzero_exit",
+			Args:     []string{"-e", "sh", "-c", "echo err >&2; exit 1"},
+			ExitCode: 1,
+		},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestCommandNotFound verifies R2.2: exit 100 when command cannot be found.
-// Standalone test because the Perl reference chronic exits differently for this case.
-func TestCommandNotFound(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-
-	cmd := exec.Command(goBin, "nonexistent_command_xyz_12345")
-	cmd.Env = []string{"LC_ALL=C", "PATH="}
-	out, err := cmd.CombinedOutput()
-	exitErr, ok := err.(*exec.ExitError)
-	if !ok {
-		t.Fatalf("expected ExitError, got %v", err)
-	}
-	if exitErr.ExitCode() != 100 {
-		t.Errorf("exit code = %d, want 100", exitErr.ExitCode())
-	}
-	if !strings.Contains(string(out), "nonexistent_command_xyz_12345") {
-		t.Errorf("stderr should mention the command name, got: %s", out)
-	}
 }

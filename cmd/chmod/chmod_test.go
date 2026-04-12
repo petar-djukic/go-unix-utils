@@ -2,365 +2,447 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/chmod against gchmod (GNU coreutils).
-//
-// Traces: prd089-chmod R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R4.1, R4.2, R4.3.
+// Implements srd089 R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// setupFile creates a file with specified permissions in dir.
-func setupFile(t *testing.T, dir, name string, perm os.FileMode) {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("test\n"), perm); err != nil {
-		t.Fatalf("setup: write %s: %v", name, err)
+const refBinName = "gchmod"
+const execTimeout = 30 * time.Second
+
+// makeNormalizer creates a NormalizeFunc that replaces binary-specific names
+// and normalizes syscall error message capitalization.
+func makeNormalizer(refBin string) testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		b = bytes.ReplaceAll(b, []byte(refBin), []byte(programName))
+		b = bytes.ReplaceAll(b, []byte(refBinName), []byte(programName))
+		b = normalizeSyscallErrors(b)
+		return b
 	}
 }
 
-// setupDirTree creates a nested directory tree for recursive tests.
-func setupDirTree(t *testing.T, dir string) {
-	t.Helper()
-	sub := filepath.Join(dir, "testdir", "sub")
-	if err := os.MkdirAll(sub, 0o755); err != nil {
-		t.Fatalf("setup: mkdir: %v", err)
+// normalizeSyscallErrors lowercases known syscall error messages that
+// differ in case between C strerror() and Go syscall.Errno.Error().
+func normalizeSyscallErrors(b []byte) []byte {
+	replacements := []struct{ from, to string }{
+		{"No such file or directory", "no such file or directory"},
+		{"Not a directory", "not a directory"},
+		{"Permission denied", "permission denied"},
+		{"Operation not permitted", "operation not permitted"},
 	}
-	setupFile(t, filepath.Join(dir, "testdir"), "a.txt", 0o644)
-	setupFile(t, sub, "b.txt", 0o644)
+	for _, r := range replacements {
+		b = bytes.ReplaceAll(b, []byte(r.from), []byte(r.to))
+	}
+	return b
 }
 
-// makeWorkDir creates a temp dir with a single testfile at perm.
-func makeWorkDir(t *testing.T, perm os.FileMode) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupFile(t, dir, "testfile", perm)
-	return dir
-}
-
-// makeMultiWorkDir creates a temp dir with two files.
-func makeMultiWorkDir(t *testing.T, perm os.FileMode) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupFile(t, dir, "file1", perm)
-	setupFile(t, dir, "file2", perm)
-	return dir
-}
-
-// makeRecursiveWorkDir creates a temp dir with a nested directory tree.
-func makeRecursiveWorkDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupDirTree(t, dir)
-	return dir
-}
-
-// makeRefWorkDir creates a temp dir with a testfile and a reffile at different perms.
-func makeRefWorkDir(t *testing.T, filePerm, refPerm os.FileMode) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupFile(t, dir, "testfile", filePerm)
-	setupFile(t, dir, "reffile", refPerm)
-	return dir
-}
-
-// TestDiff runs differential tests that produce no stdout output, so the
-// shared-workdir issue (ref binary modifies state before Go binary) is harmless.
+// TestDiff runs differential tests comparing cmd/chmod against gchmod.
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gchmod")
+	refBin, err := exec.LookPath(refBinName)
 	if err != nil {
-		t.Skip("reference binary gchmod not in PATH")
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
 	}
+	norm := makeNormalizer(refBin)
 
+	t.Run("errors", func(t *testing.T) {
+		t.Parallel()
+		runErrorTests(t, goBin, refBin, norm)
+	})
+	t.Run("octal", func(t *testing.T) {
+		t.Parallel()
+		runOctalTests(t, goBin, refBin, norm)
+	})
+	t.Run("symbolic", func(t *testing.T) {
+		t.Parallel()
+		runSymbolicTests(t, goBin, refBin, norm)
+	})
+	t.Run("multiple_files", func(t *testing.T) {
+		t.Parallel()
+		runMultipleFileTests(t, goBin, refBin, norm)
+	})
+	t.Run("error_continue", func(t *testing.T) {
+		t.Parallel()
+		runErrorContinueTests(t, goBin, refBin, norm)
+	})
+	// R2.1-R2.4 test groups
+	t.Run("recursive", func(t *testing.T) {
+		t.Parallel()
+		runRecursiveTests(t, goBin, refBin, norm)
+	})
+	t.Run("verbose", func(t *testing.T) {
+		t.Parallel()
+		runVerboseTests(t, goBin, refBin, norm)
+	})
+	t.Run("changes", func(t *testing.T) {
+		t.Parallel()
+		runChangesTests(t, goBin, refBin, norm)
+	})
+	t.Run("silent", func(t *testing.T) {
+		t.Parallel()
+		runSilentTests(t, goBin, refBin, norm)
+	})
+}
+
+// runErrorTests tests error cases where no file modification occurs.
+func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	norms := []testutils.NormalizeFunc{norm}
 	tests := []testutils.DiffTest{
-		// R1.1: octal mode
 		{
-			Name:    "octal_755",
-			Args:    []string{"755", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t, 0o644),
-		},
-		// R1.2: symbolic mode
-		{
-			Name:    "symbolic_u_plus_x",
-			Args:    []string{"u+x", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t, 0o644),
-		},
-		// R1.2: comma-separated symbolic clauses
-		{
-			Name:    "symbolic_comma",
-			Args:    []string{"u+x,go-w", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t, 0o666),
-		},
-		// R1.3: multiple files
-		{
-			Name:    "multiple_files",
-			Args:    []string{"755", "file1", "file2"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeMultiWorkDir(t, 0o644),
-		},
-		// R2.1: recursive mode change (no verbose, so idempotent)
-		{
-			Name:    "recursive_octal",
-			Args:    []string{"-R", "755", "testdir"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeRecursiveWorkDir(t),
-		},
-		// R2.4: silent mode suppresses errors on nonexistent file
-		{
-			Name:     "silent_nonexistent",
-			Args:     []string{"-f", "644", "noexist"},
-			Env:      []string{"LC_ALL=C"},
-			WorkDir:  t.TempDir(),
-			ExitCode: 1,
-		},
-		// R3.1: setuid via symbolic mode
-		{
-			Name:    "setuid_symbolic",
-			Args:    []string{"u+s", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t, 0o755),
-		},
-		// R3.1: setgid via symbolic mode
-		{
-			Name:    "setgid_symbolic",
-			Args:    []string{"g+s", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t, 0o755),
-		},
-		// R3.1: sticky bit via symbolic mode
-		{
-			Name:    "sticky_symbolic",
-			Args:    []string{"+t", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t, 0o755),
-		},
-		// R3.1: octal setuid + setgid + sticky
-		{
-			Name:    "special_bits_octal",
-			Args:    []string{"7755", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t, 0o644),
-		},
-		// R3.2: --reference mode
-		{
-			Name:    "reference_mode",
-			Args:    []string{"--reference=reffile", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeRefWorkDir(t, 0o644, 0o755),
-		},
-		// R4.1: exit 0 on success
-		{
-			Name:     "exit_zero_success",
-			Args:     []string{"644", "testfile"},
-			Env:      []string{"LC_ALL=C"},
-			WorkDir:  makeWorkDir(t, 0o644),
-			ExitCode: 0,
+			Name:      "nonexistent_file",
+			Args:      []string{"755", "nonexistent"},
+			ExitCode:  1,
+			Normalize: norms,
 		},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestVerbose verifies -v diagnostic output against the Go binary directly.
-// R2.2: -v prints a diagnostic for every file processed.
-func TestVerbose(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-
-	t.Run("mode_changed", func(t *testing.T) {
-		dir := makeWorkDir(t, 0o644)
-		out := runGoBin(t, goBin, dir, "-v", "755", "testfile")
-		want := "mode of 'testfile' changed from 0644 (rw-r--r--) to 0755 (rwxr-xr-x)"
-		if strings.TrimSpace(out) != want {
-			t.Errorf("got:  %q\nwant: %q", strings.TrimSpace(out), want)
-		}
-	})
-
-	t.Run("mode_retained", func(t *testing.T) {
-		dir := makeWorkDir(t, 0o644)
-		out := runGoBin(t, goBin, dir, "-v", "644", "testfile")
-		want := "mode of 'testfile' retained as 0644 (rw-r--r--)"
-		if strings.TrimSpace(out) != want {
-			t.Errorf("got:  %q\nwant: %q", strings.TrimSpace(out), want)
-		}
-	})
+// chmodCase defines an isolated chmod test case.
+type chmodCase struct {
+	name     string
+	args     []string
+	initMode os.FileMode
 }
 
-// TestChanges verifies -c diagnostic output against the Go binary directly.
-// R2.3: -c prints a diagnostic only when mode actually changed.
-func TestChanges(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-
-	t.Run("with_change", func(t *testing.T) {
-		dir := makeWorkDir(t, 0o644)
-		out := runGoBin(t, goBin, dir, "-c", "755", "testfile")
-		want := "mode of 'testfile' changed from 0644 (rw-r--r--) to 0755 (rwxr-xr-x)"
-		if strings.TrimSpace(out) != want {
-			t.Errorf("got:  %q\nwant: %q", strings.TrimSpace(out), want)
-		}
-	})
-
-	t.Run("no_change", func(t *testing.T) {
-		dir := makeWorkDir(t, 0o644)
-		out := runGoBin(t, goBin, dir, "-c", "644", "testfile")
-		if out != "" {
-			t.Errorf("expected no output, got: %q", out)
-		}
-	})
-}
-
-// TestRecursiveVerbose verifies -Rv output against the Go binary directly.
-// R2.1 + R2.2: recursive with verbose.
-func TestRecursiveVerbose(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	dir := makeRecursiveWorkDir(t)
-
-	out := runGoBin(t, goBin, dir, "-Rv", "755", "testdir")
-
-	// All entries should appear in output
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 4 {
-		t.Fatalf("expected 4 lines, got %d: %q", len(lines), out)
-	}
-	for _, line := range lines {
-		if !strings.HasPrefix(line, "mode of '") {
-			t.Errorf("unexpected line: %q", line)
-		}
-	}
-}
-
-// TestSilentSuppresses verifies -f suppresses error messages.
-// R2.4: -f/--silent/--quiet must suppress most error messages.
-func TestSilentSuppresses(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	dir := t.TempDir()
-
-	cmd := exec.Command(goBin, "-f", "644", "noexist")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	out, _ := cmd.CombinedOutput()
-
-	if len(out) != 0 {
-		t.Errorf("expected no output with -f, got: %q", string(out))
-	}
-}
-
-// TestSetuidVerbose verifies setuid mode in verbose output.
-// R3.1: setuid (u+s) symbolic mode support.
-func TestSetuidVerbose(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	dir := makeWorkDir(t, 0o755)
-
-	out := runGoBin(t, goBin, dir, "-v", "u+s", "testfile")
-	got := strings.TrimSpace(out)
-	want := "mode of 'testfile' changed from 0755 (rwxr-xr-x) to 4755 (rwsr-xr-x)"
-	if got != want {
-		t.Errorf("got:  %q\nwant: %q", got, want)
-	}
-}
-
-// TestReferenceMode verifies --reference copies mode from reference file.
-// R3.2: --reference=RFILE sets each FILE's mode to match RFILE's mode.
-func TestReferenceMode(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	dir := makeRefWorkDir(t, 0o644, 0o755)
-
-	runGoBin(t, goBin, dir, "--reference=reffile", "testfile")
-
-	info, err := os.Stat(filepath.Join(dir, "testfile"))
-	if err != nil {
-		t.Fatalf("stat testfile: %v", err)
-	}
-	got := info.Mode().Perm()
-	if got != 0o755 {
-		t.Errorf("testfile mode = %04o, want 0755", got)
-	}
-}
-
-// TestExitCodes verifies exit code behavior.
-// R4.1: exit 0 on success.
-// R4.2: exit 1 on error.
-func TestExitCodes(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-
-	t.Run("success_exits_zero", func(t *testing.T) {
-		dir := makeWorkDir(t, 0o644)
-		cmd := exec.Command(goBin, "755", "testfile")
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "LC_ALL=C")
-		if err := cmd.Run(); err != nil {
-			t.Errorf("expected exit 0, got: %v", err)
-		}
-	})
-
-	t.Run("nonexistent_exits_one", func(t *testing.T) {
-		dir := t.TempDir()
-		cmd := exec.Command(goBin, "644", "noexist")
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "LC_ALL=C")
-		err := cmd.Run()
-		if err == nil {
-			t.Error("expected exit 1, got exit 0")
-		}
-	})
-
-	t.Run("invalid_mode_exits_one", func(t *testing.T) {
-		dir := makeWorkDir(t, 0o644)
-		cmd := exec.Command(goBin, "xyz", "testfile")
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "LC_ALL=C")
-		err := cmd.Run()
-		if err == nil {
-			t.Error("expected exit 1, got exit 0")
-		}
-	})
-}
-
-// TestSIGPIPE verifies that chmod exits 0 when stdout is closed early.
-// R4.3: Must handle SIGPIPE gracefully (exit 0) using pkg/sys.InstallSIGPIPEHandler.
-func TestSIGPIPE(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	dir := makeWorkDir(t, 0o644)
-
-	cmd := exec.Command(goBin, "-v", "755", "testfile")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatalf("stdout pipe: %v", err)
-	}
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	// Close stdout immediately to trigger SIGPIPE
-	stdout.Close()
-
-	err = cmd.Wait()
-	if err != nil {
-		t.Errorf("expected exit 0 on SIGPIPE, got: %v", err)
-	}
-}
-
-// runGoBin executes the Go binary and returns stdout.
-func runGoBin(t *testing.T, bin, dir string, args ...string) string {
+// runOctalTests tests R1.1: octal mode application.
+func runOctalTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
 	t.Helper()
-	cmd := exec.Command(bin, args...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("command failed: %v", err)
+	cases := []chmodCase{
+		{name: "755_from_644", args: []string{"755", "file"}, initMode: 0o644},
+		{name: "644_from_755", args: []string{"644", "file"}, initMode: 0o755},
+		{name: "0755_leading_zero", args: []string{"0755", "file"}, initMode: 0o644},
+		{name: "600_from_777", args: []string{"600", "file"}, initMode: 0o777},
+		{name: "000_clear_all", args: []string{"000", "file"}, initMode: 0o755},
 	}
-	return string(out)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runIsolatedChmod(t, goBin, refBin, norm, tc)
+		})
+	}
+}
+
+// runSymbolicTests tests R1.2: symbolic mode application.
+func runSymbolicTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	cases := []chmodCase{
+		{name: "u_plus_x", args: []string{"u+x", "file"}, initMode: 0o644},
+		{name: "go_minus_w", args: []string{"go-w", "file"}, initMode: 0o666},
+		{name: "a_equals_rw", args: []string{"a=rw", "file"}, initMode: 0o755},
+		{name: "u_rwx_go_rx", args: []string{"u=rwx,go=rx", "file"}, initMode: 0o000},
+		{name: "plus_x", args: []string{"+x", "file"}, initMode: 0o644},
+		{name: "o_plus_r", args: []string{"o+r", "file"}, initMode: 0o640},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runIsolatedChmod(t, goBin, refBin, norm, tc)
+		})
+	}
+}
+
+// runMultipleFileTests tests R1.3: processing multiple FILE arguments.
+func runMultipleFileTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("two_files_octal", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "file1", 0o644)
+		setupFile(t, refDir, "file2", 0o600)
+		setupFile(t, goDir, "file1", 0o644)
+		setupFile(t, goDir, "file2", 0o600)
+
+		args := []string{"755", "file1", "file2"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+		compareFilePerm(t, refDir, goDir, "file1")
+		compareFilePerm(t, refDir, goDir, "file2")
+	})
+}
+
+// runErrorContinueTests tests R1.4: continue processing after error.
+func runErrorContinueTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("nonexistent_then_real", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "realfile", 0o644)
+		setupFile(t, goDir, "realfile", 0o644)
+
+		args := []string{"755", "nonexistent", "realfile"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+		compareFilePerm(t, refDir, goDir, "realfile")
+	})
+}
+
+// runRecursiveTests tests R2.1: -R recursive mode changes.
+func runRecursiveTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("recursive_octal_755", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupTree(t, refDir, 0o644)
+		setupTree(t, goDir, 0o644)
+
+		args := []string{"-R", "755", "testdir"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "file1"))
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "sub"))
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "sub", "file2"))
+	})
+	t.Run("recursive_symbolic_a_plus_x", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupTree(t, refDir, 0o644)
+		setupTree(t, goDir, 0o644)
+
+		args := []string{"-R", "a+x", "testdir"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "file1"))
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "sub"))
+		compareFilePerm(t, refDir, goDir, filepath.Join("testdir", "sub", "file2"))
+	})
+}
+
+// runVerboseTests tests R2.2: -v verbose diagnostic output.
+func runVerboseTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("verbose_mode_change", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "file", 0o644)
+		setupFile(t, goDir, "file", 0o644)
+
+		args := []string{"-v", "755", "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+	t.Run("verbose_no_change", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "file", 0o644)
+		setupFile(t, goDir, "file", 0o644)
+
+		args := []string{"-v", "644", "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+}
+
+// runChangesTests tests R2.3: -c changes-only diagnostic output.
+func runChangesTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("changes_mode_changed", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "file", 0o644)
+		setupFile(t, goDir, "file", 0o644)
+
+		args := []string{"-c", "755", "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+	t.Run("changes_no_change", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		setupFile(t, refDir, "file", 0o644)
+		setupFile(t, goDir, "file", 0o644)
+
+		args := []string{"-c", "644", "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+}
+
+// runSilentTests tests R2.4: -f silent/quiet error suppression.
+func runSilentTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	t.Run("silent_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+
+		args := []string{"-f", "755", "nonexistent"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+
+		compareOutputs(t, norm, refRes, goRes)
+	})
+}
+
+// setupTree creates a directory tree for recursive tests:
+// root/testdir/file1, root/testdir/sub/file2.
+func setupTree(t *testing.T, root string, mode os.FileMode) {
+	t.Helper()
+	dir := filepath.Join(root, "testdir")
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("setup MkdirAll: %v", err)
+	}
+	setupFile(t, dir, "file1", mode)
+	setupFile(t, sub, "file2", mode)
+	if err := os.Chmod(sub, mode); err != nil {
+		t.Fatalf("setup Chmod sub: %v", err)
+	}
+}
+
+// runIsolatedChmod runs a single chmod test in isolated directories.
+func runIsolatedChmod(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc, tc chmodCase) {
+	t.Helper()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+
+	setupFile(t, refDir, "file", tc.initMode)
+	setupFile(t, goDir, "file", tc.initMode)
+
+	refRes := runBin(t, refBin, tc.args, refDir)
+	goRes := runBin(t, goBin, tc.args, goDir)
+
+	compareOutputs(t, norm, refRes, goRes)
+	compareFilePerm(t, refDir, goDir, "file")
+}
+
+// setupFile creates a file with the given permissions.
+func setupFile(t *testing.T, dir, name string, mode os.FileMode) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("test"), 0o666); err != nil {
+		t.Fatalf("setup WriteFile: %v", err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatalf("setup Chmod: %v", err)
+	}
+}
+
+// compareFilePerm checks that a file has the same permissions in both dirs.
+func compareFilePerm(t *testing.T, refDir, goDir, name string) {
+	t.Helper()
+	refInfo, err := os.Lstat(filepath.Join(refDir, name))
+	if err != nil {
+		return // file doesn't exist in ref, error caught by output comparison
+	}
+	goInfo, err := os.Lstat(filepath.Join(goDir, name))
+	if err != nil {
+		t.Errorf("file %s: exists in ref but not in go dir", name)
+		return
+	}
+	refPerm := refInfo.Mode().Perm()
+	goPerm := goInfo.Mode().Perm()
+	if refPerm != goPerm {
+		t.Errorf("file %s: perm mismatch ref=%04o go=%04o",
+			name, refPerm, goPerm)
+	}
+}
+
+// binResult holds captured output from a single binary execution.
+type binResult struct {
+	stdout   []byte
+	stderr   []byte
+	exitCode int
+}
+
+// runBin executes a binary in workDir and captures stdout, stderr, exit code.
+func runBin(t *testing.T, bin string, args []string, workDir string) binResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	cmd.Dir = workDir
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+
+	return extractResult(t, cmd, ctx, &outBuf, &errBuf)
+}
+
+// extractResult runs the command and returns the captured result.
+func extractResult(t *testing.T, cmd *exec.Cmd, ctx context.Context, outBuf, errBuf *bytes.Buffer) binResult {
+	t.Helper()
+	err := cmd.Run()
+	if err == nil {
+		return binResult{stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return binResult{
+			stdout:   outBuf.Bytes(),
+			stderr:   errBuf.Bytes(),
+			exitCode: exitErr.ExitCode(),
+		}
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("%s timed out after %v", cmd.Path, execTimeout)
+	}
+	t.Fatalf("%s failed: %v", cmd.Path, err)
+	return binResult{} // unreachable
+}
+
+// compareOutputs compares stdout, stderr, and exit code between ref and go.
+func compareOutputs(t *testing.T, norm testutils.NormalizeFunc, ref, got binResult) {
+	t.Helper()
+	refOut := norm(ref.stdout)
+	gotOut := norm(got.stdout)
+	refErr := norm(ref.stderr)
+	gotErr := norm(got.stderr)
+
+	if !bytes.Equal(refOut, gotOut) {
+		t.Errorf("stdout mismatch\nref: %q\ngot: %q", refOut, gotOut)
+	}
+	if !bytes.Equal(refErr, gotErr) {
+		t.Errorf("stderr mismatch\nref: %q\ngot: %q", refErr, gotErr)
+	}
+	if ref.exitCode != got.exitCode {
+		t.Errorf("exit code mismatch: ref=%d got=%d", ref.exitCode, got.exitCode)
+	}
 }

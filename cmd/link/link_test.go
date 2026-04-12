@@ -2,187 +2,248 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/link against glink (GNU coreutils).
-//
-// Covers prd084-link R1.1, R1.2, R1.3, R1.4, R2.1, R2.2.
+// Implements srd084 R1.1-R1.4, R2.1-R2.3.
 package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-// Used for error messages where the binary name prefix differs.
-func discardAll(data []byte) []byte {
-	return nil
+const refBinName = "glink"
+const execTimeout = 30 * time.Second
+
+// makeNormalizer creates a NormalizeFunc that replaces binary-specific names
+// and normalizes syscall error message capitalization.
+func makeNormalizer(refBin string) testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		b = bytes.ReplaceAll(b, []byte(refBin), []byte(programName))
+		b = bytes.ReplaceAll(b, []byte(refBinName), []byte(programName))
+		b = normalizeSyscallErrors(b)
+		return b
+	}
 }
 
-// TestDiff runs differential tests using the testutils harness.
-// R1.3: covers missing-operand and extra-operand errors.
-// R1.4: covers nonexistent source file error.
+// normalizeSyscallErrors lowercases known syscall error messages that
+// differ in case between C strerror() and Go syscall.Errno.Error().
+func normalizeSyscallErrors(b []byte) []byte {
+	replacements := []struct{ from, to string }{
+		{"No such file or directory", "no such file or directory"},
+		{"Not a directory", "not a directory"},
+		{"File exists", "file exists"},
+		{"Permission denied", "permission denied"},
+		{"Operation not permitted", "operation not permitted"},
+		{"Cross-device link", "cross-device link"},
+	}
+	for _, r := range replacements {
+		b = bytes.ReplaceAll(b, []byte(r.from), []byte(r.to))
+	}
+	return b
+}
+
+// TestDiff runs differential tests comparing cmd/link against glink.
 func TestDiff(t *testing.T) {
 	t.Parallel()
-
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("glink")
+	refBin, err := exec.LookPath(refBinName)
 	if err != nil {
-		t.Skip("reference binary glink not in PATH")
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
 	}
+	norm := makeNormalizer(refBin)
 
-	workDir := t.TempDir()
-
-	tests := []testutils.DiffTest{
-		// R1.3: no arguments — exit 1.
-		{
-			Name:      "no_arguments",
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R1.3: one argument — missing destination operand — exit 1.
-		{
-			Name:      "missing_destination",
-			Args:      []string{"file1"},
-			WorkDir:   workDir,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R1.3: three arguments — extra operand — exit 1.
-		{
-			Name:      "extra_operand",
-			Args:      []string{"a", "b", "c"},
-			WorkDir:   workDir,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R1.4: nonexistent source file — exit 1.
-		{
-			Name:      "nonexistent_source",
-			Args:      []string{"nonexistent.txt", "dest.txt"},
-			WorkDir:   workDir,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestLinkCreate verifies R1.1 and R1.2: successful hard link creation.
-// R2.1: exit 0 on success.
-func TestLinkCreate(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("glink")
-	if err != nil {
-		t.Skip("reference binary glink not in PATH")
-	}
-
-	t.Run("create_hard_link", func(t *testing.T) {
+	t.Run("errors", func(t *testing.T) {
 		t.Parallel()
-		goDir := t.TempDir()
-		refDir := t.TempDir()
-
-		for _, base := range []string{goDir, refDir} {
-			writeFile(t, filepath.Join(base, "source.txt"), "hello")
-		}
-
-		refStdout, _, refExit := execBin(t, refBin, []string{"source.txt", "dest.txt"}, refDir)
-		goStdout, _, goExit := execBin(t, goBin, []string{"source.txt", "dest.txt"}, goDir)
-
-		if refExit != goExit {
-			t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
-		}
-		if !bytes.Equal(refStdout, goStdout) {
-			t.Errorf("stdout: ref=%q go=%q", refStdout, goStdout)
-		}
-
-		// R1.1: dest.txt must exist and be a hard link to source.txt.
-		assertHardLink(t, goDir, "source.txt", "dest.txt")
-		assertHardLink(t, refDir, "source.txt", "dest.txt")
+		runErrorTests(t, goBin, refBin, norm)
+	})
+	t.Run("creation", func(t *testing.T) {
+		t.Parallel()
+		runCreationTests(t, goBin, refBin, norm)
 	})
 }
 
-// TestLinkDestExists verifies R1.4: destination already exists — exit 1.
-func TestLinkDestExists(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("glink")
-	if err != nil {
-		t.Skip("reference binary glink not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-
-	for _, base := range []string{goDir, refDir} {
-		writeFile(t, filepath.Join(base, "source.txt"), "data")
-		writeFile(t, filepath.Join(base, "dest.txt"), "exists")
-	}
-
-	_, _, refExit := execBin(t, refBin, []string{"source.txt", "dest.txt"}, refDir)
-	_, _, goExit := execBin(t, goBin, []string{"source.txt", "dest.txt"}, goDir)
-
-	if refExit != goExit {
-		t.Errorf("exit code: ref=%d go=%d", refExit, goExit)
-	}
-	if goExit == 0 {
-		t.Error("expected non-zero exit when destination exists")
-	}
-}
-
-// execBin runs a binary and returns stdout, stderr, and exit code.
-func execBin(t *testing.T, bin string, args []string, workDir string) ([]byte, []byte, int) {
+// runErrorTests uses RunDiffTests for error cases where neither binary
+// mutates the filesystem state.
+func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
 	t.Helper()
+	workDir := t.TempDir()
 
-	cmd := exec.Command(bin, args...)
-	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			t.Fatalf("failed to run %s: %v", bin, err)
+	// Create a file for "already exists" test.
+	for _, name := range []string{"existing1", "existing2"} {
+		path := filepath.Join(workDir, name)
+		if err := os.WriteFile(path, []byte("data"), 0o644); err != nil {
+			t.Fatalf("setup: %v", err)
 		}
 	}
 
-	return stdout.Bytes(), stderr.Bytes(), exitCode
+	norms := []testutils.NormalizeFunc{norm}
+	tests := []testutils.DiffTest{
+		{
+			Name: "zero_args", Args: []string{},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		{
+			Name: "one_arg", Args: []string{"existing1"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		{
+			Name: "three_args", Args: []string{"a", "b", "c"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		{
+			Name: "nonexistent_source", Args: []string{"doesnotexist", "newlink"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		{
+			Name: "target_exists", Args: []string{"existing1", "existing2"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-func writeFile(t *testing.T, path, content string) {
+// isolatedCase defines a creation test that runs each binary in its own dir.
+type isolatedCase struct {
+	name  string
+	args  []string
+	setup func(t *testing.T, dir string)
+}
+
+// runCreationTests runs tests where each binary operates in an isolated
+// temp directory since link creates files.
+func runCreationTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
+	cases := creationCases()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			compareIsolated(t, goBin, refBin, norm, tc)
+		})
 	}
 }
 
-// assertHardLink verifies two files share the same inode.
-func assertHardLink(t *testing.T, base, name1, name2 string) {
+// setupSourceFile creates a regular file named "source" in dir.
+func setupSourceFile(t *testing.T, dir string) {
 	t.Helper()
-
-	info1, err := os.Stat(filepath.Join(base, name1))
-	if err != nil {
-		t.Fatalf("%q should exist: %v", name1, err)
+	path := filepath.Join(dir, "source")
+	if err := os.WriteFile(path, []byte("content"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
 	}
-	info2, err := os.Stat(filepath.Join(base, name2))
-	if err != nil {
-		t.Fatalf("%q should exist: %v", name2, err)
-	}
+}
 
-	if !os.SameFile(info1, info2) {
-		t.Errorf("%q and %q should be hard links (same inode)", name1, name2)
+// creationCases returns the table of isolated link creation test cases.
+func creationCases() []isolatedCase {
+	return []isolatedCase{
+		{
+			name:  "regular_file",
+			args:  []string{"source", "dest"},
+			setup: setupSourceFile,
+		},
+	}
+}
+
+// compareIsolated runs both binaries in separate temp dirs and compares
+// stdout, stderr, exit code, and verifies hard link creation.
+func compareIsolated(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc, tc isolatedCase) {
+	t.Helper()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+
+	tc.setup(t, refDir)
+	tc.setup(t, goDir)
+
+	refRes := runBin(t, refBin, tc.args, refDir)
+	goRes := runBin(t, goBin, tc.args, goDir)
+
+	compareOutputs(t, norm, refRes, goRes)
+
+	// Verify hard link was created and shares inode with source.
+	verifyHardLink(t, goDir, tc.args[0], tc.args[1])
+}
+
+// verifyHardLink checks that dest is a hard link to source (same inode).
+func verifyHardLink(t *testing.T, dir, source, dest string) {
+	t.Helper()
+	srcInfo, err := os.Stat(filepath.Join(dir, source))
+	if err != nil {
+		t.Fatalf("source stat failed: %v", err)
+	}
+	dstInfo, err := os.Stat(filepath.Join(dir, dest))
+	if err != nil {
+		t.Fatalf("dest stat failed: %v", err)
+	}
+	if !os.SameFile(srcInfo, dstInfo) {
+		t.Errorf("dest is not a hard link to source")
+	}
+}
+
+// binResult holds captured output from a single binary execution.
+type binResult struct {
+	stdout   []byte
+	stderr   []byte
+	exitCode int
+}
+
+// runBin executes a binary in workDir and captures stdout, stderr, exit code.
+func runBin(t *testing.T, bin string, args []string, workDir string) binResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	cmd.Dir = workDir
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+
+	return extractResult(t, cmd, ctx, &outBuf, &errBuf)
+}
+
+// extractResult runs the command and returns the captured result.
+func extractResult(t *testing.T, cmd *exec.Cmd, ctx context.Context, outBuf, errBuf *bytes.Buffer) binResult {
+	t.Helper()
+	err := cmd.Run()
+	if err == nil {
+		return binResult{stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return binResult{
+			stdout:   outBuf.Bytes(),
+			stderr:   errBuf.Bytes(),
+			exitCode: exitErr.ExitCode(),
+		}
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("%s timed out after %v", cmd.Path, execTimeout)
+	}
+	t.Fatalf("%s failed: %v", cmd.Path, err)
+	return binResult{} // unreachable
+}
+
+// compareOutputs compares stdout, stderr, and exit code between ref and go.
+func compareOutputs(t *testing.T, norm testutils.NormalizeFunc, ref, got binResult) {
+	t.Helper()
+	refOut := norm(ref.stdout)
+	gotOut := norm(got.stdout)
+	refErr := norm(ref.stderr)
+	gotErr := norm(got.stderr)
+
+	if !bytes.Equal(refOut, gotOut) {
+		t.Errorf("stdout mismatch\nref: %q\ngot: %q", refOut, gotOut)
+	}
+	if !bytes.Equal(refErr, gotErr) {
+		t.Errorf("stderr mismatch\nref: %q\ngot: %q", refErr, gotErr)
+	}
+	if ref.exitCode != got.exitCode {
+		t.Errorf("exit code mismatch: ref=%d got=%d", ref.exitCode, got.exitCode)
 	}
 }

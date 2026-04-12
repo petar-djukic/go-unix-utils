@@ -1,10 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/head implements GNU head: print the first lines or bytes of files.
-//
-// Implements prd018-head R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3, R3.4, R3.5, R4.1, R4.2, R4.3.
+// Package main implements cmd/head: print the first lines or bytes of files.
+// Implements srd018-head R1.1-R1.5, R2.1-R2.3, R3.1-R3.5, R4.1-R4.4.
 package main
 
 import (
@@ -20,10 +18,12 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const (
-	defaultLines = 10
-	programName  = "head"
-)
+// progName is used in diagnostic messages.
+const progName = "head"
+
+// defaultLines is the number of lines printed when no -n flag is given.
+// R1.1: default is 10 lines.
+const defaultLines int64 = 10
 
 // countMode distinguishes line-count from byte-count mode.
 type countMode int
@@ -33,444 +33,339 @@ const (
 	modeBytes
 )
 
-func main() {
-	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
-}
-
-// headOptions holds parsed flag state.
-type headOptions struct {
+// config holds parsed command-line options.
+type config struct {
+	mode     countMode
 	count    int64
 	negative bool
-	mode     countMode
 	quiet    bool
 	verbose  bool
-	help     bool
-	version  bool
+	files    []string
+	err      bool // R4.4: set when a parse error occurs
 }
 
-// errWriter wraps a writer and captures the first write error.
-// R3.5: enables detection of stdout write failures.
-type errWriter struct {
-	w   io.Writer
-	err error
+func main() {
+	sys.InstallSIGPIPEHandler()
+	os.Exit(run(os.Args[1:]))
 }
 
-// Write delegates to the underlying writer, stopping on first error.
-func (e *errWriter) Write(p []byte) (int, error) {
-	if e.err != nil {
-		return 0, e.err
-	}
-	n, err := e.w.Write(p)
-	if err != nil {
-		e.err = err
-	}
-	return n, err
-}
-
-// run parses flags and processes input files.
-// R3.1, R3.2: argument errors print diagnostic and "Try --help" hint.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	opts, files, err := parseArgs(args)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-		fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName)
+// run executes the head logic and returns the exit code.
+// R4.1: returns 0 when all files processed successfully.
+// R4.2: returns 1 when any file cannot be opened or read.
+// R4.4: returns 1 when a non-numeric argument is given for -n or -c.
+func run(args []string) int {
+	cfg := parseArgs(args)
+	if cfg.err {
 		return 1
 	}
-	if opts.help {
-		printHelp(stdout)
-		return 0
+	if len(cfg.files) == 0 {
+		cfg.files = []string{"-"}
 	}
-	if opts.version {
-		printVersion(stdout)
-		return 0
-	}
-	if len(files) == 0 {
-		files = []string{"-"}
-	}
-	return processFiles(files, stdin, stdout, stderr, opts)
-}
-
-// showHeaders returns true when file headers should be printed.
-// R3.1: headers for multiple files. R3.3: -q suppresses. R3.4: -v forces.
-func showHeaders(fileCount int, opts headOptions) bool {
-	if opts.quiet {
-		return false
-	}
-	if opts.verbose {
-		return true
-	}
-	return fileCount > 1
-}
-
-// processFiles iterates over files and prints head output for each.
-// R3.5: write errors stop output and exit 1.
-// R4.1: exit 0 when all files succeed. R4.2, R4.3: exit 1 on any error.
-func processFiles(files []string, stdin io.Reader, stdout, stderr io.Writer, opts headOptions) int {
+	showHeader := shouldShowHeader(&cfg)
 	exitCode := 0
-	headers := showHeaders(len(files), opts)
-	ew := &errWriter{w: stdout}
-	for i, name := range files {
-		if headers {
-			printHeader(ew, name, i > 0)
-		}
-		if ew.err != nil {
-			reportWriteError(stderr, ew.err)
-			return 1
-		}
-		if err := headFile(name, stdin, ew, opts); err != nil {
-			if ew.err != nil {
-				reportWriteError(stderr, ew.err)
-				return 1
-			}
-			fmt.Fprintf(stderr, "%s: %s\n", programName, err)
+	printed := 0
+	for _, name := range cfg.files {
+		if err := processOneFile(name, &cfg, showHeader, &printed); err != nil {
+			reportError(name, err)
 			exitCode = 1
 		}
 	}
 	return exitCode
 }
 
-// reportWriteError prints a write-error diagnostic to stderr.
-// R3.5: format is "head: error writing 'standard output': REASON".
-func reportWriteError(stderr io.Writer, err error) {
-	fmt.Fprintf(stderr, "%s: error writing 'standard output': %s\n", programName, err)
-}
-
-// printHeader prints the '==> FILENAME <==' header line.
-// R3.1: blank line before header when not the first file.
-func printHeader(w io.Writer, name string, preceded bool) {
-	if preceded {
-		fmt.Fprintln(w)
+// shouldShowHeader determines whether file headers should be printed.
+// R3.2: no header for single file by default.
+// R3.3: -q suppresses all headers.
+// R3.4: -v forces headers even for single file.
+func shouldShowHeader(cfg *config) bool {
+	if cfg.quiet {
+		return false
 	}
-	fmt.Fprintf(w, "==> %s <==\n", fileDisplayName(name))
+	if cfg.verbose {
+		return true
+	}
+	return len(cfg.files) > 1
 }
 
-// fileDisplayName returns the display name for a file argument.
-// R1.4: "-" is displayed as "standard input".
-func fileDisplayName(name string) string {
+// displayName returns the user-visible name for a file argument.
+// R3.1: stdin ("-") is displayed as "standard input" to match GNU head.
+func displayName(name string) string {
 	if name == "-" {
 		return "standard input"
 	}
 	return name
 }
 
-// parseArgs separates flags from file arguments.
-func parseArgs(args []string) (headOptions, []string, error) {
-	opts := headOptions{count: defaultLines, mode: modeLines}
-	var files []string
-	flagsDone := false
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if flagsDone || arg == "-" || (len(arg) > 0 && arg[0] != '-') {
-			files = append(files, arg)
-			continue
-		}
-		var err error
-		i, err = parseFlag(&opts, &flagsDone, args, i)
-		if err != nil {
-			return opts, nil, err
-		}
+// printHeader writes the GNU head-format header for a file.
+// R3.1: format is "==> FILENAME <==" with blank line between files.
+func printHeader(name string, first bool) {
+	if !first {
+		fmt.Fprintln(os.Stdout)
 	}
-	return opts, files, nil
+	fmt.Fprintf(os.Stdout, "==> %s <==\n", displayName(name))
 }
 
-// parseFlag handles a single flag argument starting at args[i].
-func parseFlag(opts *headOptions, flagsDone *bool, args []string, i int) (int, error) {
-	arg := args[i]
-	switch {
-	case arg == "--":
-		*flagsDone = true
-	case arg == "--help":
-		opts.help = true
-	case arg == "--version":
-		opts.version = true
-	case arg == "-q", arg == "--quiet", arg == "--silent":
-		opts.quiet = true
-		opts.verbose = false
-	case arg == "-v", arg == "--verbose":
-		opts.verbose = true
-		opts.quiet = false
-	case strings.HasPrefix(arg, "--lines="):
-		return i, parseLinesValue(opts, arg[len("--lines="):])
-	case arg == "--lines", arg == "-n":
-		return parseNextArgLines(opts, args, i, arg)
-	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'n':
-		return i, parseLinesValue(opts, arg[2:])
-	case strings.HasPrefix(arg, "--bytes="):
-		return i, parseBytesValue(opts, arg[len("--bytes="):])
-	case arg == "--bytes", arg == "-c":
-		return parseNextArgBytes(opts, args, i, arg)
-	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'c':
-		return i, parseBytesValue(opts, arg[2:])
-	case isLegacyNumArg(arg):
-		return i, parseLegacyNum(opts, arg)
-	default:
-		// R3.1: invalid option diagnostic with single-char display.
-		return i, fmt.Errorf("invalid option -- '%s'", arg[1:])
-	}
-	return i, nil
-}
-
-// parseNextArgLines reads the next argument as the value for -n/--lines.
-func parseNextArgLines(opts *headOptions, args []string, i int, flag string) (int, error) {
-	i++
-	if i >= len(args) {
-		return i, fmt.Errorf("option '%s' requires an argument", flag)
-	}
-	return i, parseLinesValue(opts, args[i])
-}
-
-// parseNextArgBytes reads the next argument as the value for -c/--bytes.
-func parseNextArgBytes(opts *headOptions, args []string, i int, flag string) (int, error) {
-	i++
-	if i >= len(args) {
-		return i, fmt.Errorf("option '%s' requires an argument", flag)
-	}
-	return i, parseBytesValue(opts, args[i])
-}
-
-// parseLinesValue parses a line count value, which may be negative.
-// R1.2: positive integer sets line count. R1.3: negative means exclude last N.
-// R3.2: invalid values produce a diagnostic with the original input.
-func parseLinesValue(opts *headOptions, s string) error {
-	raw := s
-	negative := false
-	if strings.HasPrefix(s, "-") {
-		negative = true
-		s = s[1:]
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil || n < 0 {
-		return fmt.Errorf("invalid number of lines: '%s'", raw)
-	}
-	opts.count = int64(n)
-	opts.negative = negative
-	opts.mode = modeLines
-	return nil
-}
-
-// parseBytesValue parses a byte count value with optional suffix.
-// R2.1: -c NUM sets byte count. R2.2: negative prefix. R2.3: multiplier suffixes.
-// R3.2: invalid values produce a diagnostic with the original input.
-func parseBytesValue(opts *headOptions, s string) error {
-	negative := false
-	raw := s
-	if strings.HasPrefix(s, "-") {
-		negative = true
-		s = s[1:]
-	}
-	n, err := sizeparse.ParseWithOptions(s, sizeparse.ParseOptions{AllowSign: false})
-	if err != nil {
-		return fmt.Errorf("invalid number of bytes: '%s'", raw)
-	}
-	if n < 0 {
-		return fmt.Errorf("invalid number of bytes: '%s'", raw)
-	}
-	opts.count = n
-	opts.negative = negative
-	opts.mode = modeBytes
-	return nil
-}
-
-// isLegacyNumArg checks for legacy -NUM form (e.g., head -5).
-func isLegacyNumArg(arg string) bool {
-	return len(arg) > 1 && arg[0] == '-' && arg[1] >= '0' && arg[1] <= '9'
-}
-
-// parseLegacyNum parses legacy -NUM form.
-func parseLegacyNum(opts *headOptions, arg string) error {
-	n, err := strconv.Atoi(arg[1:])
-	if err != nil {
-		return fmt.Errorf("invalid number of lines: '%s'", arg[1:])
-	}
-	opts.count = int64(n)
-	opts.negative = false
-	opts.mode = modeLines
-	return nil
-}
-
-// headFile processes a single input file or stdin.
-// R3.3: open errors use "cannot open" format from openInput.
-// R3.4: read errors are wrapped with "error reading" format.
-func headFile(name string, stdin io.Reader, stdout io.Writer, opts headOptions) error {
-	r, closer, err := openInput(name, stdin)
+// processOneFile opens a file, prints a header if needed, then outputs content.
+// R3.5: prints error and continues; header is printed only on successful open.
+func processOneFile(name string, cfg *config, showHeader bool, printed *int) error {
+	r, closer, err := openInput(name)
 	if err != nil {
 		return err
 	}
-	if closer != nil {
-		defer closer.Close() // best-effort close
+	defer closer()
+	if showHeader {
+		printHeader(name, *printed == 0)
 	}
-	if readErr := dispatchHead(r, stdout, opts); readErr != nil {
-		return fmt.Errorf("error reading '%s': %v", fileDisplayName(name), readErr)
+	*printed++
+	if cfg.mode == modeBytes {
+		return processByteMode(r, cfg.count, cfg.negative)
 	}
-	return nil
+	return processLineMode(r, cfg.count, cfg.negative)
 }
 
-// dispatchHead selects and runs the appropriate head mode.
-func dispatchHead(r io.Reader, w io.Writer, opts headOptions) error {
-	if opts.mode == modeBytes {
-		return headBytes(r, w, opts.count, opts.negative)
-	}
-	if opts.negative {
-		return headNegativeLines(r, w, int(opts.count))
-	}
-	return headPositiveLines(r, w, int(opts.count))
-}
-
-// headBytes dispatches to positive or negative byte mode.
-func headBytes(r io.Reader, w io.Writer, n int64, negative bool) error {
+// processLineMode handles line-count output.
+func processLineMode(r io.Reader, count int64, negative bool) error {
 	if negative {
-		return headNegativeBytes(r, w, n)
+		return printAllButLastNLines(r, count)
 	}
-	return headPositiveBytes(r, w, n)
+	return printFirstNLines(r, count)
 }
 
-// openInput returns a reader and optional closer for the given filename.
-// R1.4: "-" means stdin.
-// R3.3: open failures use GNU format "cannot open 'FILE' for reading: REASON".
-func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
+// processByteMode handles byte-count output.
+// R2.1: -c NUM prints first NUM bytes.
+// R2.2: -c -NUM prints all except last NUM bytes.
+func processByteMode(r io.Reader, count int64, negative bool) error {
+	if negative {
+		return printAllButLastNBytes(r, count)
+	}
+	return printFirstNBytes(r, count)
+}
+
+// openInput opens a file for reading, or returns stdin for "-".
+// R1.4: stdin when file argument is "-".
+func openInput(name string) (io.Reader, func(), error) {
 	if name == "-" {
-		return stdin, nil, nil
+		return os.Stdin, func() {}, nil
 	}
 	f, err := os.Open(name)
 	if err != nil {
-		if pe, ok := errors.AsType[*os.PathError](err); ok {
-			return nil, nil, fmt.Errorf("cannot open '%s' for reading: %v", name, pe.Err)
-		}
 		return nil, nil, err
 	}
-	return f, f, nil
+	return f, func() { f.Close() }, nil
 }
 
-// headPositiveLines prints the first n lines from r.
-// R1.1: default 10 lines. R1.2: configurable via -n.
-// R3.4: non-EOF read errors are returned for diagnostic formatting.
-func headPositiveLines(r io.Reader, w io.Writer, n int) error {
-	if n <= 0 {
-		return nil
+// parseArgs extracts flags and file arguments.
+// R2.1: -c and -n are mutually exclusive; the last one given wins.
+func parseArgs(args []string) config {
+	cfg := config{count: defaultLines}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			cfg.files = append(cfg.files, args[i+1:]...)
+			return cfg
+		}
+		if consumed := parseHeaderFlag(&cfg, arg); consumed > 0 {
+			continue
+		}
+		if consumed := parseCountFlag(&cfg, args, i); consumed > 0 {
+			i += consumed - 1
+			continue
+		}
+		cfg.files = append(cfg.files, arg)
 	}
-	br := bufio.NewReaderSize(r, 64*1024)
-	bw := bufio.NewWriter(w)
-	count := 0
-	for count < n {
+	return cfg
+}
+
+// parseHeaderFlag handles -q/--quiet/--silent and -v/--verbose flags.
+// R3.3: -q suppresses headers.
+// R3.4: -v forces headers.
+func parseHeaderFlag(cfg *config, arg string) int {
+	switch {
+	case arg == "-q" || arg == "--quiet" || arg == "--silent":
+		cfg.quiet = true
+		cfg.verbose = false
+		return 1
+	case arg == "-v" || arg == "--verbose":
+		cfg.verbose = true
+		cfg.quiet = false
+		return 1
+	}
+	return 0
+}
+
+// parseCountFlag handles -n/--lines and -c/--bytes flags.
+func parseCountFlag(cfg *config, args []string, i int) int {
+	mode, numStr, consumed := matchCountFlag(args[i], args, i)
+	if consumed == 0 {
+		return 0
+	}
+	cfg.mode = mode
+	if mode == modeBytes {
+		cfg.count, cfg.negative, cfg.err = parseByteCount(numStr)
+	} else {
+		cfg.count, cfg.negative, cfg.err = parseLineCount(numStr)
+	}
+	return consumed
+}
+
+// matchCountFlag identifies -n/-c flags and extracts the numeric string.
+func matchCountFlag(arg string, args []string, i int) (countMode, string, int) {
+	switch {
+	case arg == "-n" || arg == "--lines":
+		if i+1 < len(args) {
+			return modeLines, args[i+1], 2
+		}
+		return modeLines, "", 1
+	case strings.HasPrefix(arg, "--lines="):
+		return modeLines, arg[len("--lines="):], 1
+	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'n':
+		return modeLines, arg[2:], 1
+	case arg == "-c" || arg == "--bytes":
+		if i+1 < len(args) {
+			return modeBytes, args[i+1], 2
+		}
+		return modeBytes, "", 1
+	case strings.HasPrefix(arg, "--bytes="):
+		return modeBytes, arg[len("--bytes="):], 1
+	case len(arg) > 2 && arg[0] == '-' && arg[1] == 'c':
+		return modeBytes, arg[2:], 1
+	}
+	return 0, "", 0
+}
+
+// parseLineCount parses a line count string, detecting negative prefix.
+// R1.2: NUM is a positive integer.
+// R1.3: NUM prefixed with '-' enables negative mode.
+// R4.4: returns err=true for non-numeric input.
+func parseLineCount(s string) (int64, bool, bool) {
+	neg := false
+	raw := s
+	if strings.HasPrefix(s, "-") {
+		neg = true
+		raw = s[1:]
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n < 0 {
+		fmt.Fprintf(os.Stderr, "%s: invalid number of lines: '%s'\n", progName, s)
+		return 0, false, true
+	}
+	return n, neg, false
+}
+
+// parseByteCount parses a byte count string with optional suffix.
+// R2.3: supports b, K/KiB, M/MiB, G/GiB suffixes via sizeparse.
+// R4.4: returns err=true for non-numeric input.
+func parseByteCount(s string) (int64, bool, bool) {
+	neg := false
+	raw := s
+	if strings.HasPrefix(s, "-") {
+		neg = true
+		raw = s[1:]
+	}
+	n, err := sizeparse.Parse(raw)
+	if err != nil || n < 0 {
+		fmt.Fprintf(os.Stderr, "%s: invalid number of bytes: '%s'\n", progName, s)
+		return 0, false, true
+	}
+	return n, neg, false
+}
+
+// printFirstNLines writes the first n lines from r to stdout.
+// R1.1, R1.2: output first N lines.
+// R1.5: a line without a trailing newline is still counted.
+func printFirstNLines(r io.Reader, n int64) error {
+	br := bufio.NewReader(r)
+	for i := int64(0); i < n; i++ {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
-			if _, wErr := bw.Write(line); wErr != nil {
-				return wErr
+			if _, werr := os.Stdout.Write(line); werr != nil {
+				return werr
 			}
-			count++
-		}
-		if err == io.EOF {
-			break
 		}
 		if err != nil {
-			_ = bw.Flush() // best-effort flush before returning read error
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
 	}
-	return bw.Flush()
+	return nil
 }
 
-// headNegativeLines prints all lines except the last n lines.
-// R1.3: negative count means exclude trailing lines.
-func headNegativeLines(r io.Reader, w io.Writer, n int) error {
-	if n <= 0 {
-		_, err := io.Copy(w, r)
-		return err
-	}
-	lines, err := readAllLines(r)
-	if err != nil {
-		return err
-	}
-	end := max(len(lines)-n, 0)
-	return writeLines(w, lines[:end])
-}
-
-// headPositiveBytes prints the first n bytes from r.
-// R2.1: -c NUM prints first NUM bytes.
-func headPositiveBytes(r io.Reader, w io.Writer, n int64) error {
-	if n <= 0 {
+// printFirstNBytes writes the first n bytes from r to stdout.
+// R2.1: -c NUM prints the first NUM bytes.
+func printFirstNBytes(r io.Reader, n int64) error {
+	_, err := io.CopyN(os.Stdout, r, n)
+	if errors.Is(err, io.EOF) {
 		return nil
 	}
-	_, err := io.Copy(w, io.LimitReader(r, n))
 	return err
 }
 
-// headNegativeBytes prints all bytes except the last n bytes.
-// R2.2: -c -NUM prints all except last NUM bytes.
-func headNegativeBytes(r io.Reader, w io.Writer, n int64) error {
+// printAllButLastNLines writes all lines except the last n.
+// R1.3: requires buffering input in a ring buffer.
+func printAllButLastNLines(r io.Reader, n int64) error {
 	if n <= 0 {
-		_, err := io.Copy(w, r)
+		_, err := io.Copy(os.Stdout, r)
+		return err
+	}
+	return drainLineRing(bufio.NewReader(r), int(n))
+}
+
+// drainLineRing reads lines into a ring buffer, outputting evicted lines.
+func drainLineRing(br *bufio.Reader, n int) error {
+	ring := make([][]byte, n)
+	idx := 0
+	total := 0
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			if total >= n {
+				if _, werr := os.Stdout.Write(ring[idx]); werr != nil {
+					return werr
+				}
+			}
+			ring[idx] = line
+			idx = (idx + 1) % n
+			total++
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+// printAllButLastNBytes writes all bytes except the last n.
+// R2.2: -c -N prints all bytes except the last N.
+func printAllButLastNBytes(r io.Reader, n int64) error {
+	if n <= 0 {
+		_, err := io.Copy(os.Stdout, r)
 		return err
 	}
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
-	end := max(int64(len(data))-n, 0)
-	_, err = w.Write(data[:end])
-	return err
-}
-
-// readAllLines reads all lines from r, preserving line endings.
-func readAllLines(r io.Reader) ([][]byte, error) {
-	br := bufio.NewReaderSize(r, 64*1024)
-	var lines [][]byte
-	for {
-		line, err := br.ReadBytes('\n')
-		if len(line) > 0 {
-			lines = append(lines, line)
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
+	end := int64(len(data)) - n
+	if end <= 0 {
+		return nil
 	}
-	return lines, nil
+	_, werr := os.Stdout.Write(data[:end])
+	return werr
 }
 
-// writeLines writes a slice of lines to w.
-func writeLines(w io.Writer, lines [][]byte) error {
-	bw := bufio.NewWriter(w)
-	for _, line := range lines {
-		if _, err := bw.Write(line); err != nil {
-			return err
-		}
+// reportError prints a GNU-compatible diagnostic to stderr.
+// R3.5: prints error and continues with remaining files.
+func reportError(name string, err error) {
+	dname := displayName(name)
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		fmt.Fprintf(os.Stderr, "%s: cannot open '%s' for reading: %s\n",
+			progName, dname, pe.Err)
+		return
 	}
-	return bw.Flush()
-}
-
-// printHelp prints usage information to w.
-// R1.4: --help prints usage to stdout and exits 0.
-func printHelp(w io.Writer) {
-	fmt.Fprintf(w, `Usage: %s [OPTION]... [FILE]...
-Print the first 10 lines of each FILE to standard output.
-With more than one FILE, precede each with a header giving the file name.
-
-With no FILE, or when FILE is -, read standard input.
-
-  -c, --bytes=[-]NUM  print the first NUM bytes of each file;
-                       with the leading '-', print all but the last
-                       NUM bytes of each file
-  -n, --lines=[-]NUM  print the first NUM lines instead of the first 10;
-                       with the leading '-', print all but the last
-                       NUM lines of each file
-  -q, --quiet, --silent  never print headers giving file names
-  -v, --verbose       always print headers giving file names
-      --help        display this help and exit
-      --version     output version information and exit
-
-NUM may have a multiplier suffix:
-b 512, kB 1000, K 1024, MB 1000*1000, M 1024*1024,
-GB 1000*1000*1000, G 1024*1024*1024, and so on for T, P, E.
-`, programName)
-}
-
-// printVersion prints version information to w.
-// R1.4: --version prints version to stdout and exits 0.
-func printVersion(w io.Writer) {
-	fmt.Fprintf(w, "%s (go-unix-utils)\n", programName)
+	fmt.Fprintf(os.Stderr, "%s: %s: %s\n", progName, dname, err)
 }

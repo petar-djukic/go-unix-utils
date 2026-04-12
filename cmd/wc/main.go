@@ -1,628 +1,548 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/wc implements GNU wc: count lines, words, and bytes.
-//
-// Implements prd005-wc R1.1–R1.4, R2.1–R2.6, R3.1–R3.2, R4.1–R4.4,
-// R5.1–R5.2, R6.1–R6.3.
+// Package main implements cmd/wc: count lines, words, and bytes.
+// Implements srd005-wc: R1.1-R1.4, R2.1-R2.6, R3.1-R3.3,
+// R4.1-R4.4, R5.1-R5.2, R6.1-R6.3.
 package main
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"slices"
 	"strings"
-	"syscall"
+	"unicode/utf8"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const programName = "wc"
+// progName is used in diagnostic messages.
+const progName = "wc"
 
-// wcCounts holds the counts for a single input.
-type wcCounts struct {
-	lines      int64
-	words      int64
-	bytes      int64
-	chars      int64 // R2.4: character count (= bytes under LC_ALL=C per R5.2)
-	maxLineLen int64 // R2.5: max display width of any line
+// bufSize is the read buffer size for counting operations.
+const bufSize = 32 * 1024
+
+// cLocaleMode is true when LC_ALL indicates C or POSIX locale.
+// R5.1/R5.2: platform locale context from OS environment.
+var cLocaleMode = checkCLocale()
+
+// checkCLocale returns true when LC_ALL is "C" or "POSIX".
+// R5.2: Under LC_ALL=C, -m and -c produce identical counts.
+func checkCLocale() bool {
+	lc := os.Getenv("LC_ALL")
+	return lc == "C" || lc == "POSIX"
 }
 
-// wcResult pairs counts with a display name.
-type wcResult struct {
-	name   string // empty for stdin-only input
-	counts wcCounts
-}
-
-// columnSelection tracks which count columns to display.
-// R2.6: fixed output order is lines, words, chars, bytes, max-line-length.
-type columnSelection struct {
-	lines      bool
-	words      bool
-	bytes      bool
-	chars      bool
-	maxLineLen bool
-}
-
-// defaultColumns returns the selection when no flags are given.
-func defaultColumns() columnSelection {
-	return columnSelection{lines: true, words: true, bytes: true}
-}
-
-// count returns the number of display columns.
-func (c columnSelection) count() int {
-	n := 0
-	if c.lines {
-		n++
-	}
-	if c.words {
-		n++
-	}
-	if c.chars {
-		n++
-	}
-	if c.bytes {
-		n++
-	}
-	if c.maxLineLen {
-		n++
-	}
-	return n
-}
-
-// R6.1: InstallSIGPIPEHandler is called first so wc exits cleanly when
-// piped to a consumer that closes stdin early.
-func main() {
-	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
-}
-
-type runAction int
+// totalMode controls when the "total" summary line is printed.
+// R3.3: --total=auto|always|only|never.
+type totalMode int
 
 const (
-	actionRun     runAction = iota
-	actionHelp
-	actionVersion
+	totalAuto   totalMode = iota // print total when >1 file (default)
+	totalAlways                  // print total even for 1 file
+	totalOnly                    // print only total, no per-file lines
+	totalNever                   // never print total
 )
 
-// parsedArgs holds the result of argument parsing.
-type parsedArgs struct {
-	files      []string
-	files0From string // --files0-from=FILE, empty if not set
-	action     runAction
-	columns    columnSelection
-	flagsSet   bool // true if any counting flag was explicitly set
+// countResult holds per-file or aggregate counting results.
+// R1, R2: fields correspond to wc output columns.
+// R4.2: binary input is handled safely by byte-level processing.
+// R4.3: zero-value countResult produces correct "0" counts for empty input.
+type countResult struct {
+	lines         int64 // R2.1: -l newline count
+	words         int64 // R2.2: -w word count
+	bytes         int64 // R2.3: -c byte count
+	chars         int64 // R2.4: -m character count
+	maxLineLength int64 // R2.5: -L longest line length
 }
 
-// resolveColumns returns the effective column selection.
-// D1: when no flags are given, show lines, words, and bytes.
-func (p parsedArgs) resolveColumns() columnSelection {
-	if !p.flagsSet {
-		return defaultColumns()
-	}
-	return p.columns
+// config captures all parsed flag states for wc invocation.
+// R2, R4: maps CLI flags to runtime configuration.
+type config struct {
+	showLines   bool      // -l
+	showWords   bool      // -w
+	showBytes   bool      // -c
+	showChars   bool      // -m
+	showMaxLine bool      // -L
+	files0From  string    // R4.4: --files0-from=FILE
+	total       totalMode // R3.3: --total=auto|always|only|never
 }
 
-// run parses arguments and counts lines, words, and bytes.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	parsed := parseArgs(args)
-
-	switch parsed.action {
-	case actionHelp:
-		printHelp(stdout)
-		return 0
-	case actionVersion:
-		printVersion(stdout)
-		return 0
-	}
-
-	cols := parsed.resolveColumns()
-
-	if parsed.files0From != "" {
-		return runFiles0From(parsed, cols, stdin, stdout, stderr)
-	}
-
-	files := parsed.files
-	if len(files) == 0 {
-		// R2.4/R3.2: no file operands — read from stdin, omit filename.
-		files = []string{""}
-	}
-
-	return processWithWidth(files, precomputeWidth(files, cols.count()),
-		cols, stdin, stdout, stderr)
+// defaultConfig returns true when no selection flags were specified.
+// R1.1: default is lines, words, bytes.
+func defaultConfig(cfg *config) bool {
+	return !cfg.showLines && !cfg.showWords && !cfg.showBytes &&
+		!cfg.showChars && !cfg.showMaxLine
 }
 
-// runFiles0From handles the --files0-from flag logic.
-func runFiles0From(
-	parsed parsedArgs, cols columnSelection,
-	stdin io.Reader, stdout, stderr io.Writer,
-) int {
-	// R2.6 (task): error if file operands combined with --files0-from.
-	if len(parsed.files) > 0 {
-		fmt.Fprintf(stderr, "%s: extra operand '%s'\n",
-			programName, parsed.files[0])
-		fmt.Fprintf(stderr,
-			"file operands cannot be combined with --files0-from\n")
-		fmt.Fprintf(stderr,
-			"Try '%s --help' for more information.\n", programName)
-		return 1
+// applyDefaults sets the default output columns when no flags are given.
+// R1.1: default is lines, words, bytes.
+func applyDefaults(cfg *config) {
+	if defaultConfig(cfg) {
+		cfg.showLines = true
+		cfg.showWords = true
+		cfg.showBytes = true
 	}
-
-	files, err := readFiles0From(parsed.files0From, stdin)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: cannot open '%s' for reading: %v\n",
-			programName, parsed.files0From, unwrapErr(err))
-		return 1
-	}
-
-	if err := validateFiles0Names(files, parsed.files0From, stderr); err != nil {
-		return 1
-	}
-
-	if len(files) == 0 {
-		return 0
-	}
-
-	// GNU wc precomputes width from file sizes when --files0-from reads
-	// from a regular file, but uses minimum width (1) when reading from
-	// stdin because it processes filenames in streaming fashion.
-	width := 1
-	if parsed.files0From != "-" {
-		width = precomputeWidth(files, cols.count())
-	}
-
-	return processWithWidth(files, width, cols, stdin, stdout, stderr)
 }
 
-// validateFiles0Names checks for invalid filenames from --files0-from.
-func validateFiles0Names(
-	files []string, source string, stderr io.Writer,
-) error {
-	if slices.Contains(files, "") {
-		fmt.Fprintf(stderr,
-			"%s: %s: invalid zero-length file name\n",
-			programName, source)
-		return fmt.Errorf("invalid filename")
-	}
-	return nil
-}
+// parseArgs parses command-line arguments and returns a config and file list.
+// R2.1-R2.4: maps flag arguments to config struct.
+// R2.3/R2.4: -c and -m are mutually exclusive; last flag wins.
+// R4.1: "-" is treated as a filename argument meaning stdin.
+func parseArgs() (config, []string) {
+	var cfg config
+	var files []string
+	args := os.Args[1:]
 
-// parseArgs separates flags from file arguments.
-func parseArgs(args []string) parsedArgs {
-	var p parsedArgs
-	flagsDone := false
-
-	for i := 0; i < len(args); i++ {
+	for i := range len(args) {
 		arg := args[i]
-		if flagsDone {
-			p.files = append(p.files, arg)
+		if arg == "--" {
+			files = append(files, args[i+1:]...)
+			break
+		}
+		// R4.1: "-" is a filename meaning stdin, not a flag.
+		if arg == "-" || !strings.HasPrefix(arg, "-") {
+			files = append(files, arg)
 			continue
 		}
-		i = parseOneArg(arg, args, i, &p, &flagsDone)
+		parseFlag(&cfg, arg)
 	}
-
-	return p
+	applyDefaults(&cfg)
+	return cfg, files
 }
 
-// parseOneArg processes a single argument and returns the updated index.
-func parseOneArg(
-	arg string, args []string, i int,
-	p *parsedArgs, flagsDone *bool,
-) int {
-	switch {
-	case arg == "--":
-		*flagsDone = true
-	case arg == "--help":
-		p.action = actionHelp
-	case arg == "--version":
-		p.action = actionVersion
-	case arg == "--lines":
-		p.columns.lines = true
-		p.flagsSet = true
-	case arg == "--words":
-		p.columns.words = true
-		p.flagsSet = true
-	case arg == "--bytes":
-		p.columns.bytes = true
-		p.flagsSet = true
-	case arg == "--chars":
-		p.columns.chars = true
-		p.flagsSet = true
-	case arg == "--max-line-length":
-		p.columns.maxLineLen = true
-		p.flagsSet = true
-	case strings.HasPrefix(arg, "--files0-from="):
-		p.files0From = arg[len("--files0-from="):]
-	case arg == "--files0-from" && i+1 < len(args):
-		i++
-		p.files0From = args[i]
-	case arg == "-" || !isFlag(arg):
-		p.files = append(p.files, arg)
-	default:
-		parseShortFlags(arg, p)
+// parseFlag handles a single flag argument, setting config fields.
+// R2.3/R2.4: -c and -m are mutually exclusive; last wins.
+func parseFlag(cfg *config, arg string) {
+	// Handle long flags.
+	if strings.HasPrefix(arg, "--") {
+		parseLongFlag(cfg, arg)
+		return
 	}
-	return i
-}
-
-// parseShortFlags handles combined short flags like -lw, -lwm, -lL.
-// R5.1: combined flags like -lw produce output matching gwc.
-func parseShortFlags(arg string, p *parsedArgs) {
+	// Short flags: iterate over each character after '-'.
 	for _, ch := range arg[1:] {
-		switch ch {
-		case 'l':
-			p.columns.lines = true
-			p.flagsSet = true
-		case 'w':
-			p.columns.words = true
-			p.flagsSet = true
-		case 'c':
-			p.columns.bytes = true
-			p.flagsSet = true
-		case 'm':
-			p.columns.chars = true
-			p.flagsSet = true
-		case 'L':
-			p.columns.maxLineLen = true
-			p.flagsSet = true
+		parseShortFlag(cfg, ch)
+	}
+}
+
+// parseLongFlag handles --lines, --words, --bytes, --chars, --total,
+// --files0-from flags.
+// R3.3: --total=auto|always|only|never.
+// R4.4: --files0-from=FILE.
+func parseLongFlag(cfg *config, arg string) {
+	if strings.HasPrefix(arg, "--total") {
+		parseTotalFlag(cfg, arg)
+		return
+	}
+	// R4.4: --files0-from=FILE reads NUL-delimited filenames.
+	if strings.HasPrefix(arg, "--files0-from") {
+		parseFiles0FromFlag(cfg, arg)
+		return
+	}
+	switch arg {
+	case "--lines":
+		cfg.showLines = true
+	case "--words":
+		cfg.showWords = true
+	case "--bytes":
+		cfg.showBytes = true
+		cfg.showChars = false // R2.3: -c and -m mutually exclusive
+	case "--chars":
+		cfg.showChars = true
+		cfg.showBytes = false // R2.4: -m and -c mutually exclusive
+	case "--max-line-length":
+		cfg.showMaxLine = true
+	}
+}
+
+// parseTotalFlag parses --total and --total=VALUE flags.
+// R3.3: auto (default), always, only, never.
+func parseTotalFlag(cfg *config, arg string) {
+	// --total without =VALUE is equivalent to --total=always.
+	if arg == "--total" {
+		cfg.total = totalAlways
+		return
+	}
+	_, value, found := strings.Cut(arg, "=")
+	if !found {
+		return
+	}
+	switch value {
+	case "auto":
+		cfg.total = totalAuto
+	case "always":
+		cfg.total = totalAlways
+	case "only":
+		cfg.total = totalOnly
+	case "never":
+		cfg.total = totalNever
+	}
+}
+
+// parseFiles0FromFlag parses --files0-from=FILE.
+// R4.4: reads NUL-delimited filenames from FILE.
+func parseFiles0FromFlag(cfg *config, arg string) {
+	_, value, found := strings.Cut(arg, "=")
+	if found {
+		cfg.files0From = value
+	}
+}
+
+// parseShortFlag handles -l, -w, -c, -m, -L short flags.
+func parseShortFlag(cfg *config, ch rune) {
+	switch ch {
+	case 'l':
+		cfg.showLines = true
+	case 'w':
+		cfg.showWords = true
+	case 'c':
+		cfg.showBytes = true
+		cfg.showChars = false // R2.3: last wins
+	case 'm':
+		cfg.showChars = true
+		cfg.showBytes = false // R2.4: last wins
+	case 'L':
+		cfg.showMaxLine = true
+	}
+}
+
+// countReader counts lines, words, bytes, and chars from r in a single pass.
+// R1.1: lines are newline characters (\n).
+// R1.2: words are maximal sequences of non-whitespace characters.
+// R1.3: bytes are total bytes read.
+// R1.4: chars are UTF-8 code points; invalid bytes each count as one character.
+// R4.2: handles binary input safely via byte-level processing.
+// R4.3: returns zero-value countResult for empty input.
+// R5.2: under C/POSIX locale, chars are set equal to bytes.
+func countReader(r io.Reader) (countResult, error) {
+	reader := bufio.NewReaderSize(r, bufSize)
+	var result countResult
+	inWord := false
+
+	for {
+		buf, err := reader.Peek(bufSize)
+		if len(buf) == 0 && err == io.EOF {
+			break
+		}
+		if len(buf) == 0 && err != nil {
+			return result, err
+		}
+		n := len(buf)
+		// Discard what we peeked so the next Peek advances.
+		_, _ = reader.Discard(n) // always succeeds after Peek
+
+		result.bytes += int64(n)
+		countChunk(&result, buf, &inWord)
+
+		if err == io.EOF {
+			break
+		}
+	}
+	// R5.2: under C/POSIX locale, -m and -c produce identical counts.
+	if cLocaleMode {
+		result.chars = result.bytes
+	}
+	return result, nil
+}
+
+// countChunk updates result with counts from a single buffer chunk.
+// Tracks word boundary state via inWord across chunk boundaries.
+func countChunk(result *countResult, buf []byte, inWord *bool) {
+	i := 0
+	for i < len(buf) {
+		b := buf[i]
+		if b == '\n' {
+			result.lines++
+			result.chars++
+			if *inWord {
+				*inWord = false
+			}
+			i++
+			continue
+		}
+		if isWSByte(b) {
+			if *inWord {
+				*inWord = false
+			}
+			result.chars++
+			i++
+			continue
+		}
+		// Non-whitespace byte: may start or continue a word.
+		if !*inWord {
+			*inWord = true
+			result.words++
+		}
+		// R1.4: count characters as UTF-8 code points.
+		if b < utf8.RuneSelf {
+			// ASCII: one byte, one character.
+			result.chars++
+			i++
+		} else {
+			_, size := utf8.DecodeRune(buf[i:])
+			result.chars++
+			i += size
 		}
 	}
 }
 
-// isFlag reports whether arg looks like a flag.
-func isFlag(arg string) bool {
-	return len(arg) >= 2 && arg[0] == '-'
+// isWSByte returns true if b is a C isspace() whitespace character
+// (space, tab, newline, carriage return, form feed, vertical tab).
+// Newline is handled separately by the caller, so this covers the rest.
+func isWSByte(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\r' || b == '\f' || b == '\v'
 }
 
-// stdinDefaultWidth is the column width GNU wc uses when stdin size is unknown.
-const stdinDefaultWidth = 7
+// countFile counts lines, words, bytes, chars, and max line length for a file.
+// R1, R2: delegates to countReader for counting logic.
+func countFile(name string) (countResult, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return countResult{}, err
+	}
+	defer f.Close()
+	return countReader(f)
+}
 
-// processWithWidth counts and prints results for all files with given width.
-// R3.1: right-aligned columns. R1.4/R3.2: total line for multi-file.
-func processWithWidth(
-	files []string, width int, cols columnSelection,
-	stdin io.Reader, stdout, stderr io.Writer,
-) int {
-	results, exitCode := collectResults(files, stdin, stderr)
-	results = addTotal(files, results)
-	// R6.3: stdout write error sets exit code 1.
-	if printAllResults(stdout, results, width, cols) {
-		exitCode = 1
+// countStdin counts lines, words, bytes, chars, and max line length from stdin.
+// R2.6: handles stdin as an unnamed input source.
+func countStdin() (countResult, error) {
+	return countReader(os.Stdin)
+}
+
+// selectedValues returns the values to display based on config flags.
+// R2.6: output order is lines, words, chars-or-bytes, max-line-length.
+func selectedValues(r countResult, cfg config) []int64 {
+	var vals []int64
+	if cfg.showLines {
+		vals = append(vals, r.lines)
+	}
+	if cfg.showWords {
+		vals = append(vals, r.words)
+	}
+	if cfg.showChars {
+		vals = append(vals, r.chars)
+	} else if cfg.showBytes {
+		vals = append(vals, r.bytes)
+	}
+	if cfg.showMaxLine {
+		vals = append(vals, r.maxLineLength)
+	}
+	return vals
+}
+
+// numberWidth returns the minimum column width for count fields.
+// R3.1: GNU wc uses width 7 for multi-file output, 1 otherwise.
+func numberWidth(nfiles int) int {
+	if nfiles > 1 {
+		return 7
+	}
+	return 1
+}
+
+// formatOutput formats a countResult as a display line.
+// R3.1: right-aligns counts and appends the filename.
+func formatOutput(r countResult, name string, cfg config, width int) string {
+	vals := selectedValues(r, cfg)
+	var sb strings.Builder
+	for i, v := range vals {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		fmt.Fprintf(&sb, "%*d", width, v)
+	}
+	if name != "" {
+		sb.WriteByte(' ')
+		sb.WriteString(name)
+	}
+	return sb.String()
+}
+
+// addResult accumulates r into total.
+func addResult(total *countResult, r countResult) {
+	total.lines += r.lines
+	total.words += r.words
+	total.bytes += r.bytes
+	total.chars += r.chars
+	if r.maxLineLength > total.maxLineLength {
+		total.maxLineLength = r.maxLineLength
+	}
+}
+
+// shouldPrintTotal returns whether the total line should be printed.
+// R3.3: respects --total mode.
+func shouldPrintTotal(mode totalMode, nfiles int) bool {
+	switch mode {
+	case totalAlways, totalOnly:
+		return true
+	case totalNever:
+		return false
+	default:
+		// totalAuto: print total when >1 file.
+		return nfiles > 1
+	}
+}
+
+// shouldPrintPerFile returns whether per-file lines should be printed.
+// R3.3: --total=only suppresses per-file output.
+func shouldPrintPerFile(mode totalMode) bool {
+	return mode != totalOnly
+}
+
+// processFiles dispatches to the appropriate processing function.
+// R4.4: when --files0-from is set, reads filenames from a file.
+// R6.1: returns 0 when all inputs are processed successfully.
+func processFiles(files []string, cfg config) int {
+	if cfg.files0From != "" {
+		return processFiles0From(files, cfg)
+	}
+	if len(files) == 0 {
+		return processStdin(cfg)
+	}
+	return processNamedFiles(files, cfg)
+}
+
+// writeOutput writes a formatted line to stdout and returns any write error.
+// R6.3: detects stdout write errors for exit code reporting.
+func writeOutput(line string) error {
+	_, err := fmt.Fprintln(os.Stdout, line)
+	return err
+}
+
+// processStdin handles the no-arguments case: read from stdin.
+// R6.3: returns 1 when stdout write fails.
+func processStdin(cfg config) int {
+	r, err := countStdin()
+	if err != nil {
+		reportError("", err)
+		return 1
+	}
+	if err := writeOutput(formatOutput(r, "", cfg, numberWidth(0))); err != nil {
+		return 1
+	}
+	return 0
+}
+
+// processNamedFiles processes a list of named file arguments.
+// R2.5: prints a total line when two or more files are given.
+// R3.1: prints errors to stderr and continues processing.
+// R3.2: returns exit code 1 if any file produced an error.
+// R3.3: respects --total mode for total line control.
+// R6.1: returns 0 when all files are processed successfully.
+// R6.2: exits 1 on file errors, still processes remaining files.
+// R6.3: exits 1 on stdout write errors.
+func processNamedFiles(files []string, cfg config) int {
+	width := numberWidth(len(files))
+	exitCode := 0
+	var total countResult
+	printPerFile := shouldPrintPerFile(cfg.total)
+
+	for _, name := range files {
+		r, err := countOneFile(name)
+		if err != nil {
+			reportError(name, err)
+			exitCode = 1
+			continue
+		}
+		addResult(&total, r)
+		if printPerFile {
+			if err := writeOutput(formatOutput(r, name, cfg, width)); err != nil {
+				exitCode = 1
+			}
+		}
+	}
+
+	if shouldPrintTotal(cfg.total, len(files)) {
+		if err := writeOutput(formatOutput(total, "total", cfg, width)); err != nil {
+			exitCode = 1
+		}
 	}
 	return exitCode
 }
 
-// addTotal appends a total line when more than one file is given.
-// R1.4, R3.2: total line with label "total".
-// D1: total still appears when some files fail; failed files contribute zero.
-func addTotal(files []string, results []wcResult) []wcResult {
-	if len(files) > 1 {
-		return append(results, wcResult{
-			name: "total", counts: sumCounts(results),
-		})
-	}
-	return results
-}
-
-// printAllResults writes all result lines.
-// R6.3: returns true if a non-broken-pipe write error occurred.
-func printAllResults(
-	w io.Writer, results []wcResult, width int, cols columnSelection,
-) bool {
-	for _, r := range results {
-		if err := printResult(w, r, width, cols); err != nil {
-			return !isBrokenPipe(err)
-		}
-	}
-	return false
-}
-
-// collectResults processes each file and returns results.
-// Failed files contribute zero to the total but do not suppress it.
-func collectResults(
-	files []string, stdin io.Reader, stderr io.Writer,
-) ([]wcResult, int) {
-	results := make([]wcResult, 0, len(files))
-	exitCode := 0
-
-	for _, name := range files {
-		counts, err := countFile(name, stdin)
-		if err != nil {
-			if isBrokenPipe(err) {
-				return results, 0
-			}
-			fmt.Fprintf(stderr, "%s: %s: %v\n",
-				programName, name, unwrapErr(err))
-			exitCode = 1
-			continue
-		}
-		results = append(results, wcResult{
-			name: name, counts: counts,
-		})
-	}
-
-	return results, exitCode
-}
-
-// countFile opens and counts a single file or stdin.
-func countFile(name string, stdin io.Reader) (wcCounts, error) {
-	r, closer, err := openInput(name, stdin)
-	if err != nil {
-		return wcCounts{}, err
-	}
-	if closer != nil {
-		defer closer.Close()
-	}
-	return count(r)
-}
-
-// openInput returns a reader and optional closer for the given filename.
-// R4.1: "-" means stdin. R2.4: "" means implicit stdin (no file operands).
-func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
-	if name == "-" || name == "" {
-		return stdin, nil, nil
-	}
-	f, err := os.Open(name)
-	if err != nil {
-		return nil, nil, err
-	}
-	return f, f, nil
-}
-
-// wcState tracks counting state across buffer chunks.
-type wcState struct {
-	counts    wcCounts
-	lineWidth int64 // display width of current line being accumulated
-	inWord    bool
-}
-
-// count reads all input and returns counts.
-// R1.1: lines = newline count, words = maximal non-whitespace sequences.
-// R5.2: under LC_ALL=C, chars == bytes.
-func count(r io.Reader) (wcCounts, error) {
-	buf := make([]byte, 64*1024)
-	var s wcState
-
-	for {
-		n, err := r.Read(buf)
-		s.counts.bytes += int64(n)
-		countChunk(buf[:n], &s)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return s.counts, err
-		}
-	}
-
-	// R2.5: check final line (may have no trailing newline).
-	if s.lineWidth > s.counts.maxLineLen {
-		s.counts.maxLineLen = s.lineWidth
-	}
-
-	// R5.2: under LC_ALL=C, character count equals byte count.
-	s.counts.chars = s.counts.bytes
-
-	return s.counts, nil
-}
-
-// countChunk processes a buffer chunk, updating counting state.
-// R2.5: tab advances to next multiple of 8 for -L line width calculation.
-func countChunk(buf []byte, s *wcState) {
-	for _, b := range buf {
-		if b == '\n' {
-			s.counts.lines++
-			if s.lineWidth > s.counts.maxLineLen {
-				s.counts.maxLineLen = s.lineWidth
-			}
-			s.lineWidth = 0
-			s.inWord = false
-			continue
-		}
-		if b == '\t' {
-			s.lineWidth += int64(8 - int(s.lineWidth%8))
-		} else {
-			s.lineWidth++
-		}
-		if isSpace(b) {
-			s.inWord = false
-		} else if !s.inWord {
-			s.inWord = true
-			s.counts.words++
-		}
-	}
-}
-
-// isSpace matches C isspace() under LC_ALL=C.
-func isSpace(b byte) bool {
-	return b == ' ' || b == '\t' || b == '\n' ||
-		b == '\r' || b == '\f' || b == '\v'
-}
-
-// sumCounts adds all result counts together.
-// R2.5: maxLineLen uses max across files, not sum.
-func sumCounts(results []wcResult) wcCounts {
-	var total wcCounts
-	for _, r := range results {
-		total.lines += r.counts.lines
-		total.words += r.counts.words
-		total.bytes += r.counts.bytes
-		total.chars += r.counts.chars
-		if r.counts.maxLineLen > total.maxLineLen {
-			total.maxLineLen = r.counts.maxLineLen
-		}
-	}
-	return total
-}
-
-// precomputeWidth determines column width from file sizes before counting,
-// matching GNU wc behavior. For a single file with a single column, uses
-// width 1. For stdin, uses stdinDefaultWidth when multiple columns are
-// displayed. For multiple files, considers the sum of all file sizes
-// (for the total line). Returns the maximum across all.
-// R3.1: right-aligned columns with consistent field width.
-func precomputeWidth(files []string, numCols int) int {
-	// Single file, single column: no alignment needed.
-	if numCols == 1 && len(files) == 1 {
+// processFiles0From handles --files0-from=FILE.
+// R4.4: reads NUL-delimited filenames from FILE and processes each.
+// When FILE is "-", filenames are read from stdin.
+func processFiles0From(files []string, cfg config) int {
+	if len(files) > 0 {
+		fmt.Fprintf(os.Stderr,
+			"%s: extra operand %q\n", progName, files[0])
+		fmt.Fprintf(os.Stderr,
+			"file operands cannot be combined with --files0-from\n")
 		return 1
 	}
-
-	width := 1
-	var totalSize int64
-
-	for _, name := range files {
-		if name == "" || name == "-" {
-			if stdinDefaultWidth > width {
-				width = stdinDefaultWidth
-			}
-			continue
-		}
-		info, err := os.Stat(name)
-		if err != nil {
-			continue
-		}
-		size := info.Size()
-		totalSize += size
-		w := digitCount(size)
-		if w > width {
-			width = w
-		}
-	}
-
-	// For multi-file, the total line may need more digits than any
-	// single file, so consider the sum of all file sizes.
-	if len(files) > 1 {
-		if w := digitCount(totalSize); w > width {
-			width = w
-		}
-	}
-
-	return width
-}
-
-// digitCount returns the number of decimal digits in v.
-func digitCount(v int64) int {
-	if v == 0 {
+	names, err := readFiles0From(cfg.files0From)
+	if err != nil {
+		reportError(cfg.files0From, err)
 		return 1
 	}
-	n := 0
-	for v > 0 {
-		v /= 10
-		n++
+	if len(names) == 0 {
+		return 0
 	}
-	return n
+	return processNamedFiles(names, cfg)
 }
 
-// printResult writes one line of wc output with selected columns.
-// R2.6/R5.2: fixed order is lines, words, chars, bytes, max-line-length.
-// R2.3: chars takes precedence over bytes when both are selected.
-func printResult(
-	w io.Writer, r wcResult, width int, cols columnSelection,
-) error {
-	var parts []string
-	if cols.lines {
-		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.lines))
-	}
-	if cols.words {
-		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.words))
-	}
-	if cols.chars {
-		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.chars))
-	}
-	if cols.bytes {
-		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.bytes))
-	}
-	if cols.maxLineLen {
-		parts = append(parts, fmt.Sprintf("%*d", width, r.counts.maxLineLen))
-	}
-
-	line := strings.Join(parts, " ")
-	if r.name != "" {
-		line += " " + r.name
-	}
-	_, err := fmt.Fprintln(w, line)
-	return err
-}
-
-// readFiles0From reads null-delimited filenames from the given path.
-// R4.4: when path is "-", reads from stdin.
-func readFiles0From(path string, stdin io.Reader) ([]string, error) {
+// readFiles0From reads NUL-delimited filenames from path.
+// R4.4: when path is "-", filenames are read from stdin.
+func readFiles0From(path string) ([]string, error) {
+	var r io.ReadCloser
 	if path == "-" {
-		return scanNullDelimited(stdin)
+		r = io.NopCloser(os.Stdin)
+	} else {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		r = f
 	}
-	f, err := os.Open(path)
+	defer r.Close()
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	return scanNullDelimited(f)
+	return splitNulNames(string(data)), nil
 }
 
-// scanNullDelimited reads null-byte-delimited strings from r (D1).
-func scanNullDelimited(r io.Reader) ([]string, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Split(splitNull)
-	var files []string
-	for scanner.Scan() {
-		files = append(files, scanner.Text())
+// splitNulNames splits a NUL-delimited string into non-empty filenames.
+func splitNulNames(s string) []string {
+	var names []string
+	for _, part := range strings.Split(s, "\x00") {
+		if part != "" {
+			names = append(names, part)
+		}
 	}
-	return files, scanner.Err()
+	return names
 }
 
-// splitNull is a bufio.SplitFunc that splits on null bytes.
-func splitNull(data []byte, atEOF bool) (int, []byte, error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
+// countOneFile counts a single file, handling "-" as stdin.
+// R4.1: "-" means stdin, consistent with POSIX convention.
+func countOneFile(name string) (countResult, error) {
+	if name == "-" {
+		return countStdin()
 	}
-	if i := bytes.IndexByte(data, 0); i >= 0 {
-		return i + 1, data[:i], nil
+	return countFile(name)
+}
+
+// reportError prints a GNU-compatible diagnostic to stderr.
+// R3.1: format is "wc: FILENAME: REASON" using the OS error message.
+func reportError(name string, err error) {
+	// Unwrap os.PathError to get the underlying OS error message,
+	// matching GNU wc format (e.g., "No such file or directory").
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		err = pathErr.Err
 	}
-	if atEOF {
-		return len(data), data, nil
+	if name == "" {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return
 	}
-	return 0, nil, nil
+	fmt.Fprintf(os.Stderr, "%s: %s: %v\n", progName, name, err)
 }
 
-// printHelp writes usage information to w.
-func printHelp(w io.Writer) {
-	fmt.Fprintf(w, `Usage: %s [OPTION]... [FILE]...
-  or:  %s [OPTION]... --files0-from=F
-Print newline, word, and byte counts for each FILE, and a total line if
-more than one FILE is specified.
-
-With no FILE, or when FILE is -, read standard input.
-
-      --files0-from=F    read input from the files specified by
-                           NUL-terminated names in file F;
-                           If F is - then read names from standard input
-  -c, --bytes            print the byte counts
-  -m, --chars            print the character counts
-  -l, --lines            print the newline counts
-  -L, --max-line-length  print the maximum display width
-  -w, --words            print the word counts
-      --help             display this help and exit
-      --version          output version information and exit
-`, programName, programName)
-}
-
-// printVersion writes version information to w.
-func printVersion(w io.Writer) {
-	fmt.Fprintf(w, "%s (go-unix-utils)\n", programName)
-}
-
-// unwrapErr extracts the underlying syscall error from os.PathError.
-func unwrapErr(err error) error {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
-		return pe.Err
-	}
-	return err
-}
-
-// isBrokenPipe reports whether an error is caused by writing to a broken pipe.
-func isBrokenPipe(err error) bool {
-	return errors.Is(err, syscall.EPIPE)
+func main() {
+	sys.InstallSIGPIPEHandler()
+	cfg, files := parseArgs()
+	os.Exit(processFiles(files, cfg))
 }

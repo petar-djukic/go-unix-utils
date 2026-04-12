@@ -1,426 +1,400 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/split.
-// Covers prd067-split R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
+// Package main tests cmd/split via differential testing against gsplit.
+// Implements srd067-split R4.1-R4.4 for requirements R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// generateLines produces numbered lines from start to start+count-1.
-func generateLines(start, count int) []byte {
-	var buf bytes.Buffer
-	for i := start; i < start+count; i++ {
-		fmt.Fprintf(&buf, "%d\n", i)
-	}
-	return buf.Bytes()
+// splitTest defines a test case for split file-output comparison.
+type splitTest struct {
+	name  string
+	args  []string
+	stdin []byte
 }
 
-// clearOutput is a normalizer that clears output for error-only tests.
-// Used for R2.4 conflict tests where stderr messages differ between
-// split and gsplit but exit codes must match.
-func clearOutput(data []byte) []byte {
-	return nil
-}
-
+// TestDiff runs differential tests comparing Go split against gsplit.
+// R4.3: compares output file contents and exit codes.
+// R4.4: covers default 1000-line split, -l custom, custom prefix, stdin,
+// -b byte split, -C line-bytes, -n chunk modes.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsplit")
 	if err != nil {
-		t.Skip("reference binary gsplit not in PATH")
+		t.Skipf("reference binary gsplit not in PATH: %v", err)
 	}
-	tests := append(buildR1Tests(), buildR2Tests()...)
-	tests = append(tests, buildR3Tests()...)
-	tests = append(tests, buildR4Tests()...)
+	tests := []splitTest{
+		// R1 tests (line-based splitting)
+		{
+			name:  "default_small_input",
+			stdin: numberedLines(1, 5),
+		},
+		{
+			name:  "lines_3",
+			args:  []string{"-l", "3"},
+			stdin: numberedLines(1, 7),
+		},
+		{
+			name:  "lines_long_form",
+			args:  []string{"--lines=2"},
+			stdin: []byte("x\ny\nz\n"),
+		},
+		{
+			name:  "custom_prefix",
+			args:  []string{"-l", "2", "-", "chunk_"},
+			stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			name:  "stdin_explicit_dash",
+			args:  []string{"-l", "2", "-"},
+			stdin: []byte("1\n2\n3\n"),
+		},
+		{
+			name:  "lines_attached_value",
+			args:  []string{"-l2"},
+			stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			name:  "single_line_input",
+			args:  []string{"-l", "1"},
+			stdin: []byte("only\n"),
+		},
+		{
+			name:  "no_trailing_newline",
+			args:  []string{"-l", "2"},
+			stdin: []byte("a\nb\nc"),
+		},
+		// R4.4: default 1000-line split with >1000 lines
+		{
+			name:  "default_1000_lines",
+			stdin: numberedLines(1, 2500),
+		},
+		// R2.1 tests (byte-based splitting)
+		{
+			name:  "bytes_5",
+			args:  []string{"-b", "5"},
+			stdin: []byte("hello world this is test\n"),
+		},
+		{
+			name:  "bytes_long_form",
+			args:  []string{"--bytes=10"},
+			stdin: []byte("abcdefghijklmnopqrstuvwxyz\n"),
+		},
+		{
+			name:  "bytes_exact_boundary",
+			args:  []string{"-b", "3"},
+			stdin: []byte("abcdef"),
+		},
+		{
+			name:  "bytes_larger_than_input",
+			args:  []string{"-b", "100"},
+			stdin: []byte("small\n"),
+		},
+		// R4.4: byte split with size suffix
+		{
+			name:  "bytes_with_suffix_K",
+			args:  []string{"-b", "1K"},
+			stdin: numberedLines(1, 500),
+		},
+		// R2.2 tests (line-bytes splitting)
+		{
+			name:  "line_bytes_10",
+			args:  []string{"-C", "10"},
+			stdin: []byte("short\nhi\nworld\ntest\n"),
+		},
+		{
+			name:  "line_bytes_long_line",
+			args:  []string{"-C", "5"},
+			stdin: []byte("ab\nabcdefghij\nxy\n"),
+		},
+		{
+			name:  "line_bytes_exact_fit",
+			args:  []string{"-C", "4"},
+			stdin: []byte("abc\ndef\nghi\n"),
+		},
+		// R2.3 tests (chunk-based splitting)
+		{
+			name:  "chunks_3_bytes",
+			args:  []string{"-n", "3"},
+			stdin: numberedLines(1, 9),
+		},
+		{
+			name:  "chunks_line_mode",
+			args:  []string{"-n", "l/3"},
+			stdin: numberedLines(1, 9),
+		},
+		{
+			name:  "chunks_round_robin",
+			args:  []string{"-n", "r/3"},
+			stdin: numberedLines(1, 9),
+		},
+		{
+			name:  "chunks_2_small_input",
+			args:  []string{"-n", "2"},
+			stdin: []byte("abcde"),
+		},
+		{
+			name:  "chunks_more_than_bytes",
+			args:  []string{"-n", "5"},
+			stdin: []byte("ab"),
+		},
+		// R3.1 tests (suffix length)
+		{
+			name:  "suffix_length_3",
+			args:  []string{"-a", "3", "-l", "2"},
+			stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			name:  "suffix_length_1",
+			args:  []string{"-a", "1", "-l", "1"},
+			stdin: []byte("a\nb\nc\n"),
+		},
+		// R3.2 tests (numeric suffixes)
+		{
+			name:  "numeric_suffixes",
+			args:  []string{"-d", "-l", "2"},
+			stdin: []byte("a\nb\nc\nd\ne\n"),
+		},
+		{
+			name:  "numeric_suffix_length_3",
+			args:  []string{"-d", "-a", "3", "-l", "2"},
+			stdin: []byte("a\nb\nc\n"),
+		},
+		// R3.3 tests (additional suffix)
+		{
+			name:  "additional_suffix_txt",
+			args:  []string{"--additional-suffix=.txt", "-l", "2"},
+			stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			name:  "additional_suffix_with_numeric",
+			args:  []string{"--additional-suffix=.dat", "-d", "-l", "1"},
+			stdin: []byte("x\ny\n"),
+		},
+		// R3.4 tests (filter)
+		{
+			name:  "filter_cat_to_file",
+			args:  []string{"--filter=cat > $FILE", "-l", "2"},
+			stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			name:  "filter_with_numeric_suffix",
+			args:  []string{"--filter=cat > $FILE", "-d", "-l", "1"},
+			stdin: []byte("x\ny\n"),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			compareSplitOutputs(t, goBin, refBin, tc.args, tc.stdin)
+		})
+	}
+}
+
+// TestDiffExitCodes uses RunDiffTests for exit code and stderr comparison.
+// R2.4: conflicting split options must produce an error and exit 1.
+func TestDiffExitCodes(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gsplit")
+	if err != nil {
+		t.Skipf("reference binary gsplit not in PATH: %v", err)
+	}
+	norm := []testutils.NormalizeFunc{stderrProgNormalizer}
+	tests := []testutils.DiffTest{
+		{
+			Name:      "conflicting_lines_bytes",
+			Args:      []string{"-l", "10", "-b", "100"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "conflicting_bytes_chunks",
+			Args:      []string{"-b", "100", "-n", "3"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "conflicting_line_bytes_lines",
+			Args:      []string{"-C", "100", "-l", "10"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		// R4.4: invalid counts
+		{
+			Name:      "invalid_line_count_zero",
+			Args:      []string{"-l", "0"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "invalid_line_count_text",
+			Args:      []string{"-l", "abc"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "invalid_byte_count",
+			Args:      []string{"-b", "xyz"},
+			Stdin:     []byte("data\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// buildR1Tests returns differential test cases for R1.1-R1.4.
-func buildR1Tests() []testutils.DiffTest {
-	return []testutils.DiffTest{
-		defaultSplitTest(),
-		customLineCountTest(),
-		customPrefixTest(),
-		stdinViaDashTest(),
-		singleFileOutputTest(),
+// compareSplitOutputs runs both binaries in separate dirs and compares files.
+func compareSplitOutputs(t *testing.T, goBin, refBin string, args []string, stdin []byte) {
+	t.Helper()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refCode := runInDir(t, refBin, args, stdin, refDir)
+	goCode := runInDir(t, goBin, args, stdin, goDir)
+	if refCode != goCode {
+		t.Errorf("exit code mismatch: ref=%d go=%d", refCode, goCode)
+	}
+	refFiles := collectFiles(t, refDir)
+	goFiles := collectFiles(t, goDir)
+	compareFileMaps(t, refFiles, goFiles)
+}
+
+// runInDir executes a binary in the given directory and returns the exit code.
+func runInDir(t *testing.T, bin string, args []string, stdin []byte, dir string) int {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir = dir
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	return extractExitCode(t, cmd)
+}
+
+// extractExitCode runs the command and returns its exit code.
+func extractExitCode(t *testing.T, cmd *exec.Cmd) int {
+	t.Helper()
+	err := cmd.Run()
+	if err == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	t.Fatalf("binary %s failed to execute: %v", cmd.Path, err)
+	return -1
+}
+
+// collectFiles reads all regular files in dir and returns name→content.
+func collectFiles(t *testing.T, dir string) map[string][]byte {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading dir: %v", err)
+	}
+	result := make(map[string][]byte)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatalf("reading file %s: %v", e.Name(), err)
+		}
+		result[e.Name()] = data
+	}
+	return result
+}
+
+// compareFileMaps verifies that ref and go produced identical file sets.
+func compareFileMaps(t *testing.T, ref, got map[string][]byte) {
+	t.Helper()
+	allNames := mergeKeys(ref, got)
+	for _, name := range allNames {
+		refData, inRef := ref[name]
+		goData, inGo := got[name]
+		if inRef && !inGo {
+			t.Errorf("file %q: present in ref but missing in go", name)
+			continue
+		}
+		if !inRef && inGo {
+			t.Errorf("file %q: present in go but missing in ref", name)
+			continue
+		}
+		if !bytes.Equal(refData, goData) {
+			t.Errorf("file %q: content mismatch\n  ref len=%d: %s\n  go  len=%d: %s",
+				name, len(refData), abbreviate(refData), len(goData), abbreviate(goData))
+		}
 	}
 }
 
-// buildR2Tests returns differential test cases for R2.1-R2.4.
-func buildR2Tests() []testutils.DiffTest {
-	return []testutils.DiffTest{
-		byteSplitTest(),
-		byteSplitSuffixTest(),
-		lineBytesSplitTest(),
-		lineBytesLongLineTest(),
-		chunkByBytesTest(),
-		chunkByLinesTest(),
-		chunkRoundRobinTest(),
-		conflictingModesTest(),
+// abbreviate returns a truncated representation of data for error messages.
+func abbreviate(data []byte) string {
+	s := string(data)
+	if len(s) > 60 {
+		s = s[:60] + "..."
 	}
+	return strings.ReplaceAll(s, "\n", "\\n")
 }
 
-// buildR3Tests returns differential test cases for R3.1-R3.4.
-func buildR3Tests() []testutils.DiffTest {
-	return []testutils.DiffTest{
-		suffixLengthTest(),
-		numericSuffixShortTest(),
-		numericSuffixLongTest(),
-		additionalSuffixTest(),
-		numericWithSuffixLenTest(),
-		filterCommandTest(),
+// mergeKeys returns the sorted union of keys from two maps.
+func mergeKeys(a, b map[string][]byte) []string {
+	seen := make(map[string]bool)
+	for k := range a {
+		seen[k] = true
 	}
+	for k := range b {
+		seen[k] = true
+	}
+	keys := make([]string, 0, len(seen))
+	for k := range seen {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
-// defaultSplitTest verifies R1.1: default 1000-line split with xaa/xab/xac naming.
-func defaultSplitTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "default_1000_lines",
-		Stdin:    generateLines(1, 2001),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": generateLines(1, 1000),
-			"xab": generateLines(1001, 1000),
-			"xac": generateLines(2001, 1),
-		},
-	}
+// progNameRe matches the binary name prefix in stderr error messages.
+var progNameRe = regexp.MustCompile(`^[^\s:]+:\s`)
+
+// tryHelpRe matches the "Try ... --help" line GNU appends to errors.
+var tryHelpRe = regexp.MustCompile(`(?m)^Try '.*' for more information\.\n`)
+
+// stderrProgNormalizer strips program name prefixes and GNU "Try --help" lines
+// so that stderr comparison ignores expected formatting differences.
+var stderrProgNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	b = tryHelpRe.ReplaceAll(b, nil)
+	b = progNameRe.ReplaceAll(b, []byte("PROG: "))
+	return b
 }
 
-// customLineCountTest verifies R1.3: -l N splits into N-line pieces.
-func customLineCountTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "custom_line_count",
-		Args:     []string{"-l", "3"},
-		Stdin:    generateLines(1, 7),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": generateLines(1, 3),
-			"xab": generateLines(4, 3),
-			"xac": generateLines(7, 1),
-		},
+// numberedLines generates lines "1\n2\n...\nto\n".
+func numberedLines(from, to int) []byte {
+	var buf bytes.Buffer
+	for i := from; i <= to; i++ {
+		fmt.Fprintf(&buf, "%d\n", i)
 	}
-}
-
-// customPrefixTest verifies R1.2: PREFIX argument replaces default "x".
-func customPrefixTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "custom_prefix",
-		Args:     []string{"-l", "2", "-", "chunk_"},
-		Stdin:    generateLines(1, 5),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"chunk_aa": generateLines(1, 2),
-			"chunk_ab": generateLines(3, 2),
-			"chunk_ac": generateLines(5, 1),
-		},
-	}
-}
-
-// stdinViaDashTest verifies R1.4: "-" as FILE reads from stdin.
-func stdinViaDashTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "stdin_via_dash",
-		Args:     []string{"-l", "2", "-"},
-		Stdin:    generateLines(1, 4),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": generateLines(1, 2),
-			"xab": generateLines(3, 2),
-		},
-	}
-}
-
-// singleFileOutputTest verifies R1.1/R1.3: input smaller than chunk size
-// produces a single output file.
-func singleFileOutputTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "single_file_output",
-		Args:     []string{"-l", "10"},
-		Stdin:    generateLines(1, 3),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": generateLines(1, 3),
-		},
-	}
-}
-
-// byteSplitTest verifies R2.1: -b splits by byte count.
-func byteSplitTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "byte_split",
-		Args:     []string{"-b", "4"},
-		Stdin:    bytes.Repeat([]byte{'a'}, 10),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": bytes.Repeat([]byte{'a'}, 4),
-			"xab": bytes.Repeat([]byte{'a'}, 4),
-			"xac": bytes.Repeat([]byte{'a'}, 2),
-		},
-	}
-}
-
-// byteSplitSuffixTest verifies R2.1: -b with K suffix (1024 bytes).
-func byteSplitSuffixTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "byte_split_suffix_K",
-		Args:     []string{"-b", "1K"},
-		Stdin:    bytes.Repeat([]byte{'x'}, 2048),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": bytes.Repeat([]byte{'x'}, 1024),
-			"xab": bytes.Repeat([]byte{'x'}, 1024),
-		},
-	}
-}
-
-// lineBytesSplitTest verifies R2.2: -C splits at line boundaries.
-func lineBytesSplitTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "line_bytes_split",
-		Args:     []string{"-C", "6"},
-		Stdin:    []byte("1\n2\n3\n4\n5\n"),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": []byte("1\n2\n3\n"),
-			"xab": []byte("4\n5\n"),
-		},
-	}
-}
-
-// lineBytesLongLineTest verifies R2.2: lines longer than N get split.
-func lineBytesLongLineTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "line_bytes_long_line",
-		Args:     []string{"-C", "5"},
-		Stdin:    []byte("abcdefgh\n"),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": []byte("abcde"),
-			"xab": []byte("fgh\n"),
-		},
-	}
-}
-
-// chunkByBytesTest verifies R2.3: -n N splits into N equal byte chunks.
-func chunkByBytesTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "chunk_by_bytes",
-		Args:     []string{"-n", "3"},
-		Stdin:    []byte("123456789"),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": []byte("123"),
-			"xab": []byte("456"),
-			"xac": []byte("789"),
-		},
-	}
-}
-
-// chunkByLinesTest verifies R2.3: -n l/N splits into N line-balanced chunks.
-func chunkByLinesTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "chunk_by_lines",
-		Args:     []string{"-n", "l/3"},
-		Stdin:    generateLines(1, 9),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": generateLines(1, 3),
-			"xab": generateLines(4, 3),
-			"xac": generateLines(7, 3),
-		},
-	}
-}
-
-// chunkRoundRobinTest verifies R2.3: -n r/N round-robin distributes lines.
-func chunkRoundRobinTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "chunk_round_robin",
-		Args:     []string{"-n", "r/3"},
-		Stdin:    generateLines(1, 6),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": []byte("1\n4\n"),
-			"xab": []byte("2\n5\n"),
-			"xac": []byte("3\n6\n"),
-		},
-	}
-}
-
-// conflictingModesTest verifies R2.4: conflicting split modes produce exit 1.
-func conflictingModesTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:      "conflicting_modes_error",
-		Args:      []string{"-l", "5", "-b", "10"},
-		Stdin:     []byte("test\n"),
-		ExitCode:  1,
-		Normalize: []testutils.NormalizeFunc{clearOutput},
-	}
-}
-
-// suffixLengthTest verifies R3.1: -a N uses suffixes of length N.
-func suffixLengthTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "suffix_length_3",
-		Args:     []string{"-l", "2", "-a", "3"},
-		Stdin:    generateLines(1, 5),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaaa": generateLines(1, 2),
-			"xaab": generateLines(3, 2),
-			"xaac": generateLines(5, 1),
-		},
-	}
-}
-
-// numericSuffixShortTest verifies R3.2: -d uses numeric suffixes.
-func numericSuffixShortTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "numeric_suffix_short",
-		Args:     []string{"-l", "2", "-d"},
-		Stdin:    generateLines(1, 5),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"x00": generateLines(1, 2),
-			"x01": generateLines(3, 2),
-			"x02": generateLines(5, 1),
-		},
-	}
-}
-
-// numericSuffixLongTest verifies R3.2: --numeric-suffixes uses numeric suffixes.
-func numericSuffixLongTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "numeric_suffix_long",
-		Args:     []string{"-l", "2", "--numeric-suffixes"},
-		Stdin:    generateLines(1, 4),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"x00": generateLines(1, 2),
-			"x01": generateLines(3, 2),
-		},
-	}
-}
-
-// additionalSuffixTest verifies R3.3: --additional-suffix appends to filenames.
-func additionalSuffixTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "additional_suffix",
-		Args:     []string{"-l", "2", "--additional-suffix=.txt"},
-		Stdin:    generateLines(1, 5),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa.txt": generateLines(1, 2),
-			"xab.txt": generateLines(3, 2),
-			"xac.txt": generateLines(5, 1),
-		},
-	}
-}
-
-// numericWithSuffixLenTest verifies R3.1+R3.2 combined: -d -a 3.
-func numericWithSuffixLenTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "numeric_suffix_length_3",
-		Args:     []string{"-l", "2", "-d", "-a", "3"},
-		Stdin:    generateLines(1, 5),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"x000": generateLines(1, 2),
-			"x001": generateLines(3, 2),
-			"x002": generateLines(5, 1),
-		},
-	}
-}
-
-// filterCommandTest verifies R3.4: --filter pipes output through a command.
-func filterCommandTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "filter_command",
-		Args:     []string{"-l", "2", "--filter=cat > $FILE"},
-		Stdin:    generateLines(1, 4),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": generateLines(1, 2),
-			"xab": generateLines(3, 2),
-		},
-	}
-}
-
-// buildR4Tests returns differential test cases for R4.1-R4.4.
-// R4.1: exit 0 on success. R4.2: exit 1 on errors.
-// R4.3: differential tests compare file contents and exit codes.
-// R4.4: comprehensive coverage of all flag combinations.
-func buildR4Tests() []testutils.DiffTest {
-	return []testutils.DiffTest{
-		invalidLineCountTest(),
-		invalidByteCountTest(),
-		invalidChunkCountTest(),
-		invalidOptionTest(),
-		successExitCodeTest(),
-	}
-}
-
-// invalidLineCountTest verifies R4.2: invalid -l count exits 1.
-func invalidLineCountTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:      "invalid_line_count",
-		Args:      []string{"-l", "0"},
-		Stdin:     []byte("test\n"),
-		ExitCode:  1,
-		Normalize: []testutils.NormalizeFunc{clearOutput},
-	}
-}
-
-// invalidByteCountTest verifies R4.2: invalid -b count exits 1.
-func invalidByteCountTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:      "invalid_byte_count",
-		Args:      []string{"-b", "abc"},
-		Stdin:     []byte("test\n"),
-		ExitCode:  1,
-		Normalize: []testutils.NormalizeFunc{clearOutput},
-	}
-}
-
-// invalidChunkCountTest verifies R4.2: invalid -n count exits 1.
-func invalidChunkCountTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:      "invalid_chunk_count",
-		Args:      []string{"-n", "0"},
-		Stdin:     []byte("test\n"),
-		ExitCode:  1,
-		Normalize: []testutils.NormalizeFunc{clearOutput},
-	}
-}
-
-// invalidOptionTest verifies R4.2: unrecognized option exits 1.
-func invalidOptionTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:      "invalid_option",
-		Args:      []string{"--nonexistent-option"},
-		Stdin:     []byte("test\n"),
-		ExitCode:  1,
-		Normalize: []testutils.NormalizeFunc{clearOutput},
-	}
-}
-
-// successExitCodeTest verifies R4.1: successful split exits 0.
-func successExitCodeTest() testutils.DiffTest {
-	return testutils.DiffTest{
-		Name:     "success_exit_code",
-		Args:     []string{"-l", "5"},
-		Stdin:    generateLines(1, 10),
-		ExitCode: 0,
-		ExpectedFiles: map[string][]byte{
-			"xaa": generateLines(1, 5),
-			"xab": generateLines(6, 5),
-		},
-	}
+	return buf.Bytes()
 }

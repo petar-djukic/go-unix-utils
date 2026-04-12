@@ -1,14 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Package main implements the split utility.
-// Implements prd067-split R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
+// Package main implements cmd/split: split a file into pieces.
+// Implements srd067-split R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -20,50 +18,65 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const (
-	defaultLines     = 1000
-	defaultPrefix    = "x"
-	defaultSuffixLen = 2
-)
+// progName is used in diagnostic messages.
+const progName = "split"
 
-// splitMode identifies the splitting strategy.
+// defaultLines is the number of lines per piece when no mode flag is given.
+// R1.1: default is 1000 lines.
+const defaultLines int64 = 1000
+
+// defaultPrefix is the output filename prefix when none is specified.
+// R1.1: default prefix is "x".
+const defaultPrefix = "x"
+
+// defaultSuffixLen is the default suffix length.
+// R3.1: default suffix length is 2.
+const defaultSuffixLen = 2
+
+// splitMode distinguishes the splitting strategy.
 type splitMode int
 
 const (
-	modeUnset     splitMode = iota
-	modeLines               // -l (default)
-	modeBytes               // -b
-	modeLineBytes           // -C
-	modeChunks              // -n
+	modeLineCount splitMode = iota // R1.1, R1.3: split by line count
+	modeBytes                      // R2.1: split by byte count
+	modeLineBytes                  // R2.2: split by line-bytes
+	modeChunks                     // R2.3: split by chunk count
 )
 
-// chunkType identifies the sub-mode for -n CHUNKS.
+// chunkType distinguishes the three forms of -n CHUNKS.
 type chunkType int
 
 const (
-	chunkByBytes    chunkType = iota // N
-	chunkByLines                     // l/N
-	chunkRoundRobin                  // r/N
+	chunkByBytes    chunkType = iota // N: split into N byte-sized chunks
+	chunkByLines                     // l/N: split into N line-based chunks
+	chunkRoundRobin                  // r/N: round-robin lines into N chunks
 )
 
-// chunkSpec holds the parsed -n argument.
+// chunkSpec holds the parsed -n CHUNKS value.
 type chunkSpec struct {
-	typ   chunkType
-	count int
+	kind  chunkType
+	count int64
 }
 
-// config holds parsed command-line options for split.
+// config holds parsed command-line options.
 type config struct {
 	mode             splitMode
-	lines            int
+	modeCount        int
+	lineCount        int64
 	byteCount        int64
-	chunk            chunkSpec
-	file             string
-	prefix           string
+	chunks           chunkSpec
 	suffixLen        int
 	numericSuffix    bool
 	additionalSuffix string
-	filterCmd        string
+	filter           string
+	prefix           string
+	inputFile        string
+}
+
+// flagVal holds a parsed flag value and the number of args consumed.
+type flagVal struct {
+	val string
+	adv int
 }
 
 func main() {
@@ -71,506 +84,563 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
-// run parses arguments, opens input, and dispatches to the split mode.
+// run executes the split logic and returns the exit code.
+// R4.1: returns 0 on success.
+// R4.2: returns 1 on error.
 func run(args []string) int {
 	cfg, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "split: %v\n", err)
+		reportError(err.Error())
 		return 1
 	}
-	r, err := openInput(cfg.file)
+	rc, err := openInput(cfg.inputFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "split: %v\n", err)
+		reportError(err.Error())
 		return 1
 	}
-	defer r.Close()
-	if err := dispatch(r, cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "split: %v\n", err)
+	defer rc.Close()
+	if err := dispatch(rc, &cfg); err != nil {
+		reportError(err.Error())
 		return 1
 	}
 	return 0
 }
 
-// dispatch routes to the correct splitting function based on cfg.mode.
-func dispatch(r io.Reader, cfg config) error {
+// dispatch selects and runs the appropriate splitting strategy.
+func dispatch(r io.Reader, cfg *config) error {
 	switch cfg.mode {
+	case modeLineCount:
+		return splitByLines(r, cfg)
 	case modeBytes:
 		return splitByBytes(r, cfg)
 	case modeLineBytes:
 		return splitByLineBytes(r, cfg)
 	case modeChunks:
 		return splitByChunks(r, cfg)
-	default:
-		return splitByLines(r, cfg)
 	}
+	return fmt.Errorf("unknown split mode")
 }
 
-// parseArgs parses CLI arguments into a config.
+// parseArgs separates flags from positional arguments and returns a config.
+// R2.4: conflicting split options produce an error and exit 1.
 func parseArgs(args []string) (config, error) {
 	cfg := config{
-		lines:     defaultLines,
-		prefix:    defaultPrefix,
+		mode:      modeLineCount,
+		lineCount: defaultLines,
 		suffixLen: defaultSuffixLen,
+		prefix:    defaultPrefix,
+		inputFile: "-",
 	}
-	var positional []string
-	for i := 0; i < len(args); i++ {
+	i := 0
+	for i < len(args) {
 		arg := args[i]
 		if arg == "--" {
-			positional = append(positional, args[i+1:]...)
+			i++
 			break
 		}
-		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			positional = append(positional, arg)
+		if strings.HasPrefix(arg, "--") {
+			adv, err := parseLongFlag(&cfg, args, i)
+			if err != nil {
+				return cfg, err
+			}
+			i += adv
 			continue
 		}
-		var err error
-		i, err = parseFlag(&cfg, args, i)
-		if err != nil {
-			return cfg, err
+		if len(arg) > 1 && arg[0] == '-' {
+			adv, err := parseShortFlags(&cfg, args, i)
+			if err != nil {
+				return cfg, err
+			}
+			i += adv
+			continue
 		}
+		break
 	}
-	return cfg, applyPositional(&cfg, positional)
+	return applyPositional(cfg, args[i:])
 }
 
-// parseFlag dispatches to long or short flag parsing.
-func parseFlag(cfg *config, args []string, i int) (int, error) {
-	if strings.HasPrefix(args[i], "--") {
-		return parseLongFlag(cfg, args, i)
+// applyPositional handles [FILE [PREFIX]] after flag parsing.
+// R1.2: PREFIX replaces the default 'x'.
+// R1.4: absent FILE defaults to stdin ("-").
+func applyPositional(cfg config, pos []string) (config, error) {
+	if len(pos) > 0 {
+		cfg.inputFile = pos[0]
 	}
-	return parseShortFlag(cfg, args, i)
+	if len(pos) > 1 {
+		cfg.prefix = pos[1]
+	}
+	if len(pos) > 2 {
+		return cfg, fmt.Errorf("extra operand '%s'", pos[2])
+	}
+	return cfg, validateConfig(&cfg)
 }
 
-// parseLongFlag handles --lines, --bytes, --line-bytes, --number,
-// --suffix-length, --numeric-suffixes, --additional-suffix, --filter.
+// parseLongFlag handles a --key=value or --key value style flag.
 func parseLongFlag(cfg *config, args []string, i int) (int, error) {
-	key, val, hasEq := strings.Cut(args[i], "=")
-	if key == "--numeric-suffixes" {
-		cfg.numericSuffix = true
-		return i, nil
-	}
-	val, i, err := longFlagValue(key, val, hasEq, args, i)
-	if err != nil {
-		return i, err
-	}
-	return i, applyLongFlag(cfg, key, val)
-}
-
-// longFlagValue extracts the value for a long flag that requires an argument.
-func longFlagValue(key, val string, hasEq bool, args []string, i int) (string, int, error) {
-	if hasEq {
-		return val, i, nil
-	}
-	if i+1 >= len(args) {
-		return "", i, fmt.Errorf("option '%s' requires an argument", key)
-	}
-	return args[i+1], i + 1, nil
-}
-
-// applyLongFlag applies a long flag's value to the config.
-func applyLongFlag(cfg *config, key, val string) error {
+	key, val, hasVal := splitLongFlag(args[i])
 	switch key {
 	case "--lines":
-		return setLines(cfg, val)
+		return parseFlagWithSetter(key, val, hasVal, args, i, setLineCount(cfg))
 	case "--bytes":
-		return setByteMode(cfg, modeBytes, val)
+		return parseFlagWithSetter(key, val, hasVal, args, i, setByteCount(cfg))
 	case "--line-bytes":
-		return setByteMode(cfg, modeLineBytes, val)
+		return parseFlagWithSetter(key, val, hasVal, args, i, setLineByteCount(cfg))
 	case "--number":
-		return setChunks(cfg, val)
+		return parseFlagWithSetter(key, val, hasVal, args, i, setChunkCount(cfg))
 	case "--suffix-length":
-		return setSuffixLen(cfg, val)
-	case "--additional-suffix":
-		cfg.additionalSuffix = val
-		return nil
-	case "--filter":
-		cfg.filterCmd = val
-		return nil
-	default:
-		return fmt.Errorf("unrecognized option '%s'", key)
-	}
-}
-
-// parseShortFlag handles -l, -b, -C, -n, -a, -d with optional attached values.
-func parseShortFlag(cfg *config, args []string, i int) (int, error) {
-	flag := args[i][1]
-	if flag == 'd' {
+		return parseFlagWithSetter(key, val, hasVal, args, i, setSuffixLen(cfg))
+	case "--numeric-suffixes":
 		cfg.numericSuffix = true
-		return i, nil
-	}
-	val, idx, err := shortFlagValue(args, i, flag)
-	if err != nil {
-		return i, err
-	}
-	return idx, applyShortFlag(cfg, flag, val)
-}
-
-// shortFlagValue extracts the value from a short flag that requires an argument.
-func shortFlagValue(args []string, i int, flag byte) (string, int, error) {
-	val := args[i][2:]
-	if val == "" {
-		if i+1 >= len(args) {
-			return "", i, fmt.Errorf("option '-%c' requires an argument", flag)
-		}
-		return args[i+1], i + 1, nil
-	}
-	return val, i, nil
-}
-
-// applyShortFlag applies a short flag's value to the config.
-func applyShortFlag(cfg *config, flag byte, val string) error {
-	switch flag {
-	case 'a':
-		return setSuffixLen(cfg, val)
-	case 'l':
-		return setLines(cfg, val)
-	case 'b':
-		return setByteMode(cfg, modeBytes, val)
-	case 'C':
-		return setByteMode(cfg, modeLineBytes, val)
-	case 'n':
-		return setChunks(cfg, val)
+		return 1, nil
+	case "--additional-suffix":
+		return parseFlagWithSetter(key, val, hasVal, args, i, setString(&cfg.additionalSuffix))
+	case "--filter":
+		return parseFlagWithSetter(key, val, hasVal, args, i, setString(&cfg.filter))
 	default:
-		return fmt.Errorf("invalid option -- '%c'", flag)
+		return 0, fmt.Errorf("unrecognized option '%s'", args[i])
 	}
 }
 
-// setMode sets the split mode, enforcing R2.4 conflict detection.
-func setMode(cfg *config, mode splitMode) error {
-	if cfg.mode != modeUnset && cfg.mode != mode {
-		return fmt.Errorf("cannot split in more than one way")
-	}
-	cfg.mode = mode
-	return nil
+// splitLongFlag splits --key=value into key, value, hasValue.
+func splitLongFlag(arg string) (string, string, bool) {
+	key, val, found := strings.Cut(arg, "=")
+	return key, val, found
 }
 
-// setLines configures line-based splitting.
-func setLines(cfg *config, val string) error {
-	if err := setMode(cfg, modeLines); err != nil {
-		return err
-	}
-	n, err := parseLinesValue(val)
+// parseFlagWithSetter resolves a flag value and applies it via setter.
+func parseFlagWithSetter(key, val string, hasVal bool, args []string, i int, apply func(string) error) (int, error) {
+	fv, err := resolveFlagVal(val, hasVal, args, i)
 	if err != nil {
-		return err
+		return 0, fmt.Errorf("option '%s' requires an argument", key)
 	}
-	cfg.lines = n
-	return nil
+	if err := apply(fv.val); err != nil {
+		return 0, err
+	}
+	return fv.adv, nil
 }
 
-// setByteMode configures byte-based or line-bytes splitting.
-// R2.1, R2.2: shared setter for -b and -C modes.
-func setByteMode(cfg *config, mode splitMode, val string) error {
-	if err := setMode(cfg, mode); err != nil {
-		return err
+// resolveFlagVal extracts a flag value from inline or next arg.
+func resolveFlagVal(val string, hasVal bool, args []string, i int) (flagVal, error) {
+	if hasVal {
+		return flagVal{val: val, adv: 1}, nil
 	}
-	n, err := parseByteValue(val)
-	if err != nil {
-		return err
+	if i+1 >= len(args) {
+		return flagVal{}, fmt.Errorf("requires an argument")
 	}
-	cfg.byteCount = n
-	return nil
+	return flagVal{val: args[i+1], adv: 2}, nil
 }
 
-// setChunks configures chunk-based splitting.
-func setChunks(cfg *config, val string) error {
-	if err := setMode(cfg, modeChunks); err != nil {
-		return err
+// parseShortFlags handles single-character flags, possibly combined.
+func parseShortFlags(cfg *config, args []string, i int) (int, error) {
+	flags := args[i][1:]
+	j := 0
+	for j < len(flags) {
+		switch flags[j] {
+		case 'l':
+			return shortWithArg(flags[j+1:], args, i, setLineCount(cfg))
+		case 'b':
+			return shortWithArg(flags[j+1:], args, i, setByteCount(cfg))
+		case 'C':
+			return shortWithArg(flags[j+1:], args, i, setLineByteCount(cfg))
+		case 'n':
+			return shortWithArg(flags[j+1:], args, i, setChunkCount(cfg))
+		case 'a':
+			return shortWithArg(flags[j+1:], args, i, setSuffixLen(cfg))
+		case 'd':
+			cfg.numericSuffix = true
+			j++
+		default:
+			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
+		}
 	}
-	spec, err := parseChunkSpec(val)
-	if err != nil {
-		return err
-	}
-	cfg.chunk = spec
-	return nil
+	return 1, nil
 }
 
-// setSuffixLen configures the suffix length.
-// R3.1: -a N or --suffix-length=N.
-func setSuffixLen(cfg *config, val string) error {
-	n, err := strconv.Atoi(val)
+// shortWithArg extracts the value for a short flag that takes an argument.
+func shortWithArg(rest string, args []string, i int, apply func(string) error) (int, error) {
+	if rest != "" {
+		return 1, apply(rest)
+	}
+	if i+1 >= len(args) {
+		return 0, fmt.Errorf("option requires an argument")
+	}
+	return 2, apply(args[i+1])
+}
+
+// setLineCount returns a setter for the -l/--lines value.
+func setLineCount(cfg *config) func(string) error {
+	return func(s string) error {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || n <= 0 {
+			return fmt.Errorf("invalid number of lines: '%s'", s)
+		}
+		cfg.mode = modeLineCount
+		cfg.lineCount = n
+		cfg.modeCount++
+		return nil
+	}
+}
+
+// setByteCount returns a setter for the -b/--bytes value.
+func setByteCount(cfg *config) func(string) error {
+	return func(s string) error {
+		n, err := parseByteSize(s)
+		if err != nil {
+			return err
+		}
+		cfg.mode = modeBytes
+		cfg.byteCount = n
+		cfg.modeCount++
+		return nil
+	}
+}
+
+// setLineByteCount returns a setter for the -C/--line-bytes value.
+func setLineByteCount(cfg *config) func(string) error {
+	return func(s string) error {
+		n, err := parseByteSize(s)
+		if err != nil {
+			return err
+		}
+		cfg.mode = modeLineBytes
+		cfg.byteCount = n
+		cfg.modeCount++
+		return nil
+	}
+}
+
+// setChunkCount returns a setter for the -n/--number value.
+func setChunkCount(cfg *config) func(string) error {
+	return func(s string) error {
+		cs, err := parseChunkSpec(s)
+		if err != nil {
+			return err
+		}
+		cfg.mode = modeChunks
+		cfg.chunks = cs
+		cfg.modeCount++
+		return nil
+	}
+}
+
+// setSuffixLen returns a setter for the -a/--suffix-length value.
+func setSuffixLen(cfg *config) func(string) error {
+	return func(s string) error {
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
+			return fmt.Errorf("invalid suffix length: '%s'", s)
+		}
+		cfg.suffixLen = n
+		return nil
+	}
+}
+
+// setString returns a setter that stores a string value.
+func setString(dst *string) func(string) error {
+	return func(s string) error {
+		*dst = s
+		return nil
+	}
+}
+
+// parseChunkSpec parses a CHUNKS argument into a chunkSpec.
+// R2.3: supports N, l/N, and r/N forms.
+func parseChunkSpec(s string) (chunkSpec, error) {
+	if strings.HasPrefix(s, "l/") {
+		return parseChunkNum(s[2:], chunkByLines)
+	}
+	if strings.HasPrefix(s, "r/") {
+		return parseChunkNum(s[2:], chunkRoundRobin)
+	}
+	return parseChunkNum(s, chunkByBytes)
+}
+
+// parseChunkNum parses the numeric part of a chunk specification.
+func parseChunkNum(s string, kind chunkType) (chunkSpec, error) {
+	n, err := strconv.ParseInt(s, 10, 64)
 	if err != nil || n <= 0 {
-		return fmt.Errorf("invalid suffix length: '%s'", val)
+		return chunkSpec{}, fmt.Errorf("invalid number of chunks: '%s'", s)
 	}
-	cfg.suffixLen = n
-	return nil
+	return chunkSpec{kind: kind, count: n}, nil
 }
 
-// parseLinesValue parses a positive integer line count string.
-func parseLinesValue(s string) (int, error) {
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		return 0, fmt.Errorf("invalid number of lines: '%s'", s)
-	}
-	return n, nil
-}
-
-// parseByteValue parses a size string with optional unit suffix.
-// R2.1: supports K, M, G, T, P, E and KB, MB, etc.
-func parseByteValue(s string) (int64, error) {
+// parseByteSize parses a byte count with optional suffix via sizeparse.
+// R2.1: supports K, M, G, T, P, E, Z, Y and KB, MB, etc.
+func parseByteSize(s string) (int64, error) {
 	n, err := sizeparse.Parse(s)
-	if err != nil || n <= 0 {
+	if err != nil {
+		return 0, fmt.Errorf("invalid number of bytes: '%s'", s)
+	}
+	if n <= 0 {
 		return 0, fmt.Errorf("invalid number of bytes: '%s'", s)
 	}
 	return n, nil
 }
 
-// parseChunkSpec parses a -n CHUNKS argument into a chunkSpec.
-// R2.3: supports N, l/N, and r/N forms.
-func parseChunkSpec(s string) (chunkSpec, error) {
-	if strings.HasPrefix(s, "l/") {
-		return parseChunkCount(s[2:], chunkByLines)
-	}
-	if strings.HasPrefix(s, "r/") {
-		return parseChunkCount(s[2:], chunkRoundRobin)
-	}
-	return parseChunkCount(s, chunkByBytes)
-}
-
-// parseChunkCount parses a positive integer chunk count.
-func parseChunkCount(s string, typ chunkType) (chunkSpec, error) {
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		return chunkSpec{}, fmt.Errorf("invalid number of chunks: '%s'", s)
-	}
-	return chunkSpec{typ: typ, count: n}, nil
-}
-
-// applyPositional maps positional arguments to config fields.
-// R1.2: [FILE [PREFIX]] positional arguments.
-func applyPositional(cfg *config, args []string) error {
-	switch len(args) {
-	case 0:
-		cfg.file = "-"
-	case 1:
-		cfg.file = args[0]
-	case 2:
-		cfg.file = args[0]
-		cfg.prefix = args[1]
-	default:
-		return fmt.Errorf("extra operand '%s'", args[2])
+// validateConfig checks for conflicting options.
+// R2.4: conflicting split options must produce an error.
+func validateConfig(cfg *config) error {
+	if cfg.modeCount > 1 {
+		return fmt.Errorf("cannot split in more than one way")
 	}
 	return nil
 }
 
-// openInput opens the input file, or returns stdin for "-".
-// R1.4: read from stdin when FILE is "-" or absent.
-func openInput(file string) (io.ReadCloser, error) {
-	if file == "-" {
+// openInput returns the input reader for the given file argument.
+// R1.4: reads from stdin when FILE is "-" or absent.
+func openInput(name string) (io.ReadCloser, error) {
+	if name == "" || name == "-" {
 		return io.NopCloser(os.Stdin), nil
 	}
-	return os.Open(file)
+	return os.Open(name)
 }
 
-// outputName generates the full output filename for the given index.
-// Combines prefix + suffix (alpha or numeric) + additional suffix.
-func outputName(cfg config, index int) (string, error) {
-	suffix, err := generateSuffix(index, cfg.suffixLen, cfg.numericSuffix)
-	if err != nil {
-		return "", err
+// suffixGenerator produces sequential suffixes for output files.
+type suffixGenerator struct {
+	length  int
+	numeric bool
+	current int
+}
+
+// newSuffixGenerator creates a suffix generator.
+// R3.1: suffix length is configurable via -a.
+// R3.2: -d uses numeric suffixes.
+func newSuffixGenerator(length int, numeric bool) *suffixGenerator {
+	return &suffixGenerator{length: length, numeric: numeric}
+}
+
+// next returns the next suffix string and advances the counter.
+func (g *suffixGenerator) next() (string, error) {
+	limit := g.maxCount()
+	if g.current >= limit {
+		return "", fmt.Errorf("output file suffixes exhausted")
 	}
-	return cfg.prefix + suffix + cfg.additionalSuffix, nil
-}
-
-// writeOutputData writes data to a file or pipes it through the filter command.
-// R3.4: --filter support.
-func writeOutputData(filename string, data []byte, cfg config) error {
-	if cfg.filterCmd != "" {
-		return runFilter(cfg.filterCmd, filename, data)
+	var s string
+	if g.numeric {
+		s = fmt.Sprintf("%0*d", g.length, g.current)
+	} else {
+		s = alphaEncode(g.current, g.length)
 	}
-	return os.WriteFile(filename, data, 0o666)
+	g.current++
+	return s, nil
 }
 
-// runFilter pipes data through a shell command with $FILE set to filename.
-// R3.4: --filter=COMMAND support.
-func runFilter(command, filename string, data []byte) error {
-	cmd := exec.Command("sh", "-c", command)
-	cmd.Env = append(os.Environ(), "FILE="+filename)
-	cmd.Stdin = bytes.NewReader(data)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-// splitByLines reads from r and writes chunks of cfg.lines lines each.
-// R1.1: default 1000 lines. R1.3: configurable via -l.
-func splitByLines(r io.Reader, cfg config) error {
-	br := bufio.NewReaderSize(r, 64*1024)
-	for fileIndex := 0; ; fileIndex++ {
-		name, err := outputName(cfg, fileIndex)
-		if err != nil {
-			return err
-		}
-		done, werr := writeLineChunk(br, name, cfg.lines, cfg)
-		if werr != nil {
-			return werr
-		}
-		if done {
-			return nil
-		}
+// maxCount returns the total number of suffixes available.
+func (g *suffixGenerator) maxCount() int {
+	base := 26
+	if g.numeric {
+		base = 10
 	}
+	result := 1
+	for range g.length {
+		result *= base
+	}
+	return result
 }
 
-// writeLineChunk reads up to maxLines lines and writes them to filename.
-// Returns true when EOF is reached (no more data to read).
-func writeLineChunk(br *bufio.Reader, filename string, maxLines int, cfg config) (bool, error) {
-	var buf bytes.Buffer
-	eof := false
-	for range maxLines {
+// alphaEncode converts a number to an alphabetic suffix of given length.
+func alphaEncode(n, length int) string {
+	buf := make([]byte, length)
+	for i := length - 1; i >= 0; i-- {
+		buf[i] = 'a' + byte(n%26)
+		n /= 26
+	}
+	return string(buf)
+}
+
+// outputFilename builds the full output filename.
+// R1.2: prefix + suffix + additional-suffix.
+// R3.3: appends --additional-suffix after the generated suffix.
+func outputFilename(prefix, suffix, additional string) string {
+	return prefix + suffix + additional
+}
+
+// splitByLines splits input into pieces of n lines each.
+// R1.1, R1.3: line-count splitting mode.
+func splitByLines(r io.Reader, cfg *config) error {
+	gen := newSuffixGenerator(cfg.suffixLen, cfg.numericSuffix)
+	br := bufio.NewReader(r)
+	var w io.WriteCloser
+	var count int64
+	for {
 		line, err := br.ReadBytes('\n')
-		buf.Write(line)
+		if len(line) > 0 {
+			w, count, err = writeLine(w, count, line, gen, cfg)
+			if err != nil {
+				return err
+			}
+		}
 		if err == io.EOF {
-			eof = true
 			break
 		}
 		if err != nil {
-			return false, err
-		}
-	}
-	if buf.Len() > 0 {
-		if err := writeOutputData(filename, buf.Bytes(), cfg); err != nil {
-			return false, err
-		}
-	}
-	return eof, nil
-}
-
-// splitByBytes reads from r and writes chunks of cfg.byteCount bytes each.
-// R2.1: byte-based splitting.
-func splitByBytes(r io.Reader, cfg config) error {
-	for fileIndex := 0; ; fileIndex++ {
-		name, err := outputName(cfg, fileIndex)
-		if err != nil {
+			closeIfOpen(w)
 			return err
 		}
-		done, werr := writeByteChunk(r, name, cfg.byteCount, cfg)
-		if werr != nil {
-			return werr
-		}
-		if done {
-			return nil
-		}
 	}
+	return closeIfOpen(w)
 }
 
-// writeByteChunk reads up to maxBytes bytes and writes them to filename.
-// Returns true when EOF is reached.
-func writeByteChunk(r io.Reader, filename string, maxBytes int64, cfg config) (bool, error) {
-	data, err := io.ReadAll(io.LimitReader(r, maxBytes))
-	if len(data) == 0 {
-		return true, nil
+// writeLine writes a line to the current piece, opening a new piece if needed.
+func writeLine(w io.WriteCloser, count int64, line []byte, gen *suffixGenerator, cfg *config) (io.WriteCloser, int64, error) {
+	if w == nil {
+		var err error
+		w, err = openNextPiece(gen, cfg)
+		if err != nil {
+			return nil, 0, err
+		}
+		count = 0
 	}
-	if werr := writeOutputData(filename, data, cfg); werr != nil {
-		return false, werr
+	if _, err := w.Write(line); err != nil {
+		closeIfOpen(w)
+		return nil, 0, err
 	}
-	return int64(len(data)) < maxBytes, err
+	count++
+	if count >= cfg.lineCount {
+		if err := w.Close(); err != nil {
+			return nil, 0, err
+		}
+		return nil, 0, nil
+	}
+	return w, count, nil
 }
 
-// splitByLineBytes splits input into pieces of at most cfg.byteCount bytes,
-// breaking only at line boundaries. R2.2.
-func splitByLineBytes(r io.Reader, cfg config) error {
-	br := bufio.NewReaderSize(r, 64*1024)
-	var pending []byte
-	fileIndex := 0
+// openNextPiece opens the next output piece file.
+func openNextPiece(gen *suffixGenerator, cfg *config) (io.WriteCloser, error) {
+	suffix, err := gen.next()
+	if err != nil {
+		return nil, err
+	}
+	fname := outputFilename(cfg.prefix, suffix, cfg.additionalSuffix)
+	return openOutputPiece(fname, cfg.filter)
+}
+
+// splitByBytes splits input into pieces of n bytes each.
+// R2.1: byte-count splitting mode.
+func splitByBytes(r io.Reader, cfg *config) error {
+	gen := newSuffixGenerator(cfg.suffixLen, cfg.numericSuffix)
+	br := bufio.NewReader(r)
 	for {
-		chunk, leftover, eof, err := collectLineBytes(br, pending, cfg.byteCount)
-		if err != nil {
+		if _, err := br.Peek(1); err != nil {
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
-		pending = leftover
-		if len(chunk) == 0 {
-			return nil
-		}
-		name, serr := outputName(cfg, fileIndex)
-		if serr != nil {
-			return serr
-		}
-		if werr := writeOutputData(name, chunk, cfg); werr != nil {
-			return werr
-		}
-		fileIndex++
-		if eof && len(pending) == 0 {
-			return nil
+		if err := copyBytePiece(br, gen, cfg); err != nil {
+			return err
 		}
 	}
 }
 
-// collectLineBytes accumulates lines up to maxBytes, returning the chunk,
-// any leftover data, EOF status, and any error.
-// R2.2: lines longer than maxBytes are split across chunks.
-func collectLineBytes(
-	br *bufio.Reader, pending []byte, maxBytes int64,
-) ([]byte, []byte, bool, error) {
-	var buf bytes.Buffer
-	if len(pending) > 0 {
-		if int64(len(pending)) > maxBytes {
-			return pending[:maxBytes], pending[maxBytes:], false, nil
-		}
-		buf.Write(pending)
-		if int64(buf.Len()) >= maxBytes {
-			return buf.Bytes(), nil, false, nil
-		}
+// copyBytePiece writes up to cfg.byteCount bytes from br to a new piece.
+func copyBytePiece(br *bufio.Reader, gen *suffixGenerator, cfg *config) error {
+	w, err := openNextPiece(gen, cfg)
+	if err != nil {
+		return err
 	}
-	return collectLineBytesLoop(&buf, br, maxBytes)
+	_, copyErr := io.CopyN(w, br, cfg.byteCount)
+	closeErr := w.Close()
+	if copyErr != nil && copyErr != io.EOF {
+		return copyErr
+	}
+	return closeErr
 }
 
-// collectLineBytesLoop reads lines from br until the buffer reaches maxBytes.
-func collectLineBytesLoop(
-	buf *bytes.Buffer, br *bufio.Reader, maxBytes int64,
-) ([]byte, []byte, bool, error) {
+// splitByLineBytes splits input into pieces of at most n bytes,
+// breaking only at line boundaries.
+// R2.2: line-bytes splitting mode.
+func splitByLineBytes(r io.Reader, cfg *config) error {
+	gen := newSuffixGenerator(cfg.suffixLen, cfg.numericSuffix)
+	br := bufio.NewReader(r)
+	var buf []byte
 	for {
 		line, err := br.ReadBytes('\n')
-		if len(line) == 0 && err == io.EOF {
-			return buf.Bytes(), nil, true, nil
+		if len(line) > 0 {
+			var wErr error
+			buf, wErr = accumulateLineBytes(buf, line, gen, cfg)
+			if wErr != nil {
+				return wErr
+			}
 		}
-		if err != nil && err != io.EOF {
-			return nil, nil, false, err
+		if err == io.EOF {
+			break
 		}
-		isEOF := err == io.EOF
-		if buf.Len() == 0 && int64(len(line)) > maxBytes {
-			return line[:maxBytes], line[maxBytes:], isEOF, nil
-		}
-		if buf.Len() > 0 && int64(buf.Len()+len(line)) > maxBytes {
-			return buf.Bytes(), line, isEOF, nil
-		}
-		buf.Write(line)
-		if isEOF {
-			return buf.Bytes(), nil, true, nil
-		}
-		if int64(buf.Len()) >= maxBytes {
-			return buf.Bytes(), nil, false, nil
+		if err != nil {
+			return err
 		}
 	}
+	if len(buf) > 0 {
+		return writePiece(gen, cfg, buf)
+	}
+	return nil
 }
 
-// splitByChunks reads all input and splits into cfg.chunk.count pieces.
-// R2.3: supports byte chunks (N), line chunks (l/N), round-robin (r/N).
-func splitByChunks(r io.Reader, cfg config) error {
+// accumulateLineBytes handles line accumulation for -C mode.
+// Flushes the buffer when adding a line would exceed the byte limit.
+func accumulateLineBytes(buf, line []byte, gen *suffixGenerator, cfg *config) ([]byte, error) {
+	limit := cfg.byteCount
+	if int64(len(buf)+len(line)) <= limit {
+		return append(buf, line...), nil
+	}
+	if len(buf) > 0 {
+		if err := writePiece(gen, cfg, buf); err != nil {
+			return nil, err
+		}
+	}
+	if int64(len(line)) <= limit {
+		return append([]byte(nil), line...), nil
+	}
+	return writeOversizedLine(line, limit, gen, cfg)
+}
+
+// writeOversizedLine writes a line exceeding the byte limit in segments.
+func writeOversizedLine(line []byte, limit int64, gen *suffixGenerator, cfg *config) ([]byte, error) {
+	for int64(len(line)) > limit {
+		if err := writePiece(gen, cfg, line[:limit]); err != nil {
+			return nil, err
+		}
+		line = line[limit:]
+	}
+	if len(line) > 0 {
+		return append([]byte(nil), line...), nil
+	}
+	return nil, nil
+}
+
+// splitByChunks splits input into a fixed number of chunks.
+// R2.3: chunk splitting mode with N, l/N, r/N forms.
+func splitByChunks(r io.Reader, cfg *config) error {
+	switch cfg.chunks.kind {
+	case chunkByBytes:
+		return splitChunksByBytes(r, cfg)
+	case chunkByLines:
+		return splitChunksByLines(r, cfg)
+	case chunkRoundRobin:
+		return splitChunksRoundRobin(r, cfg)
+	}
+	return fmt.Errorf("unknown chunk type")
+}
+
+// splitChunksByBytes reads all input and divides into N byte-sized chunks.
+// R2.3: first (total%N) chunks get one extra byte.
+func splitChunksByBytes(r io.Reader, cfg *config) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
-	switch cfg.chunk.typ {
-	case chunkByLines:
-		return splitChunkLines(data, cfg)
-	case chunkRoundRobin:
-		return splitChunkRoundRobin(data, cfg)
-	default:
-		return splitChunkBytes(data, cfg)
-	}
-}
-
-// splitChunkBytes divides data into cfg.chunk.count byte-sized chunks.
-func splitChunkBytes(data []byte, cfg config) error {
-	n := cfg.chunk.count
-	total := len(data)
+	gen := newSuffixGenerator(cfg.suffixLen, cfg.numericSuffix)
+	n := cfg.chunks.count
+	total := int64(len(data))
 	base := total / n
-	remainder := total % n
-	offset := 0
+	extra := total % n
+	offset := int64(0)
 	for i := range n {
 		size := base
-		if i < remainder {
+		if i < extra {
 			size++
 		}
-		if err := writeChunkFile(cfg, i, data[offset:offset+size]); err != nil {
+		if err := writePiece(gen, cfg, data[offset:offset+size]); err != nil {
 			return err
 		}
 		offset += size
@@ -578,115 +648,241 @@ func splitChunkBytes(data []byte, cfg config) error {
 	return nil
 }
 
-// splitChunkLines divides lines into cfg.chunk.count groups, balanced by
-// byte size with line-boundary breaks. R2.3: l/N form.
-func splitChunkLines(data []byte, cfg config) error {
-	lines := splitIntoLines(data)
-	n := cfg.chunk.count
-	total := len(data)
-	byteOff := 0
-	lineOff := 0
-	for i := range n {
-		lineEnd := len(lines)
-		if i < n-1 {
-			target := total * (i + 1) / n
-			lineEnd = lineOff
-			for lineEnd < len(lines) && byteOff < target {
-				byteOff += len(lines[lineEnd])
-				lineEnd++
-			}
-		}
-		if err := writeChunkFile(cfg, i, joinLines(lines, lineOff, lineEnd)); err != nil {
-			return err
-		}
-		lineOff = lineEnd
-	}
-	return nil
-}
-
-// splitChunkRoundRobin distributes lines across cfg.chunk.count files
-// in round-robin order. R2.3: r/N form.
-func splitChunkRoundRobin(data []byte, cfg config) error {
-	lines := splitIntoLines(data)
-	n := cfg.chunk.count
-	bufs := make([]bytes.Buffer, n)
-	for i, line := range lines {
-		bufs[i%n].Write(line)
-	}
-	for i := range n {
-		if err := writeChunkFile(cfg, i, bufs[i].Bytes()); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// writeChunkFile writes chunk data to the output file for chunk index i.
-func writeChunkFile(cfg config, i int, data []byte) error {
-	name, err := outputName(cfg, i)
+// splitChunksByLines reads all input and divides into N line-based chunks.
+// R2.3: lines are assigned to chunks based on byte position boundaries.
+func splitChunksByLines(r io.Reader, cfg *config) error {
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
-	return writeOutputData(name, data, cfg)
+	gen := newSuffixGenerator(cfg.suffixLen, cfg.numericSuffix)
+	n := cfg.chunks.count
+	total := int64(len(data))
+	if total == 0 {
+		return createEmptyChunks(gen, cfg, n)
+	}
+	return distributeLineChunks(data, total, n, gen, cfg)
 }
 
-// joinLines concatenates a sub-slice of lines into a single byte slice.
-func joinLines(lines [][]byte, from, to int) []byte {
-	var buf bytes.Buffer
-	for i := from; i < to; i++ {
-		buf.Write(lines[i])
-	}
-	return buf.Bytes()
-}
-
-// splitIntoLines splits data into lines, each including its trailing newline.
-func splitIntoLines(data []byte) [][]byte {
-	if len(data) == 0 {
-		return nil
-	}
-	var lines [][]byte
+// distributeLineChunks assigns lines to chunks based on byte boundaries.
+func distributeLineChunks(data []byte, total, n int64, gen *suffixGenerator, cfg *config) error {
+	base := total / n
+	extra := total % n
+	chunkIdx := int64(0)
+	boundary := chunkBoundary(chunkIdx, base, extra)
+	var buf []byte
+	pos := int64(0)
 	for len(data) > 0 {
-		idx := bytes.IndexByte(data, '\n')
-		if idx < 0 {
-			lines = append(lines, data)
-			break
+		line, rest := nextLine(data)
+		buf = append(buf, line...)
+		pos += int64(len(line))
+		data = rest
+		if pos >= boundary {
+			if err := writePiece(gen, cfg, buf); err != nil {
+				return err
+			}
+			buf = nil
+			chunkIdx++
+			chunkIdx, err := skipPassedBounds(gen, cfg, chunkIdx, n, base, extra, pos)
+			if err != nil {
+				return err
+			}
+			if chunkIdx < n {
+				boundary = chunkBoundary(chunkIdx, base, extra)
+			}
 		}
-		lines = append(lines, data[:idx+1])
-		data = data[idx+1:]
 	}
-	return lines
+	return flushAndFill(gen, cfg, buf, chunkIdx, n)
 }
 
-// generateSuffix returns the suffix for the given index and length.
-// R3.1: suffix length. R3.2: numeric vs alphabetic.
-func generateSuffix(index, length int, numeric bool) (string, error) {
-	if numeric {
-		return generateNumericSuffix(index, length)
+// skipPassedBounds creates empty chunks for boundaries already passed.
+func skipPassedBounds(gen *suffixGenerator, cfg *config, idx, n, base, extra, pos int64) (int64, error) {
+	for idx < n && pos >= chunkBoundary(idx, base, extra) {
+		if err := writePiece(gen, cfg, nil); err != nil {
+			return idx, err
+		}
+		idx++
 	}
-	return generateAlphaSuffix(index, length)
+	return idx, nil
 }
 
-// generateAlphaSuffix returns the alphabetic suffix for the given index.
-// R1.1: suffix pattern aa, ab, ..., az, ba, ..., zz for length 2.
-func generateAlphaSuffix(index, length int) (string, error) {
-	suffix := make([]byte, length)
-	idx := index
-	for i := length - 1; i >= 0; i-- {
-		suffix[i] = 'a' + byte(idx%26)
-		idx /= 26
+// flushAndFill writes any remaining buffer and fills remaining empty chunks.
+func flushAndFill(gen *suffixGenerator, cfg *config, buf []byte, idx, n int64) error {
+	if len(buf) > 0 {
+		if err := writePiece(gen, cfg, buf); err != nil {
+			return err
+		}
+		idx++
 	}
-	if idx > 0 {
-		return "", fmt.Errorf("output file suffixes exhausted")
-	}
-	return string(suffix), nil
+	return createEmptyChunks(gen, cfg, n-idx)
 }
 
-// generateNumericSuffix returns the zero-padded numeric suffix for the index.
-// R3.2: numeric suffixes 00, 01, 02, ...
-func generateNumericSuffix(index, length int) (string, error) {
-	s := strconv.Itoa(index)
-	if len(s) > length {
-		return "", fmt.Errorf("output file suffixes exhausted")
+// chunkBoundary returns the end byte offset for chunk idx (0-indexed).
+func chunkBoundary(idx, base, extra int64) int64 {
+	i := idx + 1
+	if i <= extra {
+		return (base + 1) * i
 	}
-	return strings.Repeat("0", length-len(s)) + s, nil
+	return extra*(base+1) + (i-extra)*base
+}
+
+// nextLine extracts the first line (including newline) from data.
+func nextLine(data []byte) ([]byte, []byte) {
+	for i := 0; i < len(data); i++ {
+		if data[i] == '\n' {
+			return data[:i+1], data[i+1:]
+		}
+	}
+	return data, nil
+}
+
+// splitChunksRoundRobin distributes lines round-robin to N chunk files.
+// R2.3: r/N form writes line i to chunk (i % N).
+func splitChunksRoundRobin(r io.Reader, cfg *config) error {
+	gen := newSuffixGenerator(cfg.suffixLen, cfg.numericSuffix)
+	n := cfg.chunks.count
+	writers, err := openAllChunks(gen, cfg, n)
+	if err != nil {
+		return err
+	}
+	if err := roundRobinLines(r, writers, n); err != nil {
+		closeWriters(writers)
+		return err
+	}
+	return closeWriters(writers)
+}
+
+// openAllChunks opens N output files for round-robin writing.
+func openAllChunks(gen *suffixGenerator, cfg *config, n int64) ([]io.WriteCloser, error) {
+	writers := make([]io.WriteCloser, n)
+	for i := range n {
+		w, err := openNextPiece(gen, cfg)
+		if err != nil {
+			closeWriters(writers[:i])
+			return nil, err
+		}
+		writers[i] = w
+	}
+	return writers, nil
+}
+
+// roundRobinLines reads lines and distributes them to writers in order.
+func roundRobinLines(r io.Reader, writers []io.WriteCloser, n int64) error {
+	br := bufio.NewReader(r)
+	idx := int64(0)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			if _, wErr := writers[idx%n].Write(line); wErr != nil {
+				return wErr
+			}
+			idx++
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// closeWriters closes all non-nil writers, returning the first error.
+func closeWriters(writers []io.WriteCloser) error {
+	var first error
+	for _, w := range writers {
+		if w == nil {
+			continue
+		}
+		if err := w.Close(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// createEmptyChunks creates n empty chunk files.
+func createEmptyChunks(gen *suffixGenerator, cfg *config, n int64) error {
+	for range n {
+		if err := writePiece(gen, cfg, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writePiece writes data to a new output piece file.
+func writePiece(gen *suffixGenerator, cfg *config, data []byte) error {
+	w, err := openNextPiece(gen, cfg)
+	if err != nil {
+		return err
+	}
+	if len(data) > 0 {
+		if _, err := w.Write(data); err != nil {
+			w.Close() // best-effort close on write error
+			return err
+		}
+	}
+	return w.Close()
+}
+
+// openOutputPiece opens or creates an output file for writing.
+// R3.4: when --filter is set, pipes to a shell command instead.
+func openOutputPiece(filename, filter string) (io.WriteCloser, error) {
+	if filter != "" {
+		return newFilterWriter(filter, filename)
+	}
+	return os.Create(filename)
+}
+
+// filterWriter wraps a shell command that receives piece data on stdin.
+// R3.4: implements --filter=COMMAND pipe-to-shell behavior.
+type filterWriter struct {
+	cmd   *exec.Cmd
+	stdin io.WriteCloser
+}
+
+// newFilterWriter starts a shell command with FILE=filename and returns
+// a writer piped to its stdin.
+// R3.4: $FILE in the command is the output filename.
+func newFilterWriter(command, filename string) (*filterWriter, error) {
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Env = append(os.Environ(), "FILE="+filename)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return &filterWriter{cmd: cmd, stdin: stdin}, nil
+}
+
+// Write sends data to the filter command's stdin.
+func (fw *filterWriter) Write(p []byte) (int, error) {
+	return fw.stdin.Write(p)
+}
+
+// Close closes the stdin pipe and waits for the command to exit.
+func (fw *filterWriter) Close() error {
+	if err := fw.stdin.Close(); err != nil {
+		fw.cmd.Wait() // best-effort wait on stdin close error
+		return err
+	}
+	return fw.cmd.Wait()
+}
+
+// closeIfOpen closes w if it is non-nil.
+func closeIfOpen(w io.WriteCloser) error {
+	if w != nil {
+		return w.Close()
+	}
+	return nil
+}
+
+// reportError prints a GNU-compatible diagnostic to stderr.
+func reportError(msg string) {
+	fmt.Fprintf(os.Stderr, "%s: %s\n", progName, msg)
 }

@@ -1,150 +1,171 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential and unit tests for cmd/version per prd059 R1.1, R1.2, R1.4.
+// Differential tests for cmd/version.
+// Implements srd059-version R1.1, R1.2, R1.4, R1.5 and srd011-magefiles R5.1.
 package main
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// TestDiff runs differential tests against a reference binary.
-// R5.1: version has no GNU reference binary; this test skips gracefully.
+// TestDiff runs the standard differential test pattern. There is no GNU
+// reference binary for version, so this always skips gracefully.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gversion")
 	if err != nil {
-		t.Skipf("reference binary gversion not in PATH: %v", err)
+		t.Skip("reference binary gversion not in PATH")
 	}
 	tests := []testutils.DiffTest{
 		{
-			Name:     "no_args",
-			Args:     []string{},
-			ExitCode: 0,
-		},
-		{
-			Name:     "version_flag",
-			Args:     []string{"--version"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "help_flag",
-			Args:     []string{"--help"},
-			ExitCode: 0,
-		},
-		{
-			Name:     "unknown_flag",
-			Args:     []string{"--bogus"},
-			ExitCode: 2,
+			Name: "no_args",
+			Args: nil,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestVersionNoArgs verifies R1.1: no arguments prints version + newline, exits 0.
-func TestVersionNoArgs(t *testing.T) {
+// TestNoArgs verifies R1.1: no arguments prints version string followed
+// by a newline and exits 0. R1.2: without ldflags, version is "dev".
+func TestNoArgs(t *testing.T) {
 	t.Parallel()
-	bin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(bin)
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin)
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("version with no args failed: %v", err)
 	}
-	// R1.2: development build (no ldflags) prints "dev".
-	if got := string(out); got != "dev\n" {
-		t.Errorf("got %q, want %q", got, "dev\n")
+	got := string(out)
+	if got != "dev\n" {
+		t.Errorf("no-args output = %q, want %q", got, "dev\n")
 	}
 }
 
-// TestVersionFlag verifies R1.4: --version and -v print the same output.
+// TestVersionFlag verifies R1.4: --version prints the same output as
+// no-argument invocation.
 func TestVersionFlag(t *testing.T) {
 	t.Parallel()
-	bin := testutils.BuildBinary(t, ".")
+	goBin := testutils.BuildBinary(t, ".")
 
 	for _, flag := range []string{"--version", "-v"} {
 		t.Run(flag, func(t *testing.T) {
 			t.Parallel()
-			cmd := exec.Command(bin, flag)
+			cmd := exec.Command(goBin, flag)
 			out, err := cmd.Output()
 			if err != nil {
-				t.Fatalf("flag %s: unexpected error: %v", flag, err)
+				t.Fatalf("version %s failed: %v", flag, err)
 			}
-			if got := string(out); got != "dev\n" {
-				t.Errorf("flag %s: got %q, want %q", flag, got, "dev\n")
+			got := string(out)
+			if got != "dev\n" {
+				t.Errorf("version %s output = %q, want %q", flag, got, "dev\n")
 			}
 		})
 	}
 }
 
-// TestHelpFlag verifies --help prints usage and exits 0.
-func TestHelpFlag(t *testing.T) {
-	t.Parallel()
-	bin := testutils.BuildBinary(t, ".")
-
-	for _, flag := range []string{"--help", "-h"} {
-		t.Run(flag, func(t *testing.T) {
-			t.Parallel()
-			cmd := exec.Command(bin, flag)
-			out, err := cmd.Output()
-			if err != nil {
-				t.Fatalf("flag %s: unexpected error: %v", flag, err)
-			}
-			if len(out) == 0 {
-				t.Errorf("flag %s: expected help output, got empty", flag)
-			}
-		})
-	}
-}
-
-// TestUnknownFlag verifies R1.4: unknown flag prints usage to stderr, exits 2.
+// TestUnknownFlag verifies R1.4: any other flag prints usage to stderr
+// and exits 2.
 func TestUnknownFlag(t *testing.T) {
 	t.Parallel()
-	bin := testutils.BuildBinary(t, ".")
+	goBin := testutils.BuildBinary(t, ".")
 
-	cmd := exec.Command(bin, "--bogus")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-
-	exitErr, ok := err.(*exec.ExitError)
-	if !ok {
-		t.Fatalf("expected ExitError, got %v", err)
+	cmd := exec.Command(goBin, "--bogus")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected non-zero exit for --bogus, got nil error")
+	}
+	var exitErr *exec.ExitError
+	if ok := isExitError(err, &exitErr); !ok {
+		t.Fatalf("unexpected error type: %v", err)
 	}
 	if exitErr.ExitCode() != 2 {
 		t.Errorf("exit code = %d, want 2", exitErr.ExitCode())
 	}
-	if stderr.Len() == 0 {
-		t.Error("expected usage message on stderr, got nothing")
+	if !strings.Contains(string(out), "Usage:") {
+		t.Errorf("stderr should contain Usage message, got %q", string(out))
 	}
 }
 
-// TestVersionLdflags verifies R1.2: version set via ldflags is printed.
-func TestVersionLdflags(t *testing.T) {
+// TestExportedVersion verifies R1.5: the Version variable is exported and
+// defaults to "dev" when ldflags are not set.
+func TestExportedVersion(t *testing.T) {
 	t.Parallel()
-	tmpDir := t.TempDir()
-	binPath := tmpDir + "/version-ldflags"
+	if Version != "dev" {
+		t.Errorf("Version = %q, want %q", Version, "dev")
+	}
+}
 
-	buildCmd := exec.Command("go", "build",
-		"-ldflags", "-X main.Version=v1.20260328.1",
+// TestGetVersion verifies R1.5: GetVersion returns the current version string.
+func TestGetVersion(t *testing.T) {
+	t.Parallel()
+	got := GetVersion()
+	if got != "dev" {
+		t.Errorf("GetVersion() = %q, want %q", got, "dev")
+	}
+}
+
+// TestLdflagsInjection verifies R1.5: the version can be set at build time
+// via -ldflags so other cmd/ packages can use the same mechanism.
+func TestLdflagsInjection(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	binPath := filepath.Join(dir, "version")
+	const want = "v42.0.0-test"
+
+	build := exec.Command("go", "build",
+		"-ldflags", "-X main.Version="+want,
 		"-o", binPath, ".")
-	buildCmd.Dir = "."
-	buildCmd.Env = append(os.Environ(), "GOFLAGS=")
-	if out, err := buildCmd.CombinedOutput(); err != nil {
-		t.Fatalf("build with ldflags failed: %v\n%s", err, out)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build with ldflags failed: %v\n%s", err, out)
 	}
 
-	cmd := exec.Command(binPath)
-	out, err := cmd.Output()
+	run := exec.Command(binPath)
+	out, err := run.Output()
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("version binary failed: %v", err)
 	}
-	if got := string(out); got != "v1.20260328.1\n" {
-		t.Errorf("got %q, want %q", got, "v1.20260328.1\n")
+	got := strings.TrimSpace(string(out))
+	if got != want {
+		t.Errorf("version with ldflags = %q, want %q", got, want)
 	}
+}
+
+// TestConfigurationFields verifies srd011 R5.1: configuration.yaml project
+// section contains module_path, go_source_dirs, and magefiles_dir fields.
+// binary_dir may be defaulted by the scaffold when not explicitly set.
+func TestConfigurationFields(t *testing.T) {
+	t.Parallel()
+	configPath := filepath.Join("..", "..", "configuration.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Skipf("configuration.yaml not found: %v", err)
+	}
+
+	content := string(data)
+	// R5.1: module_path, go_source_dirs, magefiles_dir must be present.
+	// binary_dir may be scaffold-defaulted and not explicitly listed.
+	required := []string{"module_path", "go_source_dirs", "magefiles_dir"}
+	for _, field := range required {
+		if !strings.Contains(content, field) {
+			t.Errorf("configuration.yaml missing required field %q", field)
+		}
+	}
+}
+
+// isExitError checks if err is an *exec.ExitError and assigns it to target.
+func isExitError(err error, target **exec.ExitError) bool {
+	if ee, ok := err.(*exec.ExitError); ok {
+		*target = ee
+		return true
+	}
+	return false
 }

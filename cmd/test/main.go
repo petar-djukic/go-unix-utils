@@ -1,46 +1,53 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/test evaluates conditional expressions (prd104-test R1-R4).
+// cmd/test evaluates conditional expressions and exits with status 0 (true),
+// 1 (false), or 2 (error).
+//
+// Implements: srd104-test R1.1 (file test operators), R1.2 (file comparison
+// operators), R2.1 (string operators), R2.2 (integer comparison operators),
+// R3.1 (logical operators), R3.2 (exit codes), R4.1 (exit codes), R4.2 (SIGPIPE).
 package main
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// Exit codes per R3.2 and R4.1.
+// Exit codes per POSIX test specification and srd104 R4.1.
 const (
 	exitTrue  = 0
 	exitFalse = 1
 	exitError = 2
 )
 
+// Access mode constants for syscall.Access.
+const (
+	accessRead    = 0x4 // R_OK
+	accessWrite   = 0x2 // W_OK
+	accessExecute = 0x1 // X_OK
+)
+
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args, os.Stderr))
+	os.Exit(run(os.Args[1:]))
 }
 
-// run is the entry point. It strips the bracket wrapper if invoked as '[',
-// then evaluates the expression. R4.1: returns 0, 1, or 2.
-func run(args []string, stderr *os.File) int {
-	exprs, err := prepareArgs(args)
+// run parses and evaluates the expression from args, returning the exit code.
+func run(args []string) int {
+	p := &parser{args: args, pos: 0}
+	result, err := p.parseExpr()
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", progBaseName(args[0]), err)
+		fmt.Fprintf(os.Stderr, "test: %v\n", err)
 		return exitError
 	}
-	if len(exprs) == 0 {
-		return exitFalse
-	}
-	result, evalErr := evaluate(exprs, stderr, progBaseName(args[0]))
-	if evalErr != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", progBaseName(args[0]), evalErr)
+	if p.pos < len(p.args) {
+		fmt.Fprintf(os.Stderr, "test: extra argument '%s'\n", p.args[p.pos])
 		return exitError
 	}
 	if result {
@@ -49,48 +56,40 @@ func run(args []string, stderr *os.File) int {
 	return exitFalse
 }
 
-// progBaseName returns the base name of the invocation path.
-func progBaseName(arg0 string) string {
-	return filepath.Base(arg0)
+// parser holds the argument list and current position for recursive descent.
+type parser struct {
+	args []string
+	pos  int
 }
 
-// prepareArgs handles '[' invocation by checking for closing ']'.
-// Returns the expression arguments with program name and brackets stripped.
-func prepareArgs(args []string) ([]string, error) {
-	base := progBaseName(args[0])
-	exprs := args[1:]
-	if strings.HasSuffix(base, "[") {
-		if len(exprs) == 0 || exprs[len(exprs)-1] != "]" {
-			return nil, fmt.Errorf("missing ']'")
-		}
-		exprs = exprs[:len(exprs)-1]
+// peek returns the current token without advancing.
+func (p *parser) peek() string {
+	if p.pos >= len(p.args) {
+		return ""
 	}
-	return exprs, nil
+	return p.args[p.pos]
 }
 
-// evaluate dispatches expression evaluation. R3.1: supports !, -a, -o, and
-// parenthesized groups via recursive descent parsing.
-func evaluate(args []string, _ *os.File, _ string) (bool, error) {
-	pos := 0
-	result, err := parseOr(args, &pos)
+// advance moves past the current token.
+func (p *parser) advance() {
+	p.pos++
+}
+
+// remaining returns the number of unconsumed tokens.
+func (p *parser) remaining() int {
+	return len(p.args) - p.pos
+}
+
+// parseExpr is the top-level expression parser (lowest precedence: -o).
+// R3.1: EXPR1 -o EXPR2 (or).
+func (p *parser) parseExpr() (bool, error) {
+	left, err := p.parseAnd()
 	if err != nil {
 		return false, err
 	}
-	if pos < len(args) {
-		return false, fmt.Errorf("extra argument '%s'", args[pos])
-	}
-	return result, nil
-}
-
-// parseOr handles EXPR1 -o EXPR2 (R3.1).
-func parseOr(args []string, pos *int) (bool, error) {
-	left, err := parseAnd(args, pos)
-	if err != nil {
-		return false, err
-	}
-	for *pos < len(args) && args[*pos] == "-o" {
-		*pos++
-		right, err := parseAnd(args, pos)
+	for p.peek() == "-o" {
+		p.advance()
+		right, err := p.parseAnd()
 		if err != nil {
 			return false, err
 		}
@@ -99,15 +98,16 @@ func parseOr(args []string, pos *int) (bool, error) {
 	return left, nil
 }
 
-// parseAnd handles EXPR1 -a EXPR2 (R3.1).
-func parseAnd(args []string, pos *int) (bool, error) {
-	left, err := parseNot(args, pos)
+// parseAnd handles -a (and) with higher precedence than -o.
+// R3.1: EXPR1 -a EXPR2 (and).
+func (p *parser) parseAnd() (bool, error) {
+	left, err := p.parseNot()
 	if err != nil {
 		return false, err
 	}
-	for *pos < len(args) && args[*pos] == "-a" {
-		*pos++
-		right, err := parseNot(args, pos)
+	for p.peek() == "-a" {
+		p.advance()
+		right, err := p.parseNot()
 		if err != nil {
 			return false, err
 		}
@@ -116,105 +116,159 @@ func parseAnd(args []string, pos *int) (bool, error) {
 	return left, nil
 }
 
-// parseNot handles ! EXPR (R3.1).
-func parseNot(args []string, pos *int) (bool, error) {
-	if *pos < len(args) && args[*pos] == "!" {
-		*pos++
-		result, err := parseNot(args, pos)
+// parseNot handles ! (negation) with higher precedence than -a.
+// R3.1: ! EXPR (not).
+func (p *parser) parseNot() (bool, error) {
+	if p.peek() == "!" {
+		p.advance()
+		val, err := p.parseNot()
 		if err != nil {
 			return false, err
 		}
-		return !result, nil
+		return !val, nil
 	}
-	return parsePrimary(args, pos)
+	return p.parsePrimary()
 }
 
 // parsePrimary handles parenthesized groups and primary expressions.
-func parsePrimary(args []string, pos *int) (bool, error) {
-	if *pos >= len(args) {
-		return false, fmt.Errorf("missing argument")
+// R3.1: ( EXPR ) (grouping).
+func (p *parser) parsePrimary() (bool, error) {
+	if p.peek() == "(" {
+		return p.parseGroup()
 	}
-	if args[*pos] == "(" {
-		return parseGroup(args, pos)
-	}
-	return parsePrimaryExpr(args, pos)
+	return p.parsePrimaryExpr()
 }
 
-// parseGroup handles ( EXPR ) grouping (R3.1).
-func parseGroup(args []string, pos *int) (bool, error) {
-	*pos++ // skip '('
-	result, err := parseOr(args, pos)
+// parseGroup handles parenthesized sub-expressions.
+func (p *parser) parseGroup() (bool, error) {
+	p.advance() // skip "("
+	val, err := p.parseExpr()
 	if err != nil {
 		return false, err
 	}
-	if *pos >= len(args) || args[*pos] != ")" {
-		return false, fmt.Errorf("missing ')'")
+	if p.peek() != ")" {
+		last := p.args[p.pos-1]
+		return false, fmt.Errorf("missing argument after '%s'", last)
 	}
-	*pos++ // skip ')'
-	return result, nil
+	p.advance() // skip ")"
+	return val, nil
 }
 
-// parsePrimaryExpr dispatches unary and binary test expressions.
-func parsePrimaryExpr(args []string, pos *int) (bool, error) {
-	if *pos+1 < len(args) {
-		if isBinaryOp(args[*pos+1]) {
-			return parseBinaryExpr(args, pos)
-		}
+// parsePrimaryExpr evaluates a primary expression: unary op, binary op, or string.
+// Per POSIX, a single argument is treated as a non-empty string test regardless
+// of whether it looks like an operator.
+func (p *parser) parsePrimaryExpr() (bool, error) {
+	if p.remaining() == 0 {
+		return false, nil // zero args = false per R1.2
 	}
-	return parseUnaryExpr(args, pos)
-}
-
-// parseUnaryExpr handles unary file tests and string tests.
-func parseUnaryExpr(args []string, pos *int) (bool, error) {
-	arg := args[*pos]
-	if isUnaryFileOp(arg) && *pos+1 < len(args) {
-		return evalUnaryFileTest(arg, args, pos)
+	tok := p.peek()
+	if p.remaining() >= 2 && isUnaryOp(tok) {
+		return p.parseUnary()
 	}
-	if isUnaryStringOp(arg) && *pos+1 < len(args) {
-		return evalUnaryStringTest(arg, args, pos)
+	if p.remaining() >= 3 && isBinaryOp(p.args[p.pos+1]) {
+		return p.parseBinary()
 	}
 	// R2.1: bare STRING is true if non-empty.
-	*pos++
-	return arg != "", nil
+	p.advance()
+	return tok != "", nil
 }
 
-// evalUnaryFileTest evaluates a unary file test operator (R1.1).
-func evalUnaryFileTest(op string, args []string, pos *int) (bool, error) {
-	*pos++
-	operand := args[*pos]
-	*pos++
-	return fileTest(op, operand)
+// isUnaryOp reports whether op is a unary operator (file test, -z, or -n).
+func isUnaryOp(op string) bool {
+	return isUnaryFileOp(op) || op == "-z" || op == "-n"
 }
 
-// evalUnaryStringTest evaluates a unary string test operator (R2.1).
-func evalUnaryStringTest(op string, args []string, pos *int) (bool, error) {
-	*pos++
-	operand := args[*pos]
-	*pos++
-	return stringTest(op, operand)
-}
-
-// parseBinaryExpr handles binary operators (string, integer, file comparison).
-func parseBinaryExpr(args []string, pos *int) (bool, error) {
-	left := args[*pos]
-	*pos++
-	op := args[*pos]
-	*pos++
-	if *pos >= len(args) {
+// parseUnary evaluates a unary operator expression.
+func (p *parser) parseUnary() (bool, error) {
+	op := p.peek()
+	p.advance()
+	if p.remaining() == 0 {
 		return false, fmt.Errorf("missing argument after '%s'", op)
 	}
-	right := args[*pos]
-	*pos++
-	if isIntegerOp(op) {
-		return integerCompare(left, op, right)
-	}
-	if isFileCompareOp(op) {
-		return fileCompare(left, op, right)
-	}
-	return stringCompare(left, op, right)
+	operand := p.peek()
+	p.advance()
+	return evalUnary(op, operand)
 }
 
-// isUnaryFileOp returns true for unary file test operators (R1.1).
+// parseBinary evaluates a binary operator expression.
+func (p *parser) parseBinary() (bool, error) {
+	left := p.peek()
+	p.advance()
+	op := p.peek()
+	p.advance()
+	if p.remaining() == 0 {
+		return false, fmt.Errorf("missing argument after '%s'", op)
+	}
+	right := p.peek()
+	p.advance()
+	return evalBinary(op, left, right)
+}
+
+// evalUnary evaluates a unary operator with its operand.
+func evalUnary(op, operand string) (bool, error) {
+	switch op {
+	case "-z":
+		return len(operand) == 0, nil // R2.1
+	case "-n":
+		return len(operand) > 0, nil // R2.1
+	default:
+		return evalFileUnary(op, operand)
+	}
+}
+
+// evalBinary dispatches binary operators to string, integer, or file comparisons.
+func evalBinary(op, left, right string) (bool, error) {
+	switch op {
+	case "=":
+		return left == right, nil // R2.1
+	case "!=":
+		return left != right, nil // R2.1
+	case "-eq", "-ne", "-lt", "-le", "-gt", "-ge":
+		return evalIntCompare(op, left, right) // R2.2
+	case "-nt", "-ot", "-ef":
+		return evalFileCompare(op, left, right) // R1.2
+	default:
+		return false, fmt.Errorf("unknown condition: '%s'", op)
+	}
+}
+
+// evalIntCompare evaluates integer comparison operators.
+// R2.2: -eq, -ne, -lt, -le, -gt, -ge with proper numeric parsing.
+func evalIntCompare(op, left, right string) (bool, error) {
+	a, err := strconv.ParseInt(left, 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("invalid integer '%s'", left)
+	}
+	b, err := strconv.ParseInt(right, 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("invalid integer '%s'", right)
+	}
+	return compareInts(op, a, b), nil
+}
+
+// compareInts applies the integer comparison operator to two values.
+func compareInts(op string, a, b int64) bool {
+	switch op {
+	case "-eq":
+		return a == b
+	case "-ne":
+		return a != b
+	case "-lt":
+		return a < b
+	case "-le":
+		return a <= b
+	case "-gt":
+		return a > b
+	case "-ge":
+		return a >= b
+	default:
+		return false
+	}
+}
+
+// isUnaryFileOp reports whether op is a unary file test operator.
+// R1.1: -e, -f, -d, -s, -r, -w, -x, -L, -h, -b, -c, -p, -S, -g, -u, -k,
+// -G, -O, -t.
 func isUnaryFileOp(op string) bool {
 	switch op {
 	case "-e", "-f", "-d", "-s", "-r", "-w", "-x",
@@ -225,237 +279,205 @@ func isUnaryFileOp(op string) bool {
 	return false
 }
 
-// isUnaryStringOp returns true for unary string operators (R2.1).
-func isUnaryStringOp(op string) bool {
-	return op == "-z" || op == "-n"
-}
-
-// isBinaryOp returns true for any binary operator.
+// isBinaryOp reports whether op is a binary operator.
 func isBinaryOp(op string) bool {
-	return isIntegerOp(op) || isStringBinaryOp(op) || isFileCompareOp(op)
-}
-
-// isIntegerOp returns true for integer comparison operators (R2.2).
-func isIntegerOp(op string) bool {
 	switch op {
-	case "-eq", "-ne", "-lt", "-le", "-gt", "-ge":
+	case "=", "!=",
+		"-eq", "-ne", "-lt", "-le", "-gt", "-ge",
+		"-nt", "-ot", "-ef":
 		return true
 	}
 	return false
 }
 
-// isStringBinaryOp returns true for binary string operators (R2.1, R2.2).
-func isStringBinaryOp(op string) bool {
-	switch op {
-	case "=", "!=", "<", ">":
-		return true
-	}
-	return false
-}
-
-// isFileCompareOp returns true for binary file comparison operators (R1.2).
-func isFileCompareOp(op string) bool {
-	return op == "-nt" || op == "-ot" || op == "-ef"
-}
-
-// fileTest evaluates a unary file test operator (R1.1).
-func fileTest(op, path string) (bool, error) {
+// evalFileUnary evaluates unary file test operators.
+// R1.1: file test operators.
+func evalFileUnary(op, path string) (bool, error) {
 	if op == "-t" {
-		return terminalTest(path)
+		return evalTerminal(path)
 	}
-	info, err := fileStat(op, path)
-	if err != nil {
-		return false, nil
-	}
-	return evalFileMode(op, info)
+	return evalFileTest(op, path), nil
 }
 
-// terminalTest checks if FD is a terminal (R1.1: -t FD).
-func terminalTest(fdStr string) (bool, error) {
+// evalTerminal checks if a file descriptor is a terminal.
+// R1.1: -t FD (terminal).
+func evalTerminal(fdStr string) (bool, error) {
 	fd, err := strconv.Atoi(fdStr)
 	if err != nil {
-		return false, nil
+		return false, fmt.Errorf("invalid integer '%s'", fdStr)
 	}
 	return sys.IsTerminal(uintptr(fd)), nil
 }
 
-// fileStat calls os.Lstat or os.Stat depending on the operator.
-func fileStat(op, path string) (os.FileInfo, error) {
-	if op == "-L" || op == "-h" {
-		return os.Lstat(path)
-	}
-	return os.Stat(path)
-}
-
-// evalFileMode evaluates file mode bits against the operator (R1.1).
-func evalFileMode(op string, info os.FileInfo) (bool, error) {
-	mode := info.Mode()
+// evalFileTest evaluates a file test operator against a path.
+func evalFileTest(op, path string) bool {
 	switch op {
 	case "-e":
-		return true, nil
+		return fileExists(path)
 	case "-f":
-		return mode.IsRegular(), nil
+		return isRegular(path)
 	case "-d":
-		return mode.IsDir(), nil
+		return isDir(path)
 	case "-s":
-		return info.Size() > 0, nil
+		return isNonEmpty(path)
 	case "-r":
-		return mode&0o444 != 0, nil
+		return isReadable(path)
 	case "-w":
-		return mode&0o222 != 0, nil
+		return isWritable(path)
 	case "-x":
-		return mode&0o111 != 0, nil
+		return isExecutable(path)
 	case "-L", "-h":
-		return mode&os.ModeSymlink != 0, nil
+		return isSymlink(path)
 	case "-b":
-		return mode&os.ModeDevice != 0 && mode&os.ModeCharDevice == 0, nil
+		return isBlockDev(path)
 	case "-c":
-		return mode&os.ModeCharDevice != 0, nil
+		return isCharDev(path)
 	case "-p":
-		return mode&os.ModeNamedPipe != 0, nil
+		return isNamedPipe(path)
 	case "-S":
-		return mode&os.ModeSocket != 0, nil
+		return isSocket(path)
 	case "-g":
-		return mode&os.ModeSetgid != 0, nil
+		return hasSetgid(path)
 	case "-u":
-		return mode&os.ModeSetuid != 0, nil
+		return hasSetuid(path)
 	case "-k":
-		return mode&os.ModeSticky != 0, nil
+		return hasSticky(path)
 	case "-G":
-		return evalOwnerGID(info)
+		return isGroupOwned(path)
 	case "-O":
-		return evalOwnerUID(info)
+		return isUserOwned(path)
+	default:
+		return false
 	}
-	return false, nil
 }
 
-// evalOwnerGID checks if the file is owned by the effective GID (R1.1: -G).
-func evalOwnerGID(info os.FileInfo) (bool, error) {
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return false, nil
-	}
-	return st.Gid == uint32(os.Getegid()), nil
+// R3.1: -e uses os.Stat (follows symlinks) per POSIX: true if path resolves
+// to an existing directory entry.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
-// evalOwnerUID checks if the file is owned by the effective UID (R1.1: -O).
-func evalOwnerUID(info os.FileInfo) (bool, error) {
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return false, nil
-	}
-	return st.Uid == uint32(os.Geteuid()), nil
+func isRegular(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode().IsRegular()
 }
 
-// stringTest evaluates a unary string test (R2.1).
-func stringTest(op, s string) (bool, error) {
-	switch op {
-	case "-z":
-		return len(s) == 0, nil
-	case "-n":
-		return len(s) > 0, nil
-	}
-	return false, fmt.Errorf("unknown operator '%s'", op)
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
 }
 
-// stringCompare evaluates a binary string comparison (R2.1, R2.2).
-// D3: byte-level comparison for LC_ALL=C semantics.
-func stringCompare(left, op, right string) (bool, error) {
-	switch op {
-	case "=":
-		return left == right, nil
-	case "!=":
-		return left != right, nil
-	case "<":
-		return left < right, nil
-	case ">":
-		return left > right, nil
-	}
-	return false, fmt.Errorf("unknown operator '%s'", op)
+func isNonEmpty(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Size() > 0
 }
 
-// integerCompare evaluates an integer comparison (R2.2).
-func integerCompare(left, op, right string) (bool, error) {
-	l, err := strconv.ParseInt(left, 10, 64)
-	if err != nil {
-		return false, fmt.Errorf("invalid integer '%s'", left)
-	}
-	r, err := strconv.ParseInt(right, 10, 64)
-	if err != nil {
-		return false, fmt.Errorf("invalid integer '%s'", right)
-	}
-	return evalIntOp(l, op, r)
+func isReadable(path string) bool {
+	return syscall.Access(path, accessRead) == nil
 }
 
-// evalIntOp compares two integers with the given operator (R2.2).
-func evalIntOp(l int64, op string, r int64) (bool, error) {
-	switch op {
-	case "-eq":
-		return l == r, nil
-	case "-ne":
-		return l != r, nil
-	case "-lt":
-		return l < r, nil
-	case "-le":
-		return l <= r, nil
-	case "-gt":
-		return l > r, nil
-	case "-ge":
-		return l >= r, nil
-	}
-	return false, fmt.Errorf("unknown operator '%s'", op)
+func isWritable(path string) bool {
+	return syscall.Access(path, accessWrite) == nil
 }
 
-// fileCompare evaluates binary file comparison operators (R1.2).
-func fileCompare(left, op, right string) (bool, error) {
+func isExecutable(path string) bool {
+	return syscall.Access(path, accessExecute) == nil
+}
+
+func isSymlink(path string) bool {
+	fi, err := os.Lstat(path)
+	return err == nil && fi.Mode()&os.ModeSymlink != 0
+}
+
+func isBlockDev(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode()&os.ModeDevice != 0 && fi.Mode()&os.ModeCharDevice == 0
+}
+
+func isCharDev(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+func isNamedPipe(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode()&os.ModeNamedPipe != 0
+}
+
+func isSocket(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode()&os.ModeSocket != 0
+}
+
+func hasSetgid(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode()&os.ModeSetgid != 0
+}
+
+func hasSetuid(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode()&os.ModeSetuid != 0
+}
+
+func hasSticky(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode()&os.ModeSticky != 0
+}
+
+func isGroupOwned(path string) bool {
+	fi, err := sys.Stat(path)
+	return err == nil && fi.Gid == uint32(os.Getegid())
+}
+
+func isUserOwned(path string) bool {
+	fi, err := sys.Stat(path)
+	return err == nil && fi.Uid == uint32(os.Geteuid())
+}
+
+// evalFileCompare evaluates file comparison operators.
+// R1.2: -nt (newer than), -ot (older than), -ef (same device and inode).
+func evalFileCompare(op, left, right string) (bool, error) {
 	switch op {
 	case "-nt":
-		return fileNewer(left, right)
+		return fileNewer(left, right), nil
 	case "-ot":
-		return fileOlder(left, right)
+		return fileNewer(right, left), nil
 	case "-ef":
-		return fileSameInode(left, right)
+		return sameFile(left, right), nil
+	default:
+		return false, fmt.Errorf("unknown file comparison '%s'", op)
 	}
-	return false, fmt.Errorf("unknown operator '%s'", op)
 }
 
-// fileNewer returns true if left is newer than right (R1.2: -nt).
-// If left doesn't exist, returns false. If right doesn't exist, returns true.
-func fileNewer(left, right string) (bool, error) {
-	li, err := os.Stat(left)
-	if err != nil {
-		return false, nil
+// fileNewer returns true if a is newer than b by modification time.
+func fileNewer(a, b string) bool {
+	aStat, aErr := modTime(a)
+	bStat, bErr := modTime(b)
+	if aErr != nil || bErr != nil {
+		return aErr == nil // a exists but b doesn't => a is newer
 	}
-	ri, err := os.Stat(right)
-	if err != nil {
-		return true, nil
-	}
-	return li.ModTime().After(ri.ModTime()), nil
+	return aStat.After(bStat)
 }
 
-// fileOlder returns true if left is older than right (R1.2: -ot).
-// If left doesn't exist and right does, returns true. Otherwise false.
-func fileOlder(left, right string) (bool, error) {
-	li, lerr := os.Stat(left)
-	ri, rerr := os.Stat(right)
-	if lerr != nil {
-		return rerr == nil, nil
+// modTime returns the modification time of a file.
+func modTime(path string) (time.Time, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, err
 	}
-	if rerr != nil {
-		return false, nil
-	}
-	return li.ModTime().Before(ri.ModTime()), nil
+	return fi.ModTime(), nil
 }
 
-// fileSameInode returns true if both files have same device and inode (R1.2: -ef).
-func fileSameInode(left, right string) (bool, error) {
-	li, err := os.Stat(left)
+// sameFile returns true if both paths refer to the same inode on the same device.
+func sameFile(a, b string) bool {
+	aInfo, err := sys.Stat(a)
 	if err != nil {
-		return false, nil
+		return false
 	}
-	ri, err := os.Stat(right)
+	bInfo, err := sys.Stat(b)
 	if err != nil {
-		return false, nil
+		return false
 	}
-	return os.SameFile(li, ri), nil
+	return aInfo.Dev == bInfo.Dev && aInfo.Ino == bInfo.Ino
 }

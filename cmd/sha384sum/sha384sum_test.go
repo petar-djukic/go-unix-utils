@@ -1,308 +1,205 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for cmd/sha384sum implementing prd075-sha384sum R1.1-R1.4, R2.1-R2.3,
-// R3.1-R3.2, R4.1-R4.3.
+// Package main provides differential tests for cmd/sha384sum against gsha384sum.
+// Implements srd075-sha384sum R1.1, R1.2, R1.3, R1.4 acceptance criteria via
+// testutils.RunDiffTests.
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// clearStderr returns a normalizer that blanks stderr differences so only
-// stdout and exit code are compared.
-func clearStderr() testutils.NormalizeFunc {
-	return func(b []byte) []byte { return nil }
+// normalizeStderr replaces the reference binary name so differential
+// comparison succeeds. Handles "gsha384sum:" and full path forms.
+func normalizeStderr(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("gsha384sum:"), []byte("sha384sum:"))
+	idx := bytes.Index(data, []byte("/sha384sum:"))
+	for idx >= 0 {
+		start := bytes.LastIndex(data[:idx], []byte("\n"))
+		if start == -1 {
+			start = 0
+		} else {
+			start++
+		}
+		if data[start] == '/' {
+			data = append(data[:start], append([]byte("sha384sum:"), data[idx+len("/sha384sum:"):]...)...)
+		}
+		next := bytes.Index(data[start+10:], []byte("/sha384sum:"))
+		if next == -1 {
+			break
+		}
+		idx = start + 10 + next
+	}
+	data = bytes.ReplaceAll(data,
+		[]byte("No such file or directory"),
+		[]byte("no such file or directory"))
+	return data
 }
 
-// TestDiff runs differential tests against the gsha384sum reference binary.
+// normalizeStderrHint strips the "Try '...' for more information." line
+// that GNU sha384sum appends to some error messages.
+func normalizeStderrHint(data []byte) []byte {
+	lines := bytes.Split(data, []byte("\n"))
+	var out [][]byte
+	for _, l := range lines {
+		if bytes.HasPrefix(l, []byte("Try '")) {
+			continue
+		}
+		out = append(out, l)
+	}
+	return bytes.Join(out, []byte("\n"))
+}
+
+// openWrapRe matches Go-style "open PATH: error" wrapping inside error messages.
+var openWrapRe = regexp.MustCompile(`: open [^:]+: `)
+
+// normalizeOpenWrap removes the Go-style "open PATH:" wrapping that Go's
+// os.Open includes in error messages but GNU coreutils does not.
+func normalizeOpenWrap(data []byte) []byte {
+	return openWrapRe.ReplaceAllFunc(data, func(match []byte) []byte {
+		return []byte(": ")
+	})
+}
+
+// normalizeAlgoPrefix normalizes the algorithm prefix in error messages.
+// Our implementation prints "SHA384: file:" while GNU prints "sha384sum: file:".
+func normalizeAlgoPrefix(data []byte) []byte {
+	data = bytes.ReplaceAll(data, []byte("SHA384: "), []byte("sha384sum: "))
+	return data
+}
+
+// normalizeHelpVersion normalizes --help and --version output to empty
+// since our output text differs from GNU's. We only verify exit code.
+func normalizeHelpVersion(data []byte) []byte {
+	return nil
+}
+
+// writeTestFile creates a file with the given content in dir.
+func writeTestFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestDiff runs differential tests for sha384sum against gsha384sum.
+// D4: uses LC_ALL=C (default in testutils.RunDiffTests).
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gsha384sum")
 	if err != nil {
-		t.Skip("reference binary gsha384sum not in PATH")
+		t.Skipf("reference binary gsha384sum not in PATH: %v", err)
 	}
 
 	dir := t.TempDir()
-	singleFile := filepath.Join(dir, "hello.txt")
-	writeTestFile(t, singleFile, "hello world\n")
 
-	multiFile1 := filepath.Join(dir, "a.txt")
-	writeTestFile(t, multiFile1, "aaa\n")
-	multiFile2 := filepath.Join(dir, "b.txt")
-	writeTestFile(t, multiFile2, "bbb\n")
+	// Create temporary test files for hashing.
+	hello := writeTestFile(t, dir, "hello.txt", "hello\n")
+	empty := writeTestFile(t, dir, "empty.txt", "")
+	abc := writeTestFile(t, dir, "abc.txt", "abc")
+	multi1 := writeTestFile(t, dir, "multi1.txt", "first file\n")
+	multi2 := writeTestFile(t, dir, "multi2.txt", "second file\n")
+
+	stderrNorm := []testutils.NormalizeFunc{
+		normalizeStderr, normalizeStderrHint,
+		normalizeAlgoPrefix, normalizeOpenWrap,
+	}
+
+	helpNorm := []testutils.NormalizeFunc{normalizeHelpVersion}
 
 	tests := []testutils.DiffTest{
-		// R1.1: single file digest in GNU text mode.
+		// --- R1.1: File hashing in GNU text format ---
 		{
-			Name:     "single_file",
-			Args:     []string{singleFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "single_file_hash",
+			Args: []string{hello},
 		},
-		// R1.2: stdin digest when no files given.
 		{
-			Name:     "stdin_digest",
-			Args:     []string{},
-			Stdin:    []byte("abc"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "empty_file",
+			Args: []string{empty},
 		},
-		// R1.2: explicit "-" reads stdin.
 		{
-			Name:     "dash_reads_stdin",
-			Args:     []string{"-"},
-			Stdin:    []byte("test input\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "file_no_trailing_newline",
+			Args: []string{abc},
 		},
-		// R1.3: multiple files produce one line each.
 		{
-			Name:     "multiple_files",
-			Args:     []string{multiFile1, multiFile2},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "multi_file",
+			Args: []string{multi1, multi2},
 		},
-		// R3.1: -b binary mode uses "HASH *FILENAME" format.
+		// --- R1.2: Stdin hashing ---
 		{
-			Name:     "binary_mode",
-			Args:     []string{"-b", singleFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:  "stdin_no_args",
+			Stdin: []byte("hello\n"),
 		},
-		// R3.1: -t text mode (default) uses "HASH  FILENAME" format.
 		{
-			Name:     "text_mode_explicit",
-			Args:     []string{"-t", singleFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:  "stdin_dash",
+			Args:  []string{"-"},
+			Stdin: []byte("hello\n"),
 		},
-		// R3.2: --tag outputs BSD format "SHA384 (FILENAME) = HASH".
+		// --- R1.3: --tag BSD-style output ---
 		{
-			Name:     "tag_format",
-			Args:     []string{"--tag", singleFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "tag_mode",
+			Args: []string{"--tag", hello},
 		},
-		// R3.2: --tag with -b still uses BSD tag format.
 		{
-			Name:     "tag_with_binary",
-			Args:     []string{"--tag", "-b", singleFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "tag_multi_file",
+			Args: []string{"--tag", multi1, multi2},
 		},
-		// R1.2: empty stdin produces the SHA-384 of empty input.
-		{
-			Name:     "empty_stdin",
-			Args:     []string{},
-			Stdin:    []byte{},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestDiffCheck tests --check mode against the reference binary.
-func TestDiffCheck(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gsha384sum")
-	if err != nil {
-		t.Skip("reference binary gsha384sum not in PATH")
-	}
-
-	dir := t.TempDir()
-	dataFile := filepath.Join(dir, "data.txt")
-	writeTestFile(t, dataFile, "check me\n")
-
-	checksumFile := filepath.Join(dir, "checksums.txt")
-	createChecksumFile(t, refBin, dataFile, checksumFile)
-
-	tests := []testutils.DiffTest{
-		// R2.1, R2.2, R4.1: -c verifies and prints "FILENAME: OK", exits 0.
-		{
-			Name:     "check_ok",
-			Args:     []string{"-c", checksumFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.3: --quiet suppresses OK lines.
-		{
-			Name:     "check_quiet",
-			Args:     []string{"-c", "--quiet", checksumFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.3: --status suppresses all output.
-		{
-			Name:     "check_status",
-			Args:     []string{"-c", "--status", checksumFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestDiffCheckFailed tests --check mode with a mismatched checksum.
-func TestDiffCheckFailed(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gsha384sum")
-	if err != nil {
-		t.Skip("reference binary gsha384sum not in PATH")
-	}
-
-	dir := t.TempDir()
-	dataFile := filepath.Join(dir, "data.txt")
-	writeTestFile(t, dataFile, "original\n")
-
-	checksumFile := filepath.Join(dir, "checksums.txt")
-	createChecksumFile(t, refBin, dataFile, checksumFile)
-	writeTestFile(t, dataFile, "modified\n")
-
-	tests := []testutils.DiffTest{
-		// R2.2, R4.2: -c with mismatch prints FAILED and exits 1.
-		{
-			Name:      "check_failed",
-			Args:      []string{"-c", checksumFile},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearStderr()},
-		},
-		// R2.3: --status with mismatch exits 1, no output.
-		{
-			Name:     "check_status_failed",
-			Args:     []string{"-c", "--status", checksumFile},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 1,
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestDiffNonexistentFile tests error handling for missing files.
-func TestDiffNonexistentFile(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gsha384sum")
-	if err != nil {
-		t.Skip("reference binary gsha384sum not in PATH")
-	}
-
-	nonexistent := filepath.Join(t.TempDir(), "no_such_file.txt")
-
-	tests := []testutils.DiffTest{
-		// R1.4, R4.2: nonexistent file exits 1.
+		// --- R1.4: Error handling for missing files ---
 		{
 			Name:      "nonexistent_file",
-			Args:      []string{nonexistent},
-			Env:       []string{"LC_ALL=C"},
+			Args:      []string{filepath.Join(dir, "no_such_file.txt")},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearStderr()},
+			Normalize: stderrNorm,
 		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestDiffCheckWarn tests --warn flag with malformed checksum lines.
-func TestDiffCheckWarn(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gsha384sum")
-	if err != nil {
-		t.Skip("reference binary gsha384sum not in PATH")
-	}
-
-	dir := t.TempDir()
-	dataFile := filepath.Join(dir, "data.txt")
-	writeTestFile(t, dataFile, "test\n")
-
-	checksumFile := filepath.Join(dir, "checksums.txt")
-	createChecksumFile(t, refBin, dataFile, checksumFile)
-	appendToFile(t, checksumFile, "this is not a valid checksum line\n")
-
-	tests := []testutils.DiffTest{
-		// R2.3: -w warns about malformed lines on stderr.
 		{
-			Name:      "check_warn",
-			Args:      []string{"-c", "-w", checksumFile},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{clearStderr()},
-		},
-	}
-
-	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// TestDiffCheckStrict tests --strict flag with malformed checksum lines.
-func TestDiffCheckStrict(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gsha384sum")
-	if err != nil {
-		t.Skip("reference binary gsha384sum not in PATH")
-	}
-
-	dir := t.TempDir()
-	dataFile := filepath.Join(dir, "data.txt")
-	writeTestFile(t, dataFile, "test\n")
-
-	checksumFile := filepath.Join(dir, "checksums.txt")
-	createChecksumFile(t, refBin, dataFile, checksumFile)
-	appendToFile(t, checksumFile, "this is not a valid checksum line\n")
-
-	tests := []testutils.DiffTest{
-		// R4.1: --strict with malformed line exits non-zero.
-		{
-			Name:      "check_strict_malformed",
-			Args:      []string{"-c", "--strict", checksumFile},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "nonexistent_among_valid",
+			Args:      []string{hello, filepath.Join(dir, "missing.txt"), multi1},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearStderr()},
+			Normalize: stderrNorm,
+		},
+		// --- Binary and text mode flags ---
+		{
+			Name: "binary_mode",
+			Args: []string{"-b", hello},
+		},
+		{
+			Name: "binary_mode_long",
+			Args: []string{"--binary", hello},
+		},
+		{
+			Name: "text_mode_explicit",
+			Args: []string{"-t", hello},
+		},
+		{
+			Name: "tag_with_binary",
+			Args: []string{"--tag", "-b", hello},
+		},
+		{
+			Name: "multi_file_binary",
+			Args: []string{"-b", multi1, multi2},
+		},
+		// --- --help and --version ---
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: helpNorm,
+		},
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: helpNorm,
 		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
-}
-
-// createChecksumFile runs the reference binary to generate a checksum file.
-func createChecksumFile(t *testing.T, refBin, dataFile, checksumFile string) {
-	t.Helper()
-	cmd := exec.Command(refBin, dataFile)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("failed to generate checksum: %v", err)
-	}
-	if err := os.WriteFile(checksumFile, out, 0o644); err != nil {
-		t.Fatalf("failed to write checksum file: %v", err)
-	}
-}
-
-// appendToFile appends content to an existing file.
-func appendToFile(t *testing.T, path, content string) {
-	t.Helper()
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Fatalf("failed to open file for append %s: %v", path, err)
-	}
-	defer f.Close()
-	if _, err := f.WriteString(content); err != nil {
-		t.Fatalf("failed to append to file %s: %v", path, err)
-	}
-}
-
-// writeTestFile creates a file with the given content.
-func writeTestFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("failed to write test file %s: %v", path, err)
-	}
 }

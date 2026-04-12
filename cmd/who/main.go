@@ -1,18 +1,16 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/who implements prd097-who R1.1-R1.4, R2.1-R2.4, R3.1-R3.3:
-// show who is logged on by reading the utmpx database.
-
+// Package main implements cmd/who: show who is logged on.
+// Implements srd097-who R1.1-R1.4: core utmpx reading and default output.
+// Implements srd097-who R2.1-R2.4: flags and display options.
+// Implements srd097-who R3.1-R3.3: error handling, version, and help.
 package main
 
 /*
 #include <utmpx.h>
-#include <stdlib.h>
 #include <unistd.h>
-
-// utmpxname is available on macOS but not declared in all header versions.
-extern int utmpxname(const char *);
+#include <stdlib.h>
 */
 import "C"
 
@@ -21,27 +19,17 @@ import (
 	"os"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// progName is the binary name used in error messages.
 const progName = "who"
 
-func main() {
-	// R3.3: handle SIGPIPE gracefully.
-	sys.InstallSIGPIPEHandler()
+// timeFormat matches GNU who output: "Jan _2 HH:MM".
+const timeFormat = "Jan _2 15:04"
 
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
-		os.Exit(1)
-	}
-}
-
-// utmpxEntry holds the fields extracted from a utmpx record.
-type utmpxEntry struct {
+// utmpEntry holds one session from the utmpx database.
+type utmpEntry struct {
 	user    string
 	line    string
 	time    time.Time
@@ -50,162 +38,53 @@ type utmpxEntry struct {
 	entType int
 }
 
-// options holds parsed command-line options for the who command.
+// options holds parsed command-line flags.
 type options struct {
-	utmpxFile string
-	amI       bool
-	heading   bool // R2.1: -H/--heading
-	showIdle  bool // R2.2: -u/--users
-	boot      bool // R2.3: -b/--boot
-	count     bool // R2.4: -q/--count
+	heading bool // R2.1: -H/--heading
+	users   bool // R2.2: -u/--users
+	boot    bool // R2.3: -b/--boot
+	count   bool // R2.4: -q/--count
+	version bool // R3.1: --version
+	help    bool // R3.2: --help
+	amI     bool // R1.3: "am i" two-argument form
 }
 
-// run parses arguments and prints who output.
-func run(args []string) error {
-	opts, err := parseArgs(args)
+func main() {
+	sys.InstallSIGPIPEHandler()
+
+	opts, err := parseArgs(os.Args[1:])
 	if err != nil {
-		return err
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
 	}
-	if opts.utmpxFile != "" {
-		setUtmpxFile(opts.utmpxFile)
+	if opts.version {
+		printVersion()
+		return
 	}
-	entries := readUtmpxEntries(opts)
-	printOutput(entries, opts)
-	return nil
+	if opts.help {
+		printUsage()
+		return
+	}
+
+	entries := readAllEntries()
+	if opts.amI {
+		entries = filterCurrentUser(entries)
+	}
+	displayEntries(entries, opts)
 }
 
-// parseArgs extracts options from command-line arguments.
-// R1.2: FILE argument detection.
-// R1.3: "am i" detection (any two non-option operands).
-// R2.1-R2.4: flag parsing for display options.
-func parseArgs(args []string) (options, error) {
-	var opts options
-	var operands []string
-	for i, arg := range args {
-		if arg == "--" {
-			operands = append(operands, args[i+1:]...)
-			break
-		}
-		if strings.HasPrefix(arg, "--") {
-			if err := applyLongFlag(&opts, arg); err != nil {
-				return opts, err
-			}
-			continue
-		}
-		if strings.HasPrefix(arg, "-") && arg != "-" {
-			if err := applyShortFlags(&opts, arg); err != nil {
-				return opts, err
-			}
-			continue
-		}
-		operands = append(operands, arg)
+// showUsers returns true when user-process entries should be printed.
+// When no entry-type flag is set, users are shown by default.
+// When -b is set alone, only boot entries are shown.
+func showUsers(opts options) bool {
+	if opts.users {
+		return true
 	}
-	return classifyOperands(opts, operands)
+	return !opts.boot
 }
 
-// applyLongFlag handles a single --flag argument.
-func applyLongFlag(opts *options, arg string) error {
-	switch arg {
-	case "--heading":
-		opts.heading = true
-	case "--users":
-		opts.showIdle = true
-	case "--boot":
-		opts.boot = true
-	case "--count":
-		opts.count = true
-	default:
-		return fmt.Errorf("unrecognized option '%s'", arg)
-	}
-	return nil
-}
-
-// applyShortFlags handles combined short flags like -Hbu.
-func applyShortFlags(opts *options, arg string) error {
-	for _, ch := range arg[1:] {
-		switch ch {
-		case 'H':
-			opts.heading = true
-		case 'u':
-			opts.showIdle = true
-		case 'b':
-			opts.boot = true
-		case 'q':
-			opts.count = true
-		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
-		}
-	}
-	return nil
-}
-
-// classifyOperands determines mode from positional arguments.
-func classifyOperands(opts options, operands []string) (options, error) {
-	switch len(operands) {
-	case 0:
-		// R1.1: default listing.
-	case 1:
-		// R1.2: single argument is a FILE.
-		opts.utmpxFile = operands[0]
-	case 2:
-		// R1.3: two non-option arguments triggers "am i" mode.
-		opts.amI = true
-	default:
-		return opts, fmt.Errorf("extra operand '%s'", operands[2])
-	}
-	return opts, nil
-}
-
-// setUtmpxFile sets the utmpx database file to read from.
-// R1.2: uses utmpxname(3) to override the default database path.
-func setUtmpxFile(path string) {
-	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
-	C.utmpxname(cpath)
-}
-
-// readUtmpxEntries reads entries from the utmpx database.
-// Collects USER_PROCESS entries, and BOOT_TIME entries when -b is set.
-func readUtmpxEntries(opts options) []utmpxEntry {
-	C.setutxent()
-	defer C.endutxent()
-	var entries []utmpxEntry
-	for {
-		entry := C.getutxent()
-		if entry == nil {
-			break
-		}
-		if shouldCollect(entry, opts) {
-			entries = append(entries, extractEntry(entry))
-		}
-	}
-	return entries
-}
-
-// shouldCollect returns true if the utmpx entry should be included.
-// When type flags (-b, -u) are given, only requested types are shown.
-// Default (no type flags) shows USER_PROCESS. Count mode always needs users.
-func shouldCollect(entry *C.struct_utmpx, opts options) bool {
-	if entry.ut_type == C.USER_PROCESS {
-		return opts.count || !opts.boot || opts.showIdle
-	}
-	return opts.boot && entry.ut_type == C.BOOT_TIME
-}
-
-// extractEntry converts a C utmpx entry to a Go utmpxEntry.
-func extractEntry(entry *C.struct_utmpx) utmpxEntry {
-	return utmpxEntry{
-		user:    C.GoString(&entry.ut_user[0]),
-		line:    C.GoString(&entry.ut_line[0]),
-		time:    time.Unix(int64(entry.ut_tv.tv_sec), 0),
-		host:    C.GoString(&entry.ut_host[0]),
-		pid:     int(entry.ut_pid),
-		entType: int(entry.ut_type),
-	}
-}
-
-// printOutput dispatches to the appropriate output mode.
-func printOutput(entries []utmpxEntry, opts options) {
+// displayEntries dispatches to the appropriate output mode.
+func displayEntries(entries []utmpEntry, opts options) {
 	if opts.count {
 		printCount(entries)
 		return
@@ -213,96 +92,197 @@ func printOutput(entries []utmpxEntry, opts options) {
 	if opts.heading {
 		printHeading(opts)
 	}
-	if opts.amI {
-		printAmI(entries, opts)
-	} else {
-		printEntries(entries, opts)
+	if opts.boot {
+		printBootEntry(entries)
+	}
+	if showUsers(opts) {
+		printUserEntries(entries, opts)
 	}
 }
 
-// printHeading prints a column header line.
-// R2.1: -H/--heading prints header matching GNU who format.
-// Type flags (-b, -u) add PID column; -u also adds IDLE column.
+// parseArgs parses command-line arguments into options.
+// Returns an error for unrecognized flags (R3.2).
+func parseArgs(args []string) (options, error) {
+	var opts options
+	var nonFlags []string
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			nonFlags = append(nonFlags, arg)
+			continue
+		}
+		if err := applyFlag(&opts, arg); err != nil {
+			return options{}, err
+		}
+	}
+	// R1.3: any two non-flag arguments trigger "am i" mode.
+	if len(nonFlags) >= 2 {
+		opts.amI = true
+	}
+	return opts, nil
+}
+
+// applyFlag sets the option corresponding to arg, or returns an error.
+func applyFlag(opts *options, arg string) error {
+	switch arg {
+	case "-H", "--heading":
+		opts.heading = true
+	case "-u", "--users":
+		opts.users = true
+	case "-b", "--boot":
+		opts.boot = true
+	case "-q", "--count":
+		opts.count = true
+	case "--version":
+		opts.version = true
+	case "--help":
+		opts.help = true
+	default:
+		return fmt.Errorf("%s: unrecognized option '%s'\nTry '%s --help' for more information.",
+			progName, arg, progName)
+	}
+	return nil
+}
+
+// printVersion prints version information to stdout and exits 0.
+// R3.1: matches GNU who --version output structure.
+func printVersion() {
+	fmt.Printf("%s (go-unix-utils) 0.1\n", progName)
+}
+
+// printUsage prints usage information to stdout.
+// R3.2: matches GNU who --help output structure.
+func printUsage() {
+	fmt.Printf("Usage: %s [OPTION]... [ FILE | ARG1 ARG2 ]\n", progName)
+	fmt.Println()
+	fmt.Println("Print information about users who are currently logged in.")
+	fmt.Println()
+	fmt.Println("  -b, --boot     time of last system boot")
+	fmt.Println("  -H, --heading  print line of column headings")
+	fmt.Println("  -q, --count    all login names and number of users logged on")
+	fmt.Println("  -u, --users    add user idle time")
+	fmt.Println("      --help     display this help and exit")
+	fmt.Println("      --version  output version information and exit")
+}
+
+// currentTTY returns the terminal name for stdin, stripped of "/dev/" prefix.
+// D1: used by "am i" form to identify the current session.
+func currentTTY() string {
+	name := C.ttyname(0)
+	if name == nil {
+		return ""
+	}
+	return strings.TrimPrefix(C.GoString(name), "/dev/")
+}
+
+// filterCurrentUser returns only the current user's session and boot entries.
+// D1: if stdin is not a terminal, returns nil (print nothing, exit 0).
+func filterCurrentUser(entries []utmpEntry) []utmpEntry {
+	tty := currentTTY()
+	if tty == "" {
+		return nil
+	}
+	var filtered []utmpEntry
+	for _, e := range entries {
+		if e.entType == C.BOOT_TIME {
+			filtered = append(filtered, e)
+			continue
+		}
+		if e.entType == C.USER_PROCESS && e.line == tty {
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered
+}
+
+// readAllEntries reads the utmpx database and returns all relevant entries.
+func readAllEntries() []utmpEntry {
+	C.setutxent()
+	defer C.endutxent()
+
+	var entries []utmpEntry
+	for {
+		entry := C.getutxent()
+		if entry == nil {
+			break
+		}
+		eType := int(entry.ut_type)
+		if eType != C.USER_PROCESS && eType != C.BOOT_TIME {
+			continue
+		}
+		entries = append(entries, extractEntry(entry, eType))
+	}
+	return entries
+}
+
+// extractEntry converts a C utmpx entry to a Go utmpEntry.
+func extractEntry(entry *C.struct_utmpx, eType int) utmpEntry {
+	return utmpEntry{
+		user:    C.GoString(&entry.ut_user[0]),
+		line:    C.GoString(&entry.ut_line[0]),
+		time:    time.Unix(int64(entry.ut_tv.tv_sec), 0),
+		host:    C.GoString(&entry.ut_host[0]),
+		pid:     int(entry.ut_pid),
+		entType: eType,
+	}
+}
+
+// printHeading prints a header line above the output.
+// R2.1: header shows NAME, LINE, TIME, and optionally IDLE, COMMENT.
 func printHeading(opts options) {
-	if opts.showIdle {
-		fmt.Println("NAME     LINE         TIME         IDLE          PID COMMENT")
-	} else if opts.boot {
-		fmt.Println("NAME     LINE         TIME                PID COMMENT")
+	if opts.users {
+		fmt.Printf("%-8s %-12s %-12s %-5s %12s %s\n",
+			"NAME", "LINE", "TIME", "IDLE", "PID", "COMMENT")
 	} else {
-		fmt.Println("NAME     LINE         TIME         COMMENT")
+		fmt.Printf("%-8s %-12s %-12s %s\n",
+			"NAME", "LINE", "TIME", "COMMENT")
 	}
 }
 
 // printCount prints login names and a count of logged-in users.
-// R2.4: -q/--count mode.
-func printCount(entries []utmpxEntry) {
-	var users []string
+// R2.4: -q overrides other display flags (D2).
+func printCount(entries []utmpEntry) {
+	var names []string
 	for _, e := range entries {
 		if e.entType == C.USER_PROCESS {
-			users = append(users, e.user)
+			names = append(names, e.user)
 		}
 	}
-	if len(users) > 0 {
-		fmt.Println(strings.Join(users, " "))
+	if len(names) > 0 {
+		fmt.Println(strings.Join(names, " "))
 	}
-	fmt.Printf("# users=%d\n", len(users))
+	fmt.Printf("# users=%d\n", len(names))
 }
 
-// printEntries prints all collected utmpx entries.
-func printEntries(entries []utmpxEntry, opts options) {
+// printBootEntry prints the last system boot time.
+// R2.3: reads the BOOT_TIME entry from the utmpx database.
+func printBootEntry(entries []utmpEntry) {
 	for _, e := range entries {
 		if e.entType == C.BOOT_TIME {
-			printBootLine(e)
-		} else {
-			printUserLine(e, opts)
-		}
-	}
-}
-
-// printAmI prints only the entry matching the current terminal.
-// R1.3: "who am i" prints the entry for the caller's terminal.
-func printAmI(entries []utmpxEntry, opts options) {
-	ttyName := currentTTY()
-	for _, e := range entries {
-		if e.line == ttyName {
-			printUserLine(e, opts)
+			timeStr := e.time.Format(timeFormat)
+			fmt.Printf("%-8s %-12s %s\n", "", "system boot", timeStr)
 			return
 		}
 	}
 }
 
-// currentTTY returns the terminal name for the current process,
-// stripped of the "/dev/" prefix to match utmpx ut_line values.
-func currentTTY() string {
-	name := C.ttyname(C.STDIN_FILENO)
-	if name == nil {
-		return ""
-	}
-	full := C.GoString(name)
-	return strings.TrimPrefix(full, "/dev/")
-}
-
-// printBootLine prints a boot time entry.
-// R2.3: -b/--boot shows the time of the last system boot.
-func printBootLine(e utmpxEntry) {
-	timeStr := e.time.Format("Jan _2 15:04")
-	fmt.Printf("         %-12s %s\n", "system boot", timeStr)
-}
-
-// printUserLine formats and prints a single user entry.
-func printUserLine(e utmpxEntry, opts options) {
-	timeStr := e.time.Format("Jan _2 15:04")
-	if opts.showIdle {
-		idle := getIdleStr(e.line)
-		printUserWithIdle(e, timeStr, idle)
-	} else {
-		printUserBasic(e, timeStr)
+// printUserEntries prints user session lines.
+func printUserEntries(entries []utmpEntry, opts options) {
+	for _, e := range entries {
+		if e.entType != C.USER_PROCESS {
+			continue
+		}
+		if opts.users {
+			printEntryWithIdle(e)
+		} else {
+			printEntry(e)
+		}
 	}
 }
 
-// printUserBasic prints a user line without idle time.
-// R1.1: format matches GNU who default: "%-8s %-12s %s".
-func printUserBasic(e utmpxEntry, timeStr string) {
+// printEntry prints one user session line in GNU who default format.
+// R1.1: format is NAME LINE TIME (HOST).
+func printEntry(e utmpEntry) {
+	timeStr := e.time.Format(timeFormat)
 	if e.host != "" {
 		fmt.Printf("%-8s %-12s %s (%s)\n", e.user, e.line, timeStr, e.host)
 	} else {
@@ -310,39 +290,38 @@ func printUserBasic(e utmpxEntry, timeStr string) {
 	}
 }
 
-// printUserWithIdle prints a user line with idle time and PID.
-// R2.2: -u/--users shows idle time for each user.
-func printUserWithIdle(e utmpxEntry, timeStr, idle string) {
+// printEntryWithIdle prints a user session line including idle time and PID.
+// R2.2: idle time as HH:MM, '.' for active, 'old' for > 24 hours.
+// Format matches GNU who -u: NAME LINE TIME IDLE PID (HOST).
+func printEntryWithIdle(e utmpEntry) {
+	timeStr := e.time.Format(timeFormat)
+	idle := idleString(e.line)
 	if e.host != "" {
-		fmt.Printf("%-8s %-12s %s %-7s%10d (%s)\n",
+		fmt.Printf("%-8s %-12s %s %-5s%12d (%s)\n",
 			e.user, e.line, timeStr, idle, e.pid, e.host)
 	} else {
-		fmt.Printf("%-8s %-12s %s %-7s%10d\n",
+		fmt.Printf("%-8s %-12s %s %-5s%12d\n",
 			e.user, e.line, timeStr, idle, e.pid)
 	}
 }
 
-// getIdleStr returns the idle time string for a terminal device.
-// R2.2: idle is "." for active, "old" for >24h, "HH:MM" otherwise.
-func getIdleStr(line string) string {
+// idleString computes the idle time string for a terminal device.
+// R2.2: '.' for < 1 minute, HH:MM for 1 min to 24 hours, 'old' for > 24 hours.
+func idleString(line string) string {
 	devPath := "/dev/" + line
-	info, err := sys.Stat(devPath)
+	info, err := os.Stat(devPath)
 	if err != nil {
 		return "  ?  "
 	}
-	return formatIdle(time.Since(info.AccessTime))
-}
-
-// formatIdle converts a duration to GNU who idle format string.
-func formatIdle(d time.Duration) string {
-	secs := int(d.Seconds())
-	if secs < 60 {
+	idle := time.Since(info.ModTime())
+	if idle < time.Minute {
 		return "  .  "
 	}
-	if secs >= 86400 {
+	const day = 24 * time.Hour
+	if idle >= day {
 		return " old "
 	}
-	hours := secs / 3600
-	mins := (secs % 3600) / 60
-	return fmt.Sprintf("%02d:%02d", hours, mins)
+	hours := int(idle.Hours())
+	minutes := int(idle.Minutes()) % 60
+	return fmt.Sprintf("%02d:%02d", hours, minutes)
 }

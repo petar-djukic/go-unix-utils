@@ -1,135 +1,134 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chronic implements moreutils chronic: run a command quietly unless it fails.
-//
-// Implements prd112-chronic R1.1, R1.2, R1.3, R2.1, R2.2, R2.3.
+// Package main implements cmd/chronic: run a command quietly unless it fails.
+// Implements srd112-chronic R1.1-R1.3, R2.1-R2.3.
 package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
 const progName = "chronic"
 
-// exitStderrTrigger is returned when -e triggers on stderr with exit 0.
-const exitStderrTrigger = 2
-
-// exitNotFound is returned when COMMAND cannot be found or executed (R2.2).
-const exitNotFound = 100
+// exitStderrTriggered is the exit code when -e triggers on stderr content.
+const exitStderrTriggered = 2
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run(os.Args[1:]))
 }
 
-// config holds parsed flag state.
-type config struct {
-	stderr  bool
-	verbose bool
-	args    []string
+// options holds parsed command-line flags.
+type options struct {
+	verbose bool // -v/--verbose: use labeled output format on display
+	stderr  bool // -e/--stderr: trigger output on stderr content even if exit 0
 }
 
-// parseArgs extracts flags and the command from arguments.
-func parseArgs(args []string) config {
-	c := config{}
-	i := 0
-	for i < len(args) {
-		switch args[i] {
-		case "-e":
-			c.stderr = true
-		case "-v":
-			c.verbose = true
-		default:
-			c.args = args[i:]
-			return c
-		}
-		i++
-	}
-	c.args = nil
-	return c
-}
-
-// run parses arguments and executes the chronic logic. Returns exit code.
+// run parses flags, validates arguments, and executes the command.
+// R1.1-R1.3: core chronic behavior.
 func run(args []string) int {
-	cfg := parseArgs(args)
-	if len(cfg.args) == 0 {
-		fmt.Fprintf(os.Stderr, "usage: %s COMMAND...\n", progName)
-		return 255
+	opts, cmdArgs, err := parseFlags(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		printUsage()
+		return 1
 	}
-	return executeCommand(cfg)
+	if len(cmdArgs) == 0 {
+		printUsage()
+		return 1
+	}
+	return executeCommand(cmdArgs, opts)
 }
 
-// executeCommand runs the command, capturing output and deciding whether to show it.
-// R1.1: suppress output on exit 0, show on non-zero.
-func executeCommand(cfg config) int {
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd := exec.Command(cfg.args[0], cfg.args[1:]...)
+// parseFlags extracts -v/--verbose and -e/--stderr flags from args.
+// Returns parsed options, remaining command args, and error for unknown flags.
+func parseFlags(args []string) (options, []string, error) {
+	var opts options
+	for i := range len(args) {
+		arg := args[i]
+		if arg == "--" {
+			return opts, args[i+1:], nil
+		}
+		if !strings.HasPrefix(arg, "-") {
+			return opts, args[i:], nil
+		}
+		switch arg {
+		case "-v", "--verbose":
+			opts.verbose = true
+		case "-e", "--stderr":
+			opts.stderr = true
+		default:
+			name := strings.TrimLeft(arg, "-")
+			return opts, nil, fmt.Errorf("Unknown option: %s", name)
+		}
+	}
+	return opts, nil, nil
+}
+
+// printUsage writes the usage message to stderr.
+func printUsage() {
+	fmt.Fprintln(os.Stderr, "Usage: chronic [-e] [-v] command ...")
+}
+
+// executeCommand runs the command and handles output suppression.
+// R1.1: suppress on success, replay on failure.
+// R1.2: -e triggers replay when stderr has content, exits 2.
+// R1.3: -v uses labeled format for output.
+// R2.1: exit with child's exit code.
+func executeCommand(cmdArgs []string, opts options) int {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	cmd.Stdin = os.Stdin
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	// R2.2: command not found or cannot be executed → print error, exit 100.
-	if isExecError(err) {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
-		return exitNotFound
-	}
-	exitCode := exitCodeFromErr(err)
+	exitCode := extractExitCode(err)
 
-	return handleOutput(cfg, exitCode, &stdoutBuf, &stderrBuf)
+	stderrTriggered := opts.stderr && stderr.Len() > 0 && exitCode == 0
+	if exitCode != 0 || stderrTriggered {
+		replayOutput(stdout.Bytes(), stderr.Bytes(), exitCode, opts)
+	}
+	if stderrTriggered {
+		return exitStderrTriggered
+	}
+	return exitCode
 }
 
-// handleOutput decides whether to show output and returns the exit code.
-func handleOutput(cfg config, exitCode int, stdout, stderr *bytes.Buffer) int {
-	if exitCode != 0 {
-		showOutput(cfg.verbose, exitCode, stdout, stderr)
-		return exitCode
+// replayOutput displays captured command output.
+// In verbose mode, uses labeled STDOUT:/STDERR:/RETVAL: format to stdout,
+// while writing captured stderr to actual stderr.
+// In normal mode, replays raw stdout and stderr to their respective streams.
+func replayOutput(stdout, stderr []byte, exitCode int, opts options) {
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "STDOUT:\n%s\nSTDERR:\n\nRETVAL: %d\n",
+			stdout, exitCode)
+		os.Stderr.Write(stderr)
+		return
 	}
-	// R1.2: -e triggers display when command wrote to stderr, even on exit 0.
-	if cfg.stderr && stderr.Len() > 0 {
-		showOutput(cfg.verbose, exitCode, stdout, stderr)
-		return exitStderrTrigger
-	}
-	return 0
+	os.Stdout.Write(stdout)
+	os.Stderr.Write(stderr)
 }
 
-// showOutput writes captured output to stdout/stderr.
-// R1.3: -v adds STDOUT/STDERR/RETVAL headers around the output.
-func showOutput(verbose bool, exitCode int, stdout, stderr *bytes.Buffer) {
-	if verbose {
-		fmt.Print("STDOUT:\n")
-	}
-	os.Stdout.Write(stdout.Bytes())
-	if verbose {
-		fmt.Print("\nSTDERR:\n")
-	}
-	os.Stdout.Sync() // best-effort flush before writing stderr
-	os.Stderr.Write(stderr.Bytes())
-	if verbose {
-		fmt.Fprintf(os.Stdout, "\nRETVAL: %d\n", exitCode)
-	}
-}
-
-// isExecError reports whether the error is an exec.Error (command not found).
-func isExecError(err error) bool {
-	_, ok := err.(*exec.Error)
-	return ok
-}
-
-// exitCodeFromErr extracts the exit code from a command result.
-// R2.1: propagates COMMAND exit status.
-func exitCodeFromErr(err error) int {
+// extractExitCode returns the child process exit code.
+// R2.1: propagate child exit code.
+// R2.2: return 100 when command cannot be found or executed.
+func extractExitCode(err error) int {
 	if err == nil {
 		return 0
 	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		return exitErr.ExitCode()
 	}
-	return exitNotFound
+	// R2.2: command not found or not executable.
+	fmt.Fprintf(os.Stderr, "%s: failed to run command: %v\n", progName, err)
+	return 100
 }

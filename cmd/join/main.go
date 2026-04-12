@@ -1,24 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/join implements GNU join: join lines of two files on a common field.
-//
-// Implements prd069-join R1.1 (default join on first field),
-// R1.2 (whitespace field separator, space output separator),
-// R1.3 (suppress unpairable lines by default),
-// R1.4 (stdin via '-'),
-// R2.1 (-1/-2 field selection),
-// R2.2 (-j combined field),
-// R2.3 (-o output format),
-// R2.4 (-t custom separator),
-// R3.1 (-a unpairable lines),
-// R3.2 (-v unpairable only),
-// R3.3 (-e empty field replacement),
-// R3.4 (--header),
-// R4.1 (exit 0 on success),
-// R4.2 (exit 1 on error),
-// R4.3 (differential testing),
-// R4.4 (--check-order, test coverage).
+// Package main implements cmd/join: join lines of two files on a common field.
+// Implements srd069-join R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -27,262 +12,361 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const programName = "join"
+// progName is used in diagnostic messages. D2: 'join: MESSAGE' format.
+const progName = "join"
 
-// sortError indicates unsorted input detected with --check-order. R4.2.
-type sortError struct {
-	msg string
+// version is the program version for --version output. R4.4.
+const version = "0.1"
+
+// config holds parsed command-line options from srd069-join.
+type config struct {
+	field1     int    // R2.1: -1 FIELD (1-based, default 1)
+	field2     int    // R2.1: -2 FIELD (1-based, default 1)
+	separator  string // R2.4: -t CHAR
+	outFormat  string // R2.3: -o FORMAT
+	empty      string // R3.3: -e STRING
+	unpairA    []int  // R3.1: -a FILENUM (1 or 2)
+	unpairV    []int  // R3.2: -v FILENUM (1 or 2)
+	header     bool   // R3.4: --header
+	checkOrder bool   // R4.3: --check-order
+	ignoreCase bool   // R4.2: -i/--ignore-case
+	files      []string
+	parseErr   bool
+	done       bool // set by --help or --version
 }
 
-func (e *sortError) Error() string { return e.msg }
-
-// outputSpec represents a single output field specifier.
+// outputSpec represents a single output field specifier from -o FORMAT.
+// R2.3: FILENUM.FIELDNUM or 0 for the join field.
 type outputSpec struct {
-	joinField bool // true when specifier is '0'
-	fileNum   int  // 1 or 2
-	fieldNum  int  // 1-based field number
+	fileNum  int // 0 = join field, 1 = file1, 2 = file2
+	fieldNum int // 1-based field index within the file
 }
 
-// joinConfig holds parsed flags for a join invocation.
-type joinConfig struct {
-	file1      string
-	file2      string
-	field1     int          // R2.1: 1-based join field for file 1 (default 1)
-	field2     int          // R2.1: 1-based join field for file 2 (default 1)
-	sep        string       // R2.4: field separator ("" means whitespace)
-	hasSep     bool         // R2.4: true when -t was specified
-	outputFmt  []outputSpec // R2.3: output format specifiers
-	hasOutFmt  bool         // R2.3: true when -o was specified
-	unpair1    bool         // R3.1: print unpairable lines from file 1
-	unpair2    bool         // R3.1: print unpairable lines from file 2
-	onlyUnpair bool         // R3.2: suppress paired lines (set when -v used)
-	empty      string       // R3.3: replacement for missing fields
-	hasEmpty   bool         // R3.3: true when -e was specified
-	header     bool         // R3.4: treat first line as header
-	checkOrder bool         // R4.4: verify input is sorted
+// lineScanner wraps bufio.Scanner with peek capability for merge-join.
+type lineScanner struct {
+	sc      *bufio.Scanner
+	line    string
+	lineNum int
+	valid   bool
 }
 
-// lineReader wraps a bufio.Scanner with field splitting for join operations.
-type lineReader struct {
-	scanner  *bufio.Scanner
-	fields   []string
-	rawLine  string
-	hasLine  bool
-	joinIdx  int    // 0-based index of join field
-	sep      string // field separator
-	hasSep   bool   // true when using explicit separator
-	filename string // filename for diagnostics
-	lineNum  int    // 1-based line number
-	sortErr  string // non-empty if unsorted input detected
+func newLineScanner(r io.Reader) *lineScanner {
+	return &lineScanner{sc: bufio.NewScanner(r)}
+}
+
+// advance reads the next line. Returns true if a line is available.
+func (ls *lineScanner) advance() bool {
+	ls.valid = ls.sc.Scan()
+	if ls.valid {
+		ls.line = ls.sc.Text()
+		ls.lineNum++
+	}
+	return ls.valid
+}
+
+// joiner holds state for the merge-join operation.
+type joiner struct {
+	cfg      *config
+	specs    []outputSpec
+	w        *bufio.Writer
+	prevKey  [2]string // previous join key per file
+	seenLine [2]bool   // whether at least one line has been read
+	warned   [2]bool   // whether unsorted warning was issued
+	orderErr bool      // set when --check-order violation found
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:]))
 }
 
-// run parses arguments, opens files, and performs the join.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	cfg, err := parseArgs(args)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
+// run executes the join logic and returns the exit code.
+// R4.1: returns 0 on success. R4.2: returns 1 on errors.
+func run(args []string) int {
+	cfg := parseArgs(args)
+	if cfg.done {
+		return 0
+	}
+	if cfg.parseErr {
 		return 1
 	}
-	return executeJoin(cfg, stdin, stdout, stderr)
+	if len(cfg.files) != 2 {
+		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
+		return 1
+	}
+	r1, closer1, err := openInput(cfg.files[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n",
+			progName, formatOpenError(err))
+		return 1
+	}
+	defer closer1()
+	r2, closer2, err := openInput(cfg.files[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n",
+			progName, formatOpenError(err))
+		return 1
+	}
+	defer closer2()
+	return executeJoin(&cfg, r1, r2, os.Stdout)
 }
 
-// executeJoin opens files and runs the join operation. R4.1, R4.2.
-func executeJoin(cfg joinConfig, stdin io.Reader, stdout, stderr io.Writer) int {
-	r1, c1, err := openFile(cfg.file1, stdin)
-	if err != nil {
-		printFileError(stderr, err)
-		return 1
-	}
-	if c1 != nil {
-		defer c1.Close() // best-effort close
-	}
-	r2, c2, err := openFile(cfg.file2, stdin)
-	if err != nil {
-		printFileError(stderr, err)
-		return 1
-	}
-	if c2 != nil {
-		defer c2.Close() // best-effort close
-	}
-	if err := joinFiles(r1, r2, stdout, cfg); err != nil {
-		var se *sortError
-		if errors.As(err, &se) {
-			fmt.Fprintf(stderr, "%s: %s\n", programName, se.msg)
-		} else {
-			fmt.Fprintf(stderr, "%s: write error: %v\n", programName, err)
+// formatOpenError formats os.Open errors to match GNU coreutils style.
+// GNU outputs: "join: <file>: No such file or directory".
+func formatOpenError(err error) string {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		msg := pe.Err.Error()
+		if len(msg) > 0 {
+			msg = strings.ToUpper(msg[:1]) + msg[1:]
 		}
+		return fmt.Sprintf("%s: %s", pe.Path, msg)
+	}
+	return err.Error()
+}
+
+// parseArgs extracts flags and file arguments from the command line.
+func parseArgs(args []string) config {
+	cfg := config{field1: 1, field2: 1}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			cfg.files = append(cfg.files, args[i+1:]...)
+			return cfg
+		}
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			cfg.files = append(cfg.files, arg)
+			continue
+		}
+		consumed := parseLongFlag(&cfg, args, i)
+		if cfg.done {
+			return cfg
+		}
+		if consumed > 0 {
+			i += consumed - 1
+			continue
+		}
+		consumed = parseShortFlags(&cfg, args, i)
+		if consumed > 0 {
+			i += consumed - 1
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "%s: unrecognized option '%s'\n",
+			progName, arg)
+		cfg.parseErr = true
+		return cfg
+	}
+	return cfg
+}
+
+// parseLongFlag handles --long-form flags. Returns args consumed (0=no match).
+func parseLongFlag(cfg *config, args []string, i int) int {
+	arg := args[i]
+	switch arg {
+	case "--header":
+		cfg.header = true
 		return 1
+	case "--check-order":
+		cfg.checkOrder = true
+		return 1
+	case "--ignore-case":
+		cfg.ignoreCase = true
+		return 1
+	case "--help":
+		printUsage()
+		cfg.done = true
+		return 1
+	case "--version":
+		printVersion()
+		cfg.done = true
+		return 1
+	}
+	// TODO: --nocheck-order is a non-goal in srd069-join (E6).
+	return parseLongValueFlag(cfg, args, i)
+}
+
+// parseLongValueFlag handles --flag=VALUE and --flag VALUE forms.
+func parseLongValueFlag(_ *config, args []string, i int) int {
+	arg := args[i]
+	if strings.HasPrefix(arg, "--") {
+		return 0
 	}
 	return 0
 }
 
-// parseArgs extracts flags and the two file operands.
-func parseArgs(args []string) (joinConfig, error) {
-	cfg := joinConfig{field1: 1, field2: 1}
-	var files []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			files = append(files, args[i+1:]...)
-			break
-		}
-		if arg == "-" || !strings.HasPrefix(arg, "-") {
-			files = append(files, arg)
-			continue
-		}
-		var err error
-		i, err = parseFlag(args, i, &cfg)
-		if err != nil {
-			return cfg, err
-		}
-	}
-	if len(files) < 2 {
-		return cfg, fmt.Errorf("missing operand")
-	}
-	if len(files) > 2 {
-		return cfg, fmt.Errorf("extra operand '%s'", files[2])
-	}
-	cfg.file1 = files[0]
-	cfg.file2 = files[1]
-	return cfg, nil
-}
-
-// parseFlag handles a single flag at position i, returning the new index.
-func parseFlag(args []string, i int, cfg *joinConfig) (int, error) {
+// parseShortFlags handles -x style flags.
+func parseShortFlags(cfg *config, args []string, i int) int {
 	arg := args[i]
-	switch {
-	case arg == "-1":
-		return parseFlagField(args, i, &cfg.field1)
-	case arg == "-2":
-		return parseFlagField(args, i, &cfg.field2)
-	case arg == "-j":
-		idx, err := parseFlagField(args, i, &cfg.field1)
-		if err != nil {
-			return idx, err
+	extra := 0
+	for j := 1; j < len(arg); j++ {
+		consumed := parseOneShort(cfg, arg[j], arg[j+1:],
+			args, i+1+extra)
+		if consumed == -1 {
+			return 0
 		}
-		cfg.field2 = cfg.field1
-		return idx, nil
-	case arg == "-t":
-		return parseFlagSep(args, i, cfg)
-	case arg == "-o":
-		return parseFlagOutput(args, i, cfg)
-	case arg == "-a":
-		return parseFlagFileNum(args, i, &cfg.unpair1, &cfg.unpair2)
-	case arg == "-v":
-		idx, err := parseFlagFileNum(args, i, &cfg.unpair1, &cfg.unpair2)
-		if err != nil {
-			return idx, err
-		}
-		cfg.onlyUnpair = true
-		return idx, nil
-	case arg == "-e":
-		return parseFlagEmpty(args, i, cfg)
-	case arg == "--header":
-		cfg.header = true
-		return i, nil
-	case arg == "--check-order":
-		// R4.4: enable sort-order verification.
-		cfg.checkOrder = true
-		return i, nil
-	default:
-		return i, fmt.Errorf("unrecognized option '%s'", arg)
-	}
-}
-
-// parseFlagField parses a field number argument for -1, -2, or -j.
-func parseFlagField(args []string, i int, target *int) (int, error) {
-	if i+1 >= len(args) {
-		return i, fmt.Errorf("option '%s' requires an argument", args[i])
-	}
-	n, err := strconv.Atoi(args[i+1])
-	if err != nil || n < 1 {
-		return i + 1, fmt.Errorf("invalid field number: '%s'", args[i+1])
-	}
-	*target = n
-	return i + 1, nil
-}
-
-// parseFlagSep parses the -t separator argument. R2.4.
-func parseFlagSep(args []string, i int, cfg *joinConfig) (int, error) {
-	if i+1 >= len(args) {
-		return i, fmt.Errorf("option '-t' requires an argument")
-	}
-	cfg.sep = args[i+1]
-	cfg.hasSep = true
-	return i + 1, nil
-}
-
-// parseFlagOutput parses the -o output format argument. R2.3.
-func parseFlagOutput(args []string, i int, cfg *joinConfig) (int, error) {
-	if i+1 >= len(args) {
-		return i, fmt.Errorf("option '-o' requires an argument")
-	}
-	i++
-	specs, err := parseOutputSpecs(args[i])
-	if err != nil {
-		return i, err
-	}
-	cfg.outputFmt = append(cfg.outputFmt, specs...)
-	cfg.hasOutFmt = true
-	// Consume additional space-separated specifiers (non-flag args).
-	for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-		specs, err = parseOutputSpecs(args[i+1])
-		if err != nil {
+		if consumed == restConsumed {
 			break
 		}
-		cfg.outputFmt = append(cfg.outputFmt, specs...)
-		i++
-	}
-	return i, nil
-}
-
-// parseFlagFileNum parses -a or -v FILENUM argument. R3.1, R3.2.
-func parseFlagFileNum(args []string, i int, flag1, flag2 *bool) (int, error) {
-	if i+1 >= len(args) {
-		return i, fmt.Errorf("option '%s' requires an argument", args[i])
-	}
-	switch args[i+1] {
-	case "1":
-		*flag1 = true
-	case "2":
-		*flag2 = true
-	default:
-		return i + 1, fmt.Errorf("invalid file number: '%s'", args[i+1])
-	}
-	return i + 1, nil
-}
-
-// parseFlagEmpty parses the -e STRING argument. R3.3.
-func parseFlagEmpty(args []string, i int, cfg *joinConfig) (int, error) {
-	if i+1 >= len(args) {
-		return i, fmt.Errorf("option '-e' requires an argument")
-	}
-	cfg.empty = args[i+1]
-	cfg.hasEmpty = true
-	return i + 1, nil
-}
-
-// parseOutputSpecs parses a comma-separated list of output specifiers.
-func parseOutputSpecs(s string) ([]outputSpec, error) {
-	parts := strings.Split(s, ",")
-	specs := make([]outputSpec, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
+		if consumed > 0 {
+			extra += consumed
+			break
 		}
-		spec, err := parseOneSpec(p)
+	}
+	return 1 + extra
+}
+
+// restConsumed signals that a value-consuming short flag used the rest
+// of the argument cluster.
+const restConsumed = -2
+
+// parseOneShort handles a single short flag character.
+func parseOneShort(cfg *config, ch byte, rest string, args []string, nextIdx int) int {
+	switch ch {
+	case '1':
+		return shortFieldFlag(&cfg.field1, rest, args, nextIdx)
+	case '2':
+		return shortFieldFlag(&cfg.field2, rest, args, nextIdx)
+	case 'j':
+		return shortJointField(cfg, rest, args, nextIdx)
+	case 't':
+		return shortStringFlag(&cfg.separator, rest, args, nextIdx)
+	case 'o':
+		return shortStringFlag(&cfg.outFormat, rest, args, nextIdx)
+	case 'e':
+		return shortStringFlag(&cfg.empty, rest, args, nextIdx)
+	case 'a':
+		return shortFileNumFlag(&cfg.unpairA, rest, args, nextIdx)
+	case 'v':
+		return shortFileNumFlag(&cfg.unpairV, rest, args, nextIdx)
+	case 'i':
+		cfg.ignoreCase = true
+		return 0
+	default:
+		return -1
+	}
+}
+
+// shortFieldFlag parses a field number for -1 or -2 flags.
+func shortFieldFlag(dst *int, rest string, args []string, nextIdx int) int {
+	val, consumed := extractValue(rest, args, nextIdx)
+	if consumed == -1 {
+		return -1
+	}
+	n, err := strconv.Atoi(val)
+	if err != nil || n < 1 {
+		fmt.Fprintf(os.Stderr, "%s: invalid field number: '%s'\n",
+			progName, val)
+		return -1
+	}
+	*dst = n
+	return consumed
+}
+
+// shortJointField sets both field1 and field2 for the -j flag.
+func shortJointField(cfg *config, rest string, args []string, nextIdx int) int {
+	val, consumed := extractValue(rest, args, nextIdx)
+	if consumed == -1 {
+		return -1
+	}
+	n, err := strconv.Atoi(val)
+	if err != nil || n < 1 {
+		fmt.Fprintf(os.Stderr, "%s: invalid field number: '%s'\n",
+			progName, val)
+		return -1
+	}
+	cfg.field1 = n
+	cfg.field2 = n
+	return consumed
+}
+
+// shortStringFlag extracts a string value for flags like -t, -o, -e.
+func shortStringFlag(dst *string, rest string, args []string, nextIdx int) int {
+	val, consumed := extractValue(rest, args, nextIdx)
+	if consumed == -1 {
+		return -1
+	}
+	*dst = val
+	return consumed
+}
+
+// shortFileNumFlag parses a FILENUM (1 or 2) for -a or -v flags.
+func shortFileNumFlag(dst *[]int, rest string, args []string, nextIdx int) int {
+	val, consumed := extractValue(rest, args, nextIdx)
+	if consumed == -1 {
+		return -1
+	}
+	n, err := strconv.Atoi(val)
+	if err != nil || (n != 1 && n != 2) {
+		fmt.Fprintf(os.Stderr, "%s: invalid file number: '%s'\n",
+			progName, val)
+		return -1
+	}
+	*dst = append(*dst, n)
+	return consumed
+}
+
+// extractValue returns the value for a short flag. Uses rest if non-empty,
+// otherwise the next arg. Returns the value and consumed count.
+func extractValue(rest string, args []string, nextIdx int) (string, int) {
+	if rest != "" {
+		return rest, restConsumed
+	}
+	if nextIdx < len(args) {
+		return args[nextIdx], 1
+	}
+	return "", -1
+}
+
+// openInput opens a file for reading, or returns stdin for "-".
+// R1.4: when the file argument is '-', read from stdin.
+func openInput(name string) (io.Reader, func(), error) {
+	if name == "-" {
+		return os.Stdin, func() {}, nil
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	return f, func() { f.Close() }, nil
+}
+
+// splitFields splits a line into fields using the configured separator.
+// R1.2: default separator is runs of whitespace. R2.4: -t CHAR uses CHAR.
+func splitFields(line string, sep string) []string {
+	if sep != "" {
+		return strings.Split(line, sep)
+	}
+	return strings.Fields(line)
+}
+
+// getField returns the 1-based field from a slice of fields.
+// Returns empty string if the field index is out of range.
+func getField(fields []string, fieldNum int) string {
+	if fieldNum < 1 || fieldNum > len(fields) {
+		return ""
+	}
+	return fields[fieldNum-1]
+}
+
+// parseOutputFormat parses the -o FORMAT string into output specs.
+// R2.3: FORMAT is comma-separated or space-separated FILENUM.FIELDNUM
+// specifiers, or '0' for the join field.
+func parseOutputFormat(format string) ([]outputSpec, error) {
+	if format == "" {
+		return nil, nil
+	}
+	normalized := strings.ReplaceAll(format, ",", " ")
+	tokens := strings.Fields(normalized)
+	specs := make([]outputSpec, 0, len(tokens))
+	for _, tok := range tokens {
+		spec, err := parseOneSpec(tok)
 		if err != nil {
 			return nil, err
 		}
@@ -291,385 +375,337 @@ func parseOutputSpecs(s string) ([]outputSpec, error) {
 	return specs, nil
 }
 
-// parseOneSpec parses a single FILENUM.FIELDNUM or '0' specifier.
-func parseOneSpec(s string) (outputSpec, error) {
-	if s == "0" {
-		return outputSpec{joinField: true}, nil
+// parseOneSpec parses a single output specifier token.
+func parseOneSpec(tok string) (outputSpec, error) {
+	if tok == "0" {
+		return outputSpec{fileNum: 0, fieldNum: 0}, nil
 	}
-	dotIdx := strings.IndexByte(s, '.')
-	if dotIdx < 0 {
-		return outputSpec{}, fmt.Errorf("invalid field spec: '%s'", s)
+	parts := strings.SplitN(tok, ".", 2)
+	if len(parts) != 2 {
+		return outputSpec{}, fmt.Errorf("invalid field spec: '%s'", tok)
 	}
-	fnum, err := strconv.Atoi(s[:dotIdx])
+	fnum, err := strconv.Atoi(parts[0])
 	if err != nil || (fnum != 1 && fnum != 2) {
-		return outputSpec{}, fmt.Errorf("invalid file number in spec: '%s'", s)
+		return outputSpec{}, fmt.Errorf("invalid file number in '%s'",
+			tok)
 	}
-	fdnum, err := strconv.Atoi(s[dotIdx+1:])
+	fdnum, err := strconv.Atoi(parts[1])
 	if err != nil || fdnum < 1 {
-		return outputSpec{}, fmt.Errorf("invalid field number in spec: '%s'", s)
+		return outputSpec{}, fmt.Errorf("invalid field number in '%s'",
+			tok)
 	}
 	return outputSpec{fileNum: fnum, fieldNum: fdnum}, nil
 }
 
-// openFile opens a file for reading. "-" means stdin. R1.4.
-func openFile(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
-	if name == "-" {
-		return stdin, nil, nil
-	}
-	f, err := os.Open(name)
+// executeJoin performs the join operation on two input readers.
+// R1.1: merge-join on sorted input. R1.3: unpaired lines suppressed.
+func executeJoin(cfg *config, r1, r2 io.Reader, w io.Writer) int {
+	specs, err := parseOutputFormat(cfg.outFormat)
 	if err != nil {
-		return nil, nil, err
+		fmt.Fprintf(os.Stderr, "%s: %v\n", progName, err)
+		return 1
 	}
-	return f, f, nil
+	bw := bufio.NewWriter(w)
+	j := &joiner{cfg: cfg, specs: specs, w: bw}
+	code := j.process(r1, r2)
+	if flushErr := bw.Flush(); flushErr != nil {
+		fmt.Fprintf(os.Stderr, "%s: write error: %v\n",
+			progName, flushErr)
+		return 1
+	}
+	return code
 }
 
-// printFileError writes a GNU-compatible file error message to stderr.
-func printFileError(stderr io.Writer, err error) {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
-		fmt.Fprintf(stderr, "%s: %s: %v\n", programName, pe.Path, pe.Err)
+// process runs the merge-join algorithm on two readers.
+func (j *joiner) process(r1, r2 io.Reader) int {
+	ls1 := newLineScanner(r1)
+	ls2 := newLineScanner(r2)
+	ls1.advance()
+	ls2.advance()
+	if j.cfg.header {
+		j.handleHeader(ls1, ls2)
+	}
+	j.mergeJoin(ls1, ls2)
+	if !j.orderErr {
+		j.drainUnpaired(ls1, 1)
+	}
+	if !j.orderErr {
+		j.drainUnpaired(ls2, 2)
+	}
+	if err := ls1.sc.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err)
+		return 1
+	}
+	if err := ls2.sc.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: read error: %v\n", progName, err)
+		return 1
+	}
+	if j.orderErr {
+		return 1
+	}
+	if j.warned[0] || j.warned[1] {
+		fmt.Fprintf(os.Stderr, "%s: input is not in sorted order\n",
+			progName)
+		return 1
+	}
+	return 0
+}
+
+// handleHeader joins the first line of each file regardless of order.
+// R3.4: --header treats first lines as headers.
+func (j *joiner) handleHeader(ls1, ls2 *lineScanner) {
+	if !ls1.valid || !ls2.valid {
 		return
 	}
-	fmt.Fprintf(stderr, "%s: %v\n", programName, err)
+	j.writePair(ls1.line, ls2.line)
+	ls1.advance()
+	ls2.advance()
 }
 
-// newLineReader creates a lineReader and reads the first line.
-func newLineReader(r io.Reader, joinIdx int, sep string, hasSep bool, filename string) *lineReader {
-	lr := &lineReader{
-		scanner:  bufio.NewScanner(r),
-		joinIdx:  joinIdx,
-		sep:      sep,
-		hasSep:   hasSep,
-		filename: filename,
-	}
-	lr.advance()
-	return lr
-}
-
-// advance reads the next line and splits it into fields.
-// R4.4: tracks previous key and detects unsorted input.
-func (lr *lineReader) advance() {
-	prevK := ""
-	if lr.hasLine {
-		prevK = lr.key()
-	}
-	lr.hasLine = lr.scanner.Scan()
-	if lr.hasLine {
-		lr.lineNum++
-		lr.rawLine = lr.scanner.Text()
-		lr.splitFields()
-		if prevK != "" && lr.sortErr == "" && lr.key() < prevK {
-			lr.sortErr = fmt.Sprintf("%s:%d: is not sorted: %s",
-				lr.filename, lr.lineNum, lr.rawLine)
+// mergeJoin performs the sorted merge-join loop.
+// R1.1: matches lines where join fields are equal.
+// R4.2: -i uses case-insensitive comparison via compareKeys.
+// R4.3: checks sort order and warns/errors as configured.
+func (j *joiner) mergeJoin(ls1, ls2 *lineScanner) {
+	for ls1.valid && ls2.valid {
+		key1 := j.joinKey(ls1.line, 1)
+		key2 := j.joinKey(ls2.line, 2)
+		if !j.checkOrder(1, key1, ls1) {
+			return
+		}
+		if !j.checkOrder(2, key2, ls2) {
+			return
+		}
+		cmp := j.compareKeys(key1, key2)
+		switch {
+		case cmp < 0:
+			j.printUnpaired(ls1.line, 1)
+			ls1.advance()
+		case cmp > 0:
+			j.printUnpaired(ls2.line, 2)
+			ls2.advance()
+		default:
+			j.processMatch(ls1, ls2, key1)
 		}
 	}
 }
 
-// splitFields splits the raw line into fields using the configured separator.
-func (lr *lineReader) splitFields() {
-	if lr.hasSep {
-		lr.fields = strings.Split(lr.rawLine, lr.sep)
-	} else {
-		lr.fields = strings.Fields(lr.rawLine)
+// processMatch handles matching join keys by collecting both groups
+// before writing output. This ensures order violations detected while
+// reading ahead in file1 prevent output for the current key.
+func (j *joiner) processMatch(ls1, ls2 *lineScanner, key string) {
+	group1 := j.collectGroup(ls1, 1, key)
+	group2 := j.collectGroup(ls2, 2, key)
+	if j.orderErr {
+		return
 	}
-}
-
-// key returns the join field value.
-func (lr *lineReader) key() string {
-	if lr.joinIdx >= len(lr.fields) {
-		return ""
+	if j.suppressPaired() {
+		return
 	}
-	return lr.fields[lr.joinIdx]
-}
-
-// checkSortErrors returns a sortError if either reader detected unsorted input.
-// R4.4: only active when --check-order is set.
-func checkSortErrors(lr1, lr2 *lineReader, cfg joinConfig) error {
-	if !cfg.checkOrder {
-		return nil
-	}
-	if lr1.sortErr != "" {
-		return &sortError{msg: lr1.sortErr}
-	}
-	if lr2.sortErr != "" {
-		return &sortError{msg: lr2.sortErr}
-	}
-	return nil
-}
-
-// joinFiles reads two sorted inputs and writes joined output.
-// R1.1, R1.2, R1.3, R2.1-R2.4, R3.1-R3.4, R4.4.
-func joinFiles(r1, r2 io.Reader, w io.Writer, cfg joinConfig) error {
-	lr1 := newLineReader(r1, cfg.field1-1, cfg.sep, cfg.hasSep, cfg.file1)
-	lr2 := newLineReader(r2, cfg.field2-1, cfg.sep, cfg.hasSep, cfg.file2)
-	bw := bufio.NewWriter(w)
-	// R3.4: handle header lines before main join loop.
-	if cfg.header {
-		if err := writeHeader(lr1, lr2, bw, cfg); err != nil {
-			bw.Flush() // best-effort flush
-			return err
+	for _, line1 := range group1 {
+		for _, line2 := range group2 {
+			j.writePair(line1, line2)
 		}
 	}
-	for lr1.hasLine && lr2.hasLine {
-		if err := joinStep(lr1, lr2, bw, cfg); err != nil {
-			bw.Flush() // best-effort flush
-			return err
-		}
-		if err := checkSortErrors(lr1, lr2, cfg); err != nil {
-			bw.Flush() // best-effort flush
-			return err
-		}
-	}
-	// R3.1/R3.2: drain remaining lines from either file.
-	if err := drainRemaining(lr1, lr2, bw, cfg); err != nil {
-		bw.Flush() // best-effort flush
-		return err
-	}
-	if err := checkSortErrors(lr1, lr2, cfg); err != nil {
-		bw.Flush() // best-effort flush
-		return err
-	}
-	if err := lr1.scanner.Err(); err != nil {
-		return err
-	}
-	if err := lr2.scanner.Err(); err != nil {
-		return err
-	}
-	return bw.Flush()
 }
 
-// writeHeader joins and prints the first line of each file as a header. R3.4.
-func writeHeader(lr1, lr2 *lineReader, bw *bufio.Writer, cfg joinConfig) error {
-	var f1, f2 []string
-	key := ""
-	if lr1.hasLine {
-		f1 = lr1.fields
-		key = lr1.key()
-		lr1.advance()
+// collectGroup gathers all consecutive lines with the same join key.
+// R4.3: checks order for the first line of the next group (read-ahead).
+func (j *joiner) collectGroup(ls *lineScanner, fileNum int, key string) []string {
+	var group []string
+	for ls.valid && j.compareKeys(j.joinKey(ls.line, fileNum), key) == 0 {
+		group = append(group, ls.line)
+		ls.advance()
 	}
-	if lr2.hasLine {
-		f2 = lr2.fields
-		if key == "" {
-			key = lr2.key()
-		}
-		lr2.advance()
-	}
-	// R3.4: header is not sorted data; clear any sort error from header comparison.
-	lr1.sortErr = ""
-	lr2.sortErr = ""
-	return writePair(bw, key, f1, f2, cfg)
-}
-
-// joinStep compares keys and dispatches to match or skip.
-func joinStep(lr1, lr2 *lineReader, bw *bufio.Writer, cfg joinConfig) error {
-	k1 := lr1.key()
-	k2 := lr2.key()
-	if k1 < k2 {
-		// R3.1: print unpairable from file 1 if requested.
-		if cfg.unpair1 {
-			if err := writeUnpairable(bw, lr1.fields, 1, cfg); err != nil {
-				return err
-			}
-		}
-		lr1.advance()
-		return nil
-	}
-	if k1 > k2 {
-		// R3.1: print unpairable from file 2 if requested.
-		if cfg.unpair2 {
-			if err := writeUnpairable(bw, lr2.fields, 2, cfg); err != nil {
-				return err
-			}
-		}
-		lr2.advance()
-		return nil
-	}
-	return processMatch(lr1, lr2, bw, cfg)
-}
-
-// processMatch handles matching keys by collecting both groups and pairing.
-// R4.4: collects groups before output so sort errors are detected early.
-func processMatch(lr1, lr2 *lineReader, bw *bufio.Writer, cfg joinConfig) error {
-	key := lr1.key()
-	group1 := collectGroup(lr1, key)
-	group2 := collectGroup(lr2, key)
-	// R4.4: check sort errors detected during group collection before output.
-	if err := checkSortErrors(lr1, lr2, cfg); err != nil {
-		return err
-	}
-	if cfg.onlyUnpair {
-		return nil
-	}
-	return writeGroupPairs(bw, key, group1, group2, cfg)
-}
-
-// writeGroupPairs outputs the cross product of two matching groups.
-func writeGroupPairs(bw *bufio.Writer, key string, group1, group2 [][]string, cfg joinConfig) error {
-	for _, f1 := range group1 {
-		for _, f2 := range group2 {
-			if err := writePair(bw, key, f1, f2, cfg); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// collectGroup gathers all consecutive lines with the given key from lr.
-func collectGroup(lr *lineReader, key string) [][]string {
-	var group [][]string
-	for lr.hasLine && lr.key() == key {
-		fields := make([]string, len(lr.fields))
-		copy(fields, lr.fields)
-		group = append(group, fields)
-		lr.advance()
+	if ls.valid {
+		nextKey := j.joinKey(ls.line, fileNum)
+		j.checkOrder(fileNum, nextKey, ls)
 	}
 	return group
 }
 
-// drainRemaining outputs remaining unpairable lines after the main loop.
-func drainRemaining(lr1, lr2 *lineReader, bw *bufio.Writer, cfg joinConfig) error {
-	if cfg.unpair1 {
-		for lr1.hasLine {
-			if err := writeUnpairable(bw, lr1.fields, 1, cfg); err != nil {
-				return err
-			}
-			lr1.advance()
-		}
-	}
-	if cfg.unpair2 {
-		for lr2.hasLine {
-			if err := writeUnpairable(bw, lr2.fields, 2, cfg); err != nil {
-				return err
-			}
-			lr2.advance()
-		}
-	}
-	return nil
-}
-
-// writeUnpairable writes an unpairable line with empty replacement. R3.1, R3.3.
-func writeUnpairable(bw *bufio.Writer, fields []string, fileNum int, cfg joinConfig) error {
-	sep := outputSep(cfg)
-	joinIdx := cfg.field1 - 1
+// joinKey extracts the join field value from a line for the given file.
+func (j *joiner) joinKey(line string, fileNum int) string {
+	fields := splitFields(line, j.cfg.separator)
+	idx := j.cfg.field1
 	if fileNum == 2 {
-		joinIdx = cfg.field2 - 1
+		idx = j.cfg.field2
 	}
-	key := ""
-	if joinIdx < len(fields) {
-		key = fields[joinIdx]
-	}
-	if cfg.hasOutFmt {
-		return writeUnpairFormatted(bw, key, fields, fileNum, cfg, sep)
-	}
-	// Default output: key followed by non-join fields.
-	parts := []string{key}
-	parts = appendNonJoinFields(parts, fields, joinIdx)
-	if _, err := bw.WriteString(strings.Join(parts, sep)); err != nil {
-		return err
-	}
-	return bw.WriteByte('\n')
+	return getField(fields, idx)
 }
 
-// writeUnpairFormatted writes formatted output for an unpairable line. R3.1, R3.3.
-func writeUnpairFormatted(bw *bufio.Writer, key string, fields []string, fileNum int, cfg joinConfig, sep string) error {
-	parts := make([]string, 0, len(cfg.outputFmt))
-	for _, spec := range cfg.outputFmt {
-		parts = append(parts, resolveUnpairSpec(spec, key, fields, fileNum, cfg))
+// compareKeys compares two join keys, respecting the -i flag.
+// D1: sort order checking uses the same comparison logic as join matching.
+func (j *joiner) compareKeys(a, b string) int {
+	if j.cfg.ignoreCase {
+		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
 	}
-	if _, err := bw.WriteString(strings.Join(parts, sep)); err != nil {
-		return err
-	}
-	return bw.WriteByte('\n')
+	return strings.Compare(a, b)
 }
 
-// resolveUnpairSpec resolves a spec for an unpairable line. R3.3.
-func resolveUnpairSpec(spec outputSpec, key string, fields []string, fileNum int, cfg joinConfig) string {
-	if spec.joinField {
-		return key
+// checkOrder verifies sort order for a file. Returns false if --check-order
+// violation requires stopping. D1: uses compareKeys for -i support.
+// R4.3: warns once per file in default mode; errors in --check-order mode.
+func (j *joiner) checkOrder(fileNum int, key string, ls *lineScanner) bool {
+	idx := fileNum - 1
+	if j.seenLine[idx] && !j.warned[idx] {
+		if j.compareKeys(key, j.prevKey[idx]) < 0 {
+			fmt.Fprintf(os.Stderr, "%s: %s:%d: is not sorted: %s\n",
+				progName, j.cfg.files[idx], ls.lineNum, ls.line)
+			j.warned[idx] = true
+			if j.cfg.checkOrder {
+				j.orderErr = true
+				return false
+			}
+		}
 	}
-	if spec.fileNum != fileNum {
-		return emptyVal(cfg)
-	}
-	idx := spec.fieldNum - 1
-	if idx < len(fields) {
-		return fields[idx]
-	}
-	return emptyVal(cfg)
+	j.seenLine[idx] = true
+	j.prevKey[idx] = key
+	return true
 }
 
-// emptyVal returns the -e replacement string or empty. R3.3.
-func emptyVal(cfg joinConfig) string {
-	if cfg.hasEmpty {
-		return cfg.empty
-	}
-	return ""
+// writePair outputs a single joined line from two matching input lines.
+// R1.3: output format is join field + remaining fields from both files.
+func (j *joiner) writePair(line1, line2 string) {
+	fields1 := splitFields(line1, j.cfg.separator)
+	fields2 := splitFields(line2, j.cfg.separator)
+	joinField := getField(fields1, j.cfg.field1)
+	out := formatOutputLine(j.cfg, joinField, fields1, fields2, j.specs)
+	fmt.Fprintln(j.w, out)
 }
 
-// outputSep returns the output field separator. R2.4.
-func outputSep(cfg joinConfig) string {
-	if cfg.hasSep {
-		return cfg.sep
+// printUnpaired outputs an unpaired line if -a or -v includes the file.
+// R1.3: suppressed by default (no -a or -v).
+func (j *joiner) printUnpaired(line string, fileNum int) {
+	if !j.shouldPrintUnpaired(fileNum) {
+		return
 	}
-	return " "
+	fields := splitFields(line, j.cfg.separator)
+	idx := j.cfg.field1
+	var fields1, fields2 []string
+	if fileNum == 1 {
+		fields1 = fields
+	} else {
+		fields2 = fields
+		idx = j.cfg.field2
+	}
+	joinField := getField(fields, idx)
+	out := formatOutputLine(j.cfg, joinField, fields1, fields2, j.specs)
+	fmt.Fprintln(j.w, out)
 }
 
-// writePair writes one joined output line. R1.2, R2.3, R2.4.
-func writePair(bw *bufio.Writer, key string, f1, f2 []string, cfg joinConfig) error {
-	sep := outputSep(cfg)
-	if cfg.hasOutFmt {
-		return writeFormatted(bw, key, f1, f2, cfg, sep)
+// drainUnpaired outputs remaining lines from a scanner as unpaired.
+// R4.3: checks sort order for remaining lines.
+func (j *joiner) drainUnpaired(ls *lineScanner, fileNum int) {
+	for ls.valid {
+		key := j.joinKey(ls.line, fileNum)
+		if !j.checkOrder(fileNum, key, ls) {
+			return
+		}
+		j.printUnpaired(ls.line, fileNum)
+		ls.advance()
 	}
-	return writeDefault(bw, key, f1, f2, cfg, sep)
 }
 
-// writeDefault writes the default output: join field, file1 rest, file2 rest.
-func writeDefault(bw *bufio.Writer, key string, f1, f2 []string, cfg joinConfig, sep string) error {
-	parts := []string{key}
-	parts = appendNonJoinFields(parts, f1, cfg.field1-1)
-	parts = appendNonJoinFields(parts, f2, cfg.field2-1)
-	if _, err := bw.WriteString(strings.Join(parts, sep)); err != nil {
-		return err
-	}
-	return bw.WriteByte('\n')
+// shouldPrintUnpaired checks if unpaired lines from fileNum should print.
+func (j *joiner) shouldPrintUnpaired(fileNum int) bool {
+	return slices.Contains(j.cfg.unpairA, fileNum) ||
+		slices.Contains(j.cfg.unpairV, fileNum)
 }
 
-// appendNonJoinFields appends all fields except the join field.
-func appendNonJoinFields(parts, fields []string, joinIdx int) []string {
-	for i, f := range fields {
-		if i != joinIdx {
+// suppressPaired returns true if -v mode suppresses paired output.
+func (j *joiner) suppressPaired() bool {
+	return len(j.cfg.unpairV) > 0
+}
+
+// formatOutputLine builds the output line for a joined pair.
+// R2.3: uses -o specs if set, otherwise default format.
+// R3.3: uses -e STRING for missing fields.
+func formatOutputLine(cfg *config, joinField string, fields1, fields2 []string, specs []outputSpec) string {
+	sep := " "
+	if cfg.separator != "" {
+		sep = cfg.separator
+	}
+	if len(specs) == 0 {
+		return formatDefaultLine(joinField, fields1, fields2,
+			cfg.field1, cfg.field2, sep)
+	}
+	return formatSpecLine(cfg, joinField, fields1, fields2, specs, sep)
+}
+
+// formatDefaultLine produces the default output: join field, then
+// remaining fields from file1 and file2.
+func formatDefaultLine(joinField string, fields1, fields2 []string, jf1, jf2 int, sep string) string {
+	var parts []string
+	parts = append(parts, joinField)
+	for i, f := range fields1 {
+		if i+1 != jf1 {
 			parts = append(parts, f)
 		}
 	}
-	return parts
+	for i, f := range fields2 {
+		if i+1 != jf2 {
+			parts = append(parts, f)
+		}
+	}
+	return strings.Join(parts, sep)
 }
 
-// writeFormatted writes output using -o format specifiers. R2.3.
-func writeFormatted(bw *bufio.Writer, key string, f1, f2 []string, cfg joinConfig, sep string) error {
-	parts := make([]string, 0, len(cfg.outputFmt))
-	for _, spec := range cfg.outputFmt {
-		parts = append(parts, resolveSpec(spec, key, f1, f2, cfg))
+// formatSpecLine produces output according to -o specs.
+func formatSpecLine(cfg *config, joinField string, fields1, fields2 []string, specs []outputSpec, sep string) string {
+	parts := make([]string, 0, len(specs))
+	for _, s := range specs {
+		parts = append(parts, resolveSpec(cfg, s, joinField,
+			fields1, fields2))
 	}
-	if _, err := bw.WriteString(strings.Join(parts, sep)); err != nil {
-		return err
-	}
-	return bw.WriteByte('\n')
+	return strings.Join(parts, sep)
 }
 
-// resolveSpec resolves a single output specifier to a field value. R3.3.
-func resolveSpec(spec outputSpec, key string, f1, f2 []string, cfg joinConfig) string {
-	if spec.joinField {
-		return key
+// resolveSpec resolves a single output spec to a field value.
+func resolveSpec(cfg *config, s outputSpec, joinField string, fields1, fields2 []string) string {
+	switch s.fileNum {
+	case 0:
+		return joinField
+	case 1:
+		return fieldOrEmpty(fields1, s.fieldNum, cfg.empty)
+	case 2:
+		return fieldOrEmpty(fields2, s.fieldNum, cfg.empty)
+	default:
+		return ""
 	}
-	var fields []string
-	if spec.fileNum == 1 {
-		fields = f1
-	} else {
-		fields = f2
+}
+
+// fieldOrEmpty returns the field value or the replacement string.
+func fieldOrEmpty(fields []string, fieldNum int, empty string) string {
+	if fieldNum < 1 || fieldNum > len(fields) {
+		return empty
 	}
-	idx := spec.fieldNum - 1
-	if idx < len(fields) {
-		return fields[idx]
-	}
-	return emptyVal(cfg)
+	return fields[fieldNum-1]
+}
+
+// printUsage outputs usage information to stdout. R4.4: --help.
+func printUsage() {
+	fmt.Print(`Usage: join [OPTION]... FILE1 FILE2
+For each pair of input lines with identical join fields, write a line to
+standard output. The default join field is the first, delimited by blanks.
+
+  -a FILENUM        also print unpairable lines from file FILENUM
+  -e STRING         replace missing (empty) input fields with STRING
+  -i, --ignore-case ignore differences in case when comparing fields
+  -j FIELD          equivalent to '-1 FIELD -2 FIELD'
+  -o FORMAT         obey FORMAT while constructing output line
+  -t CHAR           use CHAR as input and output field separator
+  -v FILENUM        like -a FILENUM, but suppress joined output lines
+  -1 FIELD          join on this FIELD of file 1
+  -2 FIELD          join on this FIELD of file 2
+  --check-order     check that the input is correctly sorted
+  --header          treat the first line in each file as field headers
+  --help            display this help and exit
+  --version         output version information and exit
+`)
+}
+
+// printVersion outputs version information to stdout. R4.4: --version.
+func printVersion() {
+	fmt.Printf("%s (go-unix-utils) %s\n", progName, version)
 }

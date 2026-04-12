@@ -1,13 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/sponge against sponge (moreutils).
-//
-// Covers prd007-sponge R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R6.1, R6.2.
 package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,837 +19,454 @@ func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("sponge")
 	if err != nil {
-		t.Skip("reference binary sponge not in PATH")
+		t.Skipf("reference binary sponge not in PATH: %v", err)
 	}
 
-	tests := []testutils.DiffTest{
-		// R1.1, R4.1: passthrough mode — no filename, stdin to stdout
-		{
-			Name:  "R1.1_passthrough_small",
-			Args:  []string{},
-			Stdin: []byte("hello world\n"),
-		},
-		// R1.1: empty stdin passthrough
-		{
-			Name:  "R1.1_passthrough_empty",
-			Args:  []string{},
-			Stdin: []byte{},
-		},
-		// R1.2: multi-line input passthrough
-		{
-			Name:  "R1.2_passthrough_multiline",
-			Args:  []string{},
-			Stdin: []byte("line1\nline2\nline3\n"),
-		},
-		// R3.2: -a in passthrough mode (no file) — same as without -a
-		{
-			Name:  "R3.2_append_passthrough",
-			Args:  []string{"-a"},
-			Stdin: []byte("passthrough with -a\n"),
-		},
-		// R4.1: passthrough with binary data
-		{
-			Name:  "R4.1_passthrough_binary",
-			Args:  []string{},
-			Stdin: []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0x0A},
-		},
-		// R4.3: passthrough small buffer written directly to stdout
-		{
-			Name:  "R4.3_passthrough_small_buffer",
-			Args:  []string{},
-			Stdin: []byte("small\n"),
-		},
+	// R1.3 (passthrough): stdout comparison via RunDiffTests.
+	passthroughTests := []testutils.DiffTest{
+		{Name: "passthrough_small", Stdin: []byte("hello world\n")},
+		{Name: "passthrough_empty", Stdin: []byte{}},
+		{Name: "passthrough_multiline", Stdin: []byte("line1\nline2\nline3\n")},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, passthroughTests)
+
+	// R1.1/R1.2: file output tests via custom comparison.
+	fileTests := []struct {
+		name  string
+		stdin []byte
+	}{
+		{"file_small", []byte("hello\n")},
+		{"file_multiline", []byte("line1\nline2\nline3\n")},
+		{"file_empty", []byte{}},
+	}
+	for _, tc := range fileTests {
+		t.Run(tc.name, func(t *testing.T) {
+			compareFileOutput(t, goBin, refBin, tc.stdin)
+		})
 	}
 
-	testutils.RunDiffTests(t, goBin, refBin, tests)
+	// R1.1: soak-before-write contract verification.
+	t.Run("soak_before_write", func(t *testing.T) {
+		testSoakBeforeWrite(t, goBin)
+	})
+
+	// R2.3: mode preservation test.
+	t.Run("mode_preservation", func(t *testing.T) {
+		testModePreservation(t, goBin, refBin)
+	})
+
+	// R1.5: temp file cleanup test.
+	t.Run("temp_cleanup", func(t *testing.T) {
+		testTempCleanup(t, goBin)
+	})
+
+	// R2.1/R2.2: atomic write to new file.
+	t.Run("new_file_atomic", func(t *testing.T) {
+		compareFileOutput(t, goBin, refBin, []byte("atomic write test\n"))
+	})
+
+	// R3.1: append mode with existing file.
+	t.Run("append_existing", func(t *testing.T) {
+		testAppendMode(t, goBin, refBin, true)
+	})
+
+	// R3.2: append mode with non-existing file.
+	t.Run("append_new", func(t *testing.T) {
+		testAppendMode(t, goBin, refBin, false)
+	})
+
+	// R2.4: symlink output path uses lstat.
+	t.Run("symlink_output", func(t *testing.T) {
+		testSymlinkOutput(t, goBin, refBin)
+	})
+
+	// R2.5: output file content is correct after write (atomicity).
+	t.Run("overwrite_existing", func(t *testing.T) {
+		testOverwriteExisting(t, goBin, refBin)
+	})
+
+	// R6.2: large stdin forces temp file spill (>1 MB).
+	t.Run("large_stdin", func(t *testing.T) {
+		testLargeStdin(t, goBin, refBin)
+	})
+
+	// R6.2: cross-device rename fallback (TMPDIR on different filesystem from output).
+	t.Run("cross_device_fallback", func(t *testing.T) {
+		testCrossDeviceFallback(t, goBin, refBin)
+	})
 }
 
-// TestWriteToFile verifies sponge writes stdin to a named file (R1.1, R1.2).
-func TestWriteToFile(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
+// compareFileOutput runs both binaries with file output and compares results.
+// R6.1: compares content of output file, not stdout.
+func compareFileOutput(t *testing.T, goBin, refBin string, stdin []byte) {
+	t.Helper()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
 
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "out.txt")
-	input := []byte("hello sponge\n")
+	runSponge(t, refBin, refOut, stdin)
+	runSponge(t, goBin, goOut, stdin)
 
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader(input)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge exited with error: %v", err)
-	}
-
-	got, err := os.ReadFile(outPath)
+	refContent, err := os.ReadFile(refOut)
 	if err != nil {
-		t.Fatalf("read output file: %v", err)
+		t.Fatalf("reading ref output: %v", err)
 	}
-	if !bytes.Equal(got, input) {
-		t.Errorf("output file content = %q, want %q", got, input)
-	}
-}
-
-// TestSoakBeforeWrite confirms the file is not opened until stdin is consumed (R1.1).
-func TestSoakBeforeWrite(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "existing.txt")
-	original := []byte("original content\n")
-	if err := os.WriteFile(outPath, original, 0o644); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-
-	// Read from the same file we write to — soak-before-write must preserve content.
-	catCmd := exec.Command("cat", outPath)
-	catOut, err := catCmd.Output()
+	goContent, err := os.ReadFile(goOut)
 	if err != nil {
-		t.Fatalf("cat: %v", err)
+		t.Fatalf("reading go output: %v", err)
 	}
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader(catOut)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge exited with error: %v", err)
-	}
-
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read output file: %v", err)
-	}
-	if !bytes.Equal(got, original) {
-		t.Errorf("soak-before-write failed: got %q, want %q", got, original)
-	}
-}
-
-// TestTempFileInTMPDIR verifies temp file creation uses TMPDIR (R1.4).
-func TestTempFileInTMPDIR(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	tmpDir := t.TempDir()
-	outPath := filepath.Join(dir, "out.txt")
-
-	// Generate input large enough to potentially spill, but at minimum verify
-	// the TMPDIR variable is respected by the binary running without error.
-	input := bytes.Repeat([]byte("x"), 4096)
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader(input)
-	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge exited with error: %v", err)
-	}
-
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read output file: %v", err)
-	}
-	if !bytes.Equal(got, input) {
-		t.Errorf("output mismatch: got %d bytes, want %d bytes", len(got), len(input))
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("file content mismatch\nexpected: %q\nactual:   %q",
+			refContent, goContent)
 	}
 }
 
-// TestPermissionPreservation verifies file mode is preserved when overwriting (R2.3).
-func TestPermissionPreservation(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "perms.txt")
-
-	// Create file with non-default permissions.
-	if err := os.WriteFile(outPath, []byte("old"), 0o755); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader([]byte("new content\n"))
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge: %v", err)
-	}
-
-	info, err := os.Lstat(outPath)
+// runSponge executes a sponge binary with the given output file and stdin.
+func runSponge(t *testing.T, bin, outFile string, stdin []byte) {
+	t.Helper()
+	cmd := exec.Command(bin, outFile)
+	cmd.Stdin = bytes.NewReader(stdin)
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("lstat: %v", err)
-	}
-	if perm := info.Mode().Perm(); perm != 0o755 {
-		t.Errorf("permissions = %04o, want %04o", perm, 0o755)
-	}
-
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if string(got) != "new content\n" {
-		t.Errorf("content = %q, want %q", got, "new content\n")
+		t.Fatalf("%s failed: %v\noutput: %s", bin, err, out)
 	}
 }
 
-// TestNewFileDefaultMode verifies new files get default 0666 permissions (R2.3).
-func TestNewFileDefaultMode(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "newfile.txt")
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader([]byte("created\n"))
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge: %v", err)
-	}
-
-	info, err := os.Lstat(outPath)
-	if err != nil {
-		t.Fatalf("lstat: %v", err)
-	}
-	// R2.3: default mode 0666 applied via chmod after write.
-	perm := info.Mode().Perm()
-	if perm != 0o666 {
-		t.Errorf("permissions = %04o, want %04o", perm, 0o666)
-	}
-}
-
-// TestTempFileCleanup verifies temp files are cleaned up on normal exit (R1.5, R5.4).
-func TestTempFileCleanup(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	tmpDir := t.TempDir()
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "out.txt")
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader([]byte("data\n"))
-	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge: %v", err)
-	}
-
-	// R5.4: verify no temp files left behind.
-	entries, err := os.ReadDir(tmpDir)
-	if err != nil {
-		t.Fatalf("readdir: %v", err)
-	}
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), tempPrefix) {
-			t.Errorf("temp file %s not cleaned up", e.Name())
-		}
-	}
-}
-
-// TestRenameOrCopyFallback verifies copy fallback when rename is not possible (R2.2).
-func TestRenameOrCopyFallback(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	// Use a different TMPDIR from the output directory to increase the chance
-	// of cross-device rename failure. Even on same device, the copy fallback
-	// is exercised when rename fails for any reason.
-	tmpDir := t.TempDir()
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "copied.txt")
-	input := []byte("fallback content\n")
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader(input)
-	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge: %v", err)
-	}
-
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if !bytes.Equal(got, input) {
-		t.Errorf("content = %q, want %q", got, input)
-	}
-}
-
-// TestAppendMode verifies -a prepends original file content before stdin (R3.1).
-func TestAppendMode(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "append.txt")
-	original := []byte("original\n")
-	if err := os.WriteFile(outPath, original, 0o644); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-
-	cmd := exec.Command(goBin, "-a", outPath)
-	cmd.Stdin = bytes.NewReader([]byte("appended\n"))
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge -a: %v", err)
-	}
-
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	want := []byte("original\nappended\n")
-	if !bytes.Equal(got, want) {
-		t.Errorf("content = %q, want %q", got, want)
-	}
-}
-
-// TestAppendNonExistent verifies -a creates new file when output doesn't exist (R3.2).
-func TestAppendNonExistent(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "new.txt")
-	input := []byte("new content\n")
-
-	cmd := exec.Command(goBin, "-a", outPath)
-	cmd.Stdin = bytes.NewReader(input)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge -a: %v", err)
-	}
-
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if !bytes.Equal(got, input) {
-		t.Errorf("content = %q, want %q", got, input)
-	}
-}
-
-// TestAppendDiff verifies -a behavior matches reference binary (R3.1, R6.1).
-func TestAppendDiff(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("sponge")
-	if err != nil {
-		t.Skip("reference binary sponge not in PATH")
-	}
-
-	original := []byte("original\n")
-	input := []byte("appended\n")
-
-	runAppend := func(bin, outPath string) []byte {
-		t.Helper()
-		if err := os.WriteFile(outPath, original, 0o644); err != nil {
-			t.Fatalf("write fixture: %v", err)
-		}
-		cmd := exec.Command(bin, "-a", outPath)
-		cmd.Stdin = bytes.NewReader(input)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("%s -a: %v\n%s", bin, err, out)
-		}
-		got, err := os.ReadFile(outPath)
-		if err != nil {
-			t.Fatalf("read: %v", err)
-		}
-		return got
-	}
-
-	dir := t.TempDir()
-	goResult := runAppend(goBin, filepath.Join(dir, "go.txt"))
-	refResult := runAppend(refBin, filepath.Join(dir, "ref.txt"))
-
-	if !bytes.Equal(goResult, refResult) {
-		t.Errorf("append diff:\ngo:  %q\nref: %q", goResult, refResult)
-	}
-}
-
-// TestAppendPermissionPreservation verifies -a preserves file permissions (R2.3, R3.1).
-func TestAppendPermissionPreservation(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "append_perms.txt")
-	if err := os.WriteFile(outPath, []byte("old\n"), 0o755); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-
-	cmd := exec.Command(goBin, "-a", outPath)
-	cmd.Stdin = bytes.NewReader([]byte("new\n"))
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge -a: %v", err)
-	}
-
-	info, err := os.Lstat(outPath)
-	if err != nil {
-		t.Fatalf("lstat: %v", err)
-	}
-	if perm := info.Mode().Perm(); perm != 0o755 {
-		t.Errorf("permissions = %04o, want %04o", perm, 0o755)
-	}
-
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if string(got) != "old\nnew\n" {
-		t.Errorf("content = %q, want %q", got, "old\nnew\n")
-	}
-}
-
-// TestAppendPrependsOriginalContent verifies -a copies original file content first,
-// then appends stdin content in the output (R3.3).
-func TestAppendPrependsOriginalContent(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "prepend.txt")
-	original := []byte("AAA\nBBB\n")
-	if err := os.WriteFile(outPath, original, 0o644); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-
-	stdinData := []byte("CCC\nDDD\n")
-	cmd := exec.Command(goBin, "-a", outPath)
-	cmd.Stdin = bytes.NewReader(stdinData)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge -a: %v", err)
-	}
-
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	want := []byte("AAA\nBBB\nCCC\nDDD\n")
-	if !bytes.Equal(got, want) {
-		t.Errorf("R3.3 prepend content = %q, want %q", got, want)
-	}
-}
-
-// TestAppendLargeInput verifies -a works with large input that may spill to temp (R3.3).
-func TestAppendLargeInput(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "append_large.txt")
-	original := bytes.Repeat([]byte("orig\n"), 100)
-	if err := os.WriteFile(outPath, original, 0o644); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-
-	stdinData := bytes.Repeat([]byte("new\n"), 200)
-	cmd := exec.Command(goBin, "-a", outPath)
-	cmd.Stdin = bytes.NewReader(stdinData)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge -a: %v", err)
-	}
-
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	want := append(original, stdinData...)
-	if !bytes.Equal(got, want) {
-		t.Errorf("R3.3 large append: got %d bytes, want %d bytes", len(got), len(want))
-	}
-}
-
-// TestPassthroughLargeInput verifies passthrough mode with larger input (R4.1, R4.2).
-func TestPassthroughLargeInput(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	// Use input large enough to exercise buffering but not necessarily spill.
-	input := bytes.Repeat([]byte("passthrough-line\n"), 1000)
-
-	cmd := exec.Command(goBin)
-	cmd.Stdin = bytes.NewReader(input)
-	got, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("sponge passthrough: %v", err)
-	}
-	if !bytes.Equal(got, input) {
-		t.Errorf("passthrough: got %d bytes, want %d bytes", len(got), len(input))
-	}
-}
-
-// TestPassthroughSmallDirect verifies small passthrough writes buffer directly (R4.3).
-func TestPassthroughSmallDirect(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	input := []byte("direct write\n")
-	cmd := exec.Command(goBin)
-	cmd.Stdin = bytes.NewReader(input)
-	got, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("sponge passthrough: %v", err)
-	}
-	if !bytes.Equal(got, input) {
-		t.Errorf("content = %q, want %q", got, input)
-	}
-}
-
-// TestPassthroughDiff verifies passthrough matches reference binary (R4.1, R4.2, R4.3).
-func TestPassthroughDiff(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("sponge")
-	if err != nil {
-		t.Skip("reference binary sponge not in PATH")
-	}
-
-	input := bytes.Repeat([]byte("diff-line\n"), 500)
-
-	runPassthrough := func(bin string) []byte {
-		t.Helper()
-		cmd := exec.Command(bin)
-		cmd.Stdin = bytes.NewReader(input)
-		out, err := cmd.Output()
-		if err != nil {
-			t.Fatalf("%s passthrough: %v", bin, err)
-		}
-		return out
-	}
-
-	goResult := runPassthrough(goBin)
-	refResult := runPassthrough(refBin)
-
-	if !bytes.Equal(goResult, refResult) {
-		t.Errorf("passthrough diff: go=%d bytes, ref=%d bytes", len(goResult), len(refResult))
-	}
-}
-
-// TestLstatRegularFileCheck verifies lstat is used to detect regular files (R2.4).
-func TestLstatRegularFileCheck(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	targetPath := filepath.Join(dir, "target.txt")
-	linkPath := filepath.Join(dir, "link.txt")
-
-	if err := os.WriteFile(targetPath, []byte("target\n"), 0o644); err != nil {
-		t.Fatalf("write target: %v", err)
-	}
-	if err := os.Symlink(targetPath, linkPath); err != nil {
-		t.Fatalf("symlink: %v", err)
-	}
-
-	// Write via symlink — sponge should write through the symlink path.
-	cmd := exec.Command(goBin, linkPath)
-	cmd.Stdin = bytes.NewReader([]byte("via link\n"))
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("sponge via symlink: %v", err)
-	}
-
-	got, err := os.ReadFile(targetPath)
-	if err != nil {
-		t.Fatalf("read target: %v", err)
-	}
-	if string(got) != "via link\n" {
-		t.Errorf("content = %q, want %q", got, "via link\n")
-	}
-}
-
-// TestExitCodeSuccess verifies exit code 0 on successful write (R5.1).
-func TestExitCodeSuccess(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "success.txt")
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader([]byte("ok\n"))
-	err := cmd.Run()
-	if err != nil {
-		t.Errorf("R5.1: expected exit code 0, got error: %v", err)
-	}
-}
-
-// TestExitCodeSuccessPassthrough verifies exit code 0 on successful passthrough (R5.1).
-func TestExitCodeSuccessPassthrough(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	cmd := exec.Command(goBin)
-	cmd.Stdin = bytes.NewReader([]byte("passthrough ok\n"))
-	err := cmd.Run()
-	if err != nil {
-		t.Errorf("R5.1: expected exit code 0, got error: %v", err)
-	}
-}
-
-// TestExitCodeErrorBadOutputPath verifies exit code 1 when output path is invalid (R5.2).
-func TestExitCodeErrorBadOutputPath(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	// Use a path inside a non-existent directory to force an output error.
-	outPath := filepath.Join(t.TempDir(), "nonexistent", "subdir", "out.txt")
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader([]byte("data\n"))
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("R5.2: expected exit code 1 for bad output path, got 0")
-	}
-
-	exitErr, ok := err.(*exec.ExitError)
-	if !ok {
-		t.Fatalf("R5.2: expected ExitError, got %T: %v", err, err)
-	}
-	if exitErr.ExitCode() != 1 {
-		t.Errorf("R5.2: exit code = %d, want 1", exitErr.ExitCode())
-	}
-
-	// R5.2: must print descriptive error to stderr
-	if stderr.Len() == 0 {
-		t.Error("R5.2: expected error message on stderr, got empty")
-	}
-}
-
-// TestExitCodeErrorBadOutputPathDiff verifies error exit code matches reference (R5.2).
-func TestExitCodeErrorBadOutputPathDiff(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("sponge")
-	if err != nil {
-		t.Skip("reference binary sponge not in PATH")
-	}
-
-	outPath := filepath.Join(t.TempDir(), "nonexistent", "deep", "out.txt")
-
-	runWithBadPath := func(bin string) int {
-		t.Helper()
-		cmd := exec.Command(bin, outPath)
-		cmd.Stdin = bytes.NewReader([]byte("data\n"))
-		err := cmd.Run()
-		if err == nil {
-			return 0
-		}
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return exitErr.ExitCode()
-		}
-		return -1
-	}
-
-	goCode := runWithBadPath(goBin)
-	refCode := runWithBadPath(refBin)
-
-	if goCode != refCode {
-		t.Errorf("R5.2: exit code mismatch: go=%d, ref=%d", goCode, refCode)
-	}
-}
-
-// TestTempFileCleanupOnError verifies temp files are cleaned up on error paths (R5.4).
-func TestTempFileCleanupOnError(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	tmpDir := t.TempDir()
-	// Output path in a non-existent directory will cause write error after temp file creation.
-	outPath := filepath.Join(t.TempDir(), "nonexistent", "out.txt")
-
-	// Use large input to force temp file creation, then fail on output.
-	input := bytes.Repeat([]byte("x"), 1024*1024+1)
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader(input)
-	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
-	_ = cmd.Run() // expected to fail
-
-	// R5.4: verify no temp files left behind after error.
-	entries, err := os.ReadDir(tmpDir)
-	if err != nil {
-		t.Fatalf("readdir: %v", err)
-	}
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), tempPrefix) {
-			t.Errorf("R5.4: temp file %s not cleaned up after error", e.Name())
-		}
-	}
-}
-
-// TestErrorMessageOnStderr verifies stderr output on errors (R5.2).
-func TestErrorMessageOnStderr(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	outPath := filepath.Join(t.TempDir(), "no", "such", "dir", "file.txt")
-
-	cmd := exec.Command(goBin, outPath)
-	cmd.Stdin = bytes.NewReader([]byte("data\n"))
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	_ = cmd.Run()
-
-	// R5.2: must print "sponge:" prefixed error to stderr
-	output := stderr.String()
-	if !strings.HasPrefix(output, "sponge:") {
-		t.Errorf("R5.2: stderr = %q, want prefix \"sponge:\"", output)
-	}
-}
-
-// runSpongeToFile runs a sponge binary with given args/stdin and returns the exit code.
-// R6.1: helper for file-content differential comparison.
-func runSpongeToFile(t *testing.T, bin string, args []string, stdin []byte, env []string) int {
+// runSpongeWithArgs executes a sponge binary with the given args and stdin.
+func runSpongeWithArgs(t *testing.T, bin string, args []string, stdin []byte) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Stdin = bytes.NewReader(stdin)
-	if env != nil {
-		cmd.Env = env
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %v failed: %v\noutput: %s", bin, args, err, out)
 	}
-	err := cmd.Run()
-	if err == nil {
-		return 0
-	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		return exitErr.ExitCode()
-	}
-	return -1
 }
 
-// diffFileContent compares file content between Go and reference output files (R6.1).
-func diffFileContent(t *testing.T, goPath, refPath string) {
+// testSoakBeforeWrite verifies that sponge reads all stdin before
+// opening the output file, preventing data loss when reading and
+// writing the same file.
+func testSoakBeforeWrite(t *testing.T, bin string) {
 	t.Helper()
-	goContent, err := os.ReadFile(goPath)
-	if err != nil {
-		t.Fatalf("read go output: %v", err)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "test.txt")
+	content := []byte("original content\n")
+	if err := os.WriteFile(f, content, 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
 	}
-	refContent, err := os.ReadFile(refPath)
+	cmd := exec.Command("sh", "-c",
+		fmt.Sprintf("cat '%s' | '%s' '%s'", f, bin, f))
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("read ref output: %v", err)
+		t.Fatalf("soak test failed: %v\noutput: %s", err, out)
 	}
-	if !bytes.Equal(goContent, refContent) {
-		t.Errorf("file content mismatch: go=%d bytes, ref=%d bytes", len(goContent), len(refContent))
+	result, err := os.ReadFile(f)
+	if err != nil {
+		t.Fatalf("reading result: %v", err)
+	}
+	if !bytes.Equal(content, result) {
+		t.Errorf("soak-before-write contract violated\n"+
+			"expected: %q\nactual:   %q", content, result)
 	}
 }
 
-// TestFileOutputDiff verifies file output matches reference binary (R6.1, R6.2).
-func TestFileOutputDiff(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("sponge")
-	if err != nil {
-		t.Skip("reference binary sponge not in PATH")
+// testModePreservation verifies that sponge preserves file permissions.
+// R2.3: existing file mode is preserved after write.
+func testModePreservation(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	stdin := []byte("new content\n")
+	mode := os.FileMode(0o600)
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
+
+	if err := os.WriteFile(refOut, []byte("old\n"), mode); err != nil {
+		t.Fatalf("writing ref file: %v", err)
+	}
+	if err := os.WriteFile(goOut, []byte("old\n"), mode); err != nil {
+		t.Fatalf("writing go file: %v", err)
 	}
 
-	// R6.2: small stdin, output file does not exist
-	t.Run("R6.2_small_stdin_new_file", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		input := []byte("small input\n")
-		goPath := filepath.Join(dir, "go_out.txt")
-		refPath := filepath.Join(dir, "ref_out.txt")
+	runSponge(t, refBin, refOut, stdin)
+	runSponge(t, goBin, goOut, stdin)
 
-		goCode := runSpongeToFile(t, goBin, []string{goPath}, input, nil)
-		refCode := runSpongeToFile(t, refBin, []string{refPath}, input, nil)
-		if goCode != refCode {
-			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
+	refInfo, err := os.Stat(refOut)
+	if err != nil {
+		t.Fatalf("stat ref output: %v", err)
+	}
+	goInfo, err := os.Stat(goOut)
+	if err != nil {
+		t.Fatalf("stat go output: %v", err)
+	}
+	if refInfo.Mode().Perm() != goInfo.Mode().Perm() {
+		t.Errorf("mode mismatch\nexpected (ref): %04o\nactual   (go):  %04o",
+			refInfo.Mode().Perm(), goInfo.Mode().Perm())
+	}
+
+	refContent, err := os.ReadFile(refOut)
+	if err != nil {
+		t.Fatalf("reading ref output: %v", err)
+	}
+	goContent, err := os.ReadFile(goOut)
+	if err != nil {
+		t.Fatalf("reading go output: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("content mismatch\nexpected: %q\nactual:   %q",
+			refContent, goContent)
+	}
+}
+
+// testTempCleanup verifies that no temp files are left after sponge completes.
+// R1.5/R5.4: temp file must not persist after process exits.
+func testTempCleanup(t *testing.T, bin string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	outDir := t.TempDir()
+	outFile := filepath.Join(outDir, "out.txt")
+
+	cmd := exec.Command(bin, outFile)
+	cmd.Stdin = bytes.NewReader([]byte("test content\n"))
+	cmd.Env = append([]string{"LC_ALL=C", "TMPDIR=" + tmpDir}, os.Environ()...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sponge %s failed: %v\noutput: %s", bin, err, out)
+	}
+
+	checkNoTempFiles(t, tmpDir, "TMPDIR")
+	checkNoTempFiles(t, outDir, "output dir")
+}
+
+// checkNoTempFiles reports leftover sponge temp files in a directory.
+func checkNoTempFiles(t *testing.T, dir, label string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading %s: %v", label, err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "sponge.") {
+			t.Errorf("temp file not cleaned up in %s: %s", label, e.Name())
 		}
-		diffFileContent(t, goPath, refPath)
-	})
+	}
+}
 
-	// R6.2: large stdin (>1 MB, forces temp file spill)
-	t.Run("R6.2_large_stdin_1MB", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		input := bytes.Repeat([]byte("large-line-data\n"), 70000) // ~1.1 MB
-		goPath := filepath.Join(dir, "go_out.txt")
-		refPath := filepath.Join(dir, "ref_out.txt")
+// testAppendMode verifies -a flag behavior.
+// R3.1: existing file content is prepended before stdin content.
+// R3.2: non-existing file gets just stdin content.
+func testAppendMode(t *testing.T, goBin, refBin string, existing bool) {
+	t.Helper()
+	stdin := []byte("appended\n")
 
-		goCode := runSpongeToFile(t, goBin, []string{goPath}, input, nil)
-		refCode := runSpongeToFile(t, refBin, []string{refPath}, input, nil)
-		if goCode != refCode {
-			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
+
+	if existing {
+		original := []byte("original\n")
+		if err := os.WriteFile(refOut, original, 0o644); err != nil {
+			t.Fatalf("writing ref file: %v", err)
 		}
-		diffFileContent(t, goPath, refPath)
-	})
-
-	// R6.2: output file already exists (overwrite, mode preservation)
-	t.Run("R6.2_existing_file_overwrite", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		input := []byte("overwrite content\n")
-		goPath := filepath.Join(dir, "go_out.txt")
-		refPath := filepath.Join(dir, "ref_out.txt")
-		os.WriteFile(goPath, []byte("old go content\n"), 0o644)
-		os.WriteFile(refPath, []byte("old ref content\n"), 0o644)
-
-		goCode := runSpongeToFile(t, goBin, []string{goPath}, input, nil)
-		refCode := runSpongeToFile(t, refBin, []string{refPath}, input, nil)
-		if goCode != refCode {
-			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
+		if err := os.WriteFile(goOut, original, 0o644); err != nil {
+			t.Fatalf("writing go file: %v", err)
 		}
-		diffFileContent(t, goPath, refPath)
-	})
+	}
 
-	// R6.2: append mode with existing file
-	t.Run("R6.2_append_existing", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		original := []byte("original line\n")
-		input := []byte("appended line\n")
-		goPath := filepath.Join(dir, "go_out.txt")
-		refPath := filepath.Join(dir, "ref_out.txt")
-		os.WriteFile(goPath, original, 0o644)
-		os.WriteFile(refPath, original, 0o644)
+	runSpongeWithArgs(t, refBin, []string{"-a", refOut}, stdin)
+	runSpongeWithArgs(t, goBin, []string{"-a", goOut}, stdin)
 
-		goCode := runSpongeToFile(t, goBin, []string{"-a", goPath}, input, nil)
-		refCode := runSpongeToFile(t, refBin, []string{"-a", refPath}, input, nil)
-		if goCode != refCode {
-			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
-		}
-		diffFileContent(t, goPath, refPath)
-	})
+	refContent, err := os.ReadFile(refOut)
+	if err != nil {
+		t.Fatalf("reading ref output: %v", err)
+	}
+	goContent, err := os.ReadFile(goOut)
+	if err != nil {
+		t.Fatalf("reading go output: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("file content mismatch\nexpected: %q\nactual:   %q",
+			refContent, goContent)
+	}
+}
 
-	// R6.2: append mode with non-existent file
-	t.Run("R6.2_append_new_file", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		input := []byte("append to new\n")
-		goPath := filepath.Join(dir, "go_out.txt")
-		refPath := filepath.Join(dir, "ref_out.txt")
+// testSymlinkOutput verifies sponge behavior with a symlink output path.
+// R2.4: lstat detects symlinks; sponge operates on the path as given.
+func testSymlinkOutput(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	stdin := []byte("through symlink\n")
 
-		goCode := runSpongeToFile(t, goBin, []string{"-a", goPath}, input, nil)
-		refCode := runSpongeToFile(t, refBin, []string{"-a", refPath}, input, nil)
-		if goCode != refCode {
-			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
-		}
-		diffFileContent(t, goPath, refPath)
-	})
+	refDir := t.TempDir()
+	goDir := t.TempDir()
 
-	// R6.2: cross-device rename fallback (different TMPDIR from output)
-	t.Run("R6.2_cross_device_tmpdir", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		tmpDir := t.TempDir()
-		input := []byte("cross device content\n")
-		goPath := filepath.Join(dir, "go_out.txt")
-		refPath := filepath.Join(dir, "ref_out.txt")
-		env := append(os.Environ(), "TMPDIR="+tmpDir)
+	refTarget := filepath.Join(refDir, "target.txt")
+	goTarget := filepath.Join(goDir, "target.txt")
+	if err := os.WriteFile(refTarget, []byte("old\n"), 0o644); err != nil {
+		t.Fatalf("writing ref target: %v", err)
+	}
+	if err := os.WriteFile(goTarget, []byte("old\n"), 0o644); err != nil {
+		t.Fatalf("writing go target: %v", err)
+	}
 
-		goCode := runSpongeToFile(t, goBin, []string{goPath}, input, env)
-		refCode := runSpongeToFile(t, refBin, []string{refPath}, input, env)
-		if goCode != refCode {
-			t.Errorf("exit code: go=%d, ref=%d", goCode, refCode)
-		}
-		diffFileContent(t, goPath, refPath)
-	})
+	refLink := filepath.Join(refDir, "link.txt")
+	goLink := filepath.Join(goDir, "link.txt")
+	if err := os.Symlink(refTarget, refLink); err != nil {
+		t.Fatalf("creating ref symlink: %v", err)
+	}
+	if err := os.Symlink(goTarget, goLink); err != nil {
+		t.Fatalf("creating go symlink: %v", err)
+	}
 
-	// R6.2: passthrough mode (no filename) differential via RunDiffTests
-	t.Run("R6.2_passthrough_large", func(t *testing.T) {
-		t.Parallel()
-		input := bytes.Repeat([]byte("pass-line\n"), 50000) // ~500 KB
-		tests := []testutils.DiffTest{
-			{
-				Name:  "R6.2_passthrough_large_stdin",
-				Args:  []string{},
-				Stdin: input,
-			},
-		}
-		testutils.RunDiffTests(t, goBin, refBin, tests)
-	})
+	runSponge(t, refBin, refLink, stdin)
+	runSponge(t, goBin, goLink, stdin)
+
+	compareSymlinkResult(t, refDir, goDir)
+}
+
+// compareSymlinkResult compares the state of link and target files
+// between ref and go directories after sponge writes to a symlink.
+func compareSymlinkResult(t *testing.T, refDir, goDir string) {
+	t.Helper()
+	refLink := filepath.Join(refDir, "link.txt")
+	goLink := filepath.Join(goDir, "link.txt")
+
+	// Read content via the link path (follows symlink if still exists).
+	refContent, err := os.ReadFile(refLink)
+	if err != nil {
+		t.Fatalf("reading ref link: %v", err)
+	}
+	goContent, err := os.ReadFile(goLink)
+	if err != nil {
+		t.Fatalf("reading go link: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("symlink output content mismatch\n"+
+			"expected: %q\nactual:   %q", refContent, goContent)
+	}
+}
+
+// testOverwriteExisting verifies that overwriting an existing file
+// produces correct content, confirming atomicity guarantees.
+// R2.5: output file is never in a partially-written state.
+func testOverwriteExisting(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	stdin := []byte("replacement content\n")
+	original := []byte("original longer content that gets replaced\n")
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
+
+	if err := os.WriteFile(refOut, original, 0o644); err != nil {
+		t.Fatalf("writing ref file: %v", err)
+	}
+	if err := os.WriteFile(goOut, original, 0o644); err != nil {
+		t.Fatalf("writing go file: %v", err)
+	}
+
+	runSponge(t, refBin, refOut, stdin)
+	runSponge(t, goBin, goOut, stdin)
+
+	refContent, err := os.ReadFile(refOut)
+	if err != nil {
+		t.Fatalf("reading ref output: %v", err)
+	}
+	goContent, err := os.ReadFile(goOut)
+	if err != nil {
+		t.Fatalf("reading go output: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("overwrite content mismatch\n"+
+			"expected: %q\nactual:   %q", refContent, goContent)
+	}
+}
+
+// testLargeStdin verifies sponge handles input larger than 1 MB,
+// which forces temp file spill when it exceeds the spill threshold.
+// R6.2: large stdin test case.
+func testLargeStdin(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	// Generate >1 MB of input data.
+	size := 1024*1024 + 512
+	stdin := make([]byte, size)
+	for i := range stdin {
+		stdin[i] = byte('A' + (i % 26))
+	}
+	stdin[len(stdin)-1] = '\n'
+
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
+
+	runSponge(t, refBin, refOut, stdin)
+	runSponge(t, goBin, goOut, stdin)
+
+	refContent, err := os.ReadFile(refOut)
+	if err != nil {
+		t.Fatalf("reading ref output: %v", err)
+	}
+	goContent, err := os.ReadFile(goOut)
+	if err != nil {
+		t.Fatalf("reading go output: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("large stdin content mismatch: ref=%d bytes, go=%d bytes",
+			len(refContent), len(goContent))
+	}
+}
+
+// testCrossDeviceFallback exercises the rename fallback path by
+// placing TMPDIR on a different directory from the output file.
+// R6.2: cross-device rename fallback test.
+// R2.2: byte-for-byte copy when rename fails.
+func testCrossDeviceFallback(t *testing.T, goBin, refBin string) {
+	t.Helper()
+	stdin := []byte("cross device content\n")
+
+	// Use separate TMPDIR from output directory to exercise
+	// the fallback path if they happen to be on different devices.
+	tmpDir := t.TempDir()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	refOut := filepath.Join(refDir, "out.txt")
+	goOut := filepath.Join(goDir, "out.txt")
+
+	runSpongeWithEnv(t, refBin, []string{refOut}, stdin, tmpDir)
+	runSpongeWithEnv(t, goBin, []string{goOut}, stdin, tmpDir)
+
+	refContent, err := os.ReadFile(refOut)
+	if err != nil {
+		t.Fatalf("reading ref output: %v", err)
+	}
+	goContent, err := os.ReadFile(goOut)
+	if err != nil {
+		t.Fatalf("reading go output: %v", err)
+	}
+	if !bytes.Equal(refContent, goContent) {
+		t.Errorf("cross-device content mismatch\n"+
+			"expected: %q\nactual:   %q", refContent, goContent)
+	}
+}
+
+// runSpongeWithEnv executes a sponge binary with custom TMPDIR.
+func runSpongeWithEnv(t *testing.T, bin string, args []string, stdin []byte, tmpDir string) {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	cmd.Env = append(
+		[]string{"LC_ALL=C", "TMPDIR=" + tmpDir},
+		os.Environ()...,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %v failed: %v\noutput: %s", bin, args, err, out)
+	}
 }

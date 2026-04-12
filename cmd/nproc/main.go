@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/nproc prints the number of available processing units.
-// Implements prd046-nproc R1.1–R1.4, R2.1–R2.3, R3.1.
+// Package main implements cmd/nproc: print number of available processing units.
+// Implements srd046-nproc R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -15,84 +16,125 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// programName is the name used in error messages.
-const programName = "nproc"
+// progName is used in error messages.
+const progName = "nproc"
 
-// version is set at build time via -ldflags "-X main.version=<tag>".
-var version = "dev"
+// versionText is printed when --version is passed.
+const versionText = progName + " (go-unix-utils)"
+
+// helpText is the usage message printed when --help is passed.
+const helpText = `Usage: nproc [OPTION]...
+Print the number of processing units available to the current process,
+which may be less than the number of online processors.
+
+      --all      print the number of installed processors
+      --ignore=N  if possible, exclude N processing units
+      --help     display this help and exit
+      --version  output version information and exit
+`
+
+// usageError indicates an error that should include a "Try --help" hint.
+type usageError struct {
+	msg string
+}
+
+func (e *usageError) Error() string { return e.msg }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	allFlag, ignore, exit, done := parseArgs(os.Args[1:])
-	if done {
-		os.Exit(exit)
+	count, err := run(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		var ue *usageError
+		if errors.As(err, &ue) {
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		}
+		os.Exit(1)
 	}
 
-	count := cpuCount(allFlag)
-	count -= ignore
-	if count < 1 {
-		count = 1
-	}
 	fmt.Println(count)
 }
 
-// cpuCount returns the processor count.
-// R1.1: available count by default.
-// R1.2: --all returns installed count (same as available on Darwin).
-func cpuCount(_ bool) int {
-	return runtime.NumCPU()
-}
-
-// parseArgs processes command-line arguments for --all and --ignore=N.
-// Returns (allFlag, ignoreN, exitCode, shouldExit).
-func parseArgs(args []string) (bool, int, int, bool) {
+// run parses flags and computes the processor count.
+// R1.1: default prints available count.
+// R1.2: --ignore=N subtracts N, clamping to 1.
+// R1.3: --all prints installed count.
+// R1.4: --all and --ignore=N may be combined.
+// R2.1: positional operands produce an error.
+// R2.2: non-numeric --ignore produces an error.
+// R2.3: unknown flags produce an error.
+func run(args []string) (int, error) {
 	allFlag := false
-	ignore := 0
+	ignoreVal := 0
 
 	for _, arg := range args {
-		switch {
-		case arg == "--version":
-			fmt.Printf("%s (go-unix-utils) %s\n", programName, version)
-			return false, 0, 0, true
-		case arg == "--help":
-			printHelp()
-			return false, 0, 0, true
-		case arg == "--all":
-			allFlag = true
-		case arg == "--ignore":
-			fmt.Fprintf(os.Stderr,
-				"%s: option '--ignore' requires an argument\n", programName)
-			return false, 0, 1, true
-		case strings.HasPrefix(arg, "--ignore="):
-			val := arg[len("--ignore="):]
-			n, err := strconv.Atoi(val)
-			if err != nil {
-				fmt.Fprintf(os.Stderr,
-					"%s: invalid number: '%s'\n", programName, val)
-				return false, 0, 1, true
-			}
-			ignore = n
-		case strings.HasPrefix(arg, "-") && arg != "-":
-			fmt.Fprintf(os.Stderr,
-				"%s: unrecognized option '%s'\n", programName, arg)
-			return false, 0, 1, true
-		default:
-			fmt.Fprintf(os.Stderr,
-				"%s: extra operand '%s'\n", programName, arg)
-			return false, 0, 1, true
+		if arg == "--help" {
+			fmt.Print(helpText)
+			os.Exit(0)
 		}
+		if arg == "--version" {
+			fmt.Println(versionText)
+			os.Exit(0)
+		}
+		if arg == "--all" {
+			allFlag = true
+			continue
+		}
+		n, ok, err := parseIgnore(arg)
+		if err != nil {
+			return 0, err
+		}
+		if ok {
+			ignoreVal = n
+			continue
+		}
+		if strings.HasPrefix(arg, "--") || strings.HasPrefix(arg, "-") {
+			return 0, &usageError{msg: fmt.Sprintf("unrecognized option '%s'", arg)}
+		}
+		// R2.1: positional operands are rejected.
+		return 0, &usageError{msg: fmt.Sprintf("extra operand '%s'", arg)}
 	}
-	return allFlag, ignore, 0, false
+
+	count := processorCount(allFlag)
+	count -= ignoreVal
+	if count < 1 {
+		count = 1
+	}
+	return count, nil
 }
 
-// printHelp writes usage information to stdout.
-func printHelp() {
-	fmt.Printf("Usage: %s [OPTION]...\n", programName)
-	fmt.Println("Print the number of processing units available.")
-	fmt.Println()
-	fmt.Println("      --all       print the number of installed processors")
-	fmt.Println("      --ignore=N  if possible, exclude N processing units")
-	fmt.Println("      --help      display this help and exit")
-	fmt.Println("      --version   output version information and exit")
+// parseIgnore checks if arg is --ignore=N and returns (N, true, nil) if so.
+// R2.2: returns an error if the value is not a valid number.
+func parseIgnore(arg string) (int, bool, error) {
+	val, found := strings.CutPrefix(arg, "--ignore=")
+	if !found {
+		return 0, false, nil
+	}
+	n, err := strconv.Atoi(val)
+	if err != nil {
+		return 0, false, fmt.Errorf("invalid number: '%s'", val)
+	}
+	return n, true, nil
+}
+
+// processorCount returns the CPU count based on the --all flag.
+// When OMP_NUM_THREADS is set and valid, it is used as the base count
+// instead of runtime.NumCPU() (unless --all is specified).
+// R1.1: available count via runtime.NumCPU().
+// R1.3: --all also uses runtime.NumCPU() since Go does not distinguish
+// installed vs available on macOS (per srd046 non_goals).
+func processorCount(all bool) int {
+	if all {
+		return runtime.NumCPU()
+	}
+	// OMP_NUM_THREADS overrides the available count when not using --all.
+	if env := os.Getenv("OMP_NUM_THREADS"); env != "" {
+		// OMP_NUM_THREADS may contain a comma-separated list; use first value.
+		parts := strings.SplitN(env, ",", 2)
+		if n, err := strconv.Atoi(strings.TrimSpace(parts[0])); err == nil && n > 0 {
+			return n
+		}
+	}
+	return runtime.NumCPU()
 }

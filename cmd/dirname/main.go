@@ -1,9 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/dirname implements GNU dirname: strip last component from file paths.
-//
-// Implements prd016-dirname R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3.
+// Package main implements cmd/dirname: strip last component from file paths.
+// Implements srd016-dirname R1.1-R1.5, R2.1, R2.2, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -14,144 +13,132 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const helpText = `Usage: dirname [OPTION] NAME...
-Output each NAME with its last non-slash component and trailing slashes
-removed; if NAME contains no /'s, output '.' (meaning the current directory).
+// progName is used in error messages.
+const progName = "dirname"
+
+// versionText is printed when --version is passed.
+// R4.1: prints version information and exits 0.
+const versionText = progName + " (go-unix-utils) dev"
+
+func main() {
+	// R4.3: install SIGPIPE handler to exit cleanly when piped to head, etc.
+	sys.InstallSIGPIPEHandler()
+
+	// R4.1/R4.2: handle --version and --help before argument parsing.
+	if handleInfoFlags(os.Args[1:]) {
+		return
+	}
+
+	opts, names, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
+	}
+
+	terminator := "\n"
+	if opts.zero {
+		terminator = "\x00"
+	}
+
+	// R1.5: process multiple NAME arguments in order.
+	// R2.2: results printed in argument order.
+	for _, arg := range names {
+		fmt.Print(dirname(arg) + terminator)
+	}
+}
+
+// handleInfoFlags checks for --version and --help, prints and exits 0.
+// Returns true if a flag was handled (caller should return).
+func handleInfoFlags(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--version":
+			fmt.Println(versionText)
+			return true
+		case "--help":
+			printHelp()
+			return true
+		case "--":
+			return false
+		}
+	}
+	return false
+}
+
+// printHelp writes usage information to stdout.
+// R4.2: matches GNU dirname --help structure.
+func printHelp() {
+	fmt.Print(`Usage: dirname [OPTION] NAME...
+Output each NAME with its last non-slash component and trailing slashes removed;
+if NAME contains no /'s, output '.' (meaning the current directory).
 
   -z, --zero     end each output line with NUL, not newline
       --help     display this help and exit
       --version  output version information and exit
-
-Examples:
-  dirname /usr/bin/          -> "/usr"
-  dirname dir1/str1 dir2/str2 -> "dir1" followed by "dir2"
-`
-
-const versionText = "dirname (go-unix-utils) 0.1\n"
-
-func main() {
-	sys.InstallSIGPIPEHandler()
-
-	exitCode := run(os.Args[1:], os.Stdout, os.Stderr)
-	os.Exit(exitCode)
+`)
 }
 
-// run parses arguments and executes dirname logic.
-func run(args []string, stdout, stderr *os.File) int {
-	zero := false
+// options holds parsed command-line flags.
+type options struct {
+	zero bool
+}
+
+// parseArgs parses flags and positional arguments.
+// Returns options, the list of NAME arguments, and any error.
+func parseArgs(args []string) (options, []string, error) {
+	var opts options
 	var names []string
 
 	for i := 0; i < len(args); i++ {
-		switch arg := args[i]; arg {
-		case "--help":
-			fmt.Fprint(stdout, helpText) //nolint:errcheck // best-effort
-			return 0
-		case "--version":
-			fmt.Fprint(stdout, versionText) //nolint:errcheck // best-effort
-			return 0
-		case "--zero", "-z":
-			zero = true
-		case "--":
+		arg := args[i]
+		if arg == "--" {
 			names = append(names, args[i+1:]...)
-			i = len(args)
+			break
+		}
+		switch arg {
+		case "-z", "--zero":
+			opts.zero = true
 		default:
-			if parseShort(arg, &zero) {
-				continue
-			}
 			names = append(names, args[i:]...)
-			i = len(args)
+			i = len(args) // break outer loop
 		}
 	}
 
 	if len(names) == 0 {
-		printMissingOperand(stderr)
-		return 1
+		return opts, nil, fmt.Errorf("%s: missing operand", progName)
 	}
-
-	return printResults(names, zero, stdout)
+	return opts, names, nil
 }
 
-// parseShort handles combined short flags like -zz.
-func parseShort(arg string, zero *bool) bool {
-	if len(arg) < 2 || arg[0] != '-' {
-		return false
-	}
-	for j := 1; j < len(arg); j++ {
-		if arg[j] != 'z' {
-			return false
-		}
-	}
-	*zero = true
-	return true
-}
-
-// printMissingOperand writes the missing-operand error to stderr.
-func printMissingOperand(stderr *os.File) {
-	fmt.Fprintln(stderr, "dirname: missing operand")                   //nolint:errcheck
-	fmt.Fprintln(stderr, "Try 'dirname --help' for more information.") //nolint:errcheck
-}
-
-// printResults outputs dirname results for all names.
-// R3.3: returns 1 on write error.
-func printResults(names []string, zero bool, stdout *os.File) int {
-	delim := "\n"
-	if zero {
-		delim = "\x00"
-	}
-
-	for _, name := range names {
-		result := dirname(name)
-		if _, err := fmt.Fprint(stdout, result+delim); err != nil {
-			return 1
-		}
-	}
-	return 0
-}
-
-// dirname extracts the directory component from a path.
-// R1.1: strip trailing slashes, remove last component.
-// R1.2: if no slash, return ".".
-// R1.3: if all slashes, return "/".
-// R1.4: strip trailing slashes from result.
+// dirname extracts the directory component from a pathname.
+// R1.1: strip trailing slashes, then remove everything after the last '/'.
+// R1.2: if no '/' remains after trailing-slash removal, return ".".
+// R1.3: if the name is entirely slashes, return "/".
+// R1.4: strip trailing slashes from the result; if empty, return "/".
 func dirname(name string) string {
+	// R1.2: empty string has no slash, return ".".
 	if name == "" {
 		return "."
 	}
 
-	// R1.3: all slashes → "/"
-	if allSlashes(name) {
+	// R1.3: name consisting entirely of slashes returns "/".
+	trimmed := strings.TrimRight(name, "/")
+	if trimmed == "" {
 		return "/"
 	}
 
-	// R1.1: strip trailing slashes
-	name = strings.TrimRight(name, "/")
-
-	// R1.2: no slash → "."
-	idx := strings.LastIndex(name, "/")
+	// R1.1: find the last slash to split directory from base.
+	idx := strings.LastIndex(trimmed, "/")
 	if idx < 0 {
+		// R1.2: no slash means current directory.
 		return "."
 	}
 
-	// Remove last component
-	dir := name[:idx]
-	if dir == "" {
-		return "/"
-	}
-
-	// R1.4: strip trailing slashes from result
-	dir = strings.TrimRight(dir, "/")
+	// R1.4: strip trailing slashes from the directory portion.
+	dir := strings.TrimRight(trimmed[:idx], "/")
 	if dir == "" {
 		return "/"
 	}
 	return dir
-}
-
-// allSlashes returns true if s consists entirely of '/' characters.
-func allSlashes(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] != '/' {
-			return false
-		}
-	}
-	return true
 }

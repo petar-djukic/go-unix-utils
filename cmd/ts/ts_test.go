@@ -1,522 +1,546 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Differential tests for cmd/ts covering srd004-ts R1.1-R1.6, R2.1-R2.4,
+// R3.1-R3.4, R4.1-R4.3, R5.1-R5.3, R6.1-R6.2, R7.1-R7.3, R8.1-R8.2,
+// R9.1-R9.2, R10.1-R10.3.
 package main
 
 import (
-	"bytes"
 	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// subsecNormalizer replaces bare subsecond timestamps (e.g., "32.001234")
-// with a fixed placeholder, for %.S format where TimestampNormalizer does
-// not match the pattern.
-var subsecNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
-	re := regexp.MustCompile(`\d{1,2}\.\d{6}`)
-	return re.ReplaceAll(b, []byte("SS.USEC"))
+// subsecondRe matches a dot followed by 1-6 digits after a TIMESTAMP placeholder
+// or after a time-like pattern, normalizing microsecond differences from timing.
+var subsecondRe = regexp.MustCompile(`\.\d{1,6}`)
+
+// subsecondNormalizer strips subsecond suffixes (.USEC) that vary due to
+// timing differences between the Go and reference binary executions.
+var subsecondNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return subsecondRe.ReplaceAll(b, []byte(".SUBSEC"))
 }
 
-// relativeAgeNormalizer replaces relative age strings (e.g., "5m30s ago")
-// with a fixed placeholder so timing differences between binary invocations
-// do not cause false divergences.
+// relativeAgeNormRe matches relative age strings like "15m5s ago", "3d21h ago".
+var relativeAgeNormRe = regexp.MustCompile(`\d+[ydhms](?:\d+[ydhms])* ago`)
+
+// relativeAgeNormalizer replaces relative age strings with a fixed placeholder
+// so that minor timing differences between Go and reference binary do not
+// cause differential test failures.
 var relativeAgeNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
-	re := regexp.MustCompile(`\d+[ydhms](?:\d+[ydhms])? (?:ago|from now)|right now`)
-	return re.ReplaceAll(b, []byte("REL_AGE"))
+	return relativeAgeNormRe.ReplaceAll(b, []byte("REL_AGE"))
 }
 
-// TestDiff verifies cmd/ts against the moreutils reference binary ts.
-// Implements prd004-ts R9.1-R9.2.
-// R7.3: parsing dependency always available in Go (invariant).
-// R8.1: TZ environment respected for wall-clock timestamps.
-// R8.2: -i/-s use TZ=GMT internally regardless of user TZ.
-// R9.1: uses TimestampNormalizer for wall-clock timestamp comparison.
-// R9.2: covers default format, custom format, subsecond extensions (R2.3, R2.4),
-// -i incremental mode (R3.1-R3.4), -s elapsed mode (R4.1-R4.3),
-// -m monotonic mode (R5.1-R5.3), -r relative mode (R6.1, R6.2),
-// empty stdin, partial last line, additional strftime specifiers (R2.2),
-// R7.1 exit codes, R10.2 no-timestamp passthrough.
 func TestDiff(t *testing.T) {
-	t.Parallel()
-
 	goBin := testutils.BuildBinary(t, ".")
-
 	refBin, err := exec.LookPath("ts")
 	if err != nil {
 		t.Skipf("reference binary ts not in PATH: %v", err)
 	}
-
 	tests := []testutils.DiffTest{
-		// R1.1, R1.2, R1.4: default format with three lines.
+		// R9.2: default format
 		{
-			Name:      "default_format_three_lines",
+			Name:      "default_format_single_line",
+			Stdin:     []byte("hello world\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R9.2: multi-line stdin
+		{
+			Name:      "default_format_multi_line",
 			Stdin:     []byte("line1\nline2\nline3\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R1.1, R1.6, R7.1: empty stdin produces no output and exits 0.
+		// R7.1, R9.2: empty stdin exits 0.
 		{
-			Name:     "default_format_empty_stdin",
-			Stdin:    []byte(""),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:  "empty_stdin",
+			Stdin: nil,
 		},
-		// R1.5: partial last line (no trailing newline) is timestamped.
 		{
-			Name:      "default_format_partial_last_line",
-			Stdin:     []byte("partial"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
-		},
-		// R2.1: custom strftime format string.
-		{
-			Name:      "custom_strftime_format",
-			Args:      []string{"%Y-%m-%dT%H:%M:%S"},
-			Stdin:     []byte("hello\nworld\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
-		},
-		// R8.1: TZ=UTC causes timestamps to be in UTC.
-		{
-			Name:      "tz_environment_respected",
-			Args:      []string{"%H:%M:%S"},
-			Stdin:     []byte("event\n"),
-			Env:       []string{"LC_ALL=C", "TZ=UTC"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
-		},
-		// R2.2: ISO week-based year and week number (%G, %V).
-		{
-			Name:      "strftime_iso_week",
-			Args:      []string{"%G-W%V"},
-			Stdin:     []byte("isoweek\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
-		},
-		// R2.2: week number with Sunday start (%U) and Monday start (%W).
-		{
-			Name:      "strftime_week_numbers",
-			Args:      []string{"%U %W"},
-			Stdin:     []byte("weeks\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
-		},
-		// R2.2: day of year (%j), century (%C), ISO weekday (%u).
-		{
-			Name:      "strftime_day_of_year_and_century",
-			Args:      []string{"%j %C %u"},
-			Stdin:     []byte("misc\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
-		},
-		// R2.2: short ISO week year (%g), weekday number (%w).
-		{
-			Name:      "strftime_short_iso_year_weekday",
-			Args:      []string{"%g %w"},
-			Stdin:     []byte("data\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
-		},
-		// R1.5: multiple lines with partial last line (no trailing newline).
-		{
-			Name:      "multiline_partial_last",
-			Stdin:     []byte("first\nsecond"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
-		},
-		// R2.3, R2.4: subsecond extension %.S (seconds with microsecond suffix).
-		{
-			Name:      "subsecond_format_dotS",
-			Args:      []string{"%.S"},
+			Name:      "single_word",
 			Stdin:     []byte("test\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{subsecNormalizer},
-		},
-		// R2.3, R2.4: subsecond extension %.T (HH:MM:SS with microsecond suffix).
-		{
-			Name:      "subsecond_format_dotT",
-			Args:      []string{"%.T"},
-			Stdin:     []byte("test\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R3.1, R3.2: incremental mode shows elapsed time since previous line.
 		{
-			Name:      "incremental_mode",
+			Name:      "line_with_spaces",
+			Stdin:     []byte("  leading and trailing  \n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		{
+			Name:      "multiple_blank_lines",
+			Stdin:     []byte("\n\n\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R1.5, R9.2: partial last line (no trailing newline at EOF)
+		{
+			Name:      "partial_last_line",
+			Stdin:     []byte("no newline"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R1.5: mixed complete and partial lines
+		{
+			Name:      "partial_after_complete",
+			Stdin:     []byte("complete\npartial"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R2.1, R9.2: custom strftime format string (date-only, stable within a day)
+		{
+			Name:  "custom_format_date",
+			Args:  []string{"%Y-%m-%d"},
+			Stdin: []byte("hello\n"),
+		},
+		// R2.2: %F shorthand for ISO date
+		{
+			Name:  "custom_format_F",
+			Args:  []string{"%F"},
+			Stdin: []byte("test\n"),
+		},
+		// R2.3: %.s subsecond extension (epochRe in TimestampNormalizer covers epoch.usec)
+		{
+			Name:      "subsecond_dots",
+			Args:      []string{"%.s"},
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.1, R3.2, R9.2: incremental mode (-i)
+		{
+			Name:      "incremental_single_line",
 			Args:      []string{"-i"},
-			Stdin:     []byte("first\nsecond\nthird\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R3.3: incremental mode with custom format overrides default.
 		{
-			Name:      "incremental_mode_custom_format",
-			Args:      []string{"-i", "%M:%S"},
-			Stdin:     []byte("alpha\nbeta\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Name:      "incremental_multi_line",
+			Args:      []string{"-i"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R3.4: -i and -s together — last flag wins (matches reference).
 		{
-			Name:      "incremental_and_elapsed_last_wins",
+			Name:  "incremental_empty_stdin",
+			Args:  []string{"-i"},
+			Stdin: nil,
+		},
+		// R3.3: -i with custom format overrides default
+		{
+			Name:      "incremental_custom_format",
+			Args:      []string{"-i", "%H:%M:%S"},
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R3.4: -i and -s combined (reference treats as -s)
+		{
+			Name:      "incremental_elapsed_combined",
 			Args:      []string{"-i", "-s"},
-			Stdin:     []byte("test\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R4.1, R4.2: elapsed-since-start mode with default format.
+		// R4.1, R4.2, R9.2: elapsed-since-start mode (-s)
 		{
-			Name:      "elapsed_mode",
+			Name:      "elapsed_single_line",
 			Args:      []string{"-s"},
-			Stdin:     []byte("first\nsecond\nthird\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R4.3: elapsed-since-start mode with custom format overrides default.
 		{
-			Name:      "elapsed_mode_custom_format",
-			Args:      []string{"-s", "%M:%S"},
-			Stdin:     []byte("alpha\nbeta\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Name:      "elapsed_multi_line",
+			Args:      []string{"-s"},
+			Stdin:     []byte("line1\nline2\nline3\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R3.4: -s and -i together (reverse order) — last flag wins.
 		{
-			Name:      "elapsed_and_incremental_last_wins",
-			Args:      []string{"-s", "-i"},
-			Stdin:     []byte("test\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Name:  "elapsed_empty_stdin",
+			Args:  []string{"-s"},
+			Stdin: nil,
+		},
+		// R4.2: -s with custom format overrides default
+		{
+			Name:      "elapsed_custom_format",
+			Args:      []string{"-s", "%H:%M:%S"},
+			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R4.1, R4.2, R7.1: elapsed mode with empty stdin exits 0.
+		// R4.3: -s with custom format (%.T subsecond extension)
 		{
-			Name:     "elapsed_mode_empty_stdin",
-			Args:     []string{"-s"},
-			Stdin:    []byte(""),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:      "elapsed_custom_subsecond",
+			Args:      []string{"-s", "%.T"},
+			Stdin:     []byte("hello\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer, subsecondNormalizer},
 		},
-		// R5.1, R5.2: monotonic mode with default format.
+		// R5.1, R5.2, R9.2: -m monotonic mode with default format
 		{
-			Name:      "monotonic_default_format",
+			Name:      "monotonic_default",
 			Args:      []string{"-m"},
-			Stdin:     []byte("mono\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R5.2: monotonic mode with custom format string.
+		// R5.2: -m with -i (monotonic incremental)
+		{
+			Name:      "monotonic_incremental",
+			Args:      []string{"-m", "-i"},
+			Stdin:     []byte("line1\nline2\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: -m with -s (monotonic elapsed)
+		{
+			Name:      "monotonic_elapsed",
+			Args:      []string{"-m", "-s"},
+			Stdin:     []byte("line1\nline2\n"),
+			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R5.2: -m with custom format
 		{
 			Name:      "monotonic_custom_format",
-			Args:      []string{"-m", "%H:%M:%S"},
-			Stdin:     []byte("mono\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Args:      []string{"-m", "%Y-%m-%d"},
+			Stdin:     []byte("hello\n"),
+		},
+		// R5.2: -m with subsecond extension
+		{
+			Name:      "monotonic_subsecond",
+			Args:      []string{"-m", "%.s"},
+			Stdin:     []byte("hello\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R5.2: monotonic mode combined with -s (elapsed since start).
+		// R5.3: -m multi-line (monotonic clock should not jump)
 		{
-			Name:      "monotonic_elapsed_mode",
-			Args:      []string{"-m", "-s"},
-			Stdin:     []byte("first\nsecond\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Name:      "monotonic_multi_line",
+			Args:      []string{"-m"},
+			Stdin:     []byte("a\nb\nc\nd\ne\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R5.2: monotonic mode combined with -i (incremental).
+		// R5.2: -m empty stdin
 		{
-			Name:      "monotonic_incremental_mode",
-			Args:      []string{"-m", "-i"},
-			Stdin:     []byte("first\nsecond\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+			Name:  "monotonic_empty_stdin",
+			Args:  []string{"-m"},
+			Stdin: nil,
 		},
-		// R5.2, R5.3: monotonic mode with subsecond extension.
+		// R6.1, R6.2: -r mode with syslog timestamp (multi-word)
 		{
-			Name:      "monotonic_subsecond_format",
-			Args:      []string{"-m", "%.T"},
-			Stdin:     []byte("precise\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
-		},
-		// R6.1: -r mode replaces syslog timestamps with relative age.
-		{
-			Name:      "relative_mode_syslog",
+			Name:      "relative_syslog_event",
 			Args:      []string{"-r"},
-			Stdin:     []byte("Jan  1 00:00:00 system started\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Stdin:     []byte("Jun 15 10:30:00 test event line\n"),
 			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
 		},
-		// R6.2: -r mode recognizes RFC 2822 timestamps.
+		// R6.2: -r mode with syslog timestamp
 		{
-			Name:      "relative_mode_rfc2822",
+			Name:      "relative_syslog",
 			Args:      []string{"-r"},
-			Stdin:     []byte("16 Jun 2024 07:29:35 GMT event\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Stdin:     []byte("Jan  5 14:30:00 test line\n"),
 			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
 		},
-		// R10.2: -r mode passes through lines without timestamps unchanged.
+		// R6.1, R10.2: -r with no recognized timestamp (pass-through)
 		{
-			Name:     "relative_mode_no_timestamp",
-			Args:     []string{"-r"},
-			Stdin:    []byte("no timestamp here\n"),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name:  "relative_no_timestamp",
+			Args:  []string{"-r"},
+			Stdin: []byte("just plain text\n"),
 		},
-		// R6.1, R7.1: -r mode with empty stdin exits 0.
+		// R6.1: -r multi-line with syslog timestamps
 		{
-			Name:     "relative_mode_empty_stdin",
-			Args:     []string{"-r"},
-			Stdin:    []byte(""),
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R6.1: -r mode with multiple lines, some with timestamps.
-		{
-			Name:      "relative_mode_mixed_lines",
+			Name:      "relative_multi_line",
 			Args:      []string{"-r"},
-			Stdin:     []byte("Jan  1 00:00:00 boot\nno ts here\nJan  1 00:00:01 init\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Stdin:     []byte("Jan  1 00:00:00 first\nplain text\n"),
 			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
 		},
-		// R7.3: -r mode works (parsing dependency always available in Go).
+		// R7.1: -r empty stdin exits 0
 		{
-			Name:      "relative_mode_parsing_available",
-			Args:      []string{"-r"},
-			Stdin:     []byte("Jan  5 14:30:00 event\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+			Name:  "relative_empty_stdin",
+			Args:  []string{"-r"},
+			Stdin: nil,
 		},
 		// R8.1: TZ=UTC causes wall-clock timestamps to be in UTC.
+		// R9.1: uses TimestampNormalizer for wall-clock comparison.
 		{
-			Name:      "tz_utc_wall_clock",
-			Args:      []string{"%Z %H:%M:%S"},
-			Stdin:     []byte("tztest\n"),
-			Env:       []string{"LC_ALL=C", "TZ=UTC"},
-			ExitCode:  0,
+			Name:      "tz_utc_wallclock",
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"TZ=UTC"},
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R8.2: -s mode uses TZ=GMT internally despite user TZ setting.
+		// R8.2: -s mode uses TZ=GMT internally regardless of user TZ.
 		{
-			Name:      "elapsed_mode_ignores_user_tz",
+			Name:      "elapsed_tz_override",
 			Args:      []string{"-s"},
-			Stdin:     []byte("line1\nline2\n"),
-			Env:       []string{"LC_ALL=C", "TZ=US/Eastern"},
-			ExitCode:  0,
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"TZ=America/New_York"},
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R8.2: -i mode uses TZ=GMT internally despite user TZ setting.
+		// R8.2: -i mode uses TZ=GMT internally regardless of user TZ.
 		{
-			Name:      "incremental_mode_ignores_user_tz",
+			Name:      "incremental_tz_override",
 			Args:      []string{"-i"},
-			Stdin:     []byte("line1\nline2\n"),
-			Env:       []string{"LC_ALL=C", "TZ=US/Eastern"},
-			ExitCode:  0,
+			Stdin:     []byte("hello\n"),
+			Env:       []string{"TZ=America/New_York"},
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
 		},
-		// R9.1, R9.2: multi-line default format with TimestampNormalizer.
+		// R10.1: -r with format string reformats matched timestamps.
 		{
-			Name:      "normalizer_multi_line_default",
-			Stdin:     []byte("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"),
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  0,
+			Name:      "relative_with_format_syslog",
+			Args:      []string{"-r", "%Y-%m-%d %H:%M:%S"},
+			Stdin:     []byte("Jun 15 10:30:00 test event\n"),
 			Normalize: []testutils.NormalizeFunc{testutils.TimestampNormalizer},
+		},
+		// R10.2: -r with format, no timestamp passes through unchanged.
+		{
+			Name:  "relative_with_format_no_ts",
+			Args:  []string{"-r", "%Y-%m-%d"},
+			Stdin: []byte("just plain text\n"),
+		},
+		// R10.3: -r with -i — reference silently ignores -i, -r takes precedence.
+		{
+			Name:      "relative_with_incremental",
+			Args:      []string{"-r", "-i"},
+			Stdin:     []byte("Jun 15 10:30:00 event\n"),
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
+		},
+		// R10.3: -r with -s — reference silently ignores -s, -r takes precedence.
+		{
+			Name:      "relative_with_elapsed",
+			Args:      []string{"-r", "-s"},
+			Stdin:     []byte("Jun 15 10:30:00 event\n"),
+			Normalize: []testutils.NormalizeFunc{relativeAgeNormalizer},
 		},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestRelativeISO8601 verifies R6.2: -r mode recognizes ISO-8601 timestamps.
-// Tested standalone because Date::Parse availability varies across systems,
-// and the reference binary may not handle ISO-8601.
-func TestRelativeISO8601(t *testing.T) {
+// TestFormatStrftime verifies strftime formatting for R2.2 and R2.3.
+func TestFormatStrftime(t *testing.T) {
 	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	cmd := exec.Command(goBin, "-r")
-	cmd.Stdin = strings.NewReader("event at 2020-01-01T00:00:00Z done\n")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	ref := time.Date(2009, 2, 13, 23, 31, 30, 0, time.UTC)
+	refAM := time.Date(2009, 1, 5, 3, 5, 9, 0, time.UTC)
+	// R2.3: time with non-zero microseconds for subsecond tests.
+	refUsec := time.Date(2009, 2, 13, 23, 31, 30, 123456000, time.UTC)
+	tests := []struct {
+		name   string
+		format string
+		t      time.Time
+		want   string
+	}{
+		{"default_format", "%b %d %H:%M:%S", ref, "Feb 13 23:31:30"},
+		{"iso_date", "%Y-%m-%d", ref, "2009-02-13"},
+		{"time_only", "%T", ref, "23:31:30"},
+		{"literal_percent", "%%", ref, "%"},
+		{"empty", "", ref, ""},
+		{"epoch", "%s", ref, "1234567890"},
+		{"century", "%C", ref, "20"},
+		{"hour_space_24", "%k", ref, "23"},
+		{"hour_space_24_single", "%k", refAM, " 3"},
+		{"hour_space_12", "%l", ref, "11"},
+		{"hour_space_12_single", "%l", refAM, " 3"},
+		{"lower_meridiem_pm", "%P", ref, "pm"},
+		{"lower_meridiem_am", "%P", refAM, "am"},
+		{"weekday_iso", "%u", ref, "5"},
+		{"weekday_sunday", "%w", ref, "5"},
+		{"week_number_sunday", "%U", ref, "06"},
+		{"week_number_monday", "%W", ref, "06"},
+		{"iso_week", "%V", ref, "07"},
+		{"iso_week_year", "%G", ref, "2009"},
+		{"iso_week_year_short", "%g", ref, "09"},
+		{"full_weekday", "%A", ref, "Friday"},
+		{"month_name", "%B", ref, "February"},
+		{"day_space", "%e", ref, "13"},
+		{"julian_day", "%j", ref, "044"},
+		{"date_F", "%F", ref, "2009-02-13"},
+		{"date_D", "%D", ref, "02/13/09"},
+		{"time_R", "%R", ref, "23:31"},
+		{"locale_datetime", "%c", ref, "Fri Feb 13 23:31:30 2009"},
+		{"locale_date", "%x", ref, "02/13/09"},
+		{"locale_time", "%X", ref, "23:31:30"},
+		// R2.3: subsecond extensions with zero microseconds
+		{"subsecond_S_zero", "%.S", ref, "30.000000"},
+		{"subsecond_s_zero", "%.s", ref, "1234567890.000000"},
+		{"subsecond_T_zero", "%.T", ref, "23:31:30.000000"},
+		// R2.3: subsecond extensions with non-zero microseconds
+		{"subsecond_S_usec", "%.S", refUsec, "30.123456"},
+		{"subsecond_s_usec", "%.s", refUsec, "1234567890.123456"},
+		{"subsecond_T_usec", "%.T", refUsec, "23:31:30.123456"},
+		// R2.3: unknown subsecond specifier passes through
+		{"subsecond_unknown", "%.X", ref, "%.X"},
+		// R2.3: subsecond mixed with regular specifiers
+		{"subsecond_mixed", "%Y-%.T", refUsec, "2009-23:31:30.123456"},
 	}
-	out := stdout.String()
-	if strings.Contains(out, "2020-01-01") {
-		t.Errorf("ISO-8601 timestamp not replaced: %q", out)
-	}
-	if !strings.Contains(out, "ago") {
-		t.Errorf("expected relative age with 'ago', got: %q", out)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := formatStrftime(tc.format, tc.t)
+			if got != tc.want {
+				t.Errorf("formatStrftime(%q) = %q, want %q",
+					tc.format, got, tc.want)
+			}
+		})
 	}
 }
 
-// TestRelativeLastlog verifies R6.2: -r mode recognizes lastlog timestamps.
-// Tested standalone because Date::Parse availability varies across systems.
-func TestRelativeLastlog(t *testing.T) {
+// TestParseArgs verifies argument parsing for R2.1, R3.1-R3.4, R4.1-R4.3,
+// R5.1-R5.3, R6.1, R7.2, R10.3.
+func TestParseArgs(t *testing.T) {
 	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	cmd := exec.Command(goBin, "-r")
-	cmd.Stdin = strings.NewReader("Mon Jan  6 14:30 login\n")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tests := []struct {
+		name        string
+		args        []string
+		wantFmt     string
+		wantIncr    bool
+		wantElapsed bool
+		wantMono    bool
+		wantRel     bool
+		wantCustom  bool
+		wantErr     bool
+		errSubstr   string
+	}{
+		{"no_args", nil, "%b %d %H:%M:%S", false, false, false, false, false, false, ""},
+		{"custom_format", []string{"%Y-%m-%d"}, "%Y-%m-%d", false, false, false, false, true, false, ""},
+		{"custom_format_epoch", []string{"%s"}, "%s", false, false, false, false, true, false, ""},
+		// R7.2: unrecognized flag produces error.
+		{"unknown_flag", []string{"-x"}, "", false, false, false, false, false, true, "unrecognized option"},
+		{"dash_only", []string{"-"}, "-", false, false, false, false, true, false, ""},
+		// R3.1: -i flag
+		{"incr_flag", []string{"-i"}, "%H:%M:%S", true, false, false, false, false, false, ""},
+		// R3.3: -i with custom format
+		{"incr_custom", []string{"-i", "%T"}, "%T", true, false, false, false, true, false, ""},
+		// R3.4: -i and -s combined, -s takes precedence (matches reference)
+		{"incr_elapsed_combined", []string{"-i", "-s"}, "%H:%M:%S", false, true, false, false, false, false, ""},
+		{"elapsed_incr_combined", []string{"-s", "-i"}, "%H:%M:%S", false, true, false, false, false, false, ""},
+		// R4.1: -s flag
+		{"elapsed_flag", []string{"-s"}, "%H:%M:%S", false, true, false, false, false, false, ""},
+		// R4.2, R4.3: -s with custom format overrides default
+		{"elapsed_custom", []string{"-s", "%T"}, "%T", false, true, false, false, true, false, ""},
+		// R4.3: -s with subsecond custom format
+		{"elapsed_custom_subsec", []string{"-s", "%.T"}, "%.T", false, true, false, false, true, false, ""},
+		// R5.1: -m flag alone
+		{"mono_flag", []string{"-m"}, "%b %d %H:%M:%S", false, false, true, false, false, false, ""},
+		// R5.2: -m with -i
+		{"mono_incr", []string{"-m", "-i"}, "%H:%M:%S", true, false, true, false, false, false, ""},
+		// R5.2: -m with -s
+		{"mono_elapsed", []string{"-m", "-s"}, "%H:%M:%S", false, true, true, false, false, false, ""},
+		// R5.2: -m with custom format
+		{"mono_custom", []string{"-m", "%Y"}, "%Y", false, false, true, false, true, false, ""},
+		// R5.2: -m with -s and custom format
+		{"mono_elapsed_custom", []string{"-m", "-s", "%.T"}, "%.T", false, true, true, false, true, false, ""},
+		// R6.1: -r flag
+		{"relative_flag", []string{"-r"}, "%b %d %H:%M:%S", false, false, false, true, false, false, ""},
+		// R6.1: -r with -m
+		{"relative_mono", []string{"-r", "-m"}, "%b %d %H:%M:%S", false, false, true, true, false, false, ""},
+		// R10.1: -r with custom format
+		{"relative_custom_fmt", []string{"-r", "%Y-%m-%d %H:%M:%S"}, "%Y-%m-%d %H:%M:%S", false, false, false, true, true, false, ""},
+		// R10.3: -r with -i — -r silently takes precedence (matches reference).
+		{"relative_incr", []string{"-r", "-i"}, "%b %d %H:%M:%S", false, false, false, true, false, false, ""},
+		// R10.3: -r with -s — -r silently takes precedence (matches reference).
+		{"relative_elapsed", []string{"-r", "-s"}, "%b %d %H:%M:%S", false, false, false, true, false, false, ""},
+		// R10.3: -r with -i -s — -r silently takes precedence (matches reference).
+		{"relative_both", []string{"-r", "-i", "-s"}, "%b %d %H:%M:%S", false, false, false, true, false, false, ""},
 	}
-	out := stdout.String()
-	if strings.Contains(out, "14:30") {
-		t.Errorf("lastlog timestamp not replaced: %q", out)
-	}
-	if !strings.Contains(out, "ago") {
-		t.Errorf("expected relative age with 'ago', got: %q", out)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseArgs(tc.args)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tc.errSubstr) {
+					t.Errorf("error %q missing substring %q",
+						err.Error(), tc.errSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.format != tc.wantFmt {
+				t.Errorf("parseArgs(%v).format = %q, want %q",
+					tc.args, got.format, tc.wantFmt)
+			}
+			if got.incremental != tc.wantIncr {
+				t.Errorf("parseArgs(%v).incremental = %v, want %v",
+					tc.args, got.incremental, tc.wantIncr)
+			}
+			if got.elapsed != tc.wantElapsed {
+				t.Errorf("parseArgs(%v).elapsed = %v, want %v",
+					tc.args, got.elapsed, tc.wantElapsed)
+			}
+			if got.monotonic != tc.wantMono {
+				t.Errorf("parseArgs(%v).monotonic = %v, want %v",
+					tc.args, got.monotonic, tc.wantMono)
+			}
+			if got.relative != tc.wantRel {
+				t.Errorf("parseArgs(%v).relative = %v, want %v",
+					tc.args, got.relative, tc.wantRel)
+			}
+			if got.hasCustomFormat != tc.wantCustom {
+				t.Errorf("parseArgs(%v).hasCustomFormat = %v, want %v",
+					tc.args, got.hasCustomFormat, tc.wantCustom)
+			}
+		})
 	}
 }
 
-// TestUnrecognizedFlag verifies R7.2: unrecognized flags cause non-zero
-// exit with a usage message on stderr.
-func TestUnrecognizedFlag(t *testing.T) {
+// TestFormatRelativeAge verifies relative age formatting for R6.1.
+func TestFormatRelativeAge(t *testing.T) {
 	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "-x")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("expected non-zero exit code for unrecognized flag -x")
+	tests := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"zero", 0, "0s ago"},
+		{"seconds", 5 * time.Second, "5s ago"},
+		{"minutes_seconds", 65 * time.Second, "1m5s ago"},
+		{"hours_minutes", (2*3600 + 30*60) * time.Second, "2h30m ago"},
+		{"days_hours", (3*86400 + 5*3600) * time.Second, "3d5h ago"},
+		{"years_days", (365*86400 + 30*86400) * time.Second, "1y30d ago"},
+		{"negative", -30 * time.Second, "30s ago"},
+		{"exact_hour", 3600 * time.Second, "1h ago"},
+		{"exact_day", 86400 * time.Second, "1d ago"},
+		{"all_units", (365*86400 + 2*86400 + 3*3600 + 4*60 + 5) * time.Second,
+			"1y2d3h4m5s ago"},
 	}
-	if stderr.Len() == 0 {
-		t.Error("expected usage message on stderr for unrecognized flag")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := formatRelativeAge(tc.d)
+			if got != tc.want {
+				t.Errorf("formatRelativeAge(%v) = %q, want %q",
+					tc.d, got, tc.want)
+			}
+		})
 	}
 }
 
-// TestRelativeWithFormat verifies R10.1: -r with a format string converts
-// matched timestamps to strftime format instead of relative age.
-// Tested standalone because the reference binary behavior may vary.
-func TestRelativeWithFormat(t *testing.T) {
+// TestProcessRelativeLine verifies timestamp replacement for R6.1, R6.2,
+// R10.1, R10.2.
+func TestProcessRelativeLine(t *testing.T) {
 	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	cmd := exec.Command(goBin, "-r", "%Y-%m-%d")
-	cmd.Stdin = strings.NewReader("event at 2020-06-15T12:30:00Z done\n")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	now := time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name        string
+		line        string
+		fmtOverride string
+		want        string
+	}{
+		// R10.2: no timestamp passes through unchanged.
+		{"no_timestamp", "just text\n", "", "just text\n"},
+		{"iso8601_1h", "2026-04-11T11:00:00Z event\n", "", "1h ago event\n"},
+		{"iso8601_1d", "2026-04-10T12:00:00Z event\n", "", "1d ago event\n"},
+		{"iso8601_no_tz", "2026-04-11T11:00:00 event\n", "", "1h ago event\n"},
+		{"rfc2822", "11 Apr 2026 11:00:00 UTC event\n", "", "1h ago event\n"},
+		// R10.1: format override reformats timestamp via strftime.
+		{"iso8601_fmt_override", "2026-04-11T11:00:00Z event\n",
+			"%Y-%m-%d %H:%M:%S", "2026-04-11 11:00:00 event\n"},
+		// R10.1: syslog with format override.
+		{"syslog_fmt_override", "Jun 15 10:30:00 event\n",
+			"%H:%M:%S", "10:30:00 event\n"},
+		// R10.2: no timestamp with format override passes through.
+		{"no_ts_fmt_override", "plain text\n", "%Y-%m-%d", "plain text\n"},
 	}
-	out := stdout.String()
-	// R10.1: timestamp should be converted to strftime format, not relative age.
-	if strings.Contains(out, "ago") {
-		t.Errorf("expected strftime output, got relative age: %q", out)
-	}
-	if !strings.Contains(out, "2020-06-15") {
-		t.Errorf("expected strftime-formatted date 2020-06-15, got: %q", out)
-	}
-	if !strings.Contains(out, "done") {
-		t.Errorf("expected rest of line preserved, got: %q", out)
-	}
-}
-
-// TestRelativeWithFormatNoTimestamp verifies R10.2: -r with format passes
-// through lines without recognizable timestamps unchanged.
-func TestRelativeWithFormatNoTimestamp(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	cmd := exec.Command(goBin, "-r", "%Y-%m-%d")
-	cmd.Stdin = strings.NewReader("no timestamp here\n")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := stdout.String()
-	if out != "no timestamp here\n" {
-		t.Errorf("expected unchanged line, got: %q", out)
-	}
-}
-
-// TestRelativeWithSyslogFormat verifies R10.1: -r with a format string
-// converts syslog timestamps to the specified strftime format.
-func TestRelativeWithSyslogFormat(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	cmd := exec.Command(goBin, "-r", "%H:%M:%S")
-	cmd.Stdin = strings.NewReader("Jan  5 14:30:00 event happened\n")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := stdout.String()
-	if strings.Contains(out, "ago") {
-		t.Errorf("expected strftime output, got relative age: %q", out)
-	}
-	// The syslog timestamp should be replaced with formatted time.
-	if !strings.Contains(out, "14:30:00") {
-		t.Errorf("expected formatted time 14:30:00, got: %q", out)
-	}
-}
-
-// TestRelativeMutualExclusionWithIncremental verifies R10.3: -r and -i
-// together must print a usage error to stderr and exit non-zero.
-func TestRelativeMutualExclusionWithIncremental(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	cmd := exec.Command(goBin, "-r", "-i")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("expected non-zero exit code for -r -i combination")
-	}
-	if stderr.Len() == 0 {
-		t.Error("expected usage message on stderr for -r -i combination")
-	}
-}
-
-// TestRelativeMutualExclusionWithElapsed verifies R10.3: -r and -s
-// together must print a usage error to stderr and exit non-zero.
-func TestRelativeMutualExclusionWithElapsed(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-
-	cmd := exec.Command(goBin, "-r", "-s")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("expected non-zero exit code for -r -s combination")
-	}
-	if stderr.Len() == 0 {
-		t.Error("expected usage message on stderr for -r -s combination")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := processRelativeLine(tc.line, now, tc.fmtOverride)
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

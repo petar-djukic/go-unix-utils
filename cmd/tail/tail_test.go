@@ -1,80 +1,64 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/tail against gtail (GNU coreutils).
-//
-// Covers prd055-tail R1.1, R1.2, R1.3, R1.4: default 10 lines, explicit -n
-// count, --lines= form, +N offset, stdin input, stdin via "-" argument.
-// Covers prd055-tail R2.1, R2.2, R2.3: byte-count mode, byte offset, suffixes.
-// Covers prd055-tail R3.1, R3.2, R3.3, R3.4: multi-file headers, quiet, verbose.
-// Covers prd055-tail R4.1, R4.2, R4.3, R4.4: exit codes, error handling, differential testing.
+// Package main provides differential tests for cmd/tail.
+// Tests cover srd055-tail R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeTailErrors replaces program name prefixes so "gtail:" and "tail:"
-// compare identically, lowercases error text, and strips "Try ... --help"
-// hint lines.
-func normalizeTailErrors(data []byte) []byte {
-	lines := bytes.Split(data, []byte("\n"))
-	var result [][]byte
-	for _, line := range lines {
-		if bytes.Contains(line, []byte("--help")) &&
-			bytes.Contains(line, []byte("Try")) {
-			continue
-		}
-		colonIdx := bytes.Index(line, []byte(": "))
-		if colonIdx <= 0 {
-			result = append(result, line)
-			continue
-		}
-		prefix := line[:colonIdx]
-		if bytes.ContainsAny(prefix, " \t") {
-			result = append(result, line)
-			continue
-		}
-		rest := bytes.ToLower(line[colonIdx:])
-		result = append(result, append([]byte("tail"), rest...))
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// tryLineRe matches the "Try '...' for more information." line in stderr.
+var tryLineRe = regexp.MustCompile(`(?m)^Try '.*' for more information\.\n`)
+
+// stderrNormalizer normalizes program name, path, and case differences.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
 	}
-	return bytes.Join(result, []byte("\n"))
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = tryLineRe.ReplaceAll(b, []byte("Try 'PROG --help' for more information.\n"))
+	b = bytes.ToLower(b)
+	return b
 }
 
-// stripEmptyHeaders removes "==> FILE <==" header blocks that are immediately
-// followed by another header or end of output.
-func stripEmptyHeaders(data []byte) []byte {
-	lines := strings.Split(string(data), "\n")
-	var result []string
-	i := 0
-	for i < len(lines) {
-		if isHeaderLine(lines[i]) {
-			j := i + 1
-			if j < len(lines) && lines[j] == "" {
-				j++
-			}
-			if j >= len(lines) || isHeaderLine(lines[j]) {
-				i = j
-				continue
-			}
-		}
-		result = append(result, lines[i])
-		i++
+// versionNormalizer replaces version output with a constant so both binaries match.
+// R4.4: --version outputs differ between GNU and Go implementations; we verify
+// both exit 0 and produce output containing the program name.
+func versionNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
 	}
-	return []byte(strings.Join(result, "\n"))
+	lower := bytes.ToLower(b)
+	if bytes.Contains(lower, []byte("tail")) {
+		return []byte("tail version\n")
+	}
+	return b
 }
 
-// isHeaderLine checks if a line matches the "==> ... <==" header pattern.
-func isHeaderLine(line string) bool {
-	return strings.HasPrefix(line, "==> ") && strings.HasSuffix(line, " <==")
+// helpNormalizer replaces help output with a constant so both binaries match.
+// R4.4: --help outputs differ in detail; we verify both exit 0 and produce
+// usage text starting with "Usage:".
+func helpNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	if bytes.HasPrefix(b, []byte("Usage:")) {
+		return []byte("usage output\n")
+	}
+	return b
 }
 
 func TestDiff(t *testing.T) {
@@ -83,415 +67,336 @@ func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gtail")
 	if err != nil {
-		t.Skip("reference binary gtail not in PATH")
+		t.Skipf("reference binary gtail not in PATH: %v", err)
 	}
 
-	tests := buildDiffTests(t)
+	// Create fixture files.
+	fixtureDir := t.TempDir()
+	writeFixture(t, fixtureDir, "file1.txt", "1\n2\n")
+	writeFixture(t, fixtureDir, "file2.txt", "3\n4\n")
+	writeFixture(t, fixtureDir, "data.txt", "data\n")
+	writeFixture(t, fixtureDir, "three.txt", "1\n2\n3\n")
+	writeFixture(t, fixtureDir, "twenty.txt", genLines(20))
+	writeFixture(t, fixtureDir, "ten.txt", genLines(10))
+	writeFixture(t, fixtureDir, "short.txt", "1\n2\n")
+	writeFixture(t, fixtureDir, "bytes.txt", "abcdefgh")
+	writeFixture(t, fixtureDir, "1k.txt", strings.Repeat("a", 2048))
+	writeFixture(t, fixtureDir, "empty.txt", "")
+	writeFixture(t, fixtureDir, "noeof.txt", "no trailing newline")
+
+	file1 := filepath.Join(fixtureDir, "file1.txt")
+	file2 := filepath.Join(fixtureDir, "file2.txt")
+	dataFile := filepath.Join(fixtureDir, "data.txt")
+	threeFile := filepath.Join(fixtureDir, "three.txt")
+	twentyFile := filepath.Join(fixtureDir, "twenty.txt")
+	tenFile := filepath.Join(fixtureDir, "ten.txt")
+	shortFile := filepath.Join(fixtureDir, "short.txt")
+	bytesFile := filepath.Join(fixtureDir, "bytes.txt")
+	oneKFile := filepath.Join(fixtureDir, "1k.txt")
+	emptyFile := filepath.Join(fixtureDir, "empty.txt")
+	noeofFile := filepath.Join(fixtureDir, "noeof.txt")
+	missingFile := filepath.Join(fixtureDir, "missing.txt")
+
+	tests := []testutils.DiffTest{
+		// R4.1: default 10 lines from stdin.
+		{
+			Name:  "default_10_lines",
+			Stdin: []byte(genLines(20)),
+		},
+		// R4.1: default with fewer than 10 lines.
+		{
+			Name:  "default_fewer_lines",
+			Stdin: []byte(genLines(3)),
+		},
+		// R4.3: explicit -n 5.
+		{
+			Name:  "n_5",
+			Args:  []string{"-n", "5"},
+			Stdin: []byte(genLines(20)),
+		},
+		// R4.3: -n from file.
+		{
+			Name: "n_3_file",
+			Args: []string{"-n", "3", twentyFile},
+		},
+		// R4.3: -c byte count.
+		{
+			Name:  "c_5",
+			Args:  []string{"-c", "5"},
+			Stdin: []byte("abcdefghij"),
+		},
+		// R4.3: -c from file.
+		{
+			Name: "c_4_file",
+			Args: []string{"-c", "4", bytesFile},
+		},
+		// R4.3: +N offset lines -- start from line 5.
+		{
+			Name:  "n_plus_5",
+			Args:  []string{"-n", "+5"},
+			Stdin: []byte(genLines(10)),
+		},
+		// R4.3: +N offset lines from file.
+		{
+			Name: "n_plus_3_file",
+			Args: []string{"-n", "+3", tenFile},
+		},
+		// R4.3: +N offset bytes -- start from byte 5.
+		{
+			Name:  "c_plus_5",
+			Args:  []string{"-c", "+5"},
+			Stdin: []byte("abcdefghij"),
+		},
+		// R4.3: +N offset bytes from file.
+		{
+			Name: "c_plus_3_file",
+			Args: []string{"-c", "+3", bytesFile},
+		},
+		// R4.3: multi-file headers.
+		{
+			Name: "multi_file_headers",
+			Args: []string{file1, file2},
+		},
+		// R4.3: single file no header.
+		{
+			Name: "single_file_no_header",
+			Args: []string{threeFile},
+		},
+		// R4.3: -q suppresses headers for multiple files.
+		{
+			Name: "quiet_multi_file",
+			Args: []string{"-q", file1, file2},
+		},
+		// R4.3: --quiet long form.
+		{
+			Name: "quiet_long_multi_file",
+			Args: []string{"--quiet", file1, file2},
+		},
+		// R4.3: --silent long form.
+		{
+			Name: "silent_multi_file",
+			Args: []string{"--silent", file1, file2},
+		},
+		// R4.3: -v forces header for single file.
+		{
+			Name: "verbose_single_file",
+			Args: []string{"-v", dataFile},
+		},
+		// R4.3: --verbose long form.
+		{
+			Name: "verbose_long_single_file",
+			Args: []string{"--verbose", dataFile},
+		},
+		// R4.3: -v with multiple files.
+		{
+			Name: "verbose_multi_file",
+			Args: []string{"-v", file1, file2},
+		},
+		// R4.3: last flag wins: -v then -q suppresses.
+		{
+			Name: "v_then_q",
+			Args: []string{"-v", "-q", file1, file2},
+		},
+		// R4.3: last flag wins: -q then -v shows headers.
+		{
+			Name: "q_then_v",
+			Args: []string{"-q", "-v", file1},
+		},
+		// R4.3: stdin input via "-".
+		{
+			Name:  "stdin_dash",
+			Args:  []string{"-n", "2", "-"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R4.3: non-existent file exits 1.
+		{
+			Name:      "missing_file",
+			Args:      []string{missingFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: non-existent file continues with next.
+		{
+			Name:      "missing_file_continues",
+			Args:      []string{missingFile, dataFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.3: suffix multiplier with -c.
+		{
+			Name: "c_1K_suffix",
+			Args: []string{"-c", "1K", oneKFile},
+		},
+		// R4.1: -n 0 outputs nothing.
+		{
+			Name:  "n_zero",
+			Args:  []string{"-n", "0"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		// R4.1: -c 0 outputs nothing.
+		{
+			Name:  "c_zero",
+			Args:  []string{"-c", "0"},
+			Stdin: []byte("abcdefgh"),
+		},
+		// R4.1: empty stdin.
+		{
+			Name:  "empty_stdin",
+			Stdin: []byte(""),
+		},
+		// R4.1: empty file.
+		{
+			Name: "empty_file",
+			Args: []string{emptyFile},
+		},
+		// R4.3: file without trailing newline.
+		{
+			Name: "file_no_trailing_newline",
+			Args: []string{noeofFile},
+		},
+		// R4.3: file shorter than requested line count.
+		{
+			Name: "file_shorter_than_n",
+			Args: []string{"-n", "100", shortFile},
+		},
+		// R4.3: file shorter than requested byte count.
+		{
+			Name: "file_shorter_than_c",
+			Args: []string{"-c", "1000", bytesFile},
+		},
+		// R4.3: --lines= long form.
+		{
+			Name:  "lines_long_form",
+			Args:  []string{"--lines=3"},
+			Stdin: []byte(genLines(10)),
+		},
+		// R4.3: --bytes= long form.
+		{
+			Name:  "bytes_long_form",
+			Args:  []string{"--bytes=4"},
+			Stdin: []byte("abcdefgh"),
+		},
+		// R4.3: -c and -n mutually exclusive, last wins.
+		{
+			Name:  "c_overrides_n",
+			Args:  []string{"-n", "1", "-c", "3"},
+			Stdin: []byte("abcdefghij\n"),
+		},
+		// R4.3: -n overrides -c.
+		{
+			Name:  "n_overrides_c",
+			Args:  []string{"-c", "3", "-n", "1"},
+			Stdin: []byte("abcdefghij\n"),
+		},
+		// R4.3: multi-file with empty file.
+		{
+			Name: "multi_file_with_empty",
+			Args: []string{file1, emptyFile, file2},
+		},
+		// R4.3: verbose stdin header shows "standard input".
+		{
+			Name:  "verbose_stdin_header",
+			Args:  []string{"-v", "-n", "1", "-"},
+			Stdin: []byte("hello\n"),
+		},
+		// R4.4: --version prints version info.
+		{
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{versionNormalizer},
+		},
+		// R4.4: --help prints usage.
+		{
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{helpNormalizer},
+		},
+		// R4.4: unrecognized short option.
+		{
+			Name:      "bad_short_option",
+			Args:      []string{"-Z"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.4: unrecognized long option.
+		{
+			Name:      "bad_long_option",
+			Args:      []string{"--nonexistent"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.4: invalid -n argument.
+		{
+			Name:      "invalid_n_nonnumeric",
+			Args:      []string{"-n", "abc"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.4: invalid -c argument.
+		{
+			Name:      "invalid_c_nonnumeric",
+			Args:      []string{"-c", "xyz"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.2: missing file between two valid files.
+		{
+			Name:      "missing_between_valid",
+			Args:      []string{file1, missingFile, file2},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+		// R4.3: +1 prints all lines (start from line 1).
+		{
+			Name:  "n_plus_1_all",
+			Args:  []string{"-n", "+1"},
+			Stdin: []byte(genLines(5)),
+		},
+		// R4.3: +1 bytes prints all bytes.
+		{
+			Name:  "c_plus_1_all",
+			Args:  []string{"-c", "+1"},
+			Stdin: []byte("abcde"),
+		},
+	}
+
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// generateLines creates input with numbered lines "1\n2\n...N\n".
-func generateLines(n int) []byte {
+// writeFixture creates a file in dir with the given content.
+func writeFixture(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("write fixture %s: %v", name, err)
+	}
+}
+
+// genLines returns a string with numbered lines "1\n2\n...n\n".
+func genLines(n int) string {
 	var b strings.Builder
 	for i := 1; i <= n; i++ {
-		fmt.Fprintf(&b, "%d\n", i)
+		b.WriteString(itoa(i))
+		b.WriteByte('\n')
 	}
-	return []byte(b.String())
+	return b.String()
 }
 
-// createTestFile creates a named file in dir and returns its path.
-func createTestFile(t *testing.T, dir, name, content string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("createTestFile %s: %v", path, err)
+// itoa converts an int to string without importing strconv in the test file.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
 	}
-	return path
-}
-
-// buildDiffTests returns all differential test cases for tail.
-func buildDiffTests(t *testing.T) []testutils.DiffTest {
-	t.Helper()
-
-	input12 := generateLines(12)
-	input20 := generateLines(20)
-	input5 := generateLines(5)
-
-	// Create temp files for multi-file and file-based tests.
-	tmpDir := t.TempDir()
-	file1 := createTestFile(t, tmpDir, "f1.txt", string(input12))
-	file2 := createTestFile(t, tmpDir, "f2.txt", string(input12))
-
-	errDir := t.TempDir()
-	validFile := createTestFile(t, errDir, "valid.txt", "good\n")
-	nonexistent := filepath.Join(errDir, "nonexistent.txt")
-
-	errNorm := []testutils.NormalizeFunc{normalizeTailErrors}
-	errNormWithHeaders := []testutils.NormalizeFunc{
-		stripEmptyHeaders, normalizeTailErrors,
+	digits := []byte{}
+	neg := n < 0
+	if neg {
+		n = -n
 	}
-
-	lineTests := buildLineTests(input5, input12, input20, file1, file2, validFile, nonexistent, errNorm, errNormWithHeaders)
-	byteTests := buildByteTests(t)
-	headerTests := buildHeaderTests(t)
-	exitTests := buildExitCodeTests(t)
-	tests := append(lineTests, byteTests...)
-	tests = append(tests, headerTests...)
-	return append(tests, exitTests...)
-}
-
-// buildLineTests returns differential tests for R1.1-R1.4 (line mode).
-func buildLineTests(input5, input12, input20 []byte, file1, file2, validFile, nonexistent string, errNorm, errNormWithHeaders []testutils.NormalizeFunc) []testutils.DiffTest {
-	return []testutils.DiffTest{
-		// R1.1: default 10 lines from stdin
-		{
-			Name:     "default_10_lines",
-			Stdin:    input12,
-			ExitCode: 0,
-		},
-		// R1.1: input shorter than 10 lines prints all
-		{
-			Name:     "fewer_than_10_lines",
-			Stdin:    input5,
-			ExitCode: 0,
-		},
-		// R1.2: explicit -n 5
-		{
-			Name:     "n_5",
-			Args:     []string{"-n", "5"},
-			Stdin:    input20,
-			ExitCode: 0,
-		},
-		// R1.2: --lines=3
-		{
-			Name:     "lines_eq_3",
-			Args:     []string{"--lines=3"},
-			Stdin:    input20,
-			ExitCode: 0,
-		},
-		// R1.2: -n1 (no space)
-		{
-			Name:     "n1_no_space",
-			Args:     []string{"-n1"},
-			Stdin:    input20,
-			ExitCode: 0,
-		},
-		// R1.2: -n 0 prints nothing
-		{
-			Name:     "n_0_lines",
-			Args:     []string{"-n", "0"},
-			Stdin:    input20,
-			ExitCode: 0,
-		},
-		// R1.3: plus offset -n +5
-		{
-			Name:     "n_plus_5",
-			Args:     []string{"-n", "+5"},
-			Stdin:    input20,
-			ExitCode: 0,
-		},
-		// R1.3: plus offset -n +1 prints entire file
-		{
-			Name:     "n_plus_1_all",
-			Args:     []string{"-n", "+1"},
-			Stdin:    input5,
-			ExitCode: 0,
-		},
-		// R1.3: plus offset beyond input length
-		{
-			Name:     "n_plus_beyond_input",
-			Args:     []string{"-n", "+100"},
-			Stdin:    input5,
-			ExitCode: 0,
-		},
-		// R1.4: stdin via "-" argument
-		{
-			Name:     "stdin_dash",
-			Args:     []string{"-"},
-			Stdin:    input5,
-			ExitCode: 0,
-		},
-		// R1.4: stdin with -n flag
-		{
-			Name:     "stdin_with_n",
-			Args:     []string{"-n", "3"},
-			Stdin:    input12,
-			ExitCode: 0,
-		},
-		// R1.1: empty stdin
-		{
-			Name:     "empty_stdin",
-			Stdin:    []byte{},
-			ExitCode: 0,
-		},
-		// R1.1: input without trailing newline
-		{
-			Name:     "no_trailing_newline",
-			Stdin:    []byte("line1\nline2\nline3"),
-			ExitCode: 0,
-		},
-		// R1.2: legacy -5 form
-		{
-			Name:     "legacy_dash_number",
-			Args:     []string{"-5"},
-			Stdin:    input20,
-			ExitCode: 0,
-		},
-		// R1.1, R1.4: multi-file with default lines
-		{
-			Name:     "multi_file_default",
-			Args:     []string{file1, file2},
-			ExitCode: 0,
-		},
-		// R1.2: multi-file with -n
-		{
-			Name:     "multi_file_with_n",
-			Args:     []string{"-n", "2", file1, file2},
-			ExitCode: 0,
-		},
-		// R4.2, R4.4: nonexistent file, continues processing
-		{
-			Name:      "nonexistent_file_with_valid",
-			Args:      []string{nonexistent, validFile},
-			ExitCode:  1,
-			Normalize: errNormWithHeaders,
-		},
-		// R4.2: nonexistent file alone
-		{
-			Name:      "nonexistent_file_alone",
-			Args:      []string{nonexistent},
-			ExitCode:  1,
-			Normalize: errNorm,
-		},
+	for n > 0 {
+		digits = append([]byte{byte('0' + n%10)}, digits...)
+		n /= 10
 	}
-}
-
-// buildHeaderTests returns differential tests for R3.1-R3.4 (multi-file headers).
-func buildHeaderTests(t *testing.T) []testutils.DiffTest {
-	t.Helper()
-
-	hDir := t.TempDir()
-	hf1 := createTestFile(t, hDir, "a.txt", "alpha\nbeta\n")
-	hf2 := createTestFile(t, hDir, "b.txt", "gamma\ndelta\n")
-	hf3 := createTestFile(t, hDir, "c.txt", "epsilon\n")
-
-	return []testutils.DiffTest{
-		// R3.1: multiple files get headers
-		{
-			Name:     "R3.1_multi_file_headers",
-			Args:     []string{hf1, hf2},
-			ExitCode: 0,
-		},
-		// R3.1: three files get headers with blank line separators
-		{
-			Name:     "R3.1_three_file_headers",
-			Args:     []string{hf1, hf2, hf3},
-			ExitCode: 0,
-		},
-		// R3.2: single file no header
-		{
-			Name:     "R3.2_single_file_no_header",
-			Args:     []string{hf1},
-			ExitCode: 0,
-		},
-		// R3.3: -q suppresses headers for multiple files
-		{
-			Name:     "R3.3_quiet_multi_file",
-			Args:     []string{"-q", hf1, hf2},
-			ExitCode: 0,
-		},
-		// R3.3: --quiet suppresses headers
-		{
-			Name:     "R3.3_quiet_long_flag",
-			Args:     []string{"--quiet", hf1, hf2},
-			ExitCode: 0,
-		},
-		// R3.3: --silent suppresses headers
-		{
-			Name:     "R3.3_silent_flag",
-			Args:     []string{"--silent", hf1, hf2},
-			ExitCode: 0,
-		},
-		// R3.4: -v forces header for single file
-		{
-			Name:     "R3.4_verbose_single_file",
-			Args:     []string{"-v", hf1},
-			ExitCode: 0,
-		},
-		// R3.4: --verbose forces header for single file
-		{
-			Name:     "R3.4_verbose_long_flag",
-			Args:     []string{"--verbose", hf1},
-			ExitCode: 0,
-		},
+	if neg {
+		digits = append([]byte{'-'}, digits...)
 	}
-}
-
-// buildExitCodeTests returns differential tests for R4.1-R4.4 (exit codes and errors).
-func buildExitCodeTests(t *testing.T) []testutils.DiffTest {
-	t.Helper()
-
-	eDir := t.TempDir()
-	ef1 := createTestFile(t, eDir, "ok1.txt", "line1\nline2\nline3\n")
-	ef2 := createTestFile(t, eDir, "ok2.txt", "alpha\nbeta\n")
-	missing := filepath.Join(eDir, "no_such_file.txt")
-
-	errNorm := []testutils.NormalizeFunc{normalizeTailErrors}
-	errNormH := []testutils.NormalizeFunc{
-		stripEmptyHeaders, normalizeTailErrors,
-	}
-
-	return []testutils.DiffTest{
-		// R4.1: exit 0 when single file succeeds
-		{
-			Name:     "R4.1_exit_0_single_file",
-			Args:     []string{ef1},
-			ExitCode: 0,
-		},
-		// R4.1: exit 0 when multiple files succeed
-		{
-			Name:     "R4.1_exit_0_multi_file",
-			Args:     []string{ef1, ef2},
-			ExitCode: 0,
-		},
-		// R4.1: exit 0 with stdin
-		{
-			Name:     "R4.1_exit_0_stdin",
-			Stdin:    []byte("hello\nworld\n"),
-			ExitCode: 0,
-		},
-		// R4.2: exit 1 when file cannot be opened
-		{
-			Name:      "R4.2_exit_1_missing_file",
-			Args:      []string{missing},
-			ExitCode:  1,
-			Normalize: errNorm,
-		},
-		// R4.2, R4.4: exit 1 but still output valid files
-		{
-			Name:      "R4.2_exit_1_mixed_valid_invalid",
-			Args:      []string{ef1, missing, ef2},
-			ExitCode:  1,
-			Normalize: errNormH,
-		},
-		// R4.4: error before valid file, valid file still printed
-		{
-			Name:      "R4.4_error_then_valid",
-			Args:      []string{missing, ef1},
-			ExitCode:  1,
-			Normalize: errNormH,
-		},
-		// R4.4: valid file before error, valid file still printed
-		{
-			Name:      "R4.4_valid_then_error",
-			Args:      []string{ef1, missing},
-			ExitCode:  1,
-			Normalize: errNormH,
-		},
-	}
-}
-
-// buildByteTests returns differential tests for R2.1, R2.2, R2.3 (byte mode).
-func buildByteTests(t *testing.T) []testutils.DiffTest {
-	t.Helper()
-
-	// Fixed byte input for predictable byte offsets.
-	alphaBytes := []byte("abcdefghijklmnopqrstuvwxyz")
-	input20 := generateLines(20)
-
-	byteDir := t.TempDir()
-	byteFile := createTestFile(t, byteDir, "alpha.txt", string(alphaBytes))
-
-	return []testutils.DiffTest{
-		// R2.1: -c 5 last 5 bytes from stdin
-		{
-			Name:     "c_5_bytes",
-			Args:     []string{"-c", "5"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.1: --bytes=5
-		{
-			Name:     "bytes_eq_5",
-			Args:     []string{"--bytes=5"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.1: -c5 no space
-		{
-			Name:     "c5_no_space",
-			Args:     []string{"-c5"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.1: -c 0 prints nothing
-		{
-			Name:     "c_0_bytes",
-			Args:     []string{"-c", "0"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.1: -c more than input length prints all
-		{
-			Name:     "c_more_than_input",
-			Args:     []string{"-c", "100"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.1: -c and -n mutual exclusivity, last wins (R2.1)
-		{
-			Name:     "c_after_n_last_wins",
-			Args:     []string{"-n", "3", "-c", "5"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.1: -n after -c, last wins
-		{
-			Name:     "n_after_c_last_wins",
-			Args:     []string{"-c", "5", "-n", "3"},
-			Stdin:    input20,
-			ExitCode: 0,
-		},
-		// R2.1: -c on file argument
-		{
-			Name:     "c_on_file",
-			Args:     []string{"-c", "10", byteFile},
-			ExitCode: 0,
-		},
-		// R2.2: -c +5 from byte offset
-		{
-			Name:     "c_plus_5_offset",
-			Args:     []string{"-c", "+5"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.2: -c +1 prints entire input
-		{
-			Name:     "c_plus_1_all",
-			Args:     []string{"-c", "+1"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.2: -c +N beyond input length
-		{
-			Name:     "c_plus_beyond_input",
-			Args:     []string{"-c", "+100"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.3: -c with b suffix (512-byte blocks)
-		{
-			Name:     "c_suffix_b",
-			Args:     []string{"-c", "1b"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-		// R2.3: -c with K suffix (1024 bytes)
-		{
-			Name:     "c_suffix_K",
-			Args:     []string{"-c", "1K"},
-			Stdin:    alphaBytes,
-			ExitCode: 0,
-		},
-	}
+	return string(digits)
 }

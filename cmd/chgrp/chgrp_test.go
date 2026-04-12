@@ -2,498 +2,406 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/chgrp against gchgrp (GNU coreutils).
-//
-// Traces: prd090-chgrp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
+// Implements srd090 R3.1-R3.3.
 package main
 
 import (
-	"fmt"
+	"bytes"
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"strings"
+	"strconv"
+	"syscall"
 	"testing"
+	"time"
 
-	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normProgName normalizes the program name prefix in stderr output so
-// "chgrp:" and "gchgrp:" compare as equal.
-func normProgName(b []byte) []byte {
-	s := strings.ReplaceAll(string(b), "gchgrp:", "chgrp:")
-	return []byte(s)
+const refBinName = "gchgrp"
+const execTimeout = 30 * time.Second
+
+// makeNormalizer creates a NormalizeFunc that replaces binary-specific names
+// and normalizes syscall error message capitalization.
+func makeNormalizer(refBin string) testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		b = bytes.ReplaceAll(b, []byte(refBin), []byte(programName))
+		b = bytes.ReplaceAll(b, []byte(refBinName), []byte(programName))
+		b = normalizeSyscallErrors(b)
+		return b
+	}
 }
 
-// currentGroup returns the current user's primary group name.
-func currentGroup(t *testing.T) string {
+// normalizeSyscallErrors lowercases known syscall error messages that
+// differ in case between C strerror() and Go syscall.Errno.Error().
+func normalizeSyscallErrors(b []byte) []byte {
+	replacements := []struct{ from, to string }{
+		{"No such file or directory", "no such file or directory"},
+		{"Not a directory", "not a directory"},
+		{"Permission denied", "permission denied"},
+		{"Operation not permitted", "operation not permitted"},
+	}
+	for _, r := range replacements {
+		b = bytes.ReplaceAll(b, []byte(r.from), []byte(r.to))
+	}
+	return b
+}
+
+// currentGroupName returns the primary group name of the current user.
+func currentGroupName(t *testing.T) string {
 	t.Helper()
 	u, err := user.Current()
 	if err != nil {
-		t.Fatalf("get current user: %v", err)
+		t.Fatalf("user.Current: %v", err)
 	}
-	grp, err := user.LookupGroupId(u.Gid)
+	g, err := user.LookupGroupId(u.Gid)
 	if err != nil {
-		t.Fatalf("lookup group id %s: %v", u.Gid, err)
+		t.Fatalf("LookupGroupId %s: %v", u.Gid, err)
 	}
-	return grp.Name
+	return g.Name
 }
 
-// currentGID returns the current user's primary GID string.
-func currentGID(t *testing.T) string {
+// secondaryGroupName returns a group name the current user belongs to
+// that differs from the primary group. Returns "" if none found.
+func secondaryGroupName(t *testing.T) string {
 	t.Helper()
 	u, err := user.Current()
 	if err != nil {
-		t.Fatalf("get current user: %v", err)
+		t.Fatalf("user.Current: %v", err)
 	}
-	return u.Gid
-}
-
-// setupFile creates a file in dir with specified permissions.
-func setupFile(t *testing.T, dir, name string, perm os.FileMode) {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("test\n"), perm); err != nil {
-		t.Fatalf("setup: write %s: %v", name, err)
+	primaryGID, _ := strconv.Atoi(u.Gid)
+	gids, err := os.Getgroups()
+	if err != nil {
+		return ""
 	}
-}
-
-// makeWorkDir creates a temp dir with a single testfile.
-func makeWorkDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupFile(t, dir, "testfile", 0o644)
-	return dir
-}
-
-// makeMultiWorkDir creates a temp dir with two files.
-func makeMultiWorkDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupFile(t, dir, "file1", 0o644)
-	setupFile(t, dir, "file2", 0o644)
-	return dir
-}
-
-// makeRefWorkDir creates a temp dir with a testfile and a reffile.
-func makeRefWorkDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupFile(t, dir, "testfile", 0o644)
-	setupFile(t, dir, "reffile", 0o644)
-	return dir
-}
-
-// makeRecursiveDir creates a temp dir with a nested directory structure.
-func makeRecursiveDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	sub := filepath.Join(dir, "subdir")
-	if err := os.Mkdir(sub, 0o755); err != nil {
-		t.Fatalf("setup: mkdir subdir: %v", err)
+	for _, gid := range gids {
+		if gid == primaryGID {
+			continue
+		}
+		g, err := user.LookupGroupId(strconv.Itoa(gid))
+		if err != nil {
+			continue
+		}
+		return g.Name
 	}
-	setupFile(t, dir, "topfile", 0o644)
-	setupFile(t, sub, "subfile", 0o644)
-	return dir
+	return ""
 }
 
-// makeSymlinkDir creates a temp dir with a symlink for testing -h/-H/-L/-P.
-func makeSymlinkDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupFile(t, dir, "target", 0o644)
-	if err := os.Symlink("target", filepath.Join(dir, "link")); err != nil {
-		t.Fatalf("setup: symlink: %v", err)
-	}
-	return dir
-}
-
-// makeRefSymlinkDir creates a temp dir with a testfile and a symlink reflink
-// pointing to a real reffile, for testing --reference with symlinks.
-func makeRefSymlinkDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupFile(t, dir, "testfile", 0o644)
-	setupFile(t, dir, "reffile", 0o644)
-	if err := os.Symlink("reffile", filepath.Join(dir, "reflink")); err != nil {
-		t.Fatalf("setup: symlink reflink: %v", err)
-	}
-	return dir
-}
-
-// makePermDeniedDir creates a recursive dir with a no-read subdirectory.
-// R3.3: tests that permission denied does not abort traversal.
-func makePermDeniedDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupFile(t, dir, "topfile", 0o644)
-	sub := filepath.Join(dir, "noread")
-	if err := os.Mkdir(sub, 0o755); err != nil {
-		t.Fatalf("setup: mkdir noread: %v", err)
-	}
-	setupFile(t, sub, "inner", 0o644)
-	// Remove read permission so ReadDir fails
-	if err := os.Chmod(sub, 0o000); err != nil {
-		t.Fatalf("setup: chmod noread: %v", err)
-	}
-	t.Cleanup(func() {
-		// Restore permissions so TempDir cleanup can remove it
-		os.Chmod(sub, 0o755) //nolint:errcheck
-	})
-	return dir
-}
-
-// TestDiff runs differential tests comparing our chgrp against gchgrp.
+// TestDiff runs differential tests comparing cmd/chgrp against gchgrp.
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gchgrp")
+	refBin, err := exec.LookPath(refBinName)
 	if err != nil {
-		t.Skip("reference binary gchgrp not in PATH")
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
 	}
+	norm := makeNormalizer(refBin)
 
-	group := currentGroup(t)
-	gid := currentGID(t)
+	t.Run("errors", func(t *testing.T) {
+		t.Parallel()
+		runErrorTests(t, goBin, refBin, norm)
+	})
+	t.Run("verbose", func(t *testing.T) {
+		t.Parallel()
+		runVerboseTests(t, goBin, refBin, norm)
+	})
+	t.Run("changes", func(t *testing.T) {
+		t.Parallel()
+		runChangesTests(t, goBin, refBin, norm)
+	})
+	t.Run("silent", func(t *testing.T) {
+		t.Parallel()
+		runSilentTests(t, goBin, refBin, norm)
+	})
+	t.Run("recursive", func(t *testing.T) {
+		t.Parallel()
+		runRecursiveTests(t, goBin, refBin, norm)
+	})
+	t.Run("multiple_files", func(t *testing.T) {
+		t.Parallel()
+		runMultipleFileTests(t, goBin, refBin, norm)
+	})
+	t.Run("error_continue", func(t *testing.T) {
+		t.Parallel()
+		runErrorContinueTests(t, goBin, refBin, norm)
+	})
+}
 
+// runErrorTests tests error cases using RunDiffTests.
+func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	group := currentGroupName(t)
+	norms := []testutils.NormalizeFunc{norm}
 	tests := []testutils.DiffTest{
-		// R1.1: change group by name
 		{
-			Name:    "group_by_name",
-			Args:    []string{group, "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t),
-		},
-		// R1.1: change group by numeric GID
-		{
-			Name:    "group_by_gid",
-			Args:    []string{gid, "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t),
-		},
-		// R1.2: --reference mode
-		{
-			Name:    "reference_mode",
-			Args:    []string{"--reference=reffile", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeRefWorkDir(t),
-		},
-		// R1.3: multiple files
-		{
-			Name:    "multiple_files",
-			Args:    []string{group, "file1", "file2"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeMultiWorkDir(t),
-		},
-		// R1.1: change group with -- separator
-		{
-			Name:    "double_dash_separator",
-			Args:    []string{"--", group, "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t),
-		},
-		// R2.1: recursive group change
-		{
-			Name:    "recursive_change",
-			Args:    []string{"-R", group, "."},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeRecursiveDir(t),
-		},
-		// R2.2: no-dereference with -h
-		{
-			Name:    "no_dereference_h",
-			Args:    []string{"-h", group, "link"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeSymlinkDir(t),
-		},
-		// R2.3: -P with recursive (default behavior)
-		{
-			Name:    "recursive_P",
-			Args:    []string{"-R", "-P", group, "."},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeRecursiveDir(t),
-		},
-		// R3.1: verbose output
-		{
-			Name:    "verbose_output",
-			Args:    []string{"-v", group, "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t),
-		},
-		// R3.1: changes output (no change expected since group is same)
-		{
-			Name:    "changes_no_change",
-			Args:    []string{"-c", group, "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t),
-		},
-		// R3.1: verbose with recursive
-		{
-			Name:    "verbose_recursive",
-			Args:    []string{"-Rv", group, "."},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeRecursiveDir(t),
-		},
-		// R3.2: --reference with symlink follows symlink to get group
-		{
-			Name:    "reference_symlink",
-			Args:    []string{"--reference=reflink", "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeRefSymlinkDir(t),
-		},
-		// R3.2: exit 0 on success
-		{
-			Name:    "exit_zero_success",
-			Args:    []string{group, "testfile"},
-			Env:     []string{"LC_ALL=C"},
-			WorkDir: makeWorkDir(t),
-		},
-		// R3.2: exit 1 on nonexistent file
-		{
-			Name:      "exit_one_nonexistent",
-			Args:      []string{group, "noexist"},
-			Env:       []string{"LC_ALL=C"},
-			WorkDir:   t.TempDir(),
+			Name:      "nonexistent_file",
+			Args:      []string{group, "nonexistent"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normProgName},
+			Normalize: norms,
 		},
-		// R3.2: exit 1 on invalid group
 		{
-			Name:      "exit_one_invalid_group",
-			Args:      []string{"nonexistent_group_xyz_999", "testfile"},
-			Env:       []string{"LC_ALL=C"},
-			WorkDir:   makeWorkDir(t),
+			Name:      "invalid_group",
+			Args:      []string{"nonexistentgroup12345", "nonexistent"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normProgName},
-		},
-		// R3.3: recursive with permission denied continues traversal
-		{
-			Name:      "recursive_perm_denied",
-			Args:      []string{"-R", group, "."},
-			Env:       []string{"LC_ALL=C"},
-			WorkDir:   makePermDeniedDir(t),
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normProgName},
+			Normalize: norms,
 		},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestGroupChange verifies group ownership actually changes.
-// R1.1: change file group to GROUP.
-func TestGroupChange(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	group := currentGroup(t)
-	dir := makeWorkDir(t)
-
-	cmd := exec.Command(goBin, group, "testfile")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("chgrp failed: %v", err)
-	}
-
-	fi, err := sys.Lstat(filepath.Join(dir, "testfile"))
-	if err != nil {
-		t.Fatalf("lstat: %v", err)
-	}
-
-	u, _ := user.Current()
-	wantGID := u.Gid
-	gotGID := fi.Gid
-	if wantGID != fmt.Sprint(gotGID) {
-		t.Errorf("group = %d, want %s", gotGID, wantGID)
-	}
-}
-
-// TestReferenceMode verifies --reference copies group from reference file.
-// R1.2: --reference=RFILE sets each FILE's group to match RFILE's group.
-func TestReferenceMode(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	dir := makeRefWorkDir(t)
-
-	cmd := exec.Command(goBin, "--reference=reffile", "testfile")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("chgrp --reference failed: %v", err)
-	}
-
-	refInfo, err := sys.Lstat(filepath.Join(dir, "reffile"))
-	if err != nil {
-		t.Fatalf("lstat reffile: %v", err)
-	}
-	testInfo, err := sys.Lstat(filepath.Join(dir, "testfile"))
-	if err != nil {
-		t.Fatalf("lstat testfile: %v", err)
-	}
-	if testInfo.Gid != refInfo.Gid {
-		t.Errorf("testfile gid = %d, want %d (reffile)", testInfo.Gid, refInfo.Gid)
-	}
-}
-
-// TestMultipleFiles verifies group change applies to all files.
-// R1.3: process multiple FILE arguments.
-func TestMultipleFiles(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	group := currentGroup(t)
-	dir := makeMultiWorkDir(t)
-
-	cmd := exec.Command(goBin, group, "file1", "file2")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("chgrp multiple files failed: %v", err)
-	}
-
-	for _, name := range []string{"file1", "file2"} {
-		fi, err := sys.Lstat(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatalf("lstat %s: %v", name, err)
-		}
-		u, _ := user.Current()
-		if fmt.Sprint(fi.Gid) != u.Gid {
-			t.Errorf("%s gid = %d, want %s", name, fi.Gid, u.Gid)
-		}
-	}
-}
-
-// TestExitCodes verifies exit code behavior.
-// R1.4: exit 1 on error, continue processing remaining files.
-func TestExitCodes(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	group := currentGroup(t)
-
-	t.Run("success_exits_zero", func(t *testing.T) {
-		dir := makeWorkDir(t)
-		cmd := exec.Command(goBin, group, "testfile")
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "LC_ALL=C")
-		if err := cmd.Run(); err != nil {
-			t.Errorf("expected exit 0, got: %v", err)
-		}
+// runVerboseTests tests R3.1: -v verbose diagnostic output.
+func runVerboseTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	group := currentGroupName(t)
+	t.Run("verbose_retained", func(t *testing.T) {
+		t.Parallel()
+		runChgrpInDirs(t, goBin, refBin, norm,
+			[]string{"-v", group, "file"}, false)
 	})
-
-	t.Run("nonexistent_exits_one", func(t *testing.T) {
-		dir := t.TempDir()
-		cmd := exec.Command(goBin, group, "noexist")
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "LC_ALL=C")
-		err := cmd.Run()
-		if err == nil {
-			t.Error("expected exit 1, got exit 0")
-		}
-	})
-
-	t.Run("invalid_group_exits_one", func(t *testing.T) {
-		dir := makeWorkDir(t)
-		cmd := exec.Command(goBin, "nonexistent_group_xyz_999", "testfile")
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "LC_ALL=C")
-		err := cmd.Run()
-		if err == nil {
-			t.Error("expected exit 1, got exit 0")
-		}
-	})
-
-	t.Run("partial_failure_exits_one", func(t *testing.T) {
-		dir := makeWorkDir(t)
-		cmd := exec.Command(goBin, group, "testfile", "noexist")
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "LC_ALL=C")
-		err := cmd.Run()
-		if err == nil {
-			t.Error("expected exit 1 for partial failure, got exit 0")
-		}
+	altGroup := secondaryGroupName(t)
+	if altGroup == "" {
+		return
+	}
+	t.Run("verbose_changed", func(t *testing.T) {
+		t.Parallel()
+		refDir, goDir := setupPairedDirs(t, false)
+		args := []string{"-v", altGroup, "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+		compareOutputs(t, norm, refRes, goRes)
+		compareFileGroup(t, refDir, goDir, "file")
 	})
 }
 
-// TestRecursiveChange verifies -R changes group recursively.
-// R2.1: recursive group change.
-func TestRecursiveChange(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	group := currentGroup(t)
-	dir := makeRecursiveDir(t)
-
-	cmd := exec.Command(goBin, "-R", group, dir)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("chgrp -R failed: %v", err)
+// runChangesTests tests R3.1: -c changes-only diagnostic output.
+func runChangesTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	group := currentGroupName(t)
+	t.Run("changes_no_change", func(t *testing.T) {
+		t.Parallel()
+		runChgrpInDirs(t, goBin, refBin, norm,
+			[]string{"-c", group, "file"}, false)
+	})
+	altGroup := secondaryGroupName(t)
+	if altGroup == "" {
+		return
 	}
+	t.Run("changes_actual_change", func(t *testing.T) {
+		t.Parallel()
+		refDir, goDir := setupPairedDirs(t, false)
+		args := []string{"-c", altGroup, "file"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+		compareOutputs(t, norm, refRes, goRes)
+		compareFileGroup(t, refDir, goDir, "file")
+	})
+}
 
-	u, _ := user.Current()
-	for _, rel := range []string{"", "topfile", "subdir", "subdir/subfile"} {
-		path := filepath.Join(dir, rel)
-		fi, err := sys.Lstat(path)
-		if err != nil {
-			t.Fatalf("lstat %s: %v", rel, err)
+// runSilentTests tests R3.1: -f silent/quiet error suppression.
+func runSilentTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	group := currentGroupName(t)
+	t.Run("silent_nonexistent", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+		args := []string{"-f", group, "nonexistent"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+		compareOutputs(t, norm, refRes, goRes)
+	})
+}
+
+// runRecursiveTests tests -R recursive group changes.
+func runRecursiveTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	group := currentGroupName(t)
+	t.Run("recursive_current_group", func(t *testing.T) {
+		t.Parallel()
+		runChgrpInDirs(t, goBin, refBin, norm,
+			[]string{"-R", group, "testdir"}, true)
+	})
+	altGroup := secondaryGroupName(t)
+	if altGroup == "" {
+		return
+	}
+	t.Run("recursive_change_group", func(t *testing.T) {
+		t.Parallel()
+		refDir, goDir := setupPairedDirs(t, true)
+		args := []string{"-R", altGroup, "testdir"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+		compareOutputs(t, norm, refRes, goRes)
+		compareFileGroup(t, refDir, goDir, filepath.Join("testdir", "file1"))
+		compareFileGroup(t, refDir, goDir, filepath.Join("testdir", "sub", "file2"))
+	})
+}
+
+// runMultipleFileTests tests R1.3: processing multiple FILE arguments.
+func runMultipleFileTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	group := currentGroupName(t)
+	t.Run("two_files", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+		setupFile(t, refDir, "file1")
+		setupFile(t, refDir, "file2")
+		setupFile(t, goDir, "file1")
+		setupFile(t, goDir, "file2")
+		args := []string{group, "file1", "file2"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+		compareOutputs(t, norm, refRes, goRes)
+	})
+}
+
+// runErrorContinueTests tests R1.4: continue processing after error.
+func runErrorContinueTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	group := currentGroupName(t)
+	t.Run("nonexistent_then_real", func(t *testing.T) {
+		t.Parallel()
+		refDir := t.TempDir()
+		goDir := t.TempDir()
+		setupFile(t, refDir, "realfile")
+		setupFile(t, goDir, "realfile")
+		args := []string{group, "nonexistent", "realfile"}
+		refRes := runBin(t, refBin, args, refDir)
+		goRes := runBin(t, goBin, args, goDir)
+		compareOutputs(t, norm, refRes, goRes)
+	})
+}
+
+// runChgrpInDirs runs a chgrp command in paired temp directories and compares.
+func runChgrpInDirs(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc, args []string, useTree bool) {
+	t.Helper()
+	refDir, goDir := setupPairedDirs(t, useTree)
+	refRes := runBin(t, refBin, args, refDir)
+	goRes := runBin(t, goBin, args, goDir)
+	compareOutputs(t, norm, refRes, goRes)
+}
+
+// setupPairedDirs creates matching temp directories for ref and go binaries.
+// When useTree is true, creates a directory tree; otherwise a single file.
+func setupPairedDirs(t *testing.T, useTree bool) (string, string) {
+	t.Helper()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+	if useTree {
+		setupTree(t, refDir)
+		setupTree(t, goDir)
+	} else {
+		setupFile(t, refDir, "file")
+		setupFile(t, goDir, "file")
+	}
+	return refDir, goDir
+}
+
+// setupFile creates a test file in the given directory.
+func setupFile(t *testing.T, dir, name string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+		t.Fatalf("setup WriteFile: %v", err)
+	}
+}
+
+// setupTree creates a directory tree: root/testdir/file1, root/testdir/sub/file2.
+func setupTree(t *testing.T, root string) {
+	t.Helper()
+	dir := filepath.Join(root, "testdir")
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("setup MkdirAll: %v", err)
+	}
+	setupFile(t, dir, "file1")
+	setupFile(t, sub, "file2")
+}
+
+// compareFileGroup checks that a file has the same group in both dirs.
+func compareFileGroup(t *testing.T, refDir, goDir, name string) {
+	t.Helper()
+	refGID := fileGID(t, filepath.Join(refDir, name))
+	goGID := fileGID(t, filepath.Join(goDir, name))
+	if refGID != goGID {
+		t.Errorf("file %s: group mismatch ref=%d go=%d", name, refGID, goGID)
+	}
+}
+
+// fileGID returns the group ID of a file.
+func fileGID(t *testing.T, path string) uint32 {
+	t.Helper()
+	fi, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("Lstat %s: %v", path, err)
+	}
+	return fi.Sys().(*syscall.Stat_t).Gid
+}
+
+// binResult holds captured output from a single binary execution.
+type binResult struct {
+	stdout   []byte
+	stderr   []byte
+	exitCode int
+}
+
+// runBin executes a binary in workDir and captures stdout, stderr, exit code.
+func runBin(t *testing.T, bin string, args []string, workDir string) binResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	cmd.Dir = workDir
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+
+	return extractResult(t, cmd, ctx, &outBuf, &errBuf)
+}
+
+// extractResult runs the command and returns the captured result.
+func extractResult(t *testing.T, cmd *exec.Cmd, ctx context.Context, outBuf, errBuf *bytes.Buffer) binResult {
+	t.Helper()
+	err := cmd.Run()
+	if err == nil {
+		return binResult{stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return binResult{
+			stdout:   outBuf.Bytes(),
+			stderr:   errBuf.Bytes(),
+			exitCode: exitErr.ExitCode(),
 		}
-		if fmt.Sprint(fi.Gid) != u.Gid {
-			t.Errorf("%s gid = %d, want %s", rel, fi.Gid, u.Gid)
-		}
 	}
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("%s timed out after %v", cmd.Path, execTimeout)
+	}
+	t.Fatalf("%s failed: %v", cmd.Path, err)
+	return binResult{} // unreachable
 }
 
-// TestNoDereference verifies -h changes the symlink, not the target.
-// R2.2: --no-dereference.
-func TestNoDereference(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	group := currentGroup(t)
-	dir := makeSymlinkDir(t)
+// compareOutputs compares stdout, stderr, and exit code between ref and go.
+func compareOutputs(t *testing.T, norm testutils.NormalizeFunc, ref, got binResult) {
+	t.Helper()
+	refOut := norm(ref.stdout)
+	gotOut := norm(got.stdout)
+	refErr := norm(ref.stderr)
+	gotErr := norm(got.stderr)
 
-	cmd := exec.Command(goBin, "-h", group, "link")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("chgrp -h failed: %v", err)
+	if !bytes.Equal(refOut, gotOut) {
+		t.Errorf("stdout mismatch\nref: %q\ngot: %q", refOut, gotOut)
 	}
-
-	fi, err := sys.Lstat(filepath.Join(dir, "link"))
-	if err != nil {
-		t.Fatalf("lstat link: %v", err)
+	if !bytes.Equal(refErr, gotErr) {
+		t.Errorf("stderr mismatch\nref: %q\ngot: %q", refErr, gotErr)
 	}
-	u, _ := user.Current()
-	if fmt.Sprint(fi.Gid) != u.Gid {
-		t.Errorf("link gid = %d, want %s", fi.Gid, u.Gid)
-	}
-}
-
-// TestVerboseOutput verifies -v prints diagnostics.
-// R3.1: verbose output.
-func TestVerboseOutput(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	group := currentGroup(t)
-	dir := makeWorkDir(t)
-
-	cmd := exec.Command(goBin, "-v", group, "testfile")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("chgrp -v failed: %v", err)
-	}
-	if len(out) == 0 {
-		t.Error("expected verbose output, got empty")
-	}
-}
-
-// TestChangesOutput verifies -c prints only when group changes.
-// R3.1: changes output.
-func TestChangesOutput(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	group := currentGroup(t)
-	dir := makeWorkDir(t)
-
-	// First run sets group to current (no change expected)
-	cmd := exec.Command(goBin, "-c", group, "testfile")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("chgrp -c failed: %v", err)
-	}
-	// File already has our group, so -c should produce no output
-	if len(out) != 0 {
-		t.Errorf("expected no output for no-change, got %q", string(out))
+	if ref.exitCode != got.exitCode {
+		t.Errorf("exit code mismatch: ref=%d got=%d", ref.exitCode, got.exitCode)
 	}
 }

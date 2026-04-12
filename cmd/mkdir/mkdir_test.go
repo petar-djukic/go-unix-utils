@@ -2,539 +2,244 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/mkdir against gmkdir (GNU coreutils).
-//
-// Covers prd034-mkdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4,
-// R4.1, R4.2, R4.3.
+// Implements srd034 R4.1 (compare stdout/stderr/exit codes),
+// R4.2 (test coverage), R4.3 (permission verification).
 package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-// Used for error messages where the binary name prefix differs
-// between gmkdir and the Go binary.
-func discardAll(data []byte) []byte {
-	return nil
-}
+const refBinName = "gmkdir"
+const execTimeout = 30 * time.Second
 
-// normalizeProgName replaces any binary path prefix before ": " with
-// "mkdir" so verbose messages from both binaries can be compared.
-// GNU mkdir uses argv[0] (full path) as the prefix, e.g.,
-// "/opt/homebrew/bin/gmkdir: created directory 'x'".
-func normalizeProgName(data []byte) []byte {
-	var result []byte
-	for line := range bytes.SplitSeq(data, []byte("\n")) {
-		if len(result) > 0 {
-			result = append(result, '\n')
-		}
-		if idx := bytes.Index(line, []byte(": ")); idx >= 0 {
-			result = append(result, []byte("mkdir")...)
-			result = append(result, line[idx:]...)
-		} else {
-			result = append(result, line...)
-		}
+// makeNormalizer creates a NormalizeFunc that normalizes binary names and
+// known syscall error message capitalization differences between GNU and Go.
+func makeNormalizer(refBin string) testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		// Replace full ref binary path (e.g. /opt/homebrew/bin/mkdir).
+		b = bytes.ReplaceAll(b, []byte(refBin), []byte(programName))
+		// Replace gmkdir prefix (in case path wasn't absolute).
+		b = bytes.ReplaceAll(b, []byte(refBinName), []byte(programName))
+		// Normalize syscall error message capitalization.
+		b = normalizeSyscallErrors(b)
+		return b
 	}
-	return result
 }
 
-// TestDiff runs differential tests for error cases and -p on existing dirs
-// where both binaries can share a WorkDir without conflict.
+// normalizeSyscallErrors lowercases known syscall error messages that
+// differ in case between C strerror() and Go syscall.Errno.Error().
+func normalizeSyscallErrors(b []byte) []byte {
+	replacements := []struct{ from, to string }{
+		{"File exists", "file exists"},
+		{"No such file or directory", "no such file or directory"},
+		{"Not a directory", "not a directory"},
+		{"Permission denied", "permission denied"},
+	}
+	for _, r := range replacements {
+		b = bytes.ReplaceAll(b, []byte(r.from), []byte(r.to))
+	}
+	return b
+}
+
+// TestDiff runs differential tests comparing cmd/mkdir against gmkdir.
+// R4.1: compare stdout, stderr, exit codes.
+// R4.2: covers single, multiple, -p, -m, -v, and error cases.
+// R4.3: verifies permission bits match.
 func TestDiff(t *testing.T) {
 	t.Parallel()
-
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gmkdir")
+	refBin, err := exec.LookPath(refBinName)
 	if err != nil {
-		t.Skip("reference binary gmkdir not in PATH")
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
+	}
+	norm := makeNormalizer(refBin)
+
+	t.Run("errors", func(t *testing.T) {
+		t.Parallel()
+		runErrorTests(t, goBin, refBin, norm)
+	})
+	t.Run("creation", func(t *testing.T) {
+		t.Parallel()
+		runCreationTests(t, goBin, refBin, norm)
+	})
+}
+
+// runErrorTests uses RunDiffTests for error cases where both binaries
+// see the same filesystem state and neither mutates it.
+func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	workDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(workDir, "existing"), 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
 	}
 
-	existDir := t.TempDir()
-	if err := os.Mkdir(filepath.Join(existDir, "exists"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
+	norms := []testutils.NormalizeFunc{norm}
 	tests := []testutils.DiffTest{
-		// R1.2: no arguments — error exit 1
 		{
-			Name:      "no_arguments",
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "missing_operand", Args: []string{},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
 		},
-		// R1.4: missing parent directory
 		{
-			Name:      "missing_parent",
-			Args:      []string{"a/b/c"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "existing_dir_no_p", Args: []string{"existing"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
 		},
-		// R1.3: directory already exists
 		{
-			Name:      "already_exists",
-			Args:      []string{"exists"},
-			WorkDir:   existDir,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "existing_dir_with_p", Args: []string{"-p", "existing"},
+			WorkDir: workDir, Normalize: norms,
 		},
-		// R2.2: -p with existing directory — no error
 		{
-			Name:     "parents_existing_no_error",
-			Args:     []string{"-p", "exists"},
-			WorkDir:  existDir,
-			ExitCode: 0,
-		},
-		// R2.2: --parents long form with existing directory
-		{
-			Name:     "parents_long_existing",
-			Args:     []string{"--parents", "exists"},
-			WorkDir:  existDir,
-			ExitCode: 0,
+			Name: "missing_parent", Args: []string{"no/such/dir"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
 		},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestMkdirCreate verifies successful directory creation by running both
-// binaries in separate temp dirs and comparing exit codes and output.
-// RunDiffTests cannot be used for creation tests because both binaries
-// share a WorkDir, and the ref binary's creation prevents the Go binary
-// from succeeding.
-func TestMkdirCreate(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gmkdir")
-	if err != nil {
-		t.Skip("reference binary gmkdir not in PATH")
-	}
-
-	// R1.1: create a single directory
-	t.Run("single_directory", func(t *testing.T) {
-		t.Parallel()
-		compareMkdir(t, goBin, refBin, []string{"testdir"})
-		verifyDirsCreated(t, goBin, []string{"testdir"})
-	})
-
-	// R1.2: create multiple directories
-	t.Run("multiple_directories", func(t *testing.T) {
-		t.Parallel()
-		compareMkdir(t, goBin, refBin, []string{"d1", "d2", "d3"})
-		verifyDirsCreated(t, goBin, []string{"d1", "d2", "d3"})
-	})
+// isolatedCase defines a creation test that runs each binary in its own dir.
+type isolatedCase struct {
+	name      string
+	args      []string
+	checkDirs []string // relative paths whose permissions to compare
 }
 
-// TestMkdirParents verifies -p/--parents directory creation.
-func TestMkdirParents(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gmkdir")
-	if err != nil {
-		t.Skip("reference binary gmkdir not in PATH")
+// runCreationTests runs tests where each binary operates in an isolated
+// temp directory so filesystem mutations do not interfere.
+func runCreationTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	cases := creationCases()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			compareIsolated(t, goBin, refBin, norm, tc)
+		})
 	}
-
-	// R2.1: create nested directory chain
-	t.Run("nested_chain", func(t *testing.T) {
-		t.Parallel()
-		compareMkdir(t, goBin, refBin, []string{"-p", "a/b/c"})
-		verifyNestedDirs(t, goBin, []string{"-p", "a/b/c"},
-			[]string{"a", "a/b", "a/b/c"})
-	})
-
-	// R2.1: deep chain
-	t.Run("deep_chain", func(t *testing.T) {
-		t.Parallel()
-		compareMkdir(t, goBin, refBin, []string{"-p", "x/y/z/w"})
-		verifyNestedDirs(t, goBin, []string{"-p", "x/y/z/w"},
-			[]string{"x", "x/y", "x/y/z", "x/y/z/w"})
-	})
-
-	// R2.2: existing target with -p is not an error
-	t.Run("existing_target", func(t *testing.T) {
-		t.Parallel()
-		goDir, refDir := setupDirs(t, "exists")
-		compareMkdirInDirs(t, goBin, refBin,
-			[]string{"-p", "exists"}, goDir, refDir)
-	})
-
-	// R2.3: partial existing path — only missing dirs created
-	t.Run("partial_existing", func(t *testing.T) {
-		t.Parallel()
-		goDir, refDir := setupDirs(t, "a")
-		compareMkdirInDirs(t, goBin, refBin,
-			[]string{"-p", "a/b/c"}, goDir, refDir)
-	})
-
-	// R2.1: multiple -p arguments
-	t.Run("multiple_parents", func(t *testing.T) {
-		t.Parallel()
-		compareMkdir(t, goBin, refBin, []string{"-p", "p/q", "r/s"})
-	})
 }
 
-// TestMkdirVerbose verifies -v/--verbose output.
-func TestMkdirVerbose(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gmkdir")
-	if err != nil {
-		t.Skip("reference binary gmkdir not in PATH")
+// creationCases returns the table of isolated creation test cases.
+// R4.2: single, multiple, -p nested, -m octal, -v, and combinations.
+func creationCases() []isolatedCase {
+	return []isolatedCase{
+		{name: "single_dir", args: []string{"newdir"}, checkDirs: []string{"newdir"}},
+		{name: "multiple_dirs", args: []string{"d1", "d2", "d3"}, checkDirs: []string{"d1", "d2", "d3"}},
+		{name: "parents_nested", args: []string{"-p", "a/b/c"}, checkDirs: []string{"a", "a/b", "a/b/c"}},
+		{name: "mode_0755", args: []string{"-m", "0755", "mdir"}, checkDirs: []string{"mdir"}},
+		{name: "mode_0700", args: []string{"-m", "0700", "rdir"}, checkDirs: []string{"rdir"}},
+		{name: "verbose", args: []string{"-v", "vdir"}, checkDirs: []string{"vdir"}},
+		{name: "verbose_parents", args: []string{"-v", "-p", "x/y/z"}, checkDirs: []string{"x", "x/y", "x/y/z"}},
+		{name: "parents_mode", args: []string{"-p", "-m", "0700", "p/q/r"}, checkDirs: []string{"p", "p/q", "p/q/r"}},
 	}
-
-	// R3.4: verbose output for single directory
-	t.Run("verbose_single", func(t *testing.T) {
-		t.Parallel()
-		compareMkdir(t, goBin, refBin, []string{"-v", "testdir"})
-	})
-
-	// R3.4: --verbose long form
-	t.Run("verbose_long", func(t *testing.T) {
-		t.Parallel()
-		compareMkdir(t, goBin, refBin, []string{"--verbose", "testdir"})
-	})
-
-	// R3.4: -pv prints for each intermediate directory
-	t.Run("parents_verbose", func(t *testing.T) {
-		t.Parallel()
-		compareMkdir(t, goBin, refBin, []string{"-pv", "a/b/c"})
-	})
-
-	// R3.4: -pv with partial existing path
-	t.Run("parents_verbose_partial", func(t *testing.T) {
-		t.Parallel()
-		goDir, refDir := setupDirs(t, "a")
-		compareMkdirInDirs(t, goBin, refBin,
-			[]string{"-pv", "a/b/c"}, goDir, refDir)
-	})
-
-	// R2.2 + R3.4: -pv on existing dir produces no output
-	t.Run("parents_verbose_existing", func(t *testing.T) {
-		t.Parallel()
-		goDir, refDir := setupDirs(t, "exists")
-		compareMkdirInDirs(t, goBin, refBin,
-			[]string{"-pv", "exists"}, goDir, refDir)
-	})
-
-	// R3.4: verbose with multiple directories
-	t.Run("verbose_multiple", func(t *testing.T) {
-		t.Parallel()
-		compareMkdir(t, goBin, refBin, []string{"-v", "d1", "d2"})
-	})
 }
 
-// TestMkdirMode verifies -m/--mode permission handling.
-func TestMkdirMode(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gmkdir")
-	if err != nil {
-		t.Skip("reference binary gmkdir not in PATH")
-	}
-
-	// R3.2: default permissions match gmkdir (no -m)
-	t.Run("default_perms", func(t *testing.T) {
-		t.Parallel()
-		compareMkdirPerms(t, goBin, refBin,
-			[]string{"testdir"}, []string{"testdir"})
-	})
-
-	// R3.2: default permissions with -p
-	t.Run("default_perms_parents", func(t *testing.T) {
-		t.Parallel()
-		compareMkdirPerms(t, goBin, refBin,
-			[]string{"-p", "a/b/c"}, []string{"a", "a/b", "a/b/c"})
-	})
-
-	// R3.1: -m with octal mode
-	t.Run("mode_octal_0755", func(t *testing.T) {
-		t.Parallel()
-		compareMkdirPerms(t, goBin, refBin,
-			[]string{"-m", "0755", "testdir"}, []string{"testdir"})
-	})
-
-	// R3.1: -m with octal mode 0700
-	t.Run("mode_octal_0700", func(t *testing.T) {
-		t.Parallel()
-		compareMkdirPerms(t, goBin, refBin,
-			[]string{"-m", "0700", "testdir"}, []string{"testdir"})
-	})
-
-	// R3.1: --mode=VALUE long form
-	t.Run("mode_long_form", func(t *testing.T) {
-		t.Parallel()
-		compareMkdirPerms(t, goBin, refBin,
-			[]string{"--mode=0750", "testdir"}, []string{"testdir"})
-	})
-
-	// R3.3: -p + -m applies mode only to final directory
-	t.Run("parents_mode_final_only", func(t *testing.T) {
-		t.Parallel()
-		compareMkdirPerms(t, goBin, refBin,
-			[]string{"-p", "-m", "0700", "a/b/c"},
-			[]string{"a", "a/b", "a/b/c"})
-	})
-
-	// R3.3: -p + -m with deeper chain
-	t.Run("parents_mode_deep", func(t *testing.T) {
-		t.Parallel()
-		compareMkdirPerms(t, goBin, refBin,
-			[]string{"-p", "-m", "0750", "x/y/z"},
-			[]string{"x", "x/y", "x/y/z"})
-	})
-
-	// R3.3 + R3.4: -pvm combined flags
-	t.Run("parents_verbose_mode", func(t *testing.T) {
-		t.Parallel()
-		compareMkdirPerms(t, goBin, refBin,
-			[]string{"-pvm", "0700", "p/q/r"},
-			[]string{"p", "p/q", "p/q/r"})
-	})
-
-	// R3.3: -p + -m on existing target does not change perms
-	t.Run("parents_mode_existing", func(t *testing.T) {
-		t.Parallel()
-		goDir, refDir := setupDirs(t, "exists")
-		compareMkdirPermsInDirs(t, goBin, refBin,
-			[]string{"-p", "-m", "0700", "exists"},
-			[]string{"exists"}, goDir, refDir)
-	})
+// binResult holds captured output from a single binary execution.
+type binResult struct {
+	stdout   []byte
+	stderr   []byte
+	exitCode int
 }
 
-// TestMkdirContinuesOnError verifies R1.3: errors on one directory do not
-// abort processing of remaining arguments.
-func TestMkdirContinuesOnError(t *testing.T) {
-	t.Parallel()
+// compareIsolated runs both binaries in separate temp dirs and compares
+// stdout, stderr, exit code, and directory permissions.
+func compareIsolated(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc, tc isolatedCase) {
+	t.Helper()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
 
-	goBin := testutils.BuildBinary(t, ".")
-	dir := t.TempDir()
+	refRes := runBin(t, refBin, tc.args, refDir)
+	goRes := runBin(t, goBin, tc.args, goDir)
 
-	// Pre-create one directory so it fails
-	if err := os.Mkdir(filepath.Join(dir, "existing"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	compareOutputs(t, norm, refRes, goRes)
+	compareDirPerms(t, refDir, goDir, tc.checkDirs)
+}
 
-	var stderr bytes.Buffer
-	cmd := exec.Command(goBin, "existing", "newdir")
-	cmd.Dir = dir
-	cmd.Stderr = &stderr
+// runBin executes a binary in workDir and captures stdout, stderr, exit code.
+func runBin(t *testing.T, bin string, args []string, workDir string) binResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
 
+	cmd := exec.CommandContext(ctx, bin, args...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	cmd.Dir = workDir
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+
+	return extractResult(t, cmd, ctx, &outBuf, &errBuf)
+}
+
+// extractResult runs the command and returns the captured result.
+func extractResult(t *testing.T, cmd *exec.Cmd, ctx context.Context, outBuf, errBuf *bytes.Buffer) binResult {
+	t.Helper()
 	err := cmd.Run()
 	if err == nil {
-		t.Fatal("expected non-zero exit code")
+		return binResult{stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
 	}
-
-	exitErr, ok := err.(*exec.ExitError)
-	if !ok {
-		t.Fatalf("unexpected error type: %T", err)
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return binResult{stdout: outBuf.Bytes(), stderr: errBuf.Bytes(), exitCode: exitErr.ExitCode()}
 	}
-	if exitErr.ExitCode() != 1 {
-		t.Errorf("exit code: got %d, want 1", exitErr.ExitCode())
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("%s timed out after %v", cmd.Path, execTimeout)
 	}
-
-	// R1.3: "newdir" must still be created despite "existing" failure
-	info, err := os.Stat(filepath.Join(dir, "newdir"))
-	if err != nil {
-		t.Fatalf("newdir not created: %v", err)
-	}
-	if !info.IsDir() {
-		t.Error("newdir is not a directory")
-	}
-
-	// Stderr should mention the failed directory
-	if !bytes.Contains(stderr.Bytes(), []byte("existing")) {
-		t.Errorf("stderr should mention 'existing', got: %q", stderr.String())
-	}
+	t.Fatalf("%s failed: %v", cmd.Path, err)
+	return binResult{} // unreachable
 }
 
-// compareMkdir runs both binaries in separate temp dirs and compares
-// exit codes and normalized stdout.
-func compareMkdir(t *testing.T, goBin, refBin string, args []string) {
+// compareOutputs compares stdout, stderr, and exit code between ref and go.
+// Normalizes binary names and known error message differences.
+func compareOutputs(t *testing.T, norm testutils.NormalizeFunc, ref, got binResult) {
 	t.Helper()
-	refDir := t.TempDir()
-	goDir := t.TempDir()
-	compareMkdirInDirs(t, goBin, refBin, args, goDir, refDir)
+	refOut := norm(ref.stdout)
+	gotOut := norm(got.stdout)
+	refErr := norm(ref.stderr)
+	gotErr := norm(got.stderr)
+
+	if !bytes.Equal(refOut, gotOut) {
+		t.Errorf("stdout mismatch\nref: %q\ngot: %q", refOut, gotOut)
+	}
+	if !bytes.Equal(refErr, gotErr) {
+		t.Errorf("stderr mismatch\nref: %q\ngot: %q", refErr, gotErr)
+	}
+	if ref.exitCode != got.exitCode {
+		t.Errorf("exit code mismatch: ref=%d got=%d", ref.exitCode, got.exitCode)
+	}
 }
 
-// compareMkdirInDirs runs both binaries in given dirs and compares
-// exit codes, normalized stdout, and normalized stderr.
-// R4.1: compare stdout, stderr, and exit codes.
-func compareMkdirInDirs(t *testing.T, goBin, refBin string, args []string, goDir, refDir string) {
+// compareDirPerms verifies directory permissions match between ref and go.
+// R4.3: checks all dirs created by -m and -p combinations.
+func compareDirPerms(t *testing.T, refDir, goDir string, checkDirs []string) {
 	t.Helper()
-
-	refStdout, refStderr, refExit := execBin(t, refBin, args, refDir)
-	goStdout, goStderr, goExit := execBin(t, goBin, args, goDir)
-
-	if refExit != goExit {
-		t.Errorf("exit code divergence: ref=%d go=%d (args=%v)",
-			refExit, goExit, args)
-	}
-
-	refNorm := normalizeProgName(refStdout)
-	goNorm := normalizeProgName(goStdout)
-	if !bytes.Equal(refNorm, goNorm) {
-		t.Errorf("stdout divergence:\nref: %q\ngo:  %q", string(refNorm), string(goNorm))
-	}
-
-	refErrNorm := normalizeProgName(refStderr)
-	goErrNorm := normalizeProgName(goStderr)
-	if !bytes.Equal(refErrNorm, goErrNorm) {
-		t.Errorf("stderr divergence:\nref: %q\ngo:  %q", string(refErrNorm), string(goErrNorm))
+	for _, rel := range checkDirs {
+		comparePerm(t, rel, filepath.Join(refDir, rel), filepath.Join(goDir, rel))
 	}
 }
 
-// compareMkdirPerms runs both binaries in separate temp dirs and compares
-// exit codes, stdout, and directory permissions.
-func compareMkdirPerms(t *testing.T, goBin, refBin string, args, checkDirs []string) {
-	t.Helper()
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	compareMkdirPermsInDirs(t, goBin, refBin, args, checkDirs, goDir, refDir)
-}
-
-// compareMkdirPermsInDirs runs both binaries in given dirs and compares
-// exit codes, stdout, stderr, and permissions of specified directories.
-// R4.1: compare stdout, stderr, and exit codes.
-// R4.3: verify permission bits match for all directories.
-func compareMkdirPermsInDirs(
-	t *testing.T, goBin, refBin string,
-	args, checkDirs []string, goDir, refDir string,
-) {
-	t.Helper()
-
-	refStdout, refStderr, refExit := execBin(t, refBin, args, refDir)
-	goStdout, goStderr, goExit := execBin(t, goBin, args, goDir)
-
-	if refExit != goExit {
-		t.Errorf("exit code: ref=%d go=%d (args=%v)", refExit, goExit, args)
-	}
-	refNorm := normalizeProgName(refStdout)
-	goNorm := normalizeProgName(goStdout)
-	if !bytes.Equal(refNorm, goNorm) {
-		t.Errorf("stdout:\nref: %q\ngo:  %q", string(refNorm), string(goNorm))
-	}
-	refErrNorm := normalizeProgName(refStderr)
-	goErrNorm := normalizeProgName(goStderr)
-	if !bytes.Equal(refErrNorm, goErrNorm) {
-		t.Errorf("stderr:\nref: %q\ngo:  %q", string(refErrNorm), string(goErrNorm))
-	}
-	for _, d := range checkDirs {
-		comparePermission(t, filepath.Join(refDir, d), filepath.Join(goDir, d), d)
-	}
-}
-
-// comparePermission checks that two directories have the same permission bits.
-func comparePermission(t *testing.T, refPath, goPath, name string) {
+// comparePerm checks that a single directory exists in both trees with
+// matching permission bits.
+func comparePerm(t *testing.T, name, refPath, goPath string) {
 	t.Helper()
 	refInfo, err := os.Stat(refPath)
 	if err != nil {
-		t.Fatalf("ref dir %s: %v", name, err)
+		t.Errorf("ref dir %s missing: %v", name, err)
+		return
 	}
 	goInfo, err := os.Stat(goPath)
 	if err != nil {
-		t.Fatalf("go dir %s: %v", name, err)
-	}
-	if refInfo.Mode().Perm() != goInfo.Mode().Perm() {
-		t.Errorf("perm %s: ref=%o go=%o",
-			name, refInfo.Mode().Perm(), goInfo.Mode().Perm())
-	}
-}
-
-// setupDirs creates pre-existing directories in both go and ref work dirs.
-func setupDirs(t *testing.T, subdirs ...string) (string, string) {
-	t.Helper()
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	for _, sub := range subdirs {
-		if err := os.MkdirAll(filepath.Join(goDir, sub), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(filepath.Join(refDir, sub), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return goDir, refDir
-}
-
-// verifyDirsCreated runs the Go binary and checks that all directories
-// were created.
-func verifyDirsCreated(t *testing.T, goBin string, dirs []string) {
-	t.Helper()
-
-	dir := t.TempDir()
-	stdout, stderr, exitCode := execBin(t, goBin, dirs, dir)
-
-	if exitCode != 0 {
-		t.Errorf("expected exit 0, got %d (stderr=%q)", exitCode, stderr)
-	}
-	if len(stdout) > 0 {
-		t.Errorf("unexpected stdout: %q", stdout)
-	}
-
-	for _, name := range dirs {
-		verifyIsDir(t, filepath.Join(dir, name))
-	}
-}
-
-// verifyNestedDirs runs the Go binary with args and checks that all
-// expected directories exist afterward.
-func verifyNestedDirs(t *testing.T, goBin string, args, expectedDirs []string) {
-	t.Helper()
-
-	dir := t.TempDir()
-	_, stderr, exitCode := execBin(t, goBin, args, dir)
-
-	if exitCode != 0 {
-		t.Errorf("expected exit 0, got %d (stderr=%q)", exitCode, stderr)
-	}
-
-	for _, name := range expectedDirs {
-		verifyIsDir(t, filepath.Join(dir, name))
-	}
-}
-
-// verifyIsDir checks that the path exists and is a directory.
-func verifyIsDir(t *testing.T, path string) {
-	t.Helper()
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Errorf("directory %q not created: %v", path, err)
+		t.Errorf("go dir %s missing: %v", name, err)
 		return
 	}
-	if !info.IsDir() {
-		t.Errorf("%q is not a directory", path)
+	if refInfo.Mode().Perm() != goInfo.Mode().Perm() {
+		t.Errorf("perm mismatch %s: ref=%o got=%o", name, refInfo.Mode().Perm(), goInfo.Mode().Perm())
 	}
 }
 
-// execBin runs a binary and returns stdout, stderr, and exit code.
-func execBin(t *testing.T, bin string, args []string, workDir string) ([]byte, []byte, int) {
-	t.Helper()
-
-	cmd := exec.Command(bin, args...)
-	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			t.Fatalf("failed to run %s: %v", bin, err)
-		}
-	}
-
-	return stdout.Bytes(), stderr.Bytes(), exitCode
-}

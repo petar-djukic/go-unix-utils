@@ -1,12 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/echo implements GNU echo: display a line of text.
-// Implements prd020-echo R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
+// Package main implements cmd/echo: display a line of text.
+// Implements srd020-echo R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3.
 package main
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -14,47 +13,34 @@ import (
 )
 
 func main() {
+	// R3.3: install SIGPIPE handler so echo exits 0 when pipe closes.
 	sys.InstallSIGPIPEHandler()
 
-	args := os.Args[1:]
-	noNewline, escapes, args := parseFlags(args)
+	noNewline, escapes, args := parseFlags(os.Args[1:])
 
-	output, suppressNewline := buildOutput(args, escapes)
+	output := buildOutput(args, noNewline, escapes)
 
-	if _, err := fmt.Fprint(os.Stdout, output); err != nil {
+	// R3.2: exit 1 when a write error occurs on stdout.
+	// R3.1: exit 0 on successful output (implicit when main returns).
+	if _, err := os.Stdout.WriteString(output); err != nil {
 		os.Exit(1)
 	}
-	if !noNewline && !suppressNewline {
-		if _, err := fmt.Fprintln(os.Stdout); err != nil {
-			os.Exit(1)
-		}
-	}
 }
 
-// buildOutput joins args with spaces and optionally interprets escapes.
-// R2.1: -e interprets backslash escape sequences.
-// R2.2: \c terminates output; returns output up to \c and suppressNewline=true.
-// R2.3: -E disables escape interpretation (default).
-func buildOutput(args []string, escapes bool) (output string, suppressNewline bool) {
-	joined := strings.Join(args, " ")
-	if !escapes {
-		return joined, false
-	}
-	return interpretEscapes(joined)
-}
-
-// parseFlags extracts recognized GNU echo flags from leading arguments.
+// parseFlags performs GNU echo-style flag parsing.
 // R1.3: -n suppresses trailing newline.
-// R2.4: last of -e / -E wins.
-// R1.4: Only -n, -e, -E (and combinations) are recognized flags.
-func parseFlags(args []string) (noNewline, escapes bool, remaining []string) {
+// R2.3: -E disables escapes (default). R2.4: last of -e/-E wins.
+// R1.4: only -n, -e, -E (and combinations) are recognized as flags.
+// Unrecognized flags are treated as positional arguments.
+// Flag parsing stops at the first non-flag argument.
+func parseFlags(args []string) (noNewline, escapes bool, rest []string) {
 	i := 0
 	for i < len(args) {
-		if !isEchoFlag(args[i]) {
+		if !isValidFlagArg(args[i]) {
 			break
 		}
-		for _, ch := range args[i][1:] {
-			switch ch {
+		for _, c := range args[i][1:] {
+			switch c {
 			case 'n':
 				noNewline = true
 			case 'e':
@@ -68,26 +54,58 @@ func parseFlags(args []string) (noNewline, escapes bool, remaining []string) {
 	return noNewline, escapes, args[i:]
 }
 
-// isEchoFlag returns true if arg is a recognized GNU echo flag string.
-// A valid flag starts with '-' followed by one or more of 'n', 'e', 'E'.
-func isEchoFlag(arg string) bool {
+// isValidFlagArg checks whether an argument is a valid GNU echo flag group.
+// A valid flag argument starts with '-' followed by one or more of [neE].
+func isValidFlagArg(arg string) bool {
 	if len(arg) < 2 || arg[0] != '-' {
 		return false
 	}
-	for _, ch := range arg[1:] {
-		if ch != 'n' && ch != 'e' && ch != 'E' {
+	for _, c := range arg[1:] {
+		if c != 'n' && c != 'e' && c != 'E' {
 			return false
 		}
 	}
 	return true
 }
 
-// interpretEscapes processes backslash escape sequences in s.
-// R2.1: supports \\, \a, \b, \c, \e, \f, \n, \r, \t, \v, \0NNN, \xHH.
-// Returns the processed string and whether \c was encountered.
-func interpretEscapes(s string) (result string, terminated bool) {
+// buildOutput constructs the output string from positional arguments.
+// R1.1: arguments joined by spaces, followed by newline.
+// R1.2: no arguments produces only a newline.
+// R1.3: noNewline suppresses the trailing newline.
+// R2.1: escapes enables backslash interpretation.
+// R2.2: \c terminates output immediately.
+func buildOutput(args []string, noNewline, escapes bool) string {
+	if !escapes {
+		result := strings.Join(args, " ")
+		if !noNewline {
+			result += "\n"
+		}
+		return result
+	}
+	return buildEscapedOutput(args, noNewline)
+}
+
+// buildEscapedOutput handles output when -e is active.
+// R2.1: interprets backslash escapes. R2.2: \c stops all output.
+func buildEscapedOutput(args []string, noNewline bool) string {
 	var buf strings.Builder
-	buf.Grow(len(s))
+	for i, arg := range args {
+		if i > 0 {
+			buf.WriteByte(' ')
+		}
+		if interpretEscapes(&buf, arg) {
+			return buf.String()
+		}
+	}
+	if !noNewline {
+		buf.WriteByte('\n')
+	}
+	return buf.String()
+}
+
+// interpretEscapes writes arg to buf with escape interpretation.
+// Returns true if \c was encountered (R2.2: stop all further output).
+func interpretEscapes(buf *strings.Builder, s string) bool {
 	i := 0
 	for i < len(s) {
 		if s[i] != '\\' || i+1 >= len(s) {
@@ -95,73 +113,75 @@ func interpretEscapes(s string) (result string, terminated bool) {
 			i++
 			continue
 		}
-		ch, advance, stop := decodeEscape(s, i+1)
-		if stop {
-			result = buf.String()
-			return result, true
+		stop := handleEscape(buf, s, i)
+		if stop < 0 {
+			return true
 		}
-		buf.WriteByte(ch)
-		i += 1 + advance
+		i = stop
 	}
-	result = buf.String()
-	return result, false
+	return false
 }
 
-// decodeEscape decodes one escape sequence starting at s[pos].
-// Returns the decoded byte, number of chars consumed after the backslash,
-// and whether \c was encountered (terminate output).
-func decodeEscape(s string, pos int) (byte, int, bool) {
-	switch s[pos] {
+// handleEscape processes escape at s[pos] (backslash).
+// Returns the new index past the escape, or -1 for \c (stop output).
+func handleEscape(buf *strings.Builder, s string, pos int) int {
+	next := s[pos+1]
+	switch next {
 	case '\\':
-		return '\\', 1, false
+		buf.WriteByte('\\')
 	case 'a':
-		return 0x07, 1, false
+		buf.WriteByte(0x07)
 	case 'b':
-		return 0x08, 1, false
+		buf.WriteByte(0x08)
 	case 'c':
-		return 0, 0, true
+		return -1
 	case 'e':
-		return 0x1B, 1, false
+		buf.WriteByte(0x1B)
 	case 'f':
-		return 0x0C, 1, false
+		buf.WriteByte(0x0C)
 	case 'n':
-		return 0x0A, 1, false
+		buf.WriteByte(0x0A)
 	case 'r':
-		return 0x0D, 1, false
+		buf.WriteByte(0x0D)
 	case 't':
-		return 0x09, 1, false
+		buf.WriteByte(0x09)
 	case 'v':
-		return 0x0B, 1, false
+		buf.WriteByte(0x0B)
 	case '0':
-		return decodeOctal(s, pos)
+		return parseOctal(buf, s, pos+2)
 	case 'x':
-		return decodeHex(s, pos)
+		return parseHex(buf, s, pos+2)
 	default:
-		return '\\', 0, false
+		buf.WriteByte('\\')
+		buf.WriteByte(next)
 	}
+	return pos + 2
 }
 
-// decodeOctal parses \0NNN (1-3 octal digits after the '0').
-func decodeOctal(s string, pos int) (byte, int, bool) {
+// parseOctal reads up to 3 octal digits starting at pos, writes the byte.
+// \0NNN format: the '0' is already consumed by handleEscape.
+func parseOctal(buf *strings.Builder, s string, pos int) int {
 	val := 0
 	count := 0
-	for j := pos + 1; j < len(s) && count < 3; j++ {
-		d := s[j]
+	for i := pos; i < len(s) && count < 3; i++ {
+		d := s[i]
 		if d < '0' || d > '7' {
 			break
 		}
 		val = val*8 + int(d-'0')
 		count++
 	}
-	return byte(val), 1 + count, false
+	buf.WriteByte(byte(val & 0xFF))
+	return pos + count
 }
 
-// decodeHex parses \xHH (1-2 hex digits after 'x').
-func decodeHex(s string, pos int) (byte, int, bool) {
+// parseHex reads up to 2 hex digits starting at pos, writes the byte.
+// \xHH format: the 'x' is already consumed by handleEscape.
+func parseHex(buf *strings.Builder, s string, pos int) int {
 	val := 0
 	count := 0
-	for j := pos + 1; j < len(s) && count < 2; j++ {
-		d := hexVal(s[j])
+	for i := pos; i < len(s) && count < 2; i++ {
+		d := hexVal(s[i])
 		if d < 0 {
 			break
 		}
@@ -169,12 +189,14 @@ func decodeHex(s string, pos int) (byte, int, bool) {
 		count++
 	}
 	if count == 0 {
-		return '\\', 0, false
+		buf.WriteString("\\x")
+		return pos
 	}
-	return byte(val), 1 + count, false
+	buf.WriteByte(byte(val))
+	return pos + count
 }
 
-// hexVal returns the numeric value of a hex digit, or -1 if not hex.
+// hexVal returns the numeric value of a hex digit, or -1.
 func hexVal(c byte) int {
 	switch {
 	case c >= '0' && c <= '9':

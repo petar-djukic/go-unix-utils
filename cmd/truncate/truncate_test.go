@@ -2,486 +2,449 @@
 // SPDX-License-Identifier: MIT
 
 // Differential tests for cmd/truncate against gtruncate (GNU coreutils).
-//
-// Covers prd083-truncate R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3.
+// Implements srd083 R1.1-R1.4, R2.1-R2.2, R3.1-R3.3.
 package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-// Used for error messages where the binary name prefix differs.
-func discardAll(data []byte) []byte {
-	return nil
+const refBinName = "gtruncate"
+const execTimeout = 30 * time.Second
+
+// makeNormalizer creates a NormalizeFunc that replaces binary-specific names
+// and normalizes syscall error message capitalization.
+func makeNormalizer(refBin string) testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		b = bytes.ReplaceAll(b, []byte(refBin), []byte(programName))
+		b = bytes.ReplaceAll(b, []byte(refBinName), []byte(programName))
+		b = normalizeSyscallErrors(b)
+		return b
+	}
 }
 
-// TestDiff runs differential tests for non-file-modifying cases.
-// Covers --help, --version, and error conditions (R3.1, R3.2).
+// normalizeSyscallErrors lowercases known syscall error messages that
+// differ in case between C strerror() and Go syscall.Errno.Error().
+func normalizeSyscallErrors(b []byte) []byte {
+	replacements := []struct{ from, to string }{
+		{"No such file or directory", "no such file or directory"},
+		{"Not a directory", "not a directory"},
+		{"File exists", "file exists"},
+		{"Permission denied", "permission denied"},
+		{"Operation not permitted", "operation not permitted"},
+		{"Invalid argument", "invalid argument"},
+		{"Invalid number", "invalid number"},
+	}
+	for _, r := range replacements {
+		b = bytes.ReplaceAll(b, []byte(r.from), []byte(r.to))
+	}
+	return b
+}
+
+// TestDiff runs differential tests comparing cmd/truncate against gtruncate.
 func TestDiff(t *testing.T) {
 	t.Parallel()
-
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
+	refBin, err := exec.LookPath(refBinName)
 	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
 	}
+	norm := makeNormalizer(refBin)
 
-	workDir := t.TempDir()
+	t.Run("errors", func(t *testing.T) {
+		t.Parallel()
+		runErrorTests(t, goBin, refBin, norm)
+	})
+	t.Run("sizing", func(t *testing.T) {
+		t.Parallel()
+		runSizingTests(t, goBin, refBin, norm)
+	})
+}
 
-	// R1.4: create a file for -c tests; a nonexistent path is tested below.
-	noCreateTarget := filepath.Join(workDir, "no-such-file")
-
+// runErrorTests tests error cases using RunDiffTests where no filesystem
+// mutation occurs (both binaries fail before modifying files).
+// R2.1/R2.2: invalid size and reference file errors.
+// R3.2: exit 1 on any failure.
+func runErrorTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	norms := []testutils.NormalizeFunc{norm}
 	tests := []testutils.DiffTest{
-		// R3.2: missing --size and --reference
 		{
-			Name:      "no_size_or_reference",
-			Args:      []string{"somefile"},
-			WorkDir:   workDir,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "missing_operand", Args: []string{"-s", "100"},
+			ExitCode: 1, Normalize: norms,
 		},
-		// R3.2: missing file operand
 		{
-			Name:      "missing_file_operand",
-			Args:      []string{"-s", "100"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "missing_size_and_ref", Args: []string{"file"},
+			ExitCode: 1, Normalize: norms,
 		},
-		// R3.2: invalid size value
 		{
-			Name:      "invalid_size",
-			Args:      []string{"-s", "xyz", "somefile"},
-			WorkDir:   workDir,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "invalid_size", Args: []string{"-s", "abc", "file"},
+			ExitCode: 1, Normalize: norms,
 		},
-		// R1.4: -c with nonexistent file — no error, no file created
 		{
-			Name:    "no_create_nonexistent",
-			Args:    []string{"-c", "-s", "100", noCreateTarget},
-			WorkDir: workDir,
+			Name: "empty_size", Args: []string{"-s", "", "file"},
+			ExitCode: 1, Normalize: norms,
 		},
-		// R2.2: reference to nonexistent file — exit 1
 		{
-			Name:      "reference_nonexistent",
-			Args:      []string{"-r", filepath.Join(workDir, "nonexistent-ref"), "somefile"},
-			WorkDir:   workDir,
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "ref_not_found", Args: []string{"-r", "nonexistent", "file"},
+			ExitCode: 1, Normalize: norms,
 		},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestHelp verifies --help prints output and exits 0.
-func TestHelp(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "--help")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("--help failed: %v", err)
-	}
-	if len(out) == 0 {
-		t.Fatal("--help produced no output")
+// isolatedCase defines a test that runs each binary in its own temp dir.
+type isolatedCase struct {
+	name  string
+	args  []string
+	setup func(t *testing.T, dir string)
+	files []string // files whose sizes to compare after execution
+}
+
+// runSizingTests runs tests where each binary operates in an isolated
+// temp directory since truncate modifies file sizes.
+func runSizingTests(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc) {
+	t.Helper()
+	cases := sizingCases()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			compareIsolated(t, goBin, refBin, norm, tc)
+		})
 	}
 }
 
-// TestVersion verifies --version prints output and exits 0.
-func TestVersion(t *testing.T) {
-	t.Parallel()
-	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "--version")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("--version failed: %v", err)
-	}
-	if len(out) == 0 {
-		t.Fatal("--version produced no output")
-	}
-}
-
-// TestAbsoluteSize verifies -s with absolute byte value (R1.1).
-func TestAbsoluteSize(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "target", 0)
-	setupFile(t, refDir, "target", 0)
-
-	_, _, refExit := execBin(t, refBin, []string{"-s", "100", "target"}, refDir)
-	_, _, goExit := execBin(t, goBin, []string{"-s", "100", "target"}, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "target"), 100)
-	assertFileSize(t, filepath.Join(refDir, "target"), 100)
-}
-
-// TestRelativeGrow verifies -s +N grows file (R1.2).
-func TestRelativeGrow(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "target", 50)
-	setupFile(t, refDir, "target", 50)
-
-	_, _, refExit := execBin(t, refBin, []string{"-s", "+50", "target"}, refDir)
-	_, _, goExit := execBin(t, goBin, []string{"-s", "+50", "target"}, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "target"), 100)
-	assertFileSize(t, filepath.Join(refDir, "target"), 100)
-}
-
-// TestRelativeShrink verifies -s -N shrinks file (R1.2).
-func TestRelativeShrink(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "target", 100)
-	setupFile(t, refDir, "target", 100)
-
-	_, _, refExit := execBin(t, refBin, []string{"-s", "-30", "target"}, refDir)
-	_, _, goExit := execBin(t, goBin, []string{"-s", "-30", "target"}, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "target"), 70)
-	assertFileSize(t, filepath.Join(refDir, "target"), 70)
-}
-
-// TestReferenceFile verifies -r uses reference file size (R2.1).
-func TestReferenceFile(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "ref", 200)
-	setupFile(t, goDir, "target", 0)
-	setupFile(t, refDir, "ref", 200)
-	setupFile(t, refDir, "target", 0)
-
-	_, _, refExit := execBin(t, refBin, []string{"-r", "ref", "target"}, refDir)
-	_, _, goExit := execBin(t, goBin, []string{"-r", "ref", "target"}, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "target"), 200)
-	assertFileSize(t, filepath.Join(refDir, "target"), 200)
-}
-
-// TestReferenceWithRelative verifies -r combined with -s (R2.1 + R1.2).
-func TestReferenceWithRelative(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "ref", 100)
-	setupFile(t, goDir, "target", 0)
-	setupFile(t, refDir, "ref", 100)
-	setupFile(t, refDir, "target", 0)
-
-	_, _, refExit := execBin(t, refBin, []string{"-r", "ref", "-s", "+25", "target"}, refDir)
-	_, _, goExit := execBin(t, goBin, []string{"-r", "ref", "-s", "+25", "target"}, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "target"), 125)
-	assertFileSize(t, filepath.Join(refDir, "target"), 125)
-}
-
-// TestMultipleFiles verifies multiple FILE operands (R1.3).
-func TestMultipleFiles(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	for _, name := range []string{"a", "b", "c"} {
-		setupFile(t, goDir, name, 0)
-		setupFile(t, refDir, name, 0)
-	}
-
-	args := []string{"-s", "64", "a", "b", "c"}
-	_, _, refExit := execBin(t, refBin, args, refDir)
-	_, _, goExit := execBin(t, goBin, args, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	for _, name := range []string{"a", "b", "c"} {
-		assertFileSize(t, filepath.Join(goDir, name), 64)
-		assertFileSize(t, filepath.Join(refDir, name), 64)
-	}
-}
-
-// TestNoCreateExisting verifies -c does not affect existing files (R1.4).
-func TestNoCreateExisting(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "exists", 50)
-	setupFile(t, refDir, "exists", 50)
-
-	args := []string{"-c", "-s", "200", "exists"}
-	_, _, refExit := execBin(t, refBin, args, refDir)
-	_, _, goExit := execBin(t, goBin, args, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "exists"), 200)
-	assertFileSize(t, filepath.Join(refDir, "exists"), 200)
-}
-
-// TestCreateMissing verifies missing files are created without -c (R1.4).
-func TestCreateMissing(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-
-	args := []string{"-s", "80", "newfile"}
-	_, _, refExit := execBin(t, refBin, args, refDir)
-	_, _, goExit := execBin(t, goBin, args, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "newfile"), 80)
-	assertFileSize(t, filepath.Join(refDir, "newfile"), 80)
-}
-
-// TestAtMost verifies -s '<N' sets at most N bytes (R1.2).
-func TestAtMost(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "big", 200)
-	setupFile(t, refDir, "big", 200)
-
-	args := []string{"-s", "<100", "big"}
-	_, _, refExit := execBin(t, refBin, args, refDir)
-	_, _, goExit := execBin(t, goBin, args, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "big"), 100)
-	assertFileSize(t, filepath.Join(refDir, "big"), 100)
-}
-
-// TestAtLeast verifies -s '>N' sets at least N bytes (R1.2).
-func TestAtLeast(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "small", 30)
-	setupFile(t, refDir, "small", 30)
-
-	args := []string{"-s", ">100", "small"}
-	_, _, refExit := execBin(t, refBin, args, refDir)
-	_, _, goExit := execBin(t, goBin, args, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "small"), 100)
-	assertFileSize(t, filepath.Join(refDir, "small"), 100)
-}
-
-// TestRoundDown verifies -s '/N' rounds down to multiple (R1.2).
-func TestRoundDown(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "target", 150)
-	setupFile(t, refDir, "target", 150)
-
-	args := []string{"-s", "/64", "target"}
-	_, _, refExit := execBin(t, refBin, args, refDir)
-	_, _, goExit := execBin(t, goBin, args, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	// 150 / 64 = 2 * 64 = 128
-	assertFileSize(t, filepath.Join(goDir, "target"), 128)
-	assertFileSize(t, filepath.Join(refDir, "target"), 128)
-}
-
-// TestRoundUp verifies -s '%N' rounds up to multiple (R1.2).
-func TestRoundUp(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "target", 150)
-	setupFile(t, refDir, "target", 150)
-
-	args := []string{"-s", "%64", "target"}
-	_, _, refExit := execBin(t, refBin, args, refDir)
-	_, _, goExit := execBin(t, goBin, args, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	// ceil(150/64)*64 = 3*64 = 192
-	assertFileSize(t, filepath.Join(goDir, "target"), 192)
-	assertFileSize(t, filepath.Join(refDir, "target"), 192)
-}
-
-// TestSizeWithSuffix verifies unit suffix parsing (R1.1).
-func TestSizeWithSuffix(t *testing.T) {
-	t.Parallel()
-
-	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gtruncate")
-	if err != nil {
-		t.Skip("reference binary gtruncate not in PATH")
-	}
-
-	goDir := t.TempDir()
-	refDir := t.TempDir()
-	setupFile(t, goDir, "target", 0)
-	setupFile(t, refDir, "target", 0)
-
-	args := []string{"-s", "1K", "target"}
-	_, _, refExit := execBin(t, refBin, args, refDir)
-	_, _, goExit := execBin(t, goBin, args, goDir)
-
-	assertExitMatch(t, refExit, goExit)
-	assertFileSize(t, filepath.Join(goDir, "target"), 1024)
-	assertFileSize(t, filepath.Join(refDir, "target"), 1024)
-}
-
-// setupFile creates a file of the given size in dir.
-func setupFile(t *testing.T, dir, name string, size int64) {
+// writeFile creates a file of the given size filled with zero bytes.
+func writeFile(t *testing.T, dir, name string, size int64) {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
+	data := make([]byte, size)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("setup writeFile: %v", err)
 	}
-	if size > 0 {
-		if err := f.Truncate(size); err != nil {
-			f.Close() // best-effort close
-			t.Fatal(err)
-		}
-	}
-	f.Close() // best-effort close
 }
 
-// execBin runs a binary and returns stdout, stderr, and exit code.
-func execBin(t *testing.T, bin string, args []string, workDir string) ([]byte, []byte, int) {
-	t.Helper()
+// sizingCases returns the table of isolated truncate test cases.
+// R1.1-R1.4: absolute, relative, suffix, reference, no-create, multi-file.
+// R3.2: multi-file partial failure continues and exits 1.
+func sizingCases() []isolatedCase {
+	return []isolatedCase{
+		{
+			name: "absolute_100",
+			args: []string{"-s", "100", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 0)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "create_missing",
+			args: []string{"-s", "50", "newfile"},
+			setup: func(t *testing.T, _ string) {
+				t.Helper()
+			},
+			files: []string{"newfile"},
+		},
+		{
+			name: "relative_grow",
+			args: []string{"-s", "+50", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 100)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "relative_shrink",
+			args: []string{"-s", "-30", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 100)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "suffix_K",
+			args: []string{"-s", "1K", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 0)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "reference_file",
+			args: []string{"-r", "ref", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "ref", 200)
+				writeFile(t, dir, "testfile", 50)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "reference_with_grow",
+			args: []string{"-r", "ref", "-s", "+10", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "ref", 200)
+				writeFile(t, dir, "testfile", 50)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "multiple_files",
+			args: []string{"-s", "100", "file1", "file2"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "file1", 0)
+				writeFile(t, dir, "file2", 50)
+			},
+			files: []string{"file1", "file2"},
+		},
+		{
+			name: "no_create_missing",
+			args: []string{"-c", "-s", "100", "nonexistent"},
+			setup: func(t *testing.T, _ string) {
+				t.Helper()
+			},
+			files: nil,
+		},
+		{
+			name: "at_most_smaller",
+			args: []string{"-s", "<50", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 100)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "at_most_larger",
+			args: []string{"-s", "<200", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 100)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "at_least_larger",
+			args: []string{"-s", ">200", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 100)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "multi_file_partial_error",
+			args: []string{"-s", "100", "file1", "nodir/file2"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "file1", 0)
+			},
+			files: []string{"file1"},
+		},
+		{
+			name: "round_down",
+			args: []string{"-s", "/100", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 250)
+			},
+			files: []string{"testfile"},
+		},
+		{
+			name: "round_up",
+			args: []string{"-s", "%100", "testfile"},
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				writeFile(t, dir, "testfile", 250)
+			},
+			files: []string{"testfile"},
+		},
+	}
+}
 
-	cmd := exec.Command(bin, args...)
+// compareIsolated runs both binaries in separate temp dirs and compares
+// stdout, stderr, exit code, and resulting file sizes.
+func compareIsolated(t *testing.T, goBin, refBin string, norm testutils.NormalizeFunc, tc isolatedCase) {
+	t.Helper()
+	refDir := t.TempDir()
+	goDir := t.TempDir()
+
+	tc.setup(t, refDir)
+	tc.setup(t, goDir)
+
+	refRes := runBin(t, refBin, tc.args, refDir)
+	goRes := runBin(t, goBin, tc.args, goDir)
+
+	compareOutputs(t, norm, refRes, goRes)
+	compareFileSizes(t, tc.files, refDir, goDir)
+}
+
+// compareFileSizes checks that files have the same size in both dirs.
+func compareFileSizes(t *testing.T, files []string, refDir, goDir string) {
+	t.Helper()
+	for _, name := range files {
+		refSize := fileSize(t, refDir, name, "ref")
+		goSize := fileSize(t, goDir, name, "go")
+		if refSize != goSize {
+			t.Errorf("file size mismatch for %s: ref=%d go=%d",
+				name, refSize, goSize)
+		}
+	}
+}
+
+// fileSize returns the size of a file in dir, or -1 if it does not exist.
+func fileSize(t *testing.T, dir, name, label string) int64 {
+	t.Helper()
+	info, err := os.Stat(filepath.Join(dir, name))
+	if err != nil {
+		t.Errorf("%s file missing: %s (%v)", label, name, err)
+		return -1
+	}
+	return info.Size()
+}
+
+// binResult holds captured output from a single binary execution.
+type binResult struct {
+	stdout   []byte
+	stderr   []byte
+	exitCode int
+}
+
+// runBin executes a binary in workDir and captures stdout, stderr, exit code.
+func runBin(t *testing.T, bin string, args []string, workDir string) binResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	return extractResult(t, cmd, ctx, &outBuf, &errBuf)
+}
 
+// extractResult runs the command and returns the captured result.
+func extractResult(t *testing.T, cmd *exec.Cmd, ctx context.Context, outBuf, errBuf *bytes.Buffer) binResult {
+	t.Helper()
 	err := cmd.Run()
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			t.Fatalf("failed to run %s: %v", bin, err)
+	if err == nil {
+		return binResult{stdout: outBuf.Bytes(), stderr: errBuf.Bytes()}
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return binResult{
+			stdout:   outBuf.Bytes(),
+			stderr:   errBuf.Bytes(),
+			exitCode: exitErr.ExitCode(),
 		}
 	}
-
-	return stdout.Bytes(), stderr.Bytes(), exitCode
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("%s timed out after %v", cmd.Path, execTimeout)
+	}
+	t.Fatalf("%s failed: %v", cmd.Path, err)
+	return binResult{} // unreachable
 }
 
-// assertExitMatch verifies ref and Go exit codes are equal.
-func assertExitMatch(t *testing.T, refExit, goExit int) {
+// compareOutputs compares stdout, stderr, and exit code between ref and go.
+func compareOutputs(t *testing.T, norm testutils.NormalizeFunc, ref, got binResult) {
 	t.Helper()
-	if refExit != goExit {
-		t.Errorf("exit code mismatch: ref=%d go=%d", refExit, goExit)
+	refOut := norm(ref.stdout)
+	gotOut := norm(got.stdout)
+	refErr := norm(ref.stderr)
+	gotErr := norm(got.stderr)
+
+	if !bytes.Equal(refOut, gotOut) {
+		t.Errorf("stdout mismatch\nref: %q\ngot: %q", refOut, gotOut)
+	}
+	if !bytes.Equal(refErr, gotErr) {
+		t.Errorf("stderr mismatch\nref: %q\ngot: %q", refErr, gotErr)
+	}
+	if ref.exitCode != got.exitCode {
+		t.Errorf("exit code mismatch: ref=%d got=%d", ref.exitCode, got.exitCode)
 	}
 }
 
-// assertFileSize verifies the file at path has the expected size.
-func assertFileSize(t *testing.T, path string, expected int64) {
+// TestSIGPIPE verifies that truncate handles SIGPIPE gracefully.
+// R3.3: must exit 0 (not crash) when stdout is a broken pipe.
+func TestSIGPIPE(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	verifySIGPIPE(t, goBin)
+}
+
+// verifySIGPIPE runs the binary with --help piped to a reader that closes
+// immediately, verifying the process does not exit with a SIGPIPE error.
+func verifySIGPIPE(t *testing.T, bin string) {
 	t.Helper()
-	fi, err := os.Stat(path)
+	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, "--help")
+	cmd.Env = append([]string{"LC_ALL=C"}, os.Environ()...)
+
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		t.Fatalf("stat %q: %v", path, err)
+		t.Fatalf("StdoutPipe: %v", err)
 	}
-	if fi.Size() != expected {
-		t.Errorf("file %q size = %d, want %d", filepath.Base(path), fi.Size(), expected)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
 	}
+	// Close the read end immediately to trigger SIGPIPE on write.
+	stdout.Close()
+
+	err = cmd.Wait()
+	if err == nil {
+		return // exit 0, SIGPIPE handled gracefully
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 0 {
+		return
+	}
+	t.Errorf("SIGPIPE: expected exit 0, got error: %v", err)
+}
+
+// TestHelpVersion verifies --help and --version exit 0 with output.
+// R3.1: --help and --version produce output and exit 0.
+func TestHelpVersion(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("help", func(t *testing.T) {
+		t.Parallel()
+		res := runBin(t, goBin, []string{"--help"}, t.TempDir())
+		if res.exitCode != 0 {
+			t.Errorf("--help exit code: got %d, want 0", res.exitCode)
+		}
+		if len(res.stdout) == 0 {
+			t.Error("--help produced no stdout output")
+		}
+	})
+	t.Run("version", func(t *testing.T) {
+		t.Parallel()
+		res := runBin(t, goBin, []string{"--version"}, t.TempDir())
+		if res.exitCode != 0 {
+			t.Errorf("--version exit code: got %d, want 0", res.exitCode)
+		}
+		if len(res.stdout) == 0 {
+			t.Error("--version produced no stdout output")
+		}
+	})
 }

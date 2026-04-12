@@ -1,120 +1,111 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/pee implements moreutils pee: tee standard input to pipes.
-//
-// Implements prd113-pee R1.1, R1.2, R1.3, R2.1, R2.2.
+// Package main implements pee (moreutils), which tees stdin to multiple pipe
+// commands. Implements srd113-pee R1.1-R1.3, R2.1-R2.2.
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"sync"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:]))
 }
 
-// run parses arguments and executes the pee logic. Returns exit code.
-// R1.1: each arg is a COMMAND executed via sh -c.
-// R1.2: waits for all commands before returning.
-// R1.3: stdout of each command goes to stdout, interleaved.
-func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
-	if len(args) == 0 {
+// run reads all stdin, launches each command, writes the buffer to each,
+// waits for all to complete, and returns the exit code.
+// R1.1: read stdin, write to each command via sh -c.
+// R1.2: wait for all commands.
+// R2.1: exit 0 if all succeed, 1 if any fail or fail to start.
+// R2.2: report errors to stderr.
+func run(commands []string) int {
+	if len(commands) == 0 {
 		return 0
 	}
-	cmds, pipes, err := startCommands(args, stdout, stderr)
+	input, err := io.ReadAll(os.Stdin)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "pee: read stdin: %v\n", err)
 		return 1
 	}
-	distributeInput(stdin, pipes)
-	return waitAll(cmds)
-}
-
-// startCommands launches each command via sh -c and returns the
-// command handles and their stdin pipes.
-func startCommands(args []string, stdout, stderr *os.File) ([]*exec.Cmd, []io.WriteCloser, error) {
-	cmds := make([]*exec.Cmd, 0, len(args))
-	pipes := make([]io.WriteCloser, 0, len(args))
-	for _, arg := range args {
-		cmd, pipe, err := startOneCommand(arg, stdout, stderr)
-		if err != nil {
-			closePipes(pipes)
-			return nil, nil, err
-		}
-		cmds = append(cmds, cmd)
-		pipes = append(pipes, pipe)
+	procs, allStarted := startAll(commands)
+	writeAll(procs, input)
+	exitCode := waitAll(procs)
+	if !allStarted {
+		exitCode = 1
 	}
-	return cmds, pipes, nil
+	return exitCode
 }
 
-// startOneCommand creates and starts a single sh -c command.
-// R1.1: commands are executed via the shell.
-// R1.3: stdout goes to the caller's stdout.
-func startOneCommand(arg string, stdout, stderr *os.File) (*exec.Cmd, io.WriteCloser, error) {
-	cmd := exec.Command("sh", "-c", arg)
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	pipe, err := cmd.StdinPipe()
+// proc holds a running child process and its stdin pipe.
+type proc struct {
+	cmd   *exec.Cmd
+	stdin io.WriteCloser
+}
+
+// startAll launches all commands via sh -c. If a command fails to start,
+// it reports the error to stderr and continues with the remaining commands.
+// Returns the successfully started processes and whether all started.
+// R1.1: each command is executed via sh -c COMMAND.
+// R1.3: stdout of each command goes to os.Stdout.
+// R2.1: track start failures for exit code aggregation.
+// R2.2: report start errors to stderr.
+func startAll(commands []string) ([]proc, bool) {
+	procs := make([]proc, 0, len(commands))
+	allOk := true
+	for _, c := range commands {
+		p, err := startOne(c)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "pee: %v\n", err)
+			allOk = false
+			continue
+		}
+		procs = append(procs, p)
+	}
+	return procs, allOk
+}
+
+// startOne launches a single shell command and returns its proc.
+func startOne(command string) (proc, error) {
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, nil, err
+		return proc{}, fmt.Errorf("pipe for %q: %w", command, err)
 	}
 	if err := cmd.Start(); err != nil {
-		pipe.Close() // best-effort close
-		return nil, nil, err
+		return proc{}, fmt.Errorf("start %q: %w", command, err)
 	}
-	return cmd, pipe, nil
+	return proc{cmd: cmd, stdin: stdin}, nil
 }
 
-// distributeInput reads from stdin and writes to all command pipes.
-// R1.1: input is written to each command in parallel.
-func distributeInput(stdin io.Reader, pipes []io.WriteCloser) {
-	buf := make([]byte, 32*1024)
-	for {
-		n, readErr := stdin.Read(buf)
-		if n > 0 {
-			writeToAll(pipes, buf[:n])
-		}
-		if readErr != nil {
-			break
-		}
-	}
-	closePipes(pipes)
-}
-
-// writeToAll writes data to every pipe concurrently.
-func writeToAll(pipes []io.WriteCloser, data []byte) {
-	var wg sync.WaitGroup
-	wg.Add(len(pipes))
-	for i := range pipes {
-		go func(w io.WriteCloser) {
-			defer wg.Done()
-			w.Write(data) //nolint:errcheck // best-effort write
-		}(pipes[i])
-	}
-	wg.Wait()
-}
-
-// closePipes closes all pipe writers.
-func closePipes(pipes []io.WriteCloser) {
-	for _, p := range pipes {
-		p.Close() // best-effort close
+// writeAll writes the buffered input to each command's stdin and closes
+// the pipe. R1.1: write full buffer to each command's stdin.
+func writeAll(procs []proc, input []byte) {
+	for _, p := range procs {
+		p.stdin.Write(input) // best-effort write; command may have exited
+		p.stdin.Close()
 	}
 }
 
-// waitAll waits for all commands to finish.
-// R1.2: blocks until all commands complete.
-// Returns 0 if all exit 0, 1 if any exit non-zero.
-func waitAll(cmds []*exec.Cmd) int {
+// waitAll waits for all processes to complete and returns the bitwise OR
+// of all exit codes, matching reference pee behavior. R1.2, R2.1.
+func waitAll(procs []proc) int {
 	exitCode := 0
-	for _, cmd := range cmds {
-		if err := cmd.Wait(); err != nil {
-			exitCode = 1
+	for _, p := range procs {
+		if err := p.cmd.Wait(); err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				exitCode |= ee.ExitCode()
+			} else {
+				exitCode |= 1
+			}
 		}
 	}
 	return exitCode

@@ -1,13 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/cut implements GNU cut: remove sections from each line of files.
-//
-// Implements prd026-cut R1.1, R1.2, R1.3, R1.4 (byte and character selection),
-// R2.1, R2.2 (field selection with delimiter), R2.3 (only-delimited),
-// R2.4 (output delimiter), R3.1, R3.2, R3.3 (complement mode),
-// R4.1 (stdin/dash), R4.2 (multiple files), R4.3 (zero-terminated),
-// R4.4 (exit codes and SIGPIPE).
+// Package main implements cmd/cut: remove sections from lines.
+// Implements srd026-cut R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -24,567 +19,568 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const programName = "cut"
-
-// selMode distinguishes byte, character, and field selection.
-type selMode int
-
-const (
-	modeNone   selMode = iota
-	modeBytes          // -b
-	modeChars          // -c
-	modeFields         // -f
-)
-
-// cutRange represents a single range in a LIST specification.
-// start and end are 1-indexed. end == 0 means "to end of line".
-// start == 0 means "from beginning" (i.e., -M form).
+// cutRange represents a half-open range [low, high) of 1-indexed positions.
 type cutRange struct {
-	start int
-	end   int
+	low  int
+	high int // 0 means unbounded (to end of line)
 }
 
-// cutOptions holds parsed flag state.
-type cutOptions struct {
-	mode           selMode
-	ranges         []cutRange
-	delimiter      byte
-	complement     bool   // R3.1: invert selection
-	onlyDelimited  bool   // R2.3: suppress lines without delimiter
-	outputDelim    string // R2.4: output delimiter string
-	outputDelimSet bool   // whether --output-delimiter was explicitly set
-	zeroTerminated bool   // R4.3: use NUL instead of newline as line delimiter
-}
-
-// Sentinel errors for --version and --help.
-var (
-	errVersion = errors.New("version requested")
-	errHelp    = errors.New("help requested")
-)
-
-func main() {
-	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
-}
-
-// run parses flags and processes input files.
-// R4.4: exit 0 on success, 1 on error.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	opts, files, err := parseArgs(args)
-	if err != nil {
-		return handleParseError(err, stdout, stderr)
+// parseRange parses a single range element like "N", "N-M", "N-", or "-M".
+// R1.1: ranges are 1-indexed; -M means 1-M, N- means N to end.
+func parseRange(s string) (cutRange, error) {
+	if s == "" {
+		return cutRange{}, fmt.Errorf("invalid range: empty")
 	}
-	if len(files) == 0 {
-		files = []string{"-"}
+	dash := strings.IndexByte(s, '-')
+	if dash < 0 {
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
+			return cutRange{}, fmt.Errorf("invalid byte, character or field list")
+		}
+		return cutRange{low: n, high: n}, nil
 	}
-	return processFiles(files, stdin, stdout, stderr, opts)
+	return parseRangeWithDash(s, dash)
 }
 
-// handleParseError dispatches --version, --help, and real errors.
-func handleParseError(err error, stdout, stderr io.Writer) int {
-	if err == errVersion {
-		fmt.Fprintln(stdout, "cut (go-unix-utils)")
-		return 0
-	}
-	if err == errHelp {
-		printHelp(stdout)
-		return 0
-	}
-	fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName)
-	return 1
-}
-
-// printHelp writes usage information to the given writer.
-func printHelp(w io.Writer) {
-	fmt.Fprintf(w, "Usage: %s OPTION... [FILE]...\n", programName)
-	fmt.Fprintln(w, "Print selected parts of lines from each FILE to standard output.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "With no FILE, or when FILE is -, read standard input.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  -b, --bytes=LIST        select only these bytes")
-	fmt.Fprintln(w, "  -c, --characters=LIST   select only these characters")
-	fmt.Fprintln(w, "  -d, --delimiter=DELIM   use DELIM instead of TAB for field delimiter")
-	fmt.Fprintln(w, "  -f, --fields=LIST       select only these fields")
-	fmt.Fprintln(w, "  -s, --only-delimited    do not print lines not containing delimiters")
-	fmt.Fprintln(w, "  -z, --zero-terminated   line delimiter is NUL, not newline")
-	fmt.Fprintln(w, "      --complement        complement the set of selected bytes, characters or fields")
-	fmt.Fprintln(w, "      --output-delimiter=STRING  use STRING as the output delimiter")
-	fmt.Fprintln(w, "      --help              display this help and exit")
-	fmt.Fprintln(w, "      --version           output version information and exit")
-}
-
-// processFiles iterates over files and applies cut to each.
-// R4.2: multiple files are processed in order with concatenated output.
-// R4.4: errors on individual files do not stop processing; exit 1 if any fail.
-func processFiles(files []string, stdin io.Reader, stdout, stderr io.Writer, opts cutOptions) int {
-	exitCode := 0
-	bw := bufio.NewWriter(stdout)
-	for _, name := range files {
-		if err := cutFile(name, stdin, bw, opts); err != nil {
-			fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-			exitCode = 1
+// parseRangeWithDash handles the N-M, N-, and -M forms.
+func parseRangeWithDash(s string, dash int) (cutRange, error) {
+	lo, hi := s[:dash], s[dash+1:]
+	var low, high int
+	var err error
+	if lo == "" {
+		low = 1
+	} else {
+		low, err = strconv.Atoi(lo)
+		if err != nil || low <= 0 {
+			return cutRange{}, fmt.Errorf("invalid byte, character or field list")
 		}
 	}
-	if err := bw.Flush(); err != nil {
-		fmt.Fprintf(stderr, "%s: write error\n", programName)
-		return 1
-	}
-	return exitCode
-}
-
-// cutFile processes a single input file or stdin.
-func cutFile(name string, stdin io.Reader, w *bufio.Writer, opts cutOptions) error {
-	r, closer, err := openInput(name, stdin)
-	if err != nil {
-		return err
-	}
-	if closer != nil {
-		defer closer.Close() // best-effort close
-	}
-	return cutLines(r, w, opts)
-}
-
-// openInput returns a reader and optional closer for the given filename.
-// "-" means stdin.
-func openInput(name string, stdin io.Reader) (io.Reader, io.Closer, error) {
-	if name == "-" {
-		return stdin, nil, nil
-	}
-	f, err := os.Open(name)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%s: No such file or directory", name)
-	}
-	return f, f, nil
-}
-
-// nullSplitFunc is a bufio.SplitFunc that splits on NUL bytes instead of newlines.
-// R4.3: used when -z/--zero-terminated is active.
-func nullSplitFunc(data []byte, atEOF bool) (int, []byte, error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-	if i := bytes.IndexByte(data, 0); i >= 0 {
-		return i + 1, data[0:i], nil
-	}
-	if atEOF {
-		return len(data), data, nil
-	}
-	return 0, nil, nil
-}
-
-// cutLines reads lines from r and writes selected portions to w.
-// R4.3: when zeroTerminated is set, uses NUL as line delimiter.
-func cutLines(r io.Reader, w *bufio.Writer, opts cutOptions) error {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	terminator := "\n"
-	if opts.zeroTerminated {
-		scanner.Split(nullSplitFunc)
-		terminator = "\x00"
-	}
-	for scanner.Scan() {
-		line := scanner.Text()
-		result, suppress := selectFromLine(line, opts)
-		if suppress {
-			continue
-		}
-		if _, err := w.WriteString(result); err != nil {
-			return err
-		}
-		if _, err := w.WriteString(terminator); err != nil {
-			return err
+	if hi == "" {
+		high = 0 // unbounded
+	} else {
+		high, err = strconv.Atoi(hi)
+		if err != nil || high <= 0 {
+			return cutRange{}, fmt.Errorf("invalid byte, character or field list")
 		}
 	}
-	return scanner.Err()
+	if high != 0 && low > high {
+		return cutRange{}, fmt.Errorf("invalid decreasing range")
+	}
+	return cutRange{low: low, high: high}, nil
 }
 
-// selectFromLine applies the selection mode to a single line.
-// Returns the result string and whether the line should be suppressed.
-func selectFromLine(line string, opts cutOptions) (string, bool) {
-	switch opts.mode {
-	case modeBytes, modeChars:
-		// R1.2: under LC_ALL=C, -c and -b are equivalent.
-		return selectBytes(line, opts), false
-	case modeFields:
-		return selectFields(line, opts)
-	default:
-		return line, false
+// parseRangeList parses a comma-separated list of ranges.
+func parseRangeList(s string) ([]cutRange, error) {
+	if s == "" {
+		return nil, fmt.Errorf("cut: you must specify a list of bytes, characters, or fields")
 	}
-}
-
-// selectBytes extracts selected byte positions from a line.
-// R1.1: byte positions are 1-indexed.
-// R1.3: newlines are not counted; passed through by caller.
-// R1.4: out-of-range positions produce no output.
-// R3.1: --complement inverts the selection.
-func selectBytes(line string, opts cutOptions) string {
-	positions := expandRanges(opts.ranges, len(line))
-	if opts.complement {
-		positions = complementPositions(positions, len(line))
-	}
-	if opts.outputDelimSet {
-		return joinBytePositions(line, positions, opts.outputDelim)
-	}
-	var b strings.Builder
-	for _, pos := range positions {
-		if pos >= 1 && pos <= len(line) {
-			b.WriteByte(line[pos-1])
-		}
-	}
-	return b.String()
-}
-
-// joinBytePositions joins selected byte positions with an output delimiter.
-func joinBytePositions(line string, positions []int, delim string) string {
-	var b strings.Builder
-	for i, pos := range positions {
-		if i > 0 {
-			b.WriteString(delim)
-		}
-		if pos >= 1 && pos <= len(line) {
-			b.WriteByte(line[pos-1])
-		}
-	}
-	return b.String()
-}
-
-// selectFields extracts selected fields from a line.
-// R2.1: fields are delimited by the delimiter character.
-// R2.2: default delimiter is tab; output delimiter matches input.
-// R2.3: -s suppresses lines without delimiter.
-// R2.4: --output-delimiter replaces delimiter in output.
-// R3.3: --complement outputs non-selected fields.
-func selectFields(line string, opts cutOptions) (string, bool) {
-	delim := string(opts.delimiter)
-	if !strings.Contains(line, delim) {
-		if opts.onlyDelimited {
-			return "", true
-		}
-		return line, false
-	}
-	fields := strings.Split(line, delim)
-	positions := expandRanges(opts.ranges, len(fields))
-	if opts.complement {
-		positions = complementPositions(positions, len(fields))
-	}
-	selected := make([]string, 0, len(positions))
-	for _, pos := range positions {
-		if pos >= 1 && pos <= len(fields) {
-			selected = append(selected, fields[pos-1])
-		}
-	}
-	outDelim := delim
-	if opts.outputDelimSet {
-		outDelim = opts.outputDelim
-	}
-	return strings.Join(selected, outDelim), false
-}
-
-// complementPositions returns positions from 1..maxLen not in the given set.
-// R3.1: inverts the selection for bytes, characters, or fields.
-func complementPositions(positions []int, maxLen int) []int {
-	selected := make(map[int]bool, len(positions))
-	for _, p := range positions {
-		selected[p] = true
-	}
-	result := make([]int, 0, maxLen)
-	for i := 1; i <= maxLen; i++ {
-		if !selected[i] {
-			result = append(result, i)
-		}
-	}
-	return result
-}
-
-// expandRanges converts a list of cutRange into a sorted, deduplicated
-// list of 1-indexed positions, capped at maxLen.
-func expandRanges(ranges []cutRange, maxLen int) []int {
-	seen := make(map[int]bool)
-	for _, r := range ranges {
-		start, end := normalizeRange(r, maxLen)
-		for i := start; i <= end; i++ {
-			seen[i] = true
-		}
-	}
-	positions := make([]int, 0, len(seen))
-	for pos := range seen {
-		positions = append(positions, pos)
-	}
-	sort.Ints(positions)
-	return positions
-}
-
-// normalizeRange resolves a cutRange into concrete start/end positions.
-func normalizeRange(r cutRange, maxLen int) (int, int) {
-	start := r.start
-	end := r.end
-	if start == 0 {
-		start = 1
-	}
-	if end == 0 || end > maxLen {
-		end = maxLen
-	}
-	if start > maxLen {
-		start = maxLen + 1
-	}
-	return start, end
-}
-
-// parseArgs separates flags from file arguments.
-func parseArgs(args []string) (cutOptions, []string, error) {
-	opts := cutOptions{delimiter: '\t'}
-	var files []string
-	var listStr string
-	flagsDone := false
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if flagsDone || (arg != "-" && (len(arg) == 0 || arg[0] != '-')) {
-			files = append(files, arg)
-			continue
-		}
-		if arg == "-" {
-			files = append(files, arg)
-			continue
-		}
-		var err error
-		i, listStr, err = parseFlag(&opts, &flagsDone, args, i, listStr)
-		if err != nil {
-			return opts, nil, err
-		}
-	}
-	return finalizeParse(opts, listStr, files)
-}
-
-// finalizeParse validates final state and parses the range list.
-func finalizeParse(opts cutOptions, listStr string, files []string) (cutOptions, []string, error) {
-	if opts.mode == modeNone {
-		return opts, nil, fmt.Errorf(
-			"you must specify a list of bytes, characters, or fields")
-	}
-	if listStr == "" {
-		return opts, nil, fmt.Errorf(
-			"you must specify a list of bytes, characters, or fields")
-	}
-	ranges, err := parseRangeList(listStr)
-	if err != nil {
-		return opts, nil, err
-	}
-	opts.ranges = ranges
-	return opts, files, nil
-}
-
-// parseFlag handles a single flag argument starting at args[i].
-// Boolean flags are handled inline; value flags dispatch to parseValueFlag.
-func parseFlag(opts *cutOptions, flagsDone *bool, args []string, i int, listStr string) (int, string, error) {
-	arg := args[i]
-	switch {
-	case arg == "--":
-		*flagsDone = true
-	case arg == "--version":
-		return i, listStr, errVersion
-	case arg == "--help":
-		return i, listStr, errHelp
-	case arg == "-s" || arg == "--only-delimited":
-		opts.onlyDelimited = true
-	case arg == "--complement":
-		opts.complement = true
-	case arg == "-z" || arg == "--zero-terminated":
-		// R4.3: use NUL instead of newline as line delimiter.
-		opts.zeroTerminated = true
-	default:
-		return parseValueFlag(opts, args, i, listStr)
-	}
-	return i, listStr, nil
-}
-
-// parseValueFlag handles flags that take a value argument (-b, -c, -f, -d, --output-delimiter).
-func parseValueFlag(opts *cutOptions, args []string, i int, listStr string) (int, string, error) {
-	arg := args[i]
-	switch {
-	case arg == "-b" || arg == "--bytes":
-		return setModeWithList(opts, modeBytes, args, i)
-	case strings.HasPrefix(arg, "-b") && len(arg) > 2:
-		return setModeInline(opts, modeBytes, arg[2:], i)
-	case strings.HasPrefix(arg, "--bytes="):
-		return setModeInline(opts, modeBytes, arg[8:], i)
-	case arg == "-c" || arg == "--characters":
-		return setModeWithList(opts, modeChars, args, i)
-	case strings.HasPrefix(arg, "-c") && len(arg) > 2:
-		return setModeInline(opts, modeChars, arg[2:], i)
-	case strings.HasPrefix(arg, "--characters="):
-		return setModeInline(opts, modeChars, arg[13:], i)
-	case arg == "-f" || arg == "--fields":
-		return setModeWithList(opts, modeFields, args, i)
-	case strings.HasPrefix(arg, "-f") && len(arg) > 2:
-		return setModeInline(opts, modeFields, arg[2:], i)
-	case strings.HasPrefix(arg, "--fields="):
-		return setModeInline(opts, modeFields, arg[9:], i)
-	case arg == "-d":
-		return parseDelimNext(opts, args, i, listStr)
-	case strings.HasPrefix(arg, "-d") && len(arg) > 2:
-		return parseDelimInline(opts, arg[2:], i, listStr)
-	case strings.HasPrefix(arg, "--delimiter="):
-		return parseDelimInline(opts, arg[12:], i, listStr)
-	case arg == "--output-delimiter":
-		return parseOutputDelimNext(opts, args, i, listStr)
-	case strings.HasPrefix(arg, "--output-delimiter="):
-		return parseOutputDelimInline(opts, arg, i, listStr)
-	default:
-		return i, listStr, fmt.Errorf("invalid option -- '%s'", arg[1:])
-	}
-}
-
-// checkModeConflict returns an error if a different mode is already set.
-func checkModeConflict(opts *cutOptions, mode selMode) error {
-	if opts.mode != modeNone && opts.mode != mode {
-		return fmt.Errorf("only one type of list may be specified")
-	}
-	return nil
-}
-
-// setModeWithList sets the selection mode and reads LIST from the next arg.
-func setModeWithList(opts *cutOptions, mode selMode, args []string, i int) (int, string, error) {
-	if err := checkModeConflict(opts, mode); err != nil {
-		return i, "", err
-	}
-	opts.mode = mode
-	i++
-	if i >= len(args) {
-		return i, "", fmt.Errorf("option requires an argument -- '%s'", args[i-1])
-	}
-	return i, args[i], nil
-}
-
-// setModeInline sets the selection mode with an inline LIST value.
-func setModeInline(opts *cutOptions, mode selMode, list string, i int) (int, string, error) {
-	if err := checkModeConflict(opts, mode); err != nil {
-		return i, "", err
-	}
-	opts.mode = mode
-	return i, list, nil
-}
-
-// parseDelimNext reads the delimiter from the next argument.
-func parseDelimNext(opts *cutOptions, args []string, i int, listStr string) (int, string, error) {
-	i++
-	if i >= len(args) {
-		return i, listStr, fmt.Errorf("option requires an argument -- 'd'")
-	}
-	return parseDelimValue(opts, args[i], i, listStr)
-}
-
-// parseDelimInline reads the delimiter from an inline value.
-func parseDelimInline(opts *cutOptions, val string, i int, listStr string) (int, string, error) {
-	return parseDelimValue(opts, val, i, listStr)
-}
-
-// parseDelimValue validates and sets the delimiter.
-func parseDelimValue(opts *cutOptions, val string, i int, listStr string) (int, string, error) {
-	if len(val) != 1 {
-		return i, listStr, fmt.Errorf(
-			"the delimiter must be a single character")
-	}
-	opts.delimiter = val[0]
-	return i, listStr, nil
-}
-
-// parseOutputDelimNext reads the output delimiter from the next argument.
-// R2.4: --output-delimiter STRING.
-func parseOutputDelimNext(opts *cutOptions, args []string, i int, listStr string) (int, string, error) {
-	i++
-	if i >= len(args) {
-		return i, listStr, fmt.Errorf("option requires an argument -- 'output-delimiter'")
-	}
-	opts.outputDelim = args[i]
-	opts.outputDelimSet = true
-	return i, listStr, nil
-}
-
-// parseOutputDelimInline reads the output delimiter from --output-delimiter=VAL.
-// R2.4: --output-delimiter STRING.
-func parseOutputDelimInline(opts *cutOptions, arg string, i int, listStr string) (int, string, error) {
-	val := arg[len("--output-delimiter="):]
-	opts.outputDelim = val
-	opts.outputDelimSet = true
-	return i, listStr, nil
-}
-
-// parseRangeList parses a comma-separated LIST of range specifications.
-// R1.4: supports N, N-M, N-, -M, and comma-separated combinations.
-func parseRangeList(list string) ([]cutRange, error) {
-	parts := strings.Split(list, ",")
+	parts := strings.Split(s, ",")
 	ranges := make([]cutRange, 0, len(parts))
-	for _, part := range parts {
-		r, err := parseSingleRange(part)
+	for _, p := range parts {
+		r, err := parseRange(p)
 		if err != nil {
 			return nil, err
 		}
 		ranges = append(ranges, r)
 	}
-	return ranges, nil
+	return mergeRanges(ranges), nil
 }
 
-// parseSingleRange parses one range element: N, N-M, N-, or -M.
-func parseSingleRange(s string) (cutRange, error) {
-	s = strings.TrimSpace(s)
+// mergeRanges sorts and merges overlapping ranges.
+func mergeRanges(ranges []cutRange) []cutRange {
+	sort.Slice(ranges, func(i, j int) bool {
+		return ranges[i].low < ranges[j].low
+	})
+	merged := []cutRange{ranges[0]}
+	for _, r := range ranges[1:] {
+		last := &merged[len(merged)-1]
+		if last.high == 0 || (r.low <= last.high+1) {
+			if r.high == 0 || (last.high != 0 && r.high > last.high) {
+				last.high = r.high
+			} else if r.high == 0 {
+				last.high = 0
+			}
+			continue
+		}
+		merged = append(merged, r)
+	}
+	return merged
+}
+
+// byteSelected returns true if 1-indexed position pos is in any range.
+func byteSelected(pos int, ranges []cutRange) bool {
+	for _, r := range ranges {
+		if pos < r.low {
+			return false // ranges are sorted
+		}
+		if r.high == 0 || pos <= r.high {
+			return true
+		}
+	}
+	return false
+}
+
+// cutMode identifies the selection mode.
+type cutMode int
+
+const (
+	modeNone cutMode = iota
+	modeByte
+	modeChar
+	modeField
+)
+
+// config holds the parsed command-line options.
+type config struct {
+	mode           cutMode
+	ranges         []cutRange
+	complement     bool
+	delimiter      byte
+	delimSet       bool
+	onlyDelimited  bool
+	outputDelim    string
+	outputDelimSet bool
+	files          []string
+}
+
+// extractByteFlag tries to extract -b LIST from the current argument.
+func extractByteFlag(arg string, args []string, i int) (string, int, error) {
+	return extractListFlag(arg, args, i, "-b", "--bytes")
+}
+
+// extractCharFlag tries to extract -c LIST from the current argument.
+func extractCharFlag(arg string, args []string, i int) (string, int, error) {
+	return extractListFlag(arg, args, i, "-c", "--characters")
+}
+
+// extractFieldFlag tries to extract -f LIST from the current argument.
+func extractFieldFlag(arg string, args []string, i int) (string, int, error) {
+	return extractListFlag(arg, args, i, "-f", "--fields")
+}
+
+// extractListFlag is a helper for extracting -X LIST or --long=LIST.
+func extractListFlag(arg string, args []string, i int, short, long string) (string, int, error) {
+	if strings.HasPrefix(arg, long+"=") {
+		return arg[len(long)+1:], 0, nil
+	}
+	if arg == long {
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option '%s' requires an argument", long)
+		}
+		return args[i+1], 1, nil
+	}
+	if strings.HasPrefix(arg, short) {
+		rest := arg[len(short):]
+		if rest != "" {
+			return rest, 0, nil
+		}
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option requires an argument -- '%s'", short[1:])
+		}
+		return args[i+1], 1, nil
+	}
+	return "", 0, nil
+}
+
+// extractDelimFlag tries to extract -d DELIM from the current argument.
+// R2.2: delimiter must be exactly one byte.
+func extractDelimFlag(arg string, args []string, i int) (string, int, error) {
+	if strings.HasPrefix(arg, "--delimiter=") {
+		return arg[len("--delimiter="):], 0, nil
+	}
+	if arg == "--delimiter" {
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option '--delimiter' requires an argument")
+		}
+		return args[i+1], 1, nil
+	}
+	if strings.HasPrefix(arg, "-d") {
+		rest := arg[2:]
+		if rest != "" {
+			return rest, 0, nil
+		}
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option requires an argument -- 'd'")
+		}
+		return args[i+1], 1, nil
+	}
+	return "", 0, nil
+}
+
+// setMode sets the selection mode, returning an error on conflict.
+func setMode(cfg *config, m cutMode, list string) error {
+	if cfg.mode != modeNone {
+		return fmt.Errorf("only one list may be specified")
+	}
+	cfg.mode = m
+	ranges, err := parseRangeList(list)
+	if err != nil {
+		return err
+	}
+	cfg.ranges = ranges
+	return nil
+}
+
+// parseArgs parses command-line arguments into a config.
+func parseArgs(args []string) (config, error) {
+	cfg := config{delimiter: '\t'}
+	flagsDone := false
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if flagsDone || (arg != "-" && !strings.HasPrefix(arg, "-")) {
+			cfg.files = append(cfg.files, arg)
+			continue
+		}
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		if arg == "-" {
+			cfg.files = append(cfg.files, arg)
+			continue
+		}
+		skip, err := parseFlag(&cfg, arg, args, i)
+		if err != nil {
+			return config{}, err
+		}
+		i += skip
+	}
+	return validateConfig(cfg)
+}
+
+// validateConfig checks for conflicting or missing flags.
+func validateConfig(cfg config) (config, error) {
+	if cfg.mode == modeNone {
+		return config{}, fmt.Errorf("you must specify a list of bytes, characters, or fields")
+	}
+	if cfg.delimSet && cfg.mode != modeField {
+		return config{}, fmt.Errorf("an input delimiter may be specified only when operating on fields")
+	}
+	if cfg.onlyDelimited && cfg.mode != modeField {
+		return config{}, fmt.Errorf("suppressing non-delimited lines makes sense\n\tonly when operating on fields")
+	}
+	if len(cfg.files) == 0 {
+		cfg.files = []string{"-"}
+	}
+	return cfg, nil
+}
+
+// parseFlag handles a single flag argument, returning extra args consumed.
+func parseFlag(cfg *config, arg string, args []string, i int) (int, error) {
+	if arg == "--complement" {
+		cfg.complement = true
+		return 0, nil
+	}
+	if arg == "-s" || arg == "--only-delimited" {
+		cfg.onlyDelimited = true
+		return 0, nil
+	}
+	if strings.HasPrefix(arg, "--output-delimiter") {
+		return parseOutputDelimFlag(cfg, arg, args, i)
+	}
+	return parseModeOrDelimFlag(cfg, arg, args, i)
+}
+
+// parseOutputDelimFlag handles --output-delimiter=STRING and --output-delimiter STRING.
+// R2.4: sets the output delimiter for all modes.
+func parseOutputDelimFlag(cfg *config, arg string, args []string, i int) (int, error) {
+	const prefix = "--output-delimiter="
+	if strings.HasPrefix(arg, prefix) {
+		cfg.outputDelim = arg[len(prefix):]
+		cfg.outputDelimSet = true
+		return 0, nil
+	}
+	if arg == "--output-delimiter" {
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("option '--output-delimiter' requires an argument")
+		}
+		cfg.outputDelim = args[i+1]
+		cfg.outputDelimSet = true
+		return 1, nil
+	}
+	return 0, fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(arg, "-"))
+}
+
+// parseModeOrDelimFlag handles -d, -b, -c, and -f flags.
+func parseModeOrDelimFlag(cfg *config, arg string, args []string, i int) (int, error) {
+	val, skip, err := extractDelimFlag(arg, args, i)
+	if err != nil {
+		return 0, err
+	}
+	if val != "" {
+		if len(val) != 1 {
+			return 0, fmt.Errorf("the delimiter must be a single character")
+		}
+		cfg.delimiter = val[0]
+		cfg.delimSet = true
+		return skip, nil
+	}
+	return parseModeFlag(cfg, arg, args, i)
+}
+
+// parseModeFlag handles the selection mode flags -b, -c, -f.
+func parseModeFlag(cfg *config, arg string, args []string, i int) (int, error) {
+	val, skip, err := extractByteFlag(arg, args, i)
+	if err != nil {
+		return 0, err
+	}
+	if val != "" {
+		return skip, setMode(cfg, modeByte, val)
+	}
+	val, skip, err = extractCharFlag(arg, args, i)
+	if err != nil {
+		return 0, err
+	}
+	if val != "" {
+		return skip, setMode(cfg, modeChar, val)
+	}
+	val, skip, err = extractFieldFlag(arg, args, i)
+	if err != nil {
+		return 0, err
+	}
+	if val != "" {
+		return skip, setMode(cfg, modeField, val)
+	}
+	return 0, fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(arg, "-"))
+}
+
+// openInput returns os.Stdin for "-", otherwise opens the named file.
+// R4.2: file open failures return an error; processing continues for remaining files.
+func openInput(name string) (*os.File, error) {
+	if name == "-" {
+		return os.Stdin, nil
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, formatOpenError(name, err)
+	}
+	return f, nil
+}
+
+// formatOpenError extracts the underlying error for GNU-compatible messages.
+// Capitalizes the first letter to match GNU coreutils formatting.
+func formatOpenError(name string, err error) error {
+	if pe, ok := errors.AsType[*os.PathError](err); ok {
+		return fmt.Errorf("%s: %s", name, capitalizeFirst(pe.Err.Error()))
+	}
+	return fmt.Errorf("%s: %s", name, err)
+}
+
+// capitalizeFirst uppercases the first byte of s for GNU-compatible messages.
+func capitalizeFirst(s string) string {
 	if s == "" {
-		return cutRange{}, fmt.Errorf("invalid range: ''")
+		return s
 	}
-	idx := strings.Index(s, "-")
-	if idx < 0 {
-		return parseSinglePosition(s)
-	}
-	if idx == 0 {
-		return parseToEnd(s[1:])
-	}
-	if idx == len(s)-1 {
-		return parseFromStart(s[:idx])
-	}
-	return parseFullRange(s[:idx], s[idx+1:])
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-// parseSinglePosition parses a single position N.
-func parseSinglePosition(s string) (cutRange, error) {
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		return cutRange{}, fmt.Errorf("invalid byte, character or field list")
+// isSelected returns whether a 1-indexed position is selected,
+// accounting for the complement flag.
+// R3.1: --complement inverts the selected positions.
+func isSelected(pos int, ranges []cutRange, complement bool) bool {
+	sel := byteSelected(pos, ranges)
+	if complement {
+		return !sel
 	}
-	return cutRange{start: n, end: n}, nil
+	return sel
 }
 
-// parseToEnd parses the -M form (from 1 to M).
-func parseToEnd(s string) (cutRange, error) {
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		return cutRange{}, fmt.Errorf("invalid byte, character or field list")
+// cutBytes processes a single reader in byte/character mode.
+// R1.1: extract specified byte positions.
+// R1.3: newlines pass through; not counted as part of line.
+// R1.4: short lines produce only existing bytes.
+func cutBytes(r io.Reader, w *bufio.Writer, cfg config) error {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			if werr := writeByteLine(w, line, cfg); werr != nil {
+				return werr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
 	}
-	return cutRange{start: 1, end: n}, nil
+	return nil
 }
 
-// parseFromStart parses the N- form (from N to end).
-func parseFromStart(s string) (cutRange, error) {
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		return cutRange{}, fmt.Errorf("invalid byte, character or field list")
+// writeByteLine writes the selected bytes from a single line.
+// R2.4: when outputDelimSet, inserts output delimiter between disjoint groups.
+func writeByteLine(w *bufio.Writer, line []byte, cfg config) error {
+	content, _ := stripNewline(line)
+	if cfg.outputDelimSet {
+		return writeByteLineDelim(w, content, cfg)
 	}
-	return cutRange{start: n, end: 0}, nil
+	return writeByteLineRaw(w, content, cfg)
 }
 
-// parseFullRange parses the N-M form.
-func parseFullRange(startStr, endStr string) (cutRange, error) {
-	start, err := strconv.Atoi(startStr)
-	if err != nil || start <= 0 {
-		return cutRange{}, fmt.Errorf("invalid byte, character or field list")
+// writeByteLineRaw writes selected bytes with no separator.
+func writeByteLineRaw(w *bufio.Writer, content []byte, cfg config) error {
+	for pos := 1; pos <= len(content); pos++ {
+		if isSelected(pos, cfg.ranges, cfg.complement) {
+			if err := w.WriteByte(content[pos-1]); err != nil {
+				return err
+			}
+		}
 	}
-	end, err := strconv.Atoi(endStr)
-	if err != nil || end <= 0 {
-		return cutRange{}, fmt.Errorf("invalid byte, character or field list")
+	return w.WriteByte('\n')
+}
+
+// writeByteLineDelim writes selected bytes with output delimiter between groups.
+func writeByteLineDelim(w *bufio.Writer, content []byte, cfg config) error {
+	firstGroup := true
+	prevSelected := false
+	for pos := 1; pos <= len(content); pos++ {
+		sel := isSelected(pos, cfg.ranges, cfg.complement)
+		if sel {
+			if !prevSelected && !firstGroup {
+				if _, err := w.WriteString(cfg.outputDelim); err != nil {
+					return err
+				}
+			}
+			if err := w.WriteByte(content[pos-1]); err != nil {
+				return err
+			}
+			firstGroup = false
+		}
+		prevSelected = sel
 	}
-	if start > end {
-		return cutRange{}, fmt.Errorf(
-			"invalid decreasing range")
+	return w.WriteByte('\n')
+}
+
+// cutFields processes a single reader in field mode.
+// R2.1: extract fields delimited by the delimiter character.
+func cutFields(r io.Reader, w *bufio.Writer, cfg config) error {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			if werr := writeFieldLine(w, line, cfg); werr != nil {
+				return werr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
 	}
-	return cutRange{start: start, end: end}, nil
+	return nil
+}
+
+// writeFieldLine writes the selected fields from a single line.
+// R2.3: lines without the delimiter are printed unchanged unless -s is set.
+func writeFieldLine(w *bufio.Writer, line []byte, cfg config) error {
+	content, hasNewline := stripNewline(line)
+	if bytes.IndexByte(content, cfg.delimiter) < 0 {
+		if cfg.onlyDelimited {
+			return nil
+		}
+		if _, err := w.Write(content); err != nil {
+			return err
+		}
+		return writeNewlineIf(w, hasNewline)
+	}
+	return writeSelectedFields(w, content, cfg, hasNewline)
+}
+
+// stripNewline removes a trailing newline and reports whether one was present.
+func stripNewline(line []byte) ([]byte, bool) {
+	if len(line) > 0 && line[len(line)-1] == '\n' {
+		return line[:len(line)-1], true
+	}
+	return line, false
+}
+
+// writeNewlineIf writes a newline byte if cond is true.
+func writeNewlineIf(w *bufio.Writer, cond bool) error {
+	if cond {
+		return w.WriteByte('\n')
+	}
+	return nil
+}
+
+// writeSelectedFields writes the fields matching the range selection.
+// R2.2: output delimiter defaults to the input delimiter.
+// R2.4: uses outputDelim when explicitly set via --output-delimiter.
+// R3.3: complement with -f outputs fields not in the list.
+func writeSelectedFields(w *bufio.Writer, content []byte, cfg config, hasNewline bool) error {
+	fields := bytes.Split(content, []byte{cfg.delimiter})
+	outDelim := string(cfg.delimiter)
+	if cfg.outputDelimSet {
+		outDelim = cfg.outputDelim
+	}
+	first := true
+	for i, field := range fields {
+		pos := i + 1
+		if !isSelected(pos, cfg.ranges, cfg.complement) {
+			continue
+		}
+		if !first {
+			if _, err := w.WriteString(outDelim); err != nil {
+				return err
+			}
+		}
+		if _, err := w.Write(field); err != nil {
+			return err
+		}
+		first = false
+	}
+	return writeNewlineIf(w, hasNewline)
+}
+
+// cutFile processes a single file.
+// R4.2: returns error on file open failure; caller continues with remaining files.
+func cutFile(name string, w *bufio.Writer, cfg config) error {
+	r, err := openInput(name)
+	if err != nil {
+		return err
+	}
+	if r != os.Stdin {
+		defer r.Close()
+	}
+	if cfg.mode == modeField {
+		return cutFields(r, w, cfg)
+	}
+	// R1.2: -c is equivalent to -b under LC_ALL=C
+	return cutBytes(r, w, cfg)
+}
+
+// R4.4: SIGPIPE handler installed at start.
+// R4.1: exit 0 on success.
+// R4.2: exit 1 on file open failure, processing continues for remaining files.
+// R4.3: exit 1 on write error.
+func main() {
+	sys.InstallSIGPIPEHandler()
+
+	cfg, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cut: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Try 'cut --help' for more information.\n")
+		os.Exit(1)
+	}
+
+	w := bufio.NewWriter(os.Stdout)
+	exitCode := 0
+
+	for _, name := range cfg.files {
+		if err := cutFile(name, w, cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "cut: %s\n", err)
+			exitCode = 1
+		}
+	}
+
+	// best-effort flush; SIGPIPE handler covers broken pipe
+	if err := w.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "cut: write error\n")
+		exitCode = 1
+	}
+
+	os.Exit(exitCode)
 }

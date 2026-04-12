@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/expand converts tabs to spaces (prd024-expand R1, R2, R3, R4).
+// Package main implements cmd/expand: convert tabs to spaces.
+// Implements srd024-expand R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,281 +17,217 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const (
-	defaultTabStop = 8
-	programName    = "expand"
-)
+const defaultTabStop = 8
 
-func main() {
-	sys.InstallSIGPIPEHandler()
-	cfg := parseArgs(os.Args[1:])
-	if cfg.help {
-		printHelp(os.Stdout)
-		os.Exit(0)
-	}
-	if cfg.version {
-		printVersion(os.Stdout)
-		os.Exit(0)
-	}
-	os.Exit(run(cfg))
-}
-
-type config struct {
-	files   []string
-	tabSpec string // raw -t value; empty means default
-	initial bool   // -i / --initial: only expand leading tabs
-	help    bool
-	version bool
-}
-
-// tabStops holds parsed tab stop configuration.
-// R2.4: single value = uniform interval; multiple = explicit positions.
-type tabStops struct {
-	uniform  int   // >0 when using a uniform interval
-	explicit []int // absolute 0-based column positions (sorted, ascending)
-}
-
-func parseArgs(args []string) config {
-	var cfg config
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "--" {
-			cfg.files = append(cfg.files, args[i+1:]...)
-			break
-		}
-		if a == "-" || len(a) == 0 || a[0] != '-' {
-			cfg.files = append(cfg.files, a)
-			continue
-		}
-		if a == "--help" {
-			cfg.help = true
-			return cfg
-		}
-		if a == "--version" {
-			cfg.version = true
-			return cfg
-		}
-		if a == "-i" || a == "--initial" {
-			cfg.initial = true
-			continue
-		}
-		if err := parseTabArg(a, args, &i, &cfg); err == nil {
-			continue
-		}
-		die(fmt.Sprintf("invalid option -- '%s'", a[1:]))
-	}
-	if len(cfg.files) == 0 {
-		cfg.files = []string{"-"}
-	}
-	return cfg
-}
-
-// parseTabArg handles -t / --tabs arguments. Returns nil if matched.
-func parseTabArg(a string, args []string, i *int, cfg *config) error {
-	// R2.3: last -t wins
-	if a == "-t" || a == "--tabs" {
-		if *i+1 >= len(args) {
-			die("option requires an argument -- 't'")
-		}
-		*i++
-		cfg.tabSpec = args[*i]
-		return nil
-	}
-	if strings.HasPrefix(a, "-t") {
-		cfg.tabSpec = a[2:]
-		return nil
-	}
-	if strings.HasPrefix(a, "--tabs=") {
-		cfg.tabSpec = a[7:]
-		return nil
-	}
-	return fmt.Errorf("not a tab arg")
-}
-
-// parseTabStops parses the -t value into a tabStops struct.
-// R2.1: single integer = uniform interval.
-// R2.2: comma-separated or space-separated list = explicit positions.
-// R2.4: list with one element = uniform interval.
-func parseTabStops(spec string) tabStops {
-	if spec == "" {
-		return tabStops{uniform: defaultTabStop}
-	}
-	parts := splitTabSpec(spec)
-	if len(parts) == 1 {
-		return tabStops{uniform: parsePositiveInt(parts[0])}
-	}
-	positions := make([]int, len(parts))
-	for i, p := range parts {
-		v := parsePositiveInt(p)
-		positions[i] = v
-		if i > 0 && positions[i] <= positions[i-1] {
-			die("tab sizes must be ascending")
-		}
-	}
-	return tabStops{explicit: positions}
-}
-
-func splitTabSpec(spec string) []string {
-	if strings.ContainsRune(spec, ',') {
-		return strings.Split(spec, ",")
-	}
-	return strings.Fields(spec)
-}
-
-func parsePositiveInt(s string) int {
-	trimmed := strings.TrimSpace(s)
-	n, err := strconv.Atoi(trimmed)
-	if err != nil {
-		die(fmt.Sprintf("tab size contains invalid character(s): '%s'", trimmed))
-	}
-	if n == 0 {
-		die("tab size cannot be 0")
-	}
-	if n < 0 {
-		die(fmt.Sprintf("tab size contains invalid character(s): '%s'", trimmed))
-	}
-	return n
-}
-
-// run processes all files and returns the exit code.
-func run(cfg config) int {
-	ts := parseTabStops(cfg.tabSpec)
-	out := bufio.NewWriter(os.Stdout)
-	exitCode := 0
-	for _, name := range cfg.files {
-		if err := processFile(name, out, ts, cfg.initial); err != nil {
-			fmt.Fprintf(os.Stderr, "expand: %v\n", err)
-			exitCode = 1
-		}
-	}
-	if err := out.Flush(); err != nil {
-		fmt.Fprintf(os.Stderr, "expand: write error: %v\n", err)
-		return 1
-	}
-	return exitCode
-}
-
-// processFile opens one input and expands its tabs.
-func processFile(name string, out *bufio.Writer, ts tabStops, initial bool) error {
-	r, err := openInput(name)
-	if err != nil {
-		if pe, ok := err.(*os.PathError); ok {
-			return fmt.Errorf("%s: %s", name, pe.Err)
-		}
-		return err
-	}
-	if r != os.Stdin {
-		defer r.Close()
-	}
-	return expandStream(bufio.NewReader(r), out, ts, initial)
-}
-
+// openInput returns os.Stdin for "-", otherwise opens the named file.
 func openInput(name string) (*os.File, error) {
 	if name == "-" {
 		return os.Stdin, nil
 	}
-	return os.Open(name)
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, formatOpenError(name, err)
+	}
+	return f, nil
 }
 
-// expandStream reads input byte by byte and replaces tabs with spaces.
-// R1.1-R1.4: default expansion. R2.1-R2.4: custom tab stops.
-// R3.1: when initial is true, only leading tabs are expanded.
-func expandStream(r *bufio.Reader, out *bufio.Writer, ts tabStops, initial bool) error {
-	col := 0
-	leading := true
-	for {
-		c, err := r.ReadByte()
+// formatOpenError extracts the underlying error for GNU-compatible messages.
+func formatOpenError(name string, err error) error {
+	if pe, ok := errors.AsType[*os.PathError](err); ok {
+		return fmt.Errorf("%s: %s", name, pe.Err)
+	}
+	return fmt.Errorf("%s: %s", name, err)
+}
+
+// parseTabValue parses a tab stop specification string into a slice of stops.
+// R2.1: single number = uniform interval.
+// R2.2: comma/space-separated list = absolute positions in strictly increasing order.
+// R2.4: single-element list behaves identically to uniform interval.
+func parseTabValue(s string) ([]int, error) {
+	s = strings.ReplaceAll(s, ",", " ")
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("tab size cannot be 0")
+	}
+	stops := make([]int, 0, len(fields))
+	for _, f := range fields {
+		n, err := strconv.Atoi(f)
 		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
+			return nil, fmt.Errorf("tab size contains invalid character(s): %q", f)
 		}
-		if werr := handleByte(out, c, &col, &leading, ts, initial); werr != nil {
-			return werr
+		if n <= 0 {
+			return nil, fmt.Errorf("tab sizes must be ascending")
 		}
+		if len(stops) > 0 && n <= stops[len(stops)-1] {
+			return nil, fmt.Errorf("tab sizes must be ascending")
+		}
+		stops = append(stops, n)
 	}
+	return stops, nil
 }
 
-// handleByte processes one input byte, expanding tabs when appropriate.
-func handleByte(out *bufio.Writer, c byte, col *int, leading *bool, ts tabStops, initial bool) error {
-	switch c {
-	case '\n':
-		*col = 0
-		*leading = true
-		return out.WriteByte('\n')
-	case '\t':
-		if !initial || *leading {
-			return expandTab(out, col, ts)
-		}
-		*col++
-		return out.WriteByte('\t')
-	case '\b':
-		if *col > 0 {
-			*col--
-		}
-		*leading = false
-		return out.WriteByte('\b')
-	default:
-		if c != ' ' {
-			*leading = false
-		}
-		*col++
-		return out.WriteByte(c)
+// extractTabFlag extracts the -t/--tabs value from the current arg.
+// Returns the value string, number of extra args consumed, and any error.
+func extractTabFlag(arg string, args []string, i int) (string, int, error) {
+	if strings.HasPrefix(arg, "--tabs=") {
+		return arg[len("--tabs="):], 0, nil
 	}
+	if arg == "--tabs" {
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option '--tabs' requires an argument")
+		}
+		return args[i+1], 1, nil
+	}
+	if strings.HasPrefix(arg, "-t") {
+		rest := arg[2:]
+		if rest != "" {
+			return rest, 0, nil
+		}
+		if i+1 >= len(args) {
+			return "", 0, fmt.Errorf("option requires an argument -- 't'")
+		}
+		return args[i+1], 1, nil
+	}
+	return "", 0, nil
 }
 
-// expandTab writes spaces to advance to the next tab stop.
-func expandTab(out *bufio.Writer, col *int, ts tabStops) error {
-	spaces := computeSpaces(*col, ts)
-	for range spaces {
-		if err := out.WriteByte(' '); err != nil {
-			return err
+// parseArgs parses command-line arguments into tab stops and file names.
+// R2.3: last -t value takes effect when given multiple times.
+func parseArgs(args []string) ([]int, []string, error) {
+	stops := []int{defaultTabStop}
+	var files []string
+	flagsDone := false
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if flagsDone || arg == "-" || !strings.HasPrefix(arg, "-") {
+			files = append(files, arg)
+			continue
 		}
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		val, skip, err := extractTabFlag(arg, args, i)
+		if err != nil {
+			return nil, nil, err
+		}
+		if val == "" {
+			return nil, nil, fmt.Errorf("invalid option -- '%s'", arg[1:])
+		}
+		parsed, err := parseTabValue(val)
+		if err != nil {
+			return nil, nil, err
+		}
+		stops = parsed
+		i += skip
 	}
-	*col += spaces
-	return nil
+
+	if len(files) == 0 {
+		files = []string{"-"}
+	}
+	return stops, files, nil
 }
 
-// computeSpaces returns the number of spaces needed for a tab at col.
-// R2.1: uniform interval uses modular arithmetic.
-// R2.2: explicit positions find the next position past col.
-// R2.2: tab past last explicit stop = single space.
-func computeSpaces(col int, ts tabStops) int {
-	if ts.uniform > 0 {
-		return ts.uniform - col%ts.uniform
+// tabSpaces returns the number of spaces for a tab at 0-indexed column col.
+// R2.1/R2.4: single stop = uniform interval.
+// R2.2: multiple stops = absolute 1-indexed positions; past last stop → 1 space.
+func tabSpaces(col int, stops []int) int {
+	if len(stops) == 1 {
+		return stops[0] - (col % stops[0])
 	}
-	for _, stop := range ts.explicit {
-		if stop > col {
-			return stop - col
+	for _, s := range stops {
+		if s > col {
+			return s - col
 		}
 	}
 	return 1
 }
 
-// printHelp prints usage information to w.
-// R4.2: --help flag prints usage and exits 0.
-func printHelp(w io.Writer) {
-	fmt.Fprintf(w, `Usage: %s [OPTION]... [FILE]...
-Convert tabs in each FILE to spaces, writing to standard output.
-
-With no FILE, or when FILE is -, read standard input.
-
-  -i, --initial       do not convert tabs after non blanks
-  -t, --tabs=N        have tabs N characters apart, not 8
-  -t, --tabs=LIST     use comma separated list of tab positions
-      --help        display this help and exit
-      --version     output version information and exit
-`, programName)
+// expandReader reads from r, expands tabs to spaces, and writes to w.
+// R1.1: tabs are replaced with spaces to reach the next tab stop.
+// R1.2: consecutive tabs each advance independently.
+// R1.3: non-tab characters pass through unchanged.
+// R1.4: newlines reset column position to 0.
+func expandReader(r io.Reader, w *bufio.Writer, stops []int) error {
+	br := bufio.NewReader(r)
+	col := 0
+	for {
+		b, err := br.ReadByte()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if err := expandByte(w, b, &col, stops); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// printVersion prints version information to w.
-// R4.1: --version flag prints version and exits 0.
-func printVersion(w io.Writer) {
-	fmt.Fprintf(w, "%s (go-unix-utils)\n", programName)
+// expandByte processes a single byte, expanding tabs to spaces.
+func expandByte(w *bufio.Writer, b byte, col *int, stops []int) error {
+	switch b {
+	case '\t':
+		spaces := tabSpaces(*col, stops)
+		for range spaces {
+			if err := w.WriteByte(' '); err != nil {
+				return err
+			}
+		}
+		*col += spaces
+	case '\n':
+		if err := w.WriteByte('\n'); err != nil {
+			return err
+		}
+		*col = 0
+	default:
+		if err := w.WriteByte(b); err != nil {
+			return err
+		}
+		*col++
+	}
+	return nil
 }
 
-func die(msg string) {
-	fmt.Fprintf(os.Stderr, "expand: %s\n", msg)
-	os.Exit(1)
+// expandFile opens and expands tabs in a named file.
+func expandFile(name string, w *bufio.Writer, stops []int) error {
+	r, err := openInput(name)
+	if err != nil {
+		return err
+	}
+	if r != os.Stdin {
+		defer r.Close()
+	}
+	return expandReader(r, w, stops)
+}
+
+func main() {
+	sys.InstallSIGPIPEHandler()
+
+	stops, files, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "expand: %s\n", err)
+		os.Exit(1)
+	}
+
+	w := bufio.NewWriter(os.Stdout)
+	exitCode := 0
+
+	for _, name := range files {
+		if err := expandFile(name, w, stops); err != nil {
+			fmt.Fprintf(os.Stderr, "expand: %s\n", err)
+			exitCode = 1
+		}
+	}
+
+	// best-effort flush; SIGPIPE handler covers broken pipe
+	if err := w.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "expand: write error\n")
+		exitCode = 1
+	}
+
+	os.Exit(exitCode)
 }

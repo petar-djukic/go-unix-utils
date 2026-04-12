@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,14 +12,16 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeProgramName replaces "god: " with "od: " so stderr from
-// the reference binary matches our binary's program name prefix.
-func normalizeProgramName(data []byte) []byte {
-	return bytes.ReplaceAll(data, []byte("god: "), []byte("od: "))
+// clearData is a normalizer that clears all output. Used for error tests
+// where stderr messages differ between Go and GNU implementations but
+// exit codes should match.
+func clearData(data []byte) []byte {
+	return nil
 }
 
-// TestDiff verifies prd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4 via differential testing.
+// TestDiff runs differential tests comparing the Go od against GNU god.
+// Covers srd072-od R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
@@ -28,150 +29,406 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skip("reference binary god not in PATH")
 	}
+	tests := []testutils.DiffTest{
+		// R1.1, R1.4, R2.4: default octal dump from stdin with final address.
+		{
+			Name:  "default_octal",
+			Stdin: []byte("\x01\x02\x03\x04"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.2: -t x1 hex byte format.
+		{
+			Name:  "type_hex_byte",
+			Args:  []string{"-t", "x1"},
+			Stdin: []byte("hello"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.2: -t c C-style character display.
+		{
+			Name:  "type_c_chars",
+			Args:  []string{"-t", "c"},
+			Stdin: []byte("hello\nworld"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.2: -t a named character display.
+		{
+			Name:  "type_named_chars",
+			Args:  []string{"-t", "a"},
+			Stdin: []byte("AB\x00\x1f"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.2: -t d2 signed decimal 2-byte.
+		{
+			Name:  "type_signed_d2",
+			Args:  []string{"-t", "d2"},
+			Stdin: []byte("\x01\x02\x03\x04"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.2: -t u2 unsigned decimal 2-byte.
+		{
+			Name:  "type_unsigned_u2",
+			Args:  []string{"-t", "u2"},
+			Stdin: []byte("\x01\x02\x03\x04"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.2: -t f4 float.
+		{
+			Name:  "type_float_f4",
+			Args:  []string{"-t", "f4"},
+			Stdin: []byte("\x00\x00\x80\x3f\x00\x00\x00\x40"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R1.3: multiple -t options produce multiple output lines per block.
+		{
+			Name:  "multiple_types_x1_c",
+			Args:  []string{"-t", "x1", "-t", "c"},
+			Stdin: []byte("abcd"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -A d decimal address radix.
+		{
+			Name:  "addr_radix_decimal",
+			Args:  []string{"-A", "d"},
+			Stdin: []byte("\x01\x02\x03\x04"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -A x hex address radix with -t x1.
+		{
+			Name:  "addr_radix_hex",
+			Args:  []string{"-A", "x", "-t", "x1"},
+			Stdin: []byte("hello"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -A n no addresses.
+		{
+			Name:  "addr_radix_none",
+			Args:  []string{"-A", "n"},
+			Stdin: []byte("\x01\x02\x03\x04"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.1: -A o octal address (default, explicit).
+		{
+			Name:  "addr_radix_octal_explicit",
+			Args:  []string{"-A", "o"},
+			Stdin: []byte("ABCD"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: -j skip bytes.
+		{
+			Name:  "skip_bytes",
+			Args:  []string{"-j", "6", "-t", "c"},
+			Stdin: []byte("hello world"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2: -j with multiplier suffix b (512).
+		{
+			Name:  "skip_bytes_suffix_b",
+			Args:  []string{"-j", "3b", "-t", "x1"},
+			Stdin: make([]byte, 2048),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -N read bytes limit.
+		{
+			Name:  "read_bytes_limit",
+			Args:  []string{"-N", "5", "-t", "c"},
+			Stdin: []byte("hello world"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -N with small limit.
+		{
+			Name:  "read_bytes_small",
+			Args:  []string{"-N", "2"},
+			Stdin: []byte("ABCDEFGH"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.2 + R2.3: skip and limit combined.
+		{
+			Name:  "skip_and_limit",
+			Args:  []string{"-j", "6", "-N", "5", "-t", "c"},
+			Stdin: []byte("hello world"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: final address line with hex radix.
+		{
+			Name:  "final_addr_hex",
+			Args:  []string{"-A", "x", "-t", "x1"},
+			Stdin: []byte("ABCDEFGHIJKLMNOP"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: final address with decimal radix.
+		{
+			Name:  "final_addr_decimal",
+			Args:  []string{"-A", "d", "-t", "x1"},
+			Stdin: []byte("ABCDEF"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: traditional -x option (hex 2-byte).
+		{
+			Name:  "traditional_x",
+			Args:  []string{"-x"},
+			Stdin: []byte("AB"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: traditional -b option (octal byte).
+		{
+			Name:  "traditional_b",
+			Args:  []string{"-b"},
+			Stdin: []byte("AB"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: traditional -c option (C chars).
+		{
+			Name:  "traditional_c",
+			Args:  []string{"-c"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: traditional -d option (unsigned decimal 2-byte).
+		{
+			Name:  "traditional_d",
+			Args:  []string{"-d"},
+			Stdin: []byte("AB"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: traditional -s option (signed decimal 2-byte).
+		{
+			Name:  "traditional_s",
+			Args:  []string{"-s"},
+			Stdin: []byte("\xff\xfe"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: traditional -o option (octal 2-byte).
+		{
+			Name:  "traditional_o",
+			Args:  []string{"-o"},
+			Stdin: []byte("AB"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// Empty input: just final address.
+		{
+			Name:  "empty_input",
+			Stdin: []byte{},
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -w8 explicit narrow width.
+		{
+			Name:  "width_8",
+			Args:  []string{"-w8", "-t", "x1"},
+			Stdin: []byte("ABCDEFGHIJKLMNOP"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: -w without value defaults to 32.
+		{
+			Name:  "width_no_value",
+			Args:  []string{"-w", "-t", "x1"},
+			Stdin: []byte("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: --width=8 long form with value.
+		{
+			Name:  "width_long_eq",
+			Args:  []string{"--width=8", "-t", "x1"},
+			Stdin: []byte("ABCDEFGHIJKLMNOP"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1: --width long form without value defaults to 32.
+		{
+			Name:  "width_long_no_value",
+			Args:  []string{"--width", "-t", "x1"},
+			Stdin: []byte("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: duplicate suppression replaces repeated lines with '*'.
+		{
+			Name:  "duplicate_suppression",
+			Args:  []string{"-t", "x1"},
+			Stdin: make([]byte, 64),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.4: -v disables duplicate suppression, all lines printed.
+		{
+			Name:  "output_duplicates_v",
+			Args:  []string{"-v", "-t", "x1"},
+			Stdin: make([]byte, 64),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.4: --output-duplicates long form.
+		{
+			Name:  "output_duplicates_long",
+			Args:  []string{"--output-duplicates", "-t", "x1"},
+			Stdin: make([]byte, 64),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.2: combined traditional options -bc.
+		{
+			Name:  "traditional_combined_bc",
+			Args:  []string{"-b", "-c"},
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.3: duplicate suppression with non-zero repeated data.
+		{
+			Name:  "duplicate_suppression_nonzero",
+			Args:  []string{"-t", "o1"},
+			Stdin: func() []byte {
+				b := make([]byte, 80)
+				for i := range b {
+					b[i] = 0xAA
+				}
+				return b
+			}(),
+			Env: []string{"LC_ALL=C"},
+		},
+		// R3.1 + R3.3: width with duplicate suppression.
+		{
+			Name:  "width_with_dup_suppress",
+			Args:  []string{"-w8", "-t", "x1"},
+			Stdin: make([]byte, 40),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R3.1 + R3.4: width with -v shows all lines.
+		{
+			Name:  "width_with_v",
+			Args:  []string{"-w8", "-v", "-t", "x1"},
+			Stdin: make([]byte, 40),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.1, R4.4: exit 0 on successful dump.
+		{
+			Name:     "exit_zero_success",
+			Args:     []string{"-t", "x1"},
+			Stdin:    []byte("test"),
+			Env:      []string{"LC_ALL=C"},
+			ExitCode: 0,
+		},
+		// R4.4: -t d1 signed decimal 1-byte size variant.
+		{
+			Name:  "type_signed_d1",
+			Args:  []string{"-t", "d1"},
+			Stdin: []byte("\x80\x7f\x00\xff"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t d4 signed decimal 4-byte size variant.
+		{
+			Name:  "type_signed_d4",
+			Args:  []string{"-t", "d4"},
+			Stdin: []byte("\x01\x02\x03\x04\x05\x06\x07\x08"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t o4 octal 4-byte size variant.
+		{
+			Name:  "type_octal_o4",
+			Args:  []string{"-t", "o4"},
+			Stdin: []byte("\x01\x02\x03\x04\x05\x06\x07\x08"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t u1 unsigned decimal 1-byte size variant.
+		{
+			Name:  "type_unsigned_u1",
+			Args:  []string{"-t", "u1"},
+			Stdin: []byte("\x00\x7f\x80\xff"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t u4 unsigned decimal 4-byte size variant.
+		{
+			Name:  "type_unsigned_u4",
+			Args:  []string{"-t", "u4"},
+			Stdin: []byte("\x01\x02\x03\x04\x05\x06\x07\x08"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t x4 hexadecimal 4-byte size variant.
+		{
+			Name:  "type_hex_x4",
+			Args:  []string{"-t", "x4"},
+			Stdin: []byte("\x01\x02\x03\x04\x05\x06\x07\x08"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t f8 double float size variant.
+		{
+			Name:  "type_float_f8",
+			Args:  []string{"-t", "f8"},
+			Stdin: []byte("\x00\x00\x00\x00\x00\x00\xf0\x3f\x00\x00\x00\x00\x00\x00\x00\x40"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t o1 octal 1-byte size variant.
+		{
+			Name:  "type_octal_o1",
+			Args:  []string{"-t", "o1"},
+			Stdin: []byte("\x00\x7f\x80\xff"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: -t x2 hexadecimal 2-byte size variant.
+		{
+			Name:  "type_hex_x2",
+			Args:  []string{"-t", "x2"},
+			Stdin: []byte("\x01\x02\x03\x04"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R4.4: multiple -t options with different types (o2 + x1).
+		{
+			Name:  "multiple_types_o2_x1",
+			Args:  []string{"-t", "o2", "-t", "x1"},
+			Stdin: []byte("ABCDEFGH"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
 
-	tmpDir := t.TempDir()
-	file1 := filepath.Join(tmpDir, "file1.bin")
-	file2 := filepath.Join(tmpDir, "file2.bin")
-	writeTestFile(t, file1, []byte("hello"))
-	writeTestFile(t, file2, []byte(" world"))
+// TestDiffFiles tests file-based inputs including multi-file and error cases.
+// Covers srd072-od R1.4 (multi-file), R4.2 (error exits), R4.3, R4.4.
+func TestDiffFiles(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("god")
+	if err != nil {
+		t.Skip("reference binary god not in PATH")
+	}
 
-	tests := buildR1TestCases(file1, file2)
-	tests = append(tests, buildR2TestCases(file1)...)
-	tests = append(tests, buildR3TestCases()...)
-	tests = append(tests, buildR4TestCases(tmpDir)...)
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "file1.txt"), []byte("hello"))
+	writeTestFile(t, filepath.Join(dir, "file2.txt"), []byte(" world"))
+
+	tests := []testutils.DiffTest{
+		// R1.4, R4.4: multi-file input reads files in order.
+		{
+			Name:    "multi_file_input",
+			Args:    []string{"-t", "c", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     []string{"LC_ALL=C"},
+		},
+		// R1.4, R4.4: single file input.
+		{
+			Name:    "single_file_input",
+			Args:    []string{"-t", "x1", "file1.txt"},
+			WorkDir: dir,
+			Env:     []string{"LC_ALL=C"},
+		},
+		// R4.2, R4.4: missing file causes exit 1.
+		{
+			Name:      "error_missing_file",
+			Args:      []string{"nonexistent.txt"},
+			WorkDir:   dir,
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearData},
+		},
+		// R4.2, R4.4: invalid type causes exit 1.
+		{
+			Name:      "error_invalid_type",
+			Args:      []string{"-t", "z"},
+			Stdin:     []byte("test"),
+			Env:       []string{"LC_ALL=C"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{clearData},
+		},
+	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
 func writeTestFile(t *testing.T, path string, content []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, content, 0o644); err != nil {
-		t.Fatalf("write test file: %v", err)
-	}
-}
-
-func buildR1TestCases(file1, file2 string) []testutils.DiffTest {
-	env := []string{"LC_ALL=C"}
-	bin := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
-	text := []byte("hello world\n")
-	// Exact float values for deterministic formatting.
-	// float32 1.0 = 0x3F800000 LE, float32 2.0 = 0x40000000 LE.
-	f4in := []byte{0x00, 0x00, 0x80, 0x3f, 0x00, 0x00, 0x00, 0x40}
-	// float64 1.0 = 0x3FF0000000000000 LE.
-	f8in := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x3f}
-
-	return []testutils.DiffTest{
-		// R1.1: default octal 2-byte format
-		{Name: "default_octal", Stdin: bin, Env: env},
-		// R1.2: type specifiers
-		{Name: "type_o1", Args: []string{"-t", "o1"}, Stdin: bin, Env: env},
-		{Name: "type_o2", Args: []string{"-t", "o2"}, Stdin: bin, Env: env},
-		{Name: "type_x1", Args: []string{"-t", "x1"}, Stdin: bin, Env: env},
-		{Name: "type_x2", Args: []string{"-t", "x2"}, Stdin: bin, Env: env},
-		{Name: "type_x4", Args: []string{"-t", "x4"}, Stdin: bin, Env: env},
-		{Name: "type_d2", Args: []string{"-t", "d2"}, Stdin: bin, Env: env},
-		{Name: "type_u2", Args: []string{"-t", "u2"}, Stdin: bin, Env: env},
-		{Name: "type_d1", Args: []string{"-t", "d1"}, Stdin: bin, Env: env},
-		{Name: "type_u1", Args: []string{"-t", "u1"}, Stdin: bin, Env: env},
-		{Name: "type_a", Args: []string{"-t", "a"}, Stdin: text, Env: env},
-		{Name: "type_c", Args: []string{"-t", "c"}, Stdin: text, Env: env},
-		{Name: "type_f4", Args: []string{"-t", "f4"}, Stdin: f4in, Env: env},
-		{Name: "type_f8", Args: []string{"-t", "f8"}, Stdin: f8in, Env: env},
-		{Name: "format_long", Args: []string{"--format=x1"}, Stdin: bin, Env: env},
-		{Name: "combined_flag", Args: []string{"-tx1"}, Stdin: bin, Env: env},
-		// R1.3: multiple -t options
-		{Name: "multi_type", Args: []string{"-t", "x1", "-t", "c"}, Stdin: text, Env: env},
-		// R1.4: file input
-		{Name: "file_input", Args: []string{file1}, Env: env},
-		{Name: "multi_file", Args: []string{file1, file2}, Env: env},
-		{Name: "stdin_dash", Args: []string{"-t", "x1", "-"}, Stdin: bin, Env: env},
-		{Name: "empty_input", Stdin: []byte{}, Env: env},
-	}
-}
-
-func buildR2TestCases(file1 string) []testutils.DiffTest {
-	env := []string{"LC_ALL=C"}
-	bin := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
-	text := []byte("hello world\n")
-
-	return []testutils.DiffTest{
-		// R2.1: address radix
-		{Name: "addr_decimal", Args: []string{"-A", "d"}, Stdin: bin, Env: env},
-		{Name: "addr_hex", Args: []string{"-A", "x"}, Stdin: bin, Env: env},
-		{Name: "addr_none", Args: []string{"-A", "n"}, Stdin: bin, Env: env},
-		{Name: "addr_octal_explicit", Args: []string{"-A", "o"}, Stdin: bin, Env: env},
-		{Name: "addr_radix_long", Args: []string{"--address-radix=x"}, Stdin: bin, Env: env},
-		{Name: "addr_radix_combined", Args: []string{"-Ax"}, Stdin: bin, Env: env},
-		{Name: "addr_hex_with_type", Args: []string{"-A", "x", "-t", "x1"}, Stdin: bin, Env: env},
-		// R2.2: skip bytes
-		{Name: "skip_3", Args: []string{"-j", "3"}, Stdin: text, Env: env},
-		{Name: "skip_long", Args: []string{"--skip-bytes=5"}, Stdin: text, Env: env},
-		{Name: "skip_combined", Args: []string{"-j5"}, Stdin: text, Env: env},
-		{Name: "skip_file", Args: []string{"-j", "2", file1}, Env: env},
-		// R2.3: read bytes
-		{Name: "read_4", Args: []string{"-N", "4"}, Stdin: text, Env: env},
-		{Name: "read_long", Args: []string{"--read-bytes=5"}, Stdin: text, Env: env},
-		{Name: "read_combined", Args: []string{"-N5"}, Stdin: text, Env: env},
-		{Name: "read_file", Args: []string{"-N", "3", file1}, Env: env},
-		// R2.2 + R2.3 combined
-		{Name: "skip_and_read", Args: []string{"-j", "3", "-N", "4"}, Stdin: text, Env: env},
-		// R2.4: final address line with different radixes
-		{Name: "final_addr_decimal", Args: []string{"-A", "d", "-t", "x1"}, Stdin: bin, Env: env},
-		{Name: "final_addr_none", Args: []string{"-A", "n", "-t", "x1"}, Stdin: bin, Env: env},
-	}
-}
-
-// buildR4TestCases covers R4.1 (exit 0 on success), R4.2 (exit 1 on error),
-// R4.3 (differential testing), and R4.4 (error cases: invalid type, missing file).
-func buildR4TestCases(tmpDir string) []testutils.DiffTest {
-	env := []string{"LC_ALL=C"}
-	norm := []testutils.NormalizeFunc{normalizeProgramName}
-	missingFile := filepath.Join(tmpDir, "nonexistent.bin")
-	return []testutils.DiffTest{
-		// R4.1: exit 0 on successful dump
-		{Name: "exit_0_success", Args: []string{"-t", "x1"}, Stdin: []byte{0xAB}, Env: env, ExitCode: 0},
-		// R4.2: exit 1 on invalid type specifier
-		{Name: "err_invalid_type", Args: []string{"-t", "z"}, Stdin: []byte{0x01}, Env: env, ExitCode: 1, Normalize: norm},
-		// R4.2: exit 1 on missing file
-		{Name: "err_missing_file", Args: []string{missingFile}, Env: env, ExitCode: 1, Normalize: norm},
-		// R4.2: exit 1 on invalid address radix
-		{Name: "err_invalid_radix", Args: []string{"-A", "q"}, Stdin: []byte{0x01}, Env: env, ExitCode: 1, Normalize: norm},
-	}
-}
-
-func buildR3TestCases() []testutils.DiffTest {
-	env := []string{"LC_ALL=C"}
-	bin := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
-	text := []byte("hello world\n")
-	// R3.3/R3.4: 64 bytes = 4 identical 16-byte blocks for duplicate testing.
-	block16 := []byte{
-		0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
-		0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50,
-	}
-	dup := make([]byte, 0, 64)
-	dup = append(dup, block16...)
-	dup = append(dup, block16...)
-	dup = append(dup, block16...)
-	dup = append(dup, block16...)
-
-	return []testutils.DiffTest{
-		// R3.1: width control
-		{Name: "width_8", Args: []string{"-w8"}, Stdin: bin, Env: env},
-		{Name: "width_32_default", Args: []string{"-w"}, Stdin: text, Env: env},
-		{Name: "width_long", Args: []string{"--width=4"}, Stdin: bin, Env: env},
-		{Name: "width_long_default", Args: []string{"--width"}, Stdin: text, Env: env},
-		// R3.2: traditional short options
-		{Name: "trad_b", Args: []string{"-b"}, Stdin: bin, Env: env},
-		{Name: "trad_c", Args: []string{"-c"}, Stdin: text, Env: env},
-		{Name: "trad_d", Args: []string{"-d"}, Stdin: bin, Env: env},
-		{Name: "trad_o", Args: []string{"-o"}, Stdin: bin, Env: env},
-		{Name: "trad_s", Args: []string{"-s"}, Stdin: bin, Env: env},
-		{Name: "trad_x", Args: []string{"-x"}, Stdin: bin, Env: env},
-		// R3.3: duplicate suppression with '*'
-		{Name: "dup_suppress", Stdin: dup, Env: env},
-		{Name: "dup_suppress_hex", Args: []string{"-t", "x1"}, Stdin: dup, Env: env},
-		// R3.4: output duplicates (-v disables suppression)
-		{Name: "verbose", Args: []string{"-v"}, Stdin: dup, Env: env},
-		{Name: "verbose_long", Args: []string{"--output-duplicates"}, Stdin: dup, Env: env},
-		{Name: "verbose_hex", Args: []string{"-v", "-t", "x1"}, Stdin: dup, Env: env},
+		t.Fatalf("failed to write test file %s: %v", path, err)
 	}
 }

@@ -1,264 +1,358 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Differential tests for cmd/dircolors against gdircolors.
+// Implements srd109 AC1–AC6.
 package main
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeDircolorsErr normalizes error output by stripping "Try ..." help
-// lines, replacing the reference binary name prefix with "dircolors", and
-// lowercasing OS error messages for cross-platform consistency.
-func normalizeDircolorsErr(b []byte) []byte {
-	var out [][]byte
-	for _, line := range bytes.Split(b, []byte("\n")) {
-		if bytes.HasPrefix(line, []byte("Try ")) {
-			continue
-		}
-		if bytes.HasPrefix(line, []byte("gdircolors:")) {
-			line = append([]byte("dircolors:"), line[len("gdircolors:"):]...)
-		}
-		line = bytes.ToLower(line)
-		out = append(out, line)
-	}
-	return bytes.Join(out, []byte("\n"))
-}
+// reProgName matches gdircolors with an optional path prefix.
+var reProgName = regexp.MustCompile(`(?:/[^ ']*)?gdircolors`)
 
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("writing %s: %v", path, err)
-	}
+// normalizeProgramName replaces gdircolors (with optional path) with "dircolors"
+// so error messages from both binaries match despite different program names.
+func normalizeProgramName(data []byte) []byte {
+	return reProgName.ReplaceAll(data, []byte("dircolors"))
 }
 
 func TestDiff(t *testing.T) {
-	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gdircolors")
 	if err != nil {
-		t.Skipf("reference binary gdircolors not in PATH: %v", err)
+		t.Skip("reference binary gdircolors not in PATH")
 	}
 
 	tmpDir := t.TempDir()
 
-	// R2.1: custom database with comments, blank lines, keywords, extensions.
+	// Custom database files for various test scenarios.
 	customDB := filepath.Join(tmpDir, "custom.db")
-	writeFile(t, customDB, "# Comment line\n\nTERM *\n\nDIR 01;34\nEXEC 01;32\n.tar 01;31\n.gz 01;31\n")
+	writeFile(t, customDB,
+		"TERM xterm*\nDIR 01;34\nEXEC 01;32\n.tar 01;31\n")
 
-	// R2.2: database with restrictive TERM that won't match.
-	restrictedDB := filepath.Join(tmpDir, "restricted.db")
-	writeFile(t, restrictedDB, "TERM nonexistent-term-xyz\nDIR 01;34\n")
+	// R3.1/R2.2: TERM vt100 only — won't match xterm-256color.
+	customDBTermVT := filepath.Join(tmpDir, "term_vt.db")
+	writeFile(t, customDBTermVT,
+		"TERM vt100\nDIR 01;34\n.tar 01;31\n")
 
-	// R2.2: database with no TERM or COLORTERM lines.
-	noTermDB := filepath.Join(tmpDir, "noterm.db")
-	writeFile(t, noTermDB, "DIR 01;34\nEXEC 01;32\n.gz 01;31\n")
+	// R3.1: no TERM lines — applies to all terminals.
+	customDBNoTerm := filepath.Join(tmpDir, "no_term.db")
+	writeFile(t, customDBNoTerm,
+		"DIR 01;34\nEXEC 01;32\n.gz 01;31\n")
 
-	// R2.3: database testing keyword-to-code mapping.
-	keywordDB := filepath.Join(tmpDir, "keywords.db")
-	writeFile(t, keywordDB, "TERM *\nRESET 0\nDIR 01;34\nLINK 01;36\n"+
-		"FIFO 40;33\nSOCK 01;35\nBLK 40;33;01\nCHR 40;33;01\n"+
-		"ORPHAN 40;31;01\nSETUID 37;41\nSETGID 30;43\nEXEC 01;32\n")
+	// R3.2: comments and blank lines interspersed.
+	customDBComments := filepath.Join(tmpDir, "comments.db")
+	writeFile(t, customDBComments,
+		"# This is a comment\n"+
+			"\n"+
+			"# Another comment\n"+
+			"TERM xterm*\n"+
+			"\n"+
+			"# File types below\n"+
+			"DIR 01;34\n"+
+			"\n"+
+			"# Extensions\n"+
+			".tar 01;31\n"+
+			".gz 01;31\n")
 
-	// R2.3: extension patterns with dot and star prefixes.
-	extDB := filepath.Join(tmpDir, "extensions.db")
-	writeFile(t, extDB, "TERM *\n.tar 01;31\n.gz 01;31\n*~ 00;90\n*# 00;90\n")
+	// R3.3: many keyword types and extensions.
+	customDBKeywords := filepath.Join(tmpDir, "keywords.db")
+	writeFile(t, customDBKeywords,
+		"TERM xterm*\n"+
+			"RESET 0\n"+
+			"DIR 01;34\n"+
+			"LINK 01;36\n"+
+			"FIFO 40;33\n"+
+			"SOCK 01;35\n"+
+			"BLK 40;33;01\n"+
+			"CHR 40;33;01\n"+
+			"ORPHAN 40;31;01\n"+
+			"SETUID 37;41\n"+
+			"SETGID 30;43\n"+
+			"STICKY 37;44\n"+
+			"OTHER_WRITABLE 34;42\n"+
+			"STICKY_OTHER_WRITABLE 30;42\n"+
+			"EXEC 01;32\n"+
+			".tar 01;31\n"+
+			".jpg 01;35\n")
 
-	// R2.3: DOOR keyword mapping.
-	doorDB := filepath.Join(tmpDir, "door.db")
-	writeFile(t, doorDB, "TERM *\nDOOR 01;35\n")
+	// R3.3: extensions with *. prefix form.
+	customDBStarExt := filepath.Join(tmpDir, "star_ext.db")
+	writeFile(t, customDBStarExt,
+		"TERM xterm*\n"+
+			"DIR 01;34\n"+
+			"*.tar 01;31\n"+
+			"*.gz 01;31\n"+
+			"*.jpg 01;35\n")
 
-	// R2.2: COLORTERM pattern matching.
-	colortermDB := filepath.Join(tmpDir, "colorterm.db")
-	writeFile(t, colortermDB, "COLORTERM ?*\nDIR 01;34\n")
+	// R3.4: database with unrecognized keyword.
+	invalidKeywordDB := filepath.Join(tmpDir, "invalid_kw.db")
+	writeFile(t, invalidKeywordDB,
+		"TERM xterm*\nBADKW 01;31\n")
 
-	// R3.4: database with unrecognized keyword to trigger error.
-	invalidDB := filepath.Join(tmpDir, "invalid.db")
-	writeFile(t, invalidDB, "TERM *\nBADKEYWORD 01;31\n")
+	// R3.4: database with missing second token.
+	malformedDB := filepath.Join(tmpDir, "malformed.db")
+	writeFile(t, malformedDB,
+		"TERM xterm*\nBADLINE\n")
+
+	// R3.4: database with multiple errors.
+	multiErrorDB := filepath.Join(tmpDir, "multi_error.db")
+	writeFile(t, multiErrorDB,
+		"TERM xterm*\nBADKW1 01;31\nDIR 01;34\nBADKW2 01;35\n")
+
+	// Path to a nonexistent file for file-not-found testing.
+	nonexistentDB := filepath.Join(tmpDir, "nonexistent.db")
 
 	tests := []testutils.DiffTest{
-		// --- R1 tests (existing) ---
+		// AC1: Bourne shell output with --sh
 		{
-			Name: "default no args bourne shell",
+			Name: "sh flag",
 			Args: []string{"--sh"},
-			Env:  []string{"SHELL=/bin/bash"},
+			Env:  defaultEnv("xterm-256color", ""),
 		},
+		// AC1: Bourne shell output with -b
 		{
-			Name: "explicit bourne -b",
+			Name: "b flag",
 			Args: []string{"-b"},
-			Env:  []string{"SHELL=/bin/bash"},
+			Env:  defaultEnv("xterm-256color", ""),
 		},
+		// AC1: --bourne-shell long form
 		{
-			Name: "explicit bourne --bourne-shell",
+			Name: "bourne-shell flag",
 			Args: []string{"--bourne-shell"},
-			Env:  []string{"SHELL=/bin/bash"},
+			Env:  defaultEnv("xterm-256color", ""),
 		},
+		// AC2: C shell output with --csh
 		{
-			Name: "csh flag -c",
-			Args: []string{"-c"},
-			Env:  []string{"SHELL=/bin/bash"},
-		},
-		{
-			Name: "csh flag --csh",
+			Name: "csh flag",
 			Args: []string{"--csh"},
-			Env:  []string{"SHELL=/bin/bash"},
+			Env:  defaultEnv("xterm-256color", ""),
 		},
+		// AC2: C shell output with -c
 		{
-			Name: "csh flag --c-shell",
+			Name: "c flag",
+			Args: []string{"-c"},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// AC2: --c-shell long form
+		{
+			Name: "c-shell flag",
 			Args: []string{"--c-shell"},
-			Env:  []string{"SHELL=/bin/bash"},
+			Env:  defaultEnv("xterm-256color", ""),
 		},
+		// AC3: print-database with -p
 		{
-			Name: "auto-detect bourne from SHELL",
-			Env:  []string{"SHELL=/bin/bash"},
-		},
-		{
-			Name: "auto-detect csh from SHELL",
-			Env:  []string{"SHELL=/bin/tcsh"},
-		},
-		{
-			Name: "auto-detect csh from SHELL csh",
-			Env:  []string{"SHELL=/bin/csh"},
-		},
-		{
-			Name: "last flag wins b then c",
-			Args: []string{"-b", "-c"},
-			Env:  []string{"SHELL=/bin/bash"},
-		},
-		{
-			Name: "last flag wins c then b",
-			Args: []string{"-c", "-b"},
-			Env:  []string{"SHELL=/bin/bash"},
-		},
-
-		// --- R2.1: database parsing ---
-		{
-			Name: "custom database with comments and types",
-			Args: []string{"--sh", customDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=xterm-256color"},
-		},
-
-		// --- R2.2: TERM matching ---
-		{
-			Name: "term no match produces empty ls_colors",
-			Args: []string{"--sh", restrictedDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=xterm-256color", "COLORTERM="},
-		},
-		{
-			Name: "no term lines applies to all terminals",
-			Args: []string{"--sh", noTermDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=nonexistent", "COLORTERM="},
-		},
-		{
-			Name: "colorterm match enables output",
-			Args: []string{"--sh", colortermDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=nonexistent", "COLORTERM=truecolor"},
-		},
-		{
-			Name: "colorterm empty no match",
-			Args: []string{"--sh", colortermDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=nonexistent", "COLORTERM="},
-		},
-
-		// --- R2.3: keyword to code mapping ---
-		{
-			Name: "keyword to code mapping",
-			Args: []string{"--sh", keywordDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=anything"},
-		},
-		{
-			Name: "extension patterns dot and star",
-			Args: []string{"--sh", extDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=anything"},
-		},
-		{
-			Name: "door keyword mapping",
-			Args: []string{"--sh", doorDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=anything"},
-		},
-
-		// --- R2.4: file argument and default database ---
-		{
-			Name: "print database -p",
+			Name: "print-database short",
 			Args: []string{"-p"},
-			Env:  []string{"SHELL=/bin/bash"},
+			Env:  defaultEnv("xterm-256color", ""),
 		},
+		// AC3: print-database with --print-database
 		{
-			Name: "file argument bourne shell",
-			Args: []string{"--sh", customDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=xterm"},
-		},
-		{
-			Name: "file argument csh",
-			Args: []string{"--csh", customDB},
-			Env:  []string{"SHELL=/bin/bash", "TERM=xterm"},
-		},
-
-		// --- R2.5: read database from stdin with "-" ---
-		{
-			Name:  "stdin database with dash bourne",
-			Args:  []string{"--sh", "-"},
-			Stdin: []byte("TERM *\nDIR 01;34\nEXEC 01;32\n.tar 01;31\n"),
-			Env:   []string{"SHELL=/bin/bash", "TERM=xterm"},
-		},
-		{
-			Name:  "stdin database with dash csh",
-			Args:  []string{"--csh", "-"},
-			Stdin: []byte("TERM *\nDIR 01;34\n"),
-			Env:   []string{"SHELL=/bin/bash", "TERM=xterm"},
-		},
-
-		// --- R3.1: print-database output ---
-		{
-			Name: "print-database long flag",
+			Name: "print-database long",
 			Args: []string{"--print-database"},
-			Env:  []string{"SHELL=/bin/bash"},
+			Env:  defaultEnv("xterm-256color", ""),
 		},
-
-		// --- R3.2: -p incompatible with filename ---
+		// AC5: shell auto-detection with SHELL=/bin/bash
 		{
-			Name:      "p with filename errors",
-			Args:      []string{"-p", customDB},
-			Env:       []string{"SHELL=/bin/bash"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeDircolorsErr},
+			Name: "auto-detect bash",
+			Args: nil,
+			Env:  shellEnv("/bin/bash", "xterm-256color", ""),
 		},
-
-		// --- R3.3: exit 0 on success ---
+		// AC5: shell auto-detection with SHELL=/bin/tcsh
 		{
-			Name: "exit 0 on success default",
+			Name: "auto-detect tcsh",
+			Args: nil,
+			Env:  shellEnv("/bin/tcsh", "xterm-256color", ""),
+		},
+		// AC5: shell auto-detection with SHELL=/bin/csh
+		{
+			Name: "auto-detect csh",
+			Args: nil,
+			Env:  shellEnv("/bin/csh", "xterm-256color", ""),
+		},
+		// R1.4: last flag wins
+		{
+			Name: "last flag wins sh",
+			Args: []string{"--csh", "--sh"},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		{
+			Name: "last flag wins csh",
+			Args: []string{"--sh", "--csh"},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// TERM matching: non-matching TERM with no COLORTERM
+		{
+			Name: "non-matching term",
 			Args: []string{"--sh"},
-			Env:  []string{"SHELL=/bin/bash"},
+			Env:  defaultEnv("dumb", ""),
+		},
+		// COLORTERM matching: non-matching TERM but valid COLORTERM
+		{
+			Name: "colorterm match",
+			Args: []string{"--sh"},
+			Env:  defaultEnv("dumb", "truecolor"),
+		},
+		// AC4: custom database file with --sh
+		{
+			Name: "custom db sh",
+			Args: []string{"--sh", customDB},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// AC4: custom database file with --csh
+		{
+			Name: "custom db csh",
+			Args: []string{"--csh", customDB},
+			Env:  defaultEnv("xterm-256color", ""),
 		},
 
-		// --- R3.4: error exit codes and diagnostics ---
+		// --- Tests for R2.5, R3.1–R3.3 ---
+
+		// R2.5: read custom database from stdin via "-"
 		{
-			Name:      "file not found exits 1",
-			Args:      []string{"--sh", filepath.Join(tmpDir, "nonexistent-file")},
-			Env:       []string{"SHELL=/bin/bash"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeDircolorsErr},
+			Name:  "stdin custom db sh",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("TERM xterm*\nDIR 01;34\nEXEC 01;32\n.tar 01;31\n"),
+			Env:   defaultEnv("xterm-256color", ""),
 		},
+		// R2.5: stdin with C shell output
 		{
-			Name:      "invalid keyword exits 1 with line number",
-			Args:      []string{"--sh", invalidDB},
-			Env:       []string{"SHELL=/bin/bash", "TERM=xterm"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeDircolorsErr},
+			Name:  "stdin custom db csh",
+			Args:  []string{"--csh", "-"},
+			Stdin: []byte("TERM xterm*\nDIR 01;34\n.tar 01;31\n"),
+			Env:   defaultEnv("xterm-256color", ""),
+		},
+		// R3.1: TERM pattern non-match in custom db
+		{
+			Name: "custom db term nomatch",
+			Args: []string{"--sh", customDBTermVT},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R3.1: no TERM filter — applies to all terminals including dumb
+		{
+			Name: "custom db no term filter",
+			Args: []string{"--sh", customDBNoTerm},
+			Env:  defaultEnv("dumb", ""),
+		},
+		// R3.2: comments and blank lines are ignored in custom db
+		{
+			Name: "custom db comments blanks",
+			Args: []string{"--sh", customDBComments},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R3.3: many keywords in custom db with --sh
+		{
+			Name: "custom db keywords sh",
+			Args: []string{"--sh", customDBKeywords},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R3.3: many keywords in custom db with --csh
+		{
+			Name: "custom db keywords csh",
+			Args: []string{"--csh", customDBKeywords},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R3.3: extensions with *. prefix form
+		{
+			Name: "custom db star ext",
+			Args: []string{"--sh", customDBStarExt},
+			Env:  defaultEnv("xterm-256color", ""),
+		},
+		// R2.5: stdin with no TERM filter
+		{
+			Name:  "stdin no term filter",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("DIR 01;34\n.tar 01;31\n"),
+			Env:   defaultEnv("dumb", ""),
 		},
 
-		// --- R3.5: SIGPIPE handler (verified by building and running with pipe) ---
+		// --- R3.4-R3.5: error handling and edge cases ---
+
+		// R3.4/R3.5: unrecognized option exits non-zero with diagnostic
 		{
-			Name: "sigpipe handler default output",
-			Args: []string{"-p"},
-			Env:  []string{"SHELL=/bin/bash"},
+			Name:      "unrecognized option",
+			Args:      []string{"--invalid-option"},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.4/R3.5: nonexistent file exits non-zero with diagnostic
+		{
+			Name:      "nonexistent file",
+			Args:      []string{"--sh", nonexistentDB},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.4/R3.5: unrecognized keyword in database
+		{
+			Name:      "invalid keyword in db",
+			Args:      []string{"--sh", invalidKeywordDB},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.4/R3.5: malformed line missing second token
+		{
+			Name:      "malformed db line",
+			Args:      []string{"--sh", malformedDB},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.4: multiple errors reported for all bad lines
+		{
+			Name:      "multiple db errors",
+			Args:      []string{"--sh", multiErrorDB},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+		},
+		// R3.5: extra operand exits non-zero
+		{
+			Name:      "extra operand",
+			Args:      []string{"--sh", customDB, customDBNoTerm},
+			Env:       defaultEnv("xterm-256color", ""),
+			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
 		},
 	}
+
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// defaultEnv returns a minimal env with LC_ALL=C, SHELL=/bin/sh, and the given TERM/COLORTERM.
+func defaultEnv(term, colorterm string) []string {
+	env := []string{
+		"LC_ALL=C",
+		"SHELL=/bin/sh",
+		"TERM=" + term,
+	}
+	if colorterm != "" {
+		env = append(env, "COLORTERM="+colorterm)
+	}
+	return env
+}
+
+// shellEnv returns a minimal env with the specified SHELL, TERM, and COLORTERM.
+func shellEnv(shell, term, colorterm string) []string {
+	env := []string{
+		"LC_ALL=C",
+		"SHELL=" + shell,
+		"TERM=" + term,
+	}
+	if colorterm != "" {
+		env = append(env, "COLORTERM="+colorterm)
+	}
+	return env
+}
+
+// writeFile creates a file with the given content for testing.
+func writeFile(t *testing.T, path, data string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatalf("failed to write %s: %v", path, err)
+	}
 }

@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Tests for cmd/cut implementing prd026-cut R1-R4.
+// Tests for cmd/cut: differential testing against gcut.
+// Implements srd026-cut R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -9,346 +11,179 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// clearOutput normalizes output by discarding all content.
-// Used for error tests where stderr messages differ between Go and GNU binaries
-// but exit codes must match.
-func clearOutput(b []byte) []byte {
-	return nil
+// binaryPathRe matches full path references to gcut (e.g., /opt/homebrew/bin/gcut).
+var binaryPathRe = regexp.MustCompile(`/[^\s']*gcut`)
+
+// binaryNameNorm normalizes binary names in error messages so
+// reference binary (gcut) and Go binary compare equally.
+// Handles full paths like '/opt/homebrew/bin/gcut --help' → 'cut --help'.
+var binaryNameNorm testutils.NormalizeFunc = func(b []byte) []byte {
+	b = binaryPathRe.ReplaceAll(b, []byte("cut"))
+	b = bytes.ReplaceAll(b, []byte("gcut:"), []byte("cut:"))
+	return b
 }
 
-// TestDiff runs differential tests against the gcut reference binary.
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gcut")
 	if err != nil {
-		t.Skip("reference binary gcut not in PATH")
+		t.Skipf("reference binary gcut not in PATH: %v", err)
 	}
+
+	errNorm := []testutils.NormalizeFunc{binaryNameNorm}
 
 	tests := []testutils.DiffTest{
-		// R1.1: byte selection — single position.
-		{
-			Name:     "bytes_single_position",
-			Args:     []string{"-b2"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		// R1.1: byte selection — range N-M.
-		{
-			Name:     "bytes_range",
-			Args:     []string{"-b2-4"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		// R1.1: byte selection — from start (-M).
-		{
-			Name:     "bytes_from_start",
-			Args:     []string{"-b-3"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		// R1.1: byte selection — to end (N-).
-		{
-			Name:     "bytes_to_end",
-			Args:     []string{"-b4-"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		// R1.1: byte selection — comma-separated list.
-		{
-			Name:     "bytes_comma_list",
-			Args:     []string{"-b1,3,5"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		// R1.2: character selection equivalent to bytes under LC_ALL=C.
-		{
-			Name:     "chars_range",
-			Args:     []string{"-c2-4"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		// R1.4: line shorter than selected range.
-		{
-			Name:     "bytes_short_line",
-			Args:     []string{"-b10"},
-			Stdin:    []byte("abc\n"),
-			ExitCode: 0,
-		},
-		// R1.4: multiple lines with varying lengths.
-		{
-			Name:     "bytes_multiline",
-			Args:     []string{"-b2-4"},
-			Stdin:    []byte("abcdef\nxy\n"),
-			ExitCode: 0,
-		},
-		// R2.1: field selection with tab delimiter (default).
-		{
-			Name:     "fields_tab_default",
-			Args:     []string{"-f2"},
-			Stdin:    []byte("a\tb\tc\n"),
-			ExitCode: 0,
-		},
-		// R2.1, R2.2: field selection with custom delimiter.
-		{
-			Name:     "fields_custom_delim",
-			Args:     []string{"-d:", "-f2"},
-			Stdin:    []byte("a:b:c\n"),
-			ExitCode: 0,
-		},
-		// R2.1: multiple fields.
-		{
-			Name:     "fields_multiple",
-			Args:     []string{"-d:", "-f1,3"},
-			Stdin:    []byte("a:b:c\n"),
-			ExitCode: 0,
-		},
-		// R2.3: only-delimited suppresses lines without delimiter.
-		{
-			Name:     "only_delimited_no_delim",
-			Args:     []string{"-d:", "-f2", "-s"},
-			Stdin:    []byte("no-delimiter\n"),
-			ExitCode: 0,
-		},
-		// R2.3: only-delimited passes lines with delimiter.
-		{
-			Name:     "only_delimited_with_delim",
-			Args:     []string{"-d:", "-f2", "-s"},
-			Stdin:    []byte("a:b:c\n"),
-			ExitCode: 0,
-		},
-		// R2.3: without -s, lines without delimiter printed unchanged.
-		{
-			Name:     "no_delim_without_s",
-			Args:     []string{"-d:", "-f2"},
-			Stdin:    []byte("no-delimiter\n"),
-			ExitCode: 0,
-		},
-		// R2.4: output delimiter with fields.
-		{
-			Name:     "output_delim_fields",
-			Args:     []string{"-d:", "-f1,3", "--output-delimiter=|"},
-			Stdin:    []byte("a:b:c\n"),
-			ExitCode: 0,
-		},
-		// R2.4: output delimiter with bytes.
-		{
-			Name:     "output_delim_bytes",
-			Args:     []string{"-b1,3,5", "--output-delimiter=|"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		// R3.1: complement with bytes.
-		{
-			Name:     "complement_bytes",
-			Args:     []string{"--complement", "-b2-3"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		// R3.3: complement with fields.
-		{
-			Name:     "complement_fields",
-			Args:     []string{"--complement", "-d:", "-f2"},
-			Stdin:    []byte("a:b:c\n"),
-			ExitCode: 0,
-		},
-		// R3.1: complement with characters.
-		{
-			Name:     "complement_chars",
-			Args:     []string{"--complement", "-c1,3"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		// R4.3: zero-terminated mode with bytes.
-		{
-			Name:     "zero_terminated_bytes",
-			Args:     []string{"-z", "-b2-4"},
-			Stdin:    []byte("abcdef\x00xyz\x00"),
-			ExitCode: 0,
-		},
-		// R4.3: zero-terminated mode with fields.
-		{
-			Name:     "zero_terminated_fields",
-			Args:     []string{"-z", "-d:", "-f2"},
-			Stdin:    []byte("a:b:c\x00d:e:f\x00"),
-			ExitCode: 0,
-		},
-		// R4.3: zero-terminated with newlines in data.
-		{
-			Name:     "zero_terminated_embedded_newline",
-			Args:     []string{"-z", "-b1-3"},
-			Stdin:    []byte("ab\ncde\x00fgh\x00"),
-			ExitCode: 0,
-		},
-		// R4.1: '-' reads stdin.
-		{
-			Name:     "dash_reads_stdin",
-			Args:     []string{"-d:", "-f2", "-"},
-			Stdin:    []byte("a:b:c\n"),
-			ExitCode: 0,
-		},
-		// R4.4: exit 0 on success.
-		{
-			Name:     "exit_zero_on_success",
-			Args:     []string{"-b1"},
-			Stdin:    []byte("abc\n"),
-			ExitCode: 0,
-		},
-		// Empty input.
-		{
-			Name:     "empty_input",
-			Args:     []string{"-b1"},
-			Stdin:    []byte{},
-			ExitCode: 0,
-		},
-		// Error: no mode flag.
-		{
-			Name:      "no_mode_flag",
-			Args:      []string{},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearOutput},
-		},
-		// Error: conflicting -b and -f.
-		{
-			Name:      "conflicting_b_and_f",
-			Args:      []string{"-b1", "-f1"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearOutput},
-		},
-		// Error: conflicting -c and -f.
-		{
-			Name:      "conflicting_c_and_f",
-			Args:      []string{"-c1", "-f1"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearOutput},
-		},
-		// Field range N- (to end of fields).
-		{
-			Name:     "fields_range_to_end",
-			Args:     []string{"-d:", "-f2-"},
-			Stdin:    []byte("a:b:c:d\n"),
-			ExitCode: 0,
-		},
-		// Field range -M (from start).
-		{
-			Name:     "fields_range_from_start",
-			Args:     []string{"-d:", "-f-2"},
-			Stdin:    []byte("a:b:c:d\n"),
-			ExitCode: 0,
-		},
-		// Complement with output delimiter.
-		{
-			Name:     "complement_output_delim",
-			Args:     []string{"--complement", "-d:", "-f2", "--output-delimiter=|"},
-			Stdin:    []byte("a:b:c\n"),
-			ExitCode: 0,
-		},
-		// Long form flags.
-		{
-			Name:     "long_form_bytes",
-			Args:     []string{"--bytes=2-4"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		{
-			Name:     "long_form_characters",
-			Args:     []string{"--characters=1,3"},
-			Stdin:    []byte("abcdef\n"),
-			ExitCode: 0,
-		},
-		{
-			Name:     "long_form_fields",
-			Args:     []string{"--fields=2", "--delimiter=:"},
-			Stdin:    []byte("a:b:c\n"),
-			ExitCode: 0,
-		},
-		// Only-delimited long form.
-		{
-			Name:     "long_form_only_delimited",
-			Args:     []string{"-d:", "-f1", "--only-delimited"},
-			Stdin:    []byte("no-colon\na:b\n"),
-			ExitCode: 0,
-		},
-		// Zero-terminated long form.
-		{
-			Name:     "long_form_zero_terminated",
-			Args:     []string{"--zero-terminated", "-b1-2"},
-			Stdin:    []byte("abc\x00def\x00"),
-			ExitCode: 0,
-		},
-	}
+		// === R1.1: byte selection ===
+		{Name: "byte_single", Args: []string{"-b", "2"}, Stdin: []byte("abcdef\n")},
+		{Name: "byte_range", Args: []string{"-b", "2-4"}, Stdin: []byte("abcdef\n")},
+		{Name: "byte_open_end", Args: []string{"-b", "3-"}, Stdin: []byte("abcdef\n")},
+		{Name: "byte_open_start", Args: []string{"-b", "-3"}, Stdin: []byte("abcdef\n")},
+		{Name: "byte_comma_list", Args: []string{"-b", "1,3,5"}, Stdin: []byte("abcdef\n")},
+		{Name: "byte_mixed", Args: []string{"-b", "1,3-5"}, Stdin: []byte("abcdefgh\n")},
+		{Name: "byte_overlapping", Args: []string{"-b", "1-3,2-5"}, Stdin: []byte("abcdefgh\n")},
+		{Name: "byte_inline", Args: []string{"-b2-4"}, Stdin: []byte("abcdef\n")},
+		{Name: "bytes_long", Args: []string{"--bytes=2-4"}, Stdin: []byte("abcdef\n")},
 
+		// === R1.2: character selection (equivalent to bytes under LC_ALL=C) ===
+		{Name: "char_range", Args: []string{"-c", "2-4"}, Stdin: []byte("abcdef\n")},
+		{Name: "char_single", Args: []string{"-c", "1"}, Stdin: []byte("hello\n")},
+		{Name: "char_inline", Args: []string{"-c1,3"}, Stdin: []byte("abcde\n")},
+		{Name: "chars_long", Args: []string{"--characters=2-4"}, Stdin: []byte("abcdef\n")},
+
+		// === R1.3: newlines pass through ===
+		{Name: "multiline", Args: []string{"-b", "1-2"}, Stdin: []byte("ab\ncd\nef\n")},
+		{Name: "multiline_byte", Args: []string{"-b", "2"}, Stdin: []byte("abc\ndef\nghi\n")},
+
+		// === R1.4: short lines ===
+		{Name: "short_line", Args: []string{"-b", "1-10"}, Stdin: []byte("abc\n")},
+		{Name: "short_high_range", Args: []string{"-b", "5-"}, Stdin: []byte("ab\n")},
+		{Name: "empty_line", Args: []string{"-b", "1"}, Stdin: []byte("\n")},
+		{Name: "no_trailing_newline", Args: []string{"-b", "1-2"}, Stdin: []byte("abcdef")},
+
+		// === R2.1: field selection ===
+		{Name: "field_single", Args: []string{"-d", ":", "-f", "2"}, Stdin: []byte("a:b:c\n")},
+		{Name: "field_range", Args: []string{"-d", ":", "-f", "1,3"}, Stdin: []byte("a:b:c\n")},
+		{Name: "field_open_end", Args: []string{"-d", ":", "-f", "2-"}, Stdin: []byte("a:b:c:d\n")},
+		{Name: "field_open_start", Args: []string{"-d", ":", "-f", "-2"}, Stdin: []byte("a:b:c\n")},
+		{Name: "field_tab_default", Args: []string{"-f", "2"}, Stdin: []byte("a\tb\tc\n")},
+		{Name: "field_inline", Args: []string{"-d:", "-f2"}, Stdin: []byte("a:b:c\n")},
+		{Name: "fields_long", Args: []string{"--fields=1,3", "-d", ":"}, Stdin: []byte("a:b:c\n")},
+
+		// === R2.2: delimiter ===
+		{Name: "delim_comma", Args: []string{"-d", ",", "-f", "1,3"}, Stdin: []byte("x,y,z\n")},
+		{Name: "delim_space", Args: []string{"-d", " ", "-f", "2"}, Stdin: []byte("hello world\n")},
+		{Name: "delim_long", Args: []string{"--delimiter=:", "-f", "2"}, Stdin: []byte("a:b:c\n")},
+
+		// === R2.3: suppress lines without delimiter ===
+		{Name: "suppress_no_delim", Args: []string{"-d", ":", "-f", "2", "-s"}, Stdin: []byte("no-delimiter\n")},
+		{Name: "suppress_with_delim", Args: []string{"-d", ":", "-f", "2", "-s"}, Stdin: []byte("a:b:c\n")},
+		{Name: "suppress_mixed", Args: []string{"-d", ":", "-f", "2", "-s"}, Stdin: []byte("no-delim\na:b:c\nalso-no\nx:y:z\n")},
+		{Name: "no_suppress", Args: []string{"-d", ":", "-f", "2"}, Stdin: []byte("no-delimiter\n")},
+		{Name: "suppress_long", Args: []string{"--only-delimited", "-d", ":", "-f", "2"}, Stdin: []byte("no-delimiter\n")},
+
+		// === R2.4: output delimiter ===
+		{Name: "outdelim_field", Args: []string{"-d", ":", "-f", "1,3", "--output-delimiter", "|"}, Stdin: []byte("a:b:c\n")},
+		{Name: "outdelim_field_eq", Args: []string{"-d:", "-f1,3", "--output-delimiter=|"}, Stdin: []byte("a:b:c\n")},
+		{Name: "outdelim_field_multi", Args: []string{"-d", ":", "-f", "1-3", "--output-delimiter", " - "}, Stdin: []byte("a:b:c\n")},
+		{Name: "outdelim_byte", Args: []string{"-b", "1,3", "--output-delimiter", ":"}, Stdin: []byte("abcdef\n")},
+		{Name: "outdelim_byte_range", Args: []string{"-b", "1-2,5-6", "--output-delimiter", "|"}, Stdin: []byte("abcdefgh\n")},
+		{Name: "outdelim_char", Args: []string{"-c", "1,3,5", "--output-delimiter", ","}, Stdin: []byte("abcdef\n")},
+		{Name: "outdelim_byte_adjacent", Args: []string{"-b", "1-3", "--output-delimiter", ":"}, Stdin: []byte("abcdef\n")},
+
+		// === R3.1: complement mode ===
+		{Name: "complement_byte", Args: []string{"-b", "2-4", "--complement"}, Stdin: []byte("abcdef\n")},
+		{Name: "complement_char", Args: []string{"-c", "1,3", "--complement"}, Stdin: []byte("abcde\n")},
+		{Name: "complement_field", Args: []string{"-d", ":", "-f", "2", "--complement"}, Stdin: []byte("a:b:c\n")},
+		// R3.3: complement with -f preserves field order
+		{Name: "complement_field_multi", Args: []string{"-d", ":", "-f", "1,3", "--complement"}, Stdin: []byte("a:b:c:d\n")},
+		{Name: "complement_outdelim", Args: []string{"-d", ":", "-f", "2", "--complement", "--output-delimiter", "|"}, Stdin: []byte("a:b:c\n")},
+		{Name: "complement_byte_outdelim", Args: []string{"-b", "2-4", "--complement", "--output-delimiter", ":"}, Stdin: []byte("abcdef\n")},
+
+		// === R4.2: stdin handling ===
+		{Name: "stdin_dash", Args: []string{"-b", "1-3", "-"}, Stdin: []byte("hello\n")},
+		{Name: "stdin_no_args", Args: []string{"-b", "1-3"}, Stdin: []byte("hello\n")},
+		{Name: "stdin_after_ddash", Args: []string{"-b", "1-3", "--", "-"}, Stdin: []byte("hello\n")},
+
+		// === Error cases (R4.3) ===
+		{Name: "err_no_list", Args: []string{}, ExitCode: 1, Normalize: errNorm},
+		{Name: "err_both_bf", Args: []string{"-b", "1", "-f", "1"}, ExitCode: 1, Normalize: errNorm},
+		{Name: "err_both_bc", Args: []string{"-b", "1", "-c", "1"}, ExitCode: 1, Normalize: errNorm},
+		{Name: "err_both_cf", Args: []string{"-c", "1", "-f", "1"}, ExitCode: 1, Normalize: errNorm},
+		{Name: "err_decreasing_range", Args: []string{"-b", "5-3"}, ExitCode: 1, Normalize: errNorm},
+		{Name: "err_delim_not_field", Args: []string{"-b", "1", "-d", ":"}, ExitCode: 1, Normalize: errNorm},
+		{Name: "err_suppress_not_field", Args: []string{"-b", "1", "-s"}, ExitCode: 1, Normalize: errNorm},
+	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestDiffMultipleFiles tests multiple file processing (R4.2).
-func TestDiffMultipleFiles(t *testing.T) {
+// TestDiffMultiFile tests multi-file input processing.
+// R4.2: sequential processing of multiple file arguments.
+func TestDiffMultiFile(t *testing.T) {
+	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gcut")
 	if err != nil {
-		t.Skip("reference binary gcut not in PATH")
+		t.Skipf("reference binary gcut not in PATH: %v", err)
 	}
 
 	dir := t.TempDir()
-	file1 := filepath.Join(dir, "f1.txt")
-	file2 := filepath.Join(dir, "f2.txt")
-	writeTestFile(t, file1, "a:b:c\nx:y:z\n")
-	writeTestFile(t, file2, "1:2:3\n4:5:6\n")
+	file1 := filepath.Join(dir, "a.txt")
+	file2 := filepath.Join(dir, "b.txt")
+	writeTestFile(t, file1, "a:b:c\n")
+	writeTestFile(t, file2, "x:y:z\n")
 
 	tests := []testutils.DiffTest{
-		// R4.2: multiple files processed in order.
-		{
-			Name:     "multiple_files",
-			Args:     []string{"-d:", "-f2", file1, file2},
-			ExitCode: 0,
-		},
-		// R4.2: mix of file and stdin.
-		{
-			Name:     "file_and_stdin",
-			Args:     []string{"-d:", "-f1", file1, "-"},
-			Stdin:    []byte("p:q:r\n"),
-			ExitCode: 0,
-		},
+		{Name: "two_files", Args: []string{"-d", ":", "-f", "2", file1, file2}},
+		{Name: "file_and_stdin", Args: []string{"-d", ":", "-f", "2", file1, "-"}, Stdin: []byte("p:q:r\n")},
+		{Name: "stdin_and_file", Args: []string{"-d", ":", "-f", "2", "-", file2}, Stdin: []byte("p:q:r\n")},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestDiffFileNotFound tests exit code on missing file (R4.4).
-func TestDiffFileNotFound(t *testing.T) {
+// TestDiffFileError tests error handling for nonexistent files.
+// R4.2: exit 1 on file open failure, processing continues for remaining files.
+func TestDiffFileError(t *testing.T) {
+	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gcut")
 	if err != nil {
-		t.Skip("reference binary gcut not in PATH")
+		t.Skipf("reference binary gcut not in PATH: %v", err)
 	}
 
 	dir := t.TempDir()
-	validFile := filepath.Join(dir, "valid.txt")
-	writeTestFile(t, validFile, "a:b:c\n")
-	nonexistent := filepath.Join(dir, "nonexistent.txt")
+	goodFile := filepath.Join(dir, "good.txt")
+	writeTestFile(t, goodFile, "a:b:c\n")
+	badFile := filepath.Join(dir, "nonexistent.txt")
+
+	errNorm := []testutils.NormalizeFunc{binaryNameNorm}
 
 	tests := []testutils.DiffTest{
-		// R4.4: exit 1 when file cannot be opened.
 		{
-			Name:      "file_not_found",
-			Args:      []string{"-d:", "-f2", nonexistent},
+			Name:      "nonexistent_file",
+			Args:      []string{"-d", ":", "-f", "2", badFile},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearOutput},
+			Normalize: errNorm,
 		},
-		// R4.2, R4.4: one valid, one missing — processes valid, exits 1.
 		{
-			Name:      "mixed_valid_and_missing",
-			Args:      []string{"-d:", "-f2", validFile, nonexistent},
+			Name:      "good_then_bad",
+			Args:      []string{"-d", ":", "-f", "2", goodFile, badFile},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{clearOutput},
+			Normalize: errNorm,
+		},
+		{
+			Name:      "bad_then_good",
+			Args:      []string{"-d", ":", "-f", "2", badFile, goodFile},
+			ExitCode:  1,
+			Normalize: errNorm,
 		},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -356,45 +191,6 @@ func TestDiffFileNotFound(t *testing.T) {
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("failed to write test file %s: %v", path, err)
-	}
-}
-
-// TestVersion verifies that --version prints output and exits 0.
-// Not a differential test because version strings differ between implementations.
-func TestVersion(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "--version")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		t.Fatalf("--version exited with error: %v", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "cut") {
-		t.Errorf("--version output does not contain 'cut': %q", out)
-	}
-}
-
-// TestHelp verifies that --help prints usage and exits 0.
-// Not a differential test because help text differs between implementations.
-func TestHelp(t *testing.T) {
-	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "--help")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		t.Fatalf("--help exited with error: %v", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "Usage:") {
-		t.Errorf("--help output does not contain 'Usage:': %q", out)
-	}
-	if !strings.Contains(out, "zero-terminated") {
-		t.Errorf("--help output does not mention zero-terminated: %q", out)
+		t.Fatalf("write test file %s: %v", path, err)
 	}
 }

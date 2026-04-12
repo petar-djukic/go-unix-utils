@@ -1,17 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/b2sum computes BLAKE2b message digests for files or stdin.
-//
-// Implements prd076-b2sum: R1.1 (file digest computation),
-// R1.2 (stdin as '-'), R1.3 (--tag with bit length in tag name),
-// R1.4 (exit code and stderr diagnostics),
-// R2.1 (--check verification), R2.2 (OK/FAILED output),
-// R2.3 (--warn/--quiet/--status modifiers),
-// R3.1 (binary/text mode), R3.2 (--tag overrides -b/-t),
-// R3.3 (--length variable digest length),
-// R4.1 (exit 0 on success), R4.2 (exit 1 on failure),
-// R4.3 (SIGPIPE graceful exit).
+// Package main implements cmd/b2sum: compute and check BLAKE2b message digests.
+// Implements srd076-b2sum R1.1-R1.4, R2.1-R2.3, R3.1-R3.3, R4.1-R4.2.
 package main
 
 import (
@@ -28,212 +19,389 @@ import (
 )
 
 const (
-	defaultLengthBits = 512
-	maxLengthBits     = 512
+	programName = "b2sum"
+	// R1.1: BLAKE2b-512 produces 64-byte (128 hex character) digests by default.
+	defaultDigestBytes = 64
+	defaultDigestHex   = 128
+	defaultDigestBits  = 512
 )
 
-// options holds all parsed command-line flags.
-type options struct {
-	binary       bool
-	textExplicit bool // true when -t/--text was explicitly given
-	tag          bool
-	check        bool
-	quiet        bool
-	status       bool
-	warn         bool
-	strict       bool
-	length       int // digest length in bits (default 512)
-	files        []string
+// usageText is the --help output printed to stdout.
+const usageText = `Usage: b2sum [OPTION]... [FILE]...
+Print or check BLAKE2 (512-bit) checksums.
+
+With no FILE, or when FILE is -, read standard input.
+
+  -b, --binary         read in binary mode
+  -c, --check          read checksums from the FILEs and check them
+  -l, --length=BITS    digest length in bits; must not exceed the max for
+                         the blake2 algorithm and must be a multiple of 8
+      --tag            create a BSD-style checksum
+  -t, --text           read in text mode (default)
+
+The following five options are useful only when verifying checksums:
+      --quiet          don't print OK for each successfully verified file
+      --status         don't output anything, status code shows success
+      --strict         exit non-zero for improperly formatted checksum lines
+  -w, --warn           warn about improperly formatted checksum lines
+
+      --help           display this help and exit
+      --version        output version information and exit
+`
+
+// versionText is the --version output printed to stdout.
+const versionText = "b2sum (go-unix-utils) 0.1.0\n"
+
+// config holds parsed command-line options for b2sum.
+type config struct {
+	binary  bool // -b, --binary
+	text    bool // -t, --text
+	tag     bool // --tag
+	check   bool // -c, --check
+	length  int  // -l, --length (bits); 0 means default 512
+	warn    bool // -w, --warn
+	quiet   bool // --quiet
+	status  bool // --status
+	strict  bool // --strict
+	help    bool // --help
+	version bool // --version
+	files   []string
 }
 
+// R1.1: main entry with SIGPIPE handler and flag parsing.
+// R4.3: InstallSIGPIPEHandler for graceful SIGPIPE exit.
 func main() {
-	// R4.3: SIGPIPE handling.
 	sys.InstallSIGPIPEHandler()
 
-	opts, err := parseArgs(os.Args[1:])
+	cfg, err := parseArgs(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "b2sum: %s\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
 		os.Exit(1)
 	}
 
-	if err := validateFlags(opts); err != nil {
-		fmt.Fprintf(os.Stderr, "b2sum: %s\n", err)
-		os.Exit(1)
-	}
-
-	cfg := buildConfig(opts.length)
-
-	if opts.check {
-		os.Exit(runCheckMode(opts, cfg))
-	}
-
-	os.Exit(hashutil.DigestFiles(
-		opts.files, cfg, opts.binary, opts.tag, os.Stdout, os.Stderr,
-	))
+	exitCode := run(cfg)
+	os.Exit(exitCode)
 }
 
-// buildConfig creates a HashConfig for BLAKE2b with the given bit length.
-//
-// R1.3: tag name includes bit length when non-default (e.g., "BLAKE2b-256").
-// R3.3: variable digest length via --length.
-func buildConfig(lengthBits int) hashutil.HashConfig {
-	sizeBytes := lengthBits / 8
-	algo := "BLAKE2b"
-	if lengthBits != defaultLengthBits {
-		algo = fmt.Sprintf("BLAKE2b-%d", lengthBits)
+// run executes the b2sum logic and returns the exit code.
+func run(cfg config) int {
+	if cfg.help {
+		fmt.Fprint(os.Stdout, usageText)
+		return 0
 	}
+	if cfg.version {
+		fmt.Fprint(os.Stdout, versionText)
+		return 0
+	}
+
+	hcfg, err := buildHashConfig(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		return 1
+	}
+
+	if cfg.check {
+		return runCheck(cfg, hcfg)
+	}
+	return digestFiles(cfg, hcfg)
+}
+
+// buildHashConfig constructs a HashConfig for the configured digest length.
+// R1.2: default BLAKE2b-512; R3.3: --length sets variable digest size.
+func buildHashConfig(cfg config) (hashutil.HashConfig, error) {
+	bits := defaultDigestBits
+	if cfg.length > 0 {
+		bits = cfg.length
+	}
+
+	digestBytes := bits / 8
+	newHash, err := newBlake2bFactory(digestBytes)
+	if err != nil {
+		return hashutil.HashConfig{}, err
+	}
+
+	algo := algorithmName(bits)
 	return hashutil.HashConfig{
 		Algorithm: algo,
-		NewHash: func() hash.Hash {
-			h, _ := blake2b.New(sizeBytes, nil) // size validated in parseArgs
-			return h
-		},
-		DigestLen: sizeBytes * 2, // hex encoding doubles byte count
-	}
+		NewHash:   newHash,
+		DigestLen: digestBytes * 2, // hex characters
+	}, nil
 }
 
-// validateFlags returns an error if flags are used in invalid combinations.
-//
-// R3.2: --tag does not support --text mode (explicit -t/--text).
-func validateFlags(opts options) error {
-	if opts.tag && opts.textExplicit {
-		return fmt.Errorf("--tag does not support --text mode")
+// newBlake2bFactory returns a hash.Hash factory for the given byte size.
+func newBlake2bFactory(size int) (func() hash.Hash, error) {
+	// Validate by creating one instance.
+	_, err := blake2b.New(size, nil)
+	if err != nil {
+		return nil, fmt.Errorf("invalid digest length: %w", err)
 	}
-	if opts.check {
-		return nil
-	}
-	if opts.quiet {
-		return fmt.Errorf("the --quiet option is meaningful only when verifying checksums")
-	}
-	if opts.status {
-		return fmt.Errorf("the --status option is meaningful only when verifying checksums")
-	}
-	if opts.warn {
-		return fmt.Errorf("the --warn option is meaningful only when verifying checksums")
-	}
-	if opts.strict {
-		return fmt.Errorf("the --strict option is meaningful only when verifying checksums")
-	}
-	return nil
+	return func() hash.Hash {
+		h, _ := blake2b.New(size, nil) // validated above; cannot fail
+		return h
+	}, nil
 }
 
-// runCheckMode verifies checksums from files and returns the exit code.
-//
-// R2.1: -c reads checksum file and verifies entries.
-func runCheckMode(opts options, cfg hashutil.HashConfig) int {
-	checkOpts := hashutil.CheckOptions{
-		Quiet:  opts.quiet,
-		Status: opts.status,
-		Warn:   opts.warn,
-		Strict: opts.strict,
+// algorithmName returns "BLAKE2b" for default 512-bit or "BLAKE2b-N" for
+// non-default lengths, matching GNU b2sum --tag output.
+// R1.3: tag name includes bit length when --length is specified.
+func algorithmName(bits int) string {
+	if bits == defaultDigestBits {
+		return "BLAKE2b"
 	}
-	files := opts.files
+	return fmt.Sprintf("BLAKE2b-%d", bits)
+}
+
+// runCheck verifies checksums from each file argument.
+func runCheck(cfg config, hcfg hashutil.HashConfig) int {
+	opts := hashutil.CheckOptions{
+		Warn:   cfg.warn || cfg.strict,
+		Quiet:  cfg.quiet,
+		Status: cfg.status,
+	}
+	allOK := true
+	for _, f := range cfg.files {
+		ok, err := hashutil.VerifyChecksums(f, hcfg, opts, os.Stdout, os.Stderr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			allOK = false
+			continue
+		}
+		if !ok {
+			allOK = false
+		}
+	}
+	if !allOK {
+		return 1
+	}
+	return 0
+}
+
+// digestFiles computes and prints digests for files.
+// R3.2: uses FormatBSDTag when --tag is set.
+// R4.1: errors use 'b2sum: <filename>: <error>' format.
+func digestFiles(cfg config, hcfg hashutil.HashConfig) int {
+	files := cfg.files
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
 	exitCode := 0
-	for _, f := range files {
-		allOK, err := hashutil.VerifyChecksums(
-			f, cfg, checkOpts, os.Stdout, os.Stderr,
-		)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "b2sum: %s\n", err)
-			exitCode = 1
-			continue
-		}
-		if !allOK {
+	for _, name := range files {
+		if err := digestFile(name, hcfg, cfg.binary, cfg.tag); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", programName, name, unwrapErr(err))
 			exitCode = 1
 		}
 	}
 	return exitCode
 }
 
-// parseArgs parses GNU-compatible flags from args and returns the options.
-//
-// R3.1: -b/--binary sets binary mode; -t/--text sets text mode (default).
-// R1.3: --tag enables BSD-style output.
-// R3.3: --length=N or -l N sets digest length in bits.
-func parseArgs(args []string) (options, error) {
-	var opts options
-	opts.length = defaultLengthBits
+// digestFile computes and prints the digest for one file or stdin.
+func digestFile(name string, hcfg hashutil.HashConfig, binary, tag bool) error {
+	digest, err := computeDigest(name, hcfg)
+	if err != nil {
+		return err
+	}
+	if tag {
+		fmt.Fprintln(os.Stdout, hashutil.FormatBSDTag(hcfg.Algorithm, name, digest))
+	} else {
+		fmt.Fprintln(os.Stdout, hashutil.FormatGNU(digest, name, binary))
+	}
+	return nil
+}
+
+// computeDigest opens a file (or stdin for "-") and returns its hex digest.
+func computeDigest(name string, hcfg hashutil.HashConfig) (string, error) {
+	if name == "-" {
+		return hashutil.ComputeDigest(os.Stdin, hcfg)
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close() // best-effort close on read-only file
+	return hashutil.ComputeDigest(f, hcfg)
+}
+
+// unwrapErr extracts the inner error from os.PathError for cleaner messages.
+// R4.1: avoids redundant path in 'b2sum: <path>: open <path>: ...' output.
+func unwrapErr(err error) error {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err
+	}
+	return err
+}
+
+// parseArgs parses command-line arguments into config.
+func parseArgs(args []string) (config, error) {
+	cfg := config{}
+	flagsDone := false
+
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		switch {
-		case arg == "-b" || arg == "--binary":
-			opts.binary = true
-		case arg == "-t" || arg == "--text":
-			opts.binary = false
-			opts.textExplicit = true
-		case arg == "--tag":
-			opts.tag = true
-		case arg == "-c" || arg == "--check":
-			opts.check = true
-		case arg == "--quiet":
-			opts.quiet = true
-		case arg == "--status":
-			opts.status = true
-		case arg == "-w" || arg == "--warn":
-			opts.warn = true
-		case arg == "--strict":
-			opts.strict = true
-		case strings.HasPrefix(arg, "--length="):
-			n, err := parseLengthValue(strings.TrimPrefix(arg, "--length="))
-			if err != nil {
-				return options{}, err
-			}
-			opts.length = n
-		case arg == "--length" || arg == "-l":
-			i++
-			if i >= len(args) {
-				return options{}, fmt.Errorf("option '%s' requires an argument", arg)
-			}
-			n, err := parseLengthValue(args[i])
-			if err != nil {
-				return options{}, err
-			}
-			opts.length = n
-		case arg == "--":
+		if flagsDone || (!strings.HasPrefix(arg, "-") || arg == "-") {
+			cfg.files = append(cfg.files, arg)
 			continue
-		case arg == "--help":
-			printUsage()
-			os.Exit(0)
-		case arg == "--version":
-			fmt.Fprintln(os.Stdout, "b2sum (go-unix-utils)")
-			os.Exit(0)
-		default:
-			opts.files = append(opts.files, arg)
+		}
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		skip, err := parseFlag(&cfg, args, i)
+		if err != nil {
+			return config{}, err
+		}
+		i += skip
+	}
+	if cfg.help || cfg.version {
+		return cfg, nil
+	}
+	return cfg, validateArgs(cfg)
+}
+
+// validateArgs checks for invalid flag combinations and length value.
+// R2.3: --binary, --text, --tag are invalid with --check.
+func validateArgs(cfg config) error {
+	if cfg.check && len(cfg.files) == 0 {
+		return fmt.Errorf("--check requires a file argument")
+	}
+	if err := validateCheckCombos(cfg); err != nil {
+		return err
+	}
+	if cfg.length > 0 {
+		if cfg.length%8 != 0 {
+			return fmt.Errorf("invalid length: %d is not a multiple of 8", cfg.length)
+		}
+		if cfg.length > defaultDigestBits {
+			return fmt.Errorf("invalid length: %d exceeds maximum of %d", cfg.length, defaultDigestBits)
 		}
 	}
-	return opts, nil
+	return nil
 }
 
-// parseLengthValue validates and returns the digest length in bits.
-//
-// R3.3: N must be a non-negative multiple of 8 and at most 512.
-// Zero means default (512), matching GNU b2sum behavior.
-func parseLengthValue(val string) (int, error) {
-	n, err := strconv.Atoi(val)
-	if err != nil || n < 0 || n%8 != 0 || n > maxLengthBits {
-		return 0, fmt.Errorf("invalid length: %s", val)
+// validateCheckCombos rejects --binary, --text, and --tag when --check is set.
+// R2.3: these format flags are meaningless in verification mode.
+func validateCheckCombos(cfg config) error {
+	if !cfg.check {
+		return nil
 	}
-	if n == 0 {
-		return defaultLengthBits, nil
+	if cfg.binary {
+		return fmt.Errorf("the --binary and --check options are mutually exclusive")
 	}
-	return n, nil
+	if cfg.text {
+		return fmt.Errorf("the --text and --check options are mutually exclusive")
+	}
+	if cfg.tag {
+		return fmt.Errorf("the --tag and --check options are mutually exclusive")
+	}
+	return nil
 }
 
-// printUsage prints the usage message to stdout.
-func printUsage() {
-	fmt.Fprintln(os.Stdout, "Usage: b2sum [OPTION]... [FILE]...")
-	fmt.Fprintln(os.Stdout, "Print or check BLAKE2 checksums.")
-	fmt.Fprintln(os.Stdout, "")
-	fmt.Fprintln(os.Stdout, "  -b, --binary    read in binary mode")
-	fmt.Fprintln(os.Stdout, "  -t, --text      read in text mode (default)")
-	fmt.Fprintln(os.Stdout, "      --tag       create a BSD-style checksum")
-	fmt.Fprintln(os.Stdout, "  -l, --length    digest length in bits (default 512)")
-	fmt.Fprintln(os.Stdout, "  -c, --check     read checksums from FILEs and check them")
-	fmt.Fprintln(os.Stdout, "      --quiet     don't print OK for each successfully verified file")
-	fmt.Fprintln(os.Stdout, "      --status    don't output anything, status code shows success")
-	fmt.Fprintln(os.Stdout, "  -w, --warn      warn about improperly formatted checksum lines")
-	fmt.Fprintln(os.Stdout, "      --strict    exit non-zero for improperly formatted checksum lines")
+// parseFlag dispatches to long or short flag parsing.
+func parseFlag(cfg *config, args []string, idx int) (int, error) {
+	arg := args[idx]
+	if strings.HasPrefix(arg, "--") {
+		return parseLongFlag(cfg, args, idx)
+	}
+	return parseShortFlags(cfg, args, idx)
+}
+
+// parseLongFlag handles --name and --name=value flags.
+func parseLongFlag(cfg *config, args []string, idx int) (int, error) {
+	arg := args[idx]
+
+	// Handle --length=N or --length N
+	if arg == "--length" || strings.HasPrefix(arg, "--length=") {
+		return parseLengthFlag(cfg, arg, args, idx)
+	}
+
+	switch arg {
+	case "--binary":
+		cfg.binary = true
+	case "--text":
+		cfg.text = true
+	case "--tag":
+		cfg.tag = true
+	case "--check":
+		cfg.check = true
+	case "--warn":
+		cfg.warn = true
+	case "--quiet":
+		cfg.quiet = true
+	case "--status":
+		cfg.status = true
+	case "--strict":
+		cfg.strict = true
+	case "--help":
+		cfg.help = true
+	case "--version":
+		cfg.version = true
+	default:
+		return 0, fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	return 0, nil
+}
+
+// parseLengthFlag parses --length=N or --length N.
+func parseLengthFlag(cfg *config, arg string, args []string, idx int) (int, error) {
+	var valStr string
+	var skip int
+	if strings.Contains(arg, "=") {
+		valStr = arg[strings.Index(arg, "=")+1:]
+	} else {
+		if idx+1 >= len(args) {
+			return 0, fmt.Errorf("option '--length' requires an argument")
+		}
+		valStr = args[idx+1]
+		skip = 1
+	}
+	n, err := strconv.Atoi(valStr)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid length value: '%s'", valStr)
+	}
+	cfg.length = n
+	return skip, nil
+}
+
+// parseShortFlags processes bundled short flags like -bw.
+// -l requires a value: -l256 or -l 256.
+func parseShortFlags(cfg *config, args []string, idx int) (int, error) {
+	flags := args[idx][1:]
+	for i := 0; i < len(flags); i++ {
+		ch := flags[i]
+		switch ch {
+		case 'b':
+			cfg.binary = true
+		case 't':
+			cfg.text = true
+		case 'c':
+			cfg.check = true
+		case 'w':
+			cfg.warn = true
+		case 'l':
+			return parseShortLength(cfg, flags[i+1:], args, idx)
+		default:
+			return 0, fmt.Errorf("invalid option -- '%c'", ch)
+		}
+	}
+	return 0, nil
+}
+
+// parseShortLength handles -lN or -l N after the 'l' character.
+func parseShortLength(cfg *config, rest string, args []string, idx int) (int, error) {
+	var valStr string
+	var skip int
+	if len(rest) > 0 {
+		valStr = rest
+	} else {
+		if idx+1 >= len(args) {
+			return 0, fmt.Errorf("option requires an argument -- 'l'")
+		}
+		valStr = args[idx+1]
+		skip = 1
+	}
+	n, err := strconv.Atoi(valStr)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid length value: '%s'", valStr)
+	}
+	cfg.length = n
+	return skip, nil
 }

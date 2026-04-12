@@ -1,13 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/printf implements GNU printf: format and print data.
-// Implements prd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
+// Package main implements cmd/printf: format and print data.
+// Implements srd073-printf R1, R2, R3, R4.
 package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -16,495 +15,146 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const progName = "printf"
+// exitOK and exitErr are the process exit codes per R4.1 and R4.2.
+const (
+	exitOK  = 0
+	exitErr = 1
+)
 
 func main() {
+	// R4.1: install SIGPIPE handler for pipe-safe output.
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+
+	args := os.Args[1:]
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "printf: usage: printf FORMAT [ARGUMENT]...\n")
+		os.Exit(exitErr)
+	}
+
+	format := args[0]
+	arguments := args[1:]
+
+	exitCode := runPrintf(format, arguments)
+	os.Exit(exitCode)
 }
 
-// run processes printf arguments and returns the exit code.
-// R1.1: first argument is FORMAT; remaining arguments supply directive values.
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintf(stderr, "%s: usage: printf FORMAT [ARGUMENT]...\n", progName)
-		return 1
-	}
-	format := args[0]
-	fmtArgs := args[1:]
-	exitCode := 0
+// runPrintf processes the format string with the given arguments.
+// R3.2: reuses the format string when arguments remain after one pass.
+// R4.1: returns 0 on success. R4.2: returns 1 on error.
+func runPrintf(format string, args []string) int {
+	hadError := false
+	argIdx := 0
 	for {
-		remaining, hadErr := processFormat(stdout, stderr, format, fmtArgs)
-		if hadErr {
-			exitCode = 1
+		consumed, err := processFormat(format, args, argIdx)
+		if err {
+			hadError = true
 		}
-		if len(remaining) == 0 || len(remaining) == len(fmtArgs) {
+		// R3.2: stop when a full format pass consumes no arguments.
+		if consumed == argIdx {
 			break
 		}
-		fmtArgs = remaining
+		argIdx = consumed
+		if argIdx >= len(args) {
+			break
+		}
 	}
-	return exitCode
+	if hadError {
+		return exitErr
+	}
+	return exitOK
 }
 
-// processFormat walks the format string once, writing output and consuming args.
-// Returns unconsumed arguments and whether any error occurred.
-func processFormat(w, errW io.Writer, format string, args []string) ([]string, bool) {
-	argIdx := 0
+// processFormat interprets the format string once, consuming arguments
+// starting at argIdx. Returns the new argIdx and whether an error occurred.
+// R1.1: literal text and conversion specifiers.
+// R3.1: C-style escape sequences in FORMAT.
+func processFormat(format string, args []string, argIdx int) (int, bool) {
 	hadError := false
-	for i := 0; i < len(format); {
-		switch {
-		case format[i] == '\\':
-			i += processEscape(w, format, i)
-		case format[i] == '%':
-			n, used, err := handleDirective(w, format[i:], sliceFrom(args, argIdx))
-			argIdx += used
-			i += n
-			if err != nil {
-				fmt.Fprintf(errW, "%s: %v\n", progName, err)
-				hadError = true
-			}
-		default:
-			writeByte(w, format[i])
-			i++
-		}
-	}
-	if argIdx >= len(args) {
-		return nil, hadError
-	}
-	return args[argIdx:], hadError
-}
-
-// sliceFrom returns args[idx:] or nil if idx >= len(args).
-func sliceFrom(args []string, idx int) []string {
-	if idx >= len(args) {
-		return nil
-	}
-	return args[idx:]
-}
-
-// handleDirective processes one %-directive, writes output to w.
-// Returns format chars consumed, args consumed, and any error.
-// R2.3: resolves '*' width/precision from arguments before formatting.
-// R2.4: '%%' produces a literal percent character.
-func handleDirective(w io.Writer, format string, args []string) (int, int, error) {
-	if len(format) < 2 {
-		writeByte(w, '%')
-		return 1, 0, nil
-	}
-	if format[1] == '%' {
-		writeByte(w, '%')
-		return 2, 0, nil
-	}
-	spec, verb, consumed := parseDirective(format[1:])
-	if verb == 0 {
-		return 1 + consumed, 0, fmt.Errorf("'%s': missing format character", format[:1+consumed])
-	}
-	resolved, starUsed := resolveStars(spec, args)
-	arg := ""
-	if starUsed < len(args) {
-		arg = args[starUsed]
-	}
-	result, err := formatVerb(resolved, verb, arg)
-	_, _ = fmt.Fprint(w, result) // stdout write; SIGPIPE handler manages broken pipe
-	return 1 + consumed, starUsed + 1, err
-}
-
-// parseDirective parses flags, width, precision, and verb after '%'.
-// R2.1: width and precision as digits. R2.2: flag characters. R2.3: '*' for width/precision.
-// Returns the spec string (flags+width+precision), verb byte, and chars consumed.
-func parseDirective(s string) (string, byte, int) {
 	i := 0
-	for i < len(s) && isFlag(s[i]) {
-		i++
-	}
-	if i < len(s) && s[i] == '*' {
-		i++
-	} else {
-		for i < len(s) && isDigit(s[i]) {
-			i++
-		}
-	}
-	if i < len(s) && s[i] == '.' {
-		i++
-		if i < len(s) && s[i] == '*' {
-			i++
-		} else {
-			for i < len(s) && isDigit(s[i]) {
-				i++
-			}
-		}
-	}
-	if i >= len(s) {
-		return s, 0, i
-	}
-	return s[:i], s[i], i + 1
-}
-
-func isFlag(c byte) bool {
-	return c == '-' || c == '+' || c == ' ' || c == '0' || c == '#'
-}
-
-func isDigit(c byte) bool {
-	return c >= '0' && c <= '9'
-}
-
-// resolveStars replaces '*' width/precision in spec with int values from args.
-// R2.3: '*' takes the value from the next argument.
-func resolveStars(spec string, args []string) (string, int) {
-	if !strings.ContainsRune(spec, '*') {
-		return spec, 0
-	}
-	i := 0
-	argIdx := 0
-	for i < len(spec) && isFlag(spec[i]) {
-		i++
-	}
-	flags := spec[:i]
-	addDash := false
-	var width string
-	if i < len(spec) && spec[i] == '*' {
-		val := nextStarInt(args, &argIdx)
-		if val < 0 {
-			addDash = true
-			val = -val
-		}
-		width = strconv.Itoa(val)
-		i++
-	} else {
-		j := i
-		for i < len(spec) && isDigit(spec[i]) {
-			i++
-		}
-		width = spec[j:i]
-	}
-	precPart := resolveStarPrecision(spec, i, args, &argIdx)
-	if addDash && !strings.ContainsRune(flags, '-') {
-		flags += "-"
-	}
-	return flags + width + precPart, argIdx
-}
-
-// resolveStarPrecision resolves the precision part of a directive spec.
-func resolveStarPrecision(spec string, i int, args []string, argIdx *int) string {
-	if i >= len(spec) || spec[i] != '.' {
-		return ""
-	}
-	i++
-	if i < len(spec) && spec[i] == '*' {
-		val := nextStarInt(args, argIdx)
-		if val < 0 {
-			return ""
-		}
-		return "." + strconv.Itoa(val)
-	}
-	j := i
-	for i < len(spec) && isDigit(spec[i]) {
-		i++
-	}
-	return "." + spec[j:i]
-}
-
-// nextStarInt consumes the next argument as an integer for '*' resolution.
-func nextStarInt(args []string, idx *int) int {
-	if *idx >= len(args) {
-		return 0
-	}
-	s := args[*idx]
-	*idx++
-	val, _ := strconv.Atoi(s)
-	return val
-}
-
-// formatVerb formats an argument according to the conversion verb.
-// R1.2: integer verbs. R1.3: float verbs. R1.4: string, char, b verbs.
-func formatVerb(spec string, verb byte, arg string) (string, error) {
-	switch {
-	case isIntVerb(verb):
-		return formatInt(spec, verb, arg)
-	case isFloatVerb(verb):
-		return formatFloat(spec, verb, arg)
-	case verb == 's':
-		return fmt.Sprintf("%"+spec+"s", arg), nil
-	case verb == 'c':
-		return formatChar(spec, arg), nil
-	case verb == 'b':
-		return interpretBEscapes(arg), nil
-	default:
-		return "", fmt.Errorf("%%%c: invalid conversion specification", verb)
-	}
-}
-
-func isIntVerb(v byte) bool {
-	return v == 'd' || v == 'i' || v == 'o' || v == 'u' || v == 'x' || v == 'X'
-}
-
-func isFloatVerb(v byte) bool {
-	return v == 'f' || v == 'F' || v == 'e' || v == 'E' || v == 'g' || v == 'G'
-}
-
-// formatInt formats an integer argument.
-// R1.2: %d/%i (signed), %o (octal), %u (unsigned), %x/%X (hex).
-func formatInt(spec string, verb byte, arg string) (string, error) {
-	val, err := parseIntArg(arg)
-	switch verb {
-	case 'd', 'i':
-		return fmt.Sprintf("%"+spec+"d", val), err
-	case 'u':
-		return fmt.Sprintf("%"+spec+"d", uint64(val)), err
-	default: // o, x, X
-		return fmt.Sprintf("%"+spec+string(verb), uint64(val)), err
-	}
-}
-
-// formatFloat formats a floating-point argument.
-// R1.3: %f/%F, %e/%E, %g/%G.
-func formatFloat(spec string, verb byte, arg string) (string, error) {
-	val, err := parseFloatArg(arg)
-	goSpec := spec
-	if (verb == 'g' || verb == 'G') && !strings.Contains(spec, ".") {
-		goSpec = spec + ".6"
-	}
-	goVerb := verb
-	if verb == 'F' {
-		goVerb = 'f'
-	}
-	result := fmt.Sprintf("%"+goSpec+string(goVerb), val)
-	if verb == 'F' {
-		result = strings.ToUpper(result)
-	}
-	return result, err
-}
-
-// formatChar formats a character argument.
-// R1.4: %c prints the first character of the argument.
-func formatChar(spec string, arg string) string {
-	var r rune
-	if len(arg) > 0 {
-		r, _ = utf8.DecodeRuneInString(arg)
-	}
-	return fmt.Sprintf("%"+spec+"c", r)
-}
-
-// parseIntArg parses a string as an integer, supporting 0x and 0 prefixes.
-// R3.4: leading quote (single or double) means use numeric value of next char.
-func parseIntArg(s string) (int64, error) {
-	if s == "" {
-		return 0, nil
-	}
-	if v, ok := parseQuotedChar(s); ok {
-		return v, nil
-	}
-	val, err := strconv.ParseInt(s, 0, 64)
-	if err != nil {
-		return 0, fmt.Errorf("'%s': expected a numeric value", s)
-	}
-	return val, nil
-}
-
-// parseFloatArg parses a string as a float64.
-// R3.4: leading quote (single or double) means use numeric value of next char.
-func parseFloatArg(s string) (float64, error) {
-	if s == "" {
-		return 0, nil
-	}
-	if v, ok := parseQuotedChar(s); ok {
-		return float64(v), nil
-	}
-	val, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0, fmt.Errorf("'%s': expected a numeric value", s)
-	}
-	return val, nil
-}
-
-// parseQuotedChar checks if s starts with a single or double quote followed
-// by a character, and returns the numeric value of that character.
-// R3.4: e.g., "'A" -> 65, "\"Z" -> 90.
-func parseQuotedChar(s string) (int64, bool) {
-	if len(s) < 2 {
-		return 0, false
-	}
-	if s[0] != '\'' && s[0] != '"' {
-		return 0, false
-	}
-	r, _ := utf8.DecodeRuneInString(s[1:])
-	return int64(r), true
-}
-
-// processEscape handles a backslash escape in the format string at pos.
-// Writes the decoded value to w. Returns the number of format chars consumed.
-func processEscape(w io.Writer, format string, pos int) int {
-	if pos+1 >= len(format) {
-		writeByte(w, '\\')
-		return 1
-	}
-	c := format[pos+1]
-	if r, ok := simpleEscape(c); ok {
-		writeByte(w, r)
-		return 2
-	}
-	return processExtendedEscape(w, format, pos, c)
-}
-
-// simpleEscape maps single-character escape codes to their byte values.
-func simpleEscape(c byte) (byte, bool) {
-	switch c {
-	case '\\':
-		return '\\', true
-	case 'a':
-		return '\a', true
-	case 'b':
-		return '\b', true
-	case 'f':
-		return '\f', true
-	case 'n':
-		return '\n', true
-	case 'r':
-		return '\r', true
-	case 't':
-		return '\t', true
-	case 'v':
-		return '\v', true
-	default:
-		return 0, false
-	}
-}
-
-// processExtendedEscape handles octal, hex, and unicode escapes in the format.
-func processExtendedEscape(w io.Writer, format string, pos int, c byte) int {
-	switch {
-	case c >= '0' && c <= '7':
-		val, n := parseOctalDigits(format, pos+1, 3)
-		writeByte(w, byte(val))
-		return 1 + n
-	case c == 'x':
-		val, n := parseHexDigits(format, pos+2, 2)
-		if n == 0 {
-			writeByte(w, '\\')
-			return 1
-		}
-		writeByte(w, byte(val))
-		return 2 + n
-	case c == 'u':
-		val, n := parseHexDigits(format, pos+2, 4)
-		if n == 0 {
-			writeByte(w, '\\')
-			return 1
-		}
-		writeRune(w, rune(val))
-		return 2 + n
-	case c == 'U':
-		val, n := parseHexDigits(format, pos+2, 8)
-		if n == 0 {
-			writeByte(w, '\\')
-			return 1
-		}
-		writeRune(w, rune(val))
-		return 2 + n
-	default:
-		writeByte(w, '\\')
-		return 1
-	}
-}
-
-// interpretBEscapes processes backslash escapes in a %b argument string.
-// R1.4: %b interprets escapes like echo -e.
-func interpretBEscapes(s string) string {
-	var buf strings.Builder
-	buf.Grow(len(s))
-	for i := 0; i < len(s); {
-		if s[i] != '\\' || i+1 >= len(s) {
-			buf.WriteByte(s[i])
-			i++
+	for i < len(format) {
+		if format[i] == '\\' {
+			r, advance := parseFormatEscape(format, i)
+			writeRune(r)
+			i += advance
 			continue
 		}
-		n, stop := writeBEscape(&buf, s, i+1)
-		if stop {
-			break
+		if format[i] == '%' {
+			newI, newArgIdx, err := handleDirective(
+				format, i, args, argIdx,
+			)
+			if err {
+				hadError = true
+			}
+			i = newI
+			argIdx = newArgIdx
+			continue
 		}
-		i += 1 + n
+		os.Stdout.Write([]byte{format[i]})
+		i++
 	}
-	return buf.String()
+	return argIdx, hadError
 }
 
-// writeBEscape decodes one escape in a %b argument and writes it to buf.
-// Returns chars consumed after the backslash and whether \c was encountered.
-func writeBEscape(buf *strings.Builder, s string, pos int) (int, bool) {
-	c := s[pos]
-	if c == 'c' {
-		return 0, true
+// parseFormatEscape interprets a backslash escape in the format string.
+// R3.1: \\, \a, \b, \f, \n, \r, \t, \v, \NNN, \xHH, \uHHHH, \UHHHHHHHH.
+// Returns the rune to emit and the number of bytes consumed.
+func parseFormatEscape(s string, pos int) (rune, int) {
+	if pos+1 >= len(s) {
+		return '\\', 1
 	}
-	if r, ok := bSimpleEscape(c); ok {
-		buf.WriteByte(r)
-		return 1, false
-	}
-	return writeBExtendedEscape(buf, s, pos, c)
-}
-
-// bSimpleEscape maps %b single-character escape codes to byte values.
-func bSimpleEscape(c byte) (byte, bool) {
-	switch c {
+	switch s[pos+1] {
 	case '\\':
-		return '\\', true
+		return '\\', 2
 	case 'a':
-		return '\a', true
+		return '\a', 2
 	case 'b':
-		return '\b', true
-	case 'e':
-		return 0x1B, true
+		return '\b', 2
 	case 'f':
-		return '\f', true
+		return '\f', 2
 	case 'n':
-		return '\n', true
+		return '\n', 2
 	case 'r':
-		return '\r', true
+		return '\r', 2
 	case 't':
-		return '\t', true
+		return '\t', 2
 	case 'v':
-		return '\v', true
+		return '\v', 2
+	case '0', '1', '2', '3', '4', '5', '6', '7':
+		return parseOctalEscape(s, pos+1)
+	case 'x':
+		return parseHexEscape(s, pos+2, 2)
+	case 'u':
+		return parseHexEscape(s, pos+2, 4)
+	case 'U':
+		return parseHexEscape(s, pos+2, 8)
 	default:
-		return 0, false
+		return '\\', 1
 	}
 }
 
-// writeBExtendedEscape handles \0NNN and \xHH in %b arguments.
-func writeBExtendedEscape(buf *strings.Builder, s string, pos int, c byte) (int, bool) {
-	switch {
-	case c == '0':
-		val, n := parseOctalDigits(s, pos+1, 3)
-		buf.WriteByte(byte(val))
-		return 1 + n, false
-	case c == 'x':
-		val, n := parseHexDigits(s, pos+1, 2)
-		if n == 0 {
-			buf.WriteByte('\\')
-			return 0, false
-		}
-		buf.WriteByte(byte(val))
-		return 1 + n, false
-	default:
-		buf.WriteByte('\\')
-		return 0, false
-	}
-}
-
-// parseOctalDigits parses up to max octal digits from s starting at start.
-func parseOctalDigits(s string, start, max int) (int, int) {
-	val, count := 0, 0
-	for i := start; i < len(s) && count < max; i++ {
-		if s[i] < '0' || s[i] > '7' {
+// parseOctalEscape reads up to 3 octal digits from s[pos:].
+// Returns the rune and total bytes consumed (including leading backslash).
+func parseOctalEscape(s string, pos int) (rune, int) {
+	val := 0
+	count := 0
+	for i := pos; i < len(s) && count < 3; i++ {
+		d := s[i]
+		if d < '0' || d > '7' {
 			break
 		}
-		val = val*8 + int(s[i]-'0')
+		val = val*8 + int(d-'0')
 		count++
 	}
-	return val, count
+	// +1 for the leading backslash
+	return rune(val & 0xFF), count + 1
 }
 
-// parseHexDigits parses up to max hex digits from s starting at start.
-func parseHexDigits(s string, start, max int) (int, int) {
-	val, count := 0, 0
-	for i := start; i < len(s) && count < max; i++ {
+// parseHexEscape reads up to maxDigits hex digits from s[pos:].
+// Returns the rune and total bytes consumed (including \x/\u/\U prefix).
+func parseHexEscape(s string, pos, maxDigits int) (rune, int) {
+	val := 0
+	count := 0
+	for i := pos; i < len(s) && count < maxDigits; i++ {
 		d := hexDigitVal(s[i])
 		if d < 0 {
 			break
@@ -512,10 +162,14 @@ func parseHexDigits(s string, start, max int) (int, int) {
 		val = val*16 + d
 		count++
 	}
-	return val, count
+	if count == 0 {
+		return '\\', 1
+	}
+	// prefix length: \x=2, \u=2, \U=2
+	return rune(val), count + 2
 }
 
-// hexDigitVal returns the numeric value of a hex digit, or -1 if not hex.
+// hexDigitVal returns the numeric value of a hex digit, or -1.
 func hexDigitVal(c byte) int {
 	switch {
 	case c >= '0' && c <= '9':
@@ -529,12 +183,373 @@ func hexDigitVal(c byte) int {
 	}
 }
 
-func writeByte(w io.Writer, b byte) {
-	_, _ = w.Write([]byte{b}) // stdout write; SIGPIPE handler manages broken pipe
+// handleDirective processes a %-directive at format[pos].
+// R1.2: integer specifiers. R1.3: float specifiers. R1.4: string/char.
+// R2.1: width and precision. R2.2: flags. R2.3: * for width/precision.
+// R2.4: %% literal. R3.3: missing arguments default to 0 or "".
+// Returns updated format index, argument index, and error flag.
+func handleDirective(
+	format string, pos int, args []string, argIdx int,
+) (int, int, bool) {
+	i := pos + 1 // skip '%'
+	if i >= len(format) {
+		os.Stdout.Write([]byte{'%'})
+		return i, argIdx, false
+	}
+	// R2.4: literal percent
+	if format[i] == '%' {
+		os.Stdout.Write([]byte{'%'})
+		return i + 1, argIdx, false
+	}
+	spec, endIdx := parseConvSpec(format, i)
+	return applyConvSpec(spec, format[pos:endIdx], args, argIdx, endIdx)
 }
 
-func writeRune(w io.Writer, r rune) {
+// convSpec holds the parsed components of a conversion specifier.
+type convSpec struct {
+	flags     string
+	width     string
+	widthStar bool
+	prec      string
+	precStar  bool
+	hasPrec   bool
+	verb      byte
+}
+
+// parseConvSpec parses flags, width, precision, and verb from format[pos:].
+// Returns the parsed spec and the index past the verb character.
+func parseConvSpec(format string, pos int) (convSpec, int) {
+	var spec convSpec
+	i := pos
+	// R2.2: parse flags
+	for i < len(format) && isFlag(format[i]) {
+		spec.flags += string(format[i])
+		i++
+	}
+	// R2.1/R2.3: parse width
+	if i < len(format) && format[i] == '*' {
+		spec.widthStar = true
+		i++
+	} else {
+		i = scanDigits(format, i, &spec.width)
+	}
+	// R2.1/R2.3: parse precision
+	if i < len(format) && format[i] == '.' {
+		spec.hasPrec = true
+		i++
+		if i < len(format) && format[i] == '*' {
+			spec.precStar = true
+			i++
+		} else {
+			i = scanDigits(format, i, &spec.prec)
+		}
+	}
+	// verb
+	if i < len(format) {
+		spec.verb = format[i]
+		i++
+	}
+	return spec, i
+}
+
+// isFlag returns true if c is a printf flag character.
+func isFlag(c byte) bool {
+	return c == '-' || c == '+' || c == ' ' || c == '0' || c == '#'
+}
+
+// scanDigits reads decimal digits from format[pos:] into target.
+func scanDigits(format string, pos int, target *string) int {
+	for pos < len(format) && format[pos] >= '0' && format[pos] <= '9' {
+		*target += string(format[pos])
+		pos++
+	}
+	return pos
+}
+
+// applyConvSpec formats one argument per the conversion specifier.
+// Returns updated format index, argument index, and error flag.
+func applyConvSpec(
+	spec convSpec, _ string, args []string, argIdx int, endIdx int,
+) (int, int, bool) {
+	hadError := false
+	// Resolve * width
+	width := 0
+	if spec.widthStar {
+		width, argIdx = consumeIntArg(args, argIdx)
+	}
+	// Resolve * precision
+	prec := 0
+	if spec.precStar {
+		prec, argIdx = consumeIntArg(args, argIdx)
+	}
+	switch spec.verb {
+	case 'd', 'i':
+		argIdx, hadError = fmtInteger(spec, width, prec, args, argIdx, "d")
+	case 'o':
+		argIdx, hadError = fmtInteger(spec, width, prec, args, argIdx, "o")
+	case 'u':
+		argIdx, hadError = fmtUnsigned(spec, width, prec, args, argIdx)
+	case 'x':
+		argIdx, hadError = fmtInteger(spec, width, prec, args, argIdx, "x")
+	case 'X':
+		argIdx, hadError = fmtInteger(spec, width, prec, args, argIdx, "X")
+	case 'f', 'F':
+		argIdx, hadError = fmtFloat(spec, width, prec, args, argIdx, spec.verb)
+	case 'e', 'E':
+		argIdx, hadError = fmtFloat(spec, width, prec, args, argIdx, spec.verb)
+	case 'g', 'G':
+		argIdx, hadError = fmtFloat(spec, width, prec, args, argIdx, spec.verb)
+	case 's':
+		argIdx = fmtString(spec, width, prec, args, argIdx)
+	case 'c':
+		argIdx = fmtChar(args, argIdx)
+	case 'b':
+		argIdx = fmtBackslash(args, argIdx)
+	default:
+		fmt.Fprintf(os.Stderr, "printf: %%%c: invalid conversion specification\n", spec.verb)
+		hadError = true
+	}
+	return endIdx, argIdx, hadError
+}
+
+// consumeIntArg returns the next argument as an int and advances argIdx.
+// R3.3: returns 0 if no arguments remain.
+func consumeIntArg(args []string, argIdx int) (int, int) {
+	if argIdx >= len(args) {
+		return 0, argIdx
+	}
+	val, _ := parseIntegerArg(args[argIdx])
+	return int(val), argIdx + 1
+}
+
+// consumeStringArg returns the next argument as a string.
+// R3.3: returns "" if no arguments remain.
+func consumeStringArg(args []string, argIdx int) (string, int) {
+	if argIdx >= len(args) {
+		return "", argIdx
+	}
+	return args[argIdx], argIdx + 1
+}
+
+// parseIntegerArg parses a string as an integer, handling quote prefix.
+// R3.4: leading ' or " means use the character value.
+func parseIntegerArg(s string) (int64, error) {
+	if len(s) >= 2 && (s[0] == '\'' || s[0] == '"') {
+		r, _ := utf8.DecodeRuneInString(s[1:])
+		return int64(r), nil
+	}
+	// Try base-0 parsing (handles 0x, 0o, 0b prefixes)
+	val, err := strconv.ParseInt(s, 0, 64)
+	if err != nil {
+		return 0, fmt.Errorf("'%s': expected a numeric value", s)
+	}
+	return val, nil
+}
+
+// parseFloatArg parses a string as a float64, handling quote prefix.
+// R3.4: leading ' or " means use the character value.
+func parseFloatArg(s string) (float64, error) {
+	if len(s) >= 2 && (s[0] == '\'' || s[0] == '"') {
+		r, _ := utf8.DecodeRuneInString(s[1:])
+		return float64(r), nil
+	}
+	val, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, fmt.Errorf("'%s': expected a numeric value", s)
+	}
+	return val, nil
+}
+
+// buildFmt reconstructs a Go fmt verb string from the parsed spec.
+func buildFmt(spec convSpec, width, prec int, verb string) string {
+	var b strings.Builder
+	b.WriteByte('%')
+	b.WriteString(spec.flags)
+	if spec.widthStar {
+		b.WriteString(strconv.Itoa(width))
+	} else {
+		b.WriteString(spec.width)
+	}
+	if spec.hasPrec {
+		b.WriteByte('.')
+		if spec.precStar {
+			b.WriteString(strconv.Itoa(prec))
+		} else {
+			b.WriteString(spec.prec)
+		}
+	}
+	b.WriteString(verb)
+	return b.String()
+}
+
+// fmtInteger formats one argument as a signed integer.
+// R1.2: %d, %i, %o, %x, %X.
+// R3.3: missing argument silently defaults to 0.
+func fmtInteger(
+	spec convSpec, width, prec int, args []string, argIdx int, verb string,
+) (int, bool) {
+	s, newIdx := consumeStringArg(args, argIdx)
+	if newIdx == argIdx {
+		fmt.Fprintf(os.Stdout, buildFmt(spec, width, prec, verb), int64(0))
+		return newIdx, false
+	}
+	val, err := parseIntegerArg(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "printf: %s\n", err)
+		fmt.Fprintf(os.Stdout, buildFmt(spec, width, prec, verb), int64(0))
+		return newIdx, true
+	}
+	fmt.Fprintf(os.Stdout, buildFmt(spec, width, prec, verb), val)
+	return newIdx, false
+}
+
+// fmtUnsigned formats one argument as an unsigned decimal integer.
+// R1.2: %u (unsigned decimal).
+// R3.3: missing argument silently defaults to 0.
+func fmtUnsigned(
+	spec convSpec, width, prec int, args []string, argIdx int,
+) (int, bool) {
+	s, newIdx := consumeStringArg(args, argIdx)
+	if newIdx == argIdx {
+		fmt.Fprintf(os.Stdout, buildFmt(spec, width, prec, "d"), uint64(0))
+		return newIdx, false
+	}
+	val, err := parseIntegerArg(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "printf: %s\n", err)
+		fmt.Fprintf(os.Stdout, buildFmt(spec, width, prec, "d"), uint64(0))
+		return newIdx, true
+	}
+	fmt.Fprintf(os.Stdout, buildFmt(spec, width, prec, "d"), uint64(val))
+	return newIdx, false
+}
+
+// fmtFloat formats one argument as a floating-point number.
+// R1.3: %f, %e, %g and uppercase variants.
+// R3.3: missing argument silently defaults to 0.
+// GNU printf defaults to precision 6 for all float verbs; Go's %g/%G
+// default differs, so we force .6 when no precision was specified.
+func fmtFloat(
+	spec convSpec, width, prec int, args []string, argIdx int, verb byte,
+) (int, bool) {
+	// Force default precision 6 to match GNU printf behavior.
+	if !spec.hasPrec && !spec.precStar {
+		spec.hasPrec = true
+		spec.prec = "6"
+	}
+	s, newIdx := consumeStringArg(args, argIdx)
+	if newIdx == argIdx {
+		fmtStr := buildFmt(spec, width, prec, string(verb))
+		fmt.Fprintf(os.Stdout, fmtStr, float64(0))
+		return newIdx, false
+	}
+	val, err := parseFloatArg(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "printf: %s\n", err)
+		fmtStr := buildFmt(spec, width, prec, string(verb))
+		fmt.Fprintf(os.Stdout, fmtStr, float64(0))
+		return newIdx, true
+	}
+	fmtStr := buildFmt(spec, width, prec, string(verb))
+	fmt.Fprintf(os.Stdout, fmtStr, val)
+	return newIdx, false
+}
+
+// fmtString formats one argument as a string.
+// R1.4: %s.
+func fmtString(
+	spec convSpec, width, prec int, args []string, argIdx int,
+) int {
+	s, newIdx := consumeStringArg(args, argIdx)
+	fmtStr := buildFmt(spec, width, prec, "s")
+	fmt.Fprintf(os.Stdout, fmtStr, s)
+	return newIdx
+}
+
+// fmtChar outputs the first character of the argument.
+// R1.4: %c.
+func fmtChar(args []string, argIdx int) int {
+	s, newIdx := consumeStringArg(args, argIdx)
+	if len(s) > 0 {
+		r, _ := utf8.DecodeRuneInString(s)
+		writeRune(r)
+	}
+	return newIdx
+}
+
+// fmtBackslash interprets backslash escapes in the argument string.
+// R1.4: %b interprets escapes like echo -e.
+func fmtBackslash(args []string, argIdx int) int {
+	s, newIdx := consumeStringArg(args, argIdx)
+	i := 0
+	for i < len(s) {
+		if s[i] == '\\' {
+			r, advance := parseBEscape(s, i)
+			if r == -1 {
+				// \c: stop all output
+				return newIdx
+			}
+			writeRune(r)
+			i += advance
+			continue
+		}
+		os.Stdout.Write([]byte{s[i]})
+		i++
+	}
+	return newIdx
+}
+
+// parseBEscape parses echo-style escapes for %b.
+// Returns -1 to signal \c (stop all output).
+func parseBEscape(s string, pos int) (rune, int) {
+	if pos+1 >= len(s) {
+		return '\\', 1
+	}
+	switch s[pos+1] {
+	case '\\':
+		return '\\', 2
+	case 'a':
+		return '\a', 2
+	case 'b':
+		return '\b', 2
+	case 'c':
+		return -1, 2
+	case 'f':
+		return '\f', 2
+	case 'n':
+		return '\n', 2
+	case 'r':
+		return '\r', 2
+	case 't':
+		return '\t', 2
+	case 'v':
+		return '\v', 2
+	case '0':
+		return parseBOctal(s, pos+2)
+	default:
+		return '\\', 1
+	}
+}
+
+// parseBOctal reads up to 3 octal digits for %b \0NNN escapes.
+func parseBOctal(s string, pos int) (rune, int) {
+	val := 0
+	count := 0
+	for i := pos; i < len(s) && count < 3; i++ {
+		d := s[i]
+		if d < '0' || d > '7' {
+			break
+		}
+		val = val*8 + int(d-'0')
+		count++
+	}
+	// +2 for the \0 prefix
+	return rune(val & 0xFF), count + 2
+}
+
+// writeRune writes a single rune to stdout.
+func writeRune(r rune) {
 	var buf [4]byte
 	n := utf8.EncodeRune(buf[:], r)
-	_, _ = w.Write(buf[:n]) // stdout write; SIGPIPE handler manages broken pipe
+	os.Stdout.Write(buf[:n])
 }

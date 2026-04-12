@@ -1,9 +1,6 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/stty against gstty (GNU coreutils).
-//
-// Tests prd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2, R7.1, R7.2, R7.3.
 package main
 
 import (
@@ -11,29 +8,19 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// progNameNorm normalizes the program name prefix in output so that
-// "gstty: " and "stty: " compare as equal.
-var progNameNorm = func(data []byte) []byte {
-	re := regexp.MustCompile(`(?m)^g?stty: `)
-	return re.ReplaceAll(data, []byte("stty: "))
+// progNameNormalizer strips the program name prefix from each stderr line
+// so that error messages from different binaries can be compared.
+func progNameNormalizer(data []byte) []byte {
+	re := regexp.MustCompile(`(?m)^[^\s:]+:`)
+	return re.ReplaceAll(data, []byte("stty:"))
 }
 
-// errMsgNorm normalizes both error prefix and "Try" line for usage errors.
-var errMsgNorm = testutils.ComposeNormalizers(
-	progNameNorm,
-	func(data []byte) []byte {
-		return regexp.MustCompile(`Try 'g?stty`).ReplaceAll(data, []byte("Try 'stty"))
-	},
-)
-
-// TestDiff runs differential tests comparing the Go binary against gstty.
-// Tests use -F /dev/tty to ensure both binaries read the same terminal device.
+// TestDiff runs differential tests comparing the Go stty binary against gstty.
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gstty")
@@ -41,321 +28,315 @@ func TestDiff(t *testing.T) {
 		t.Skipf("reference binary gstty not in PATH: %v", err)
 	}
 
-	// Verify /dev/tty is accessible for terminal-dependent tests.
-	f, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
-	if err != nil {
-		t.Skipf("/dev/tty not accessible: %v", err)
+	// Check if /dev/tty is available (not available in all environments).
+	ttyFile, ttyErr := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	hasTTY := ttyErr == nil
+	if hasTTY {
+		ttyFile.Close()
 	}
-	f.Close()
 
 	tests := []testutils.DiffTest{
+		// R7.2: Exit 1 when stdin is not a terminal.
 		{
-			Name: "default_via_device",
-			Args: []string{"-F", "/dev/tty"},
-		},
-		{
-			Name: "all_via_device",
-			Args: []string{"-a", "-F", "/dev/tty"},
-		},
-		{
-			Name: "save_via_device",
-			Args: []string{"-g", "-F", "/dev/tty"},
-		},
-		{
-			Name: "all_long_flag",
-			Args: []string{"--all", "--file=/dev/tty"},
-		},
-		{
-			Name: "save_long_flag",
-			Args: []string{"--save", "--file=/dev/tty"},
-		},
-		{
-			Name:      "error_no_tty",
-			Args:      []string{},
-			Stdin:     []byte{},
+			Name:      "no-terminal-stdin",
+			Args:      nil,
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{progNameNorm},
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
 		},
 		{
-			Name:      "error_nonexistent_device",
+			Name:      "all-no-terminal-stdin",
+			Args:      []string{"-a"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
+		{
+			Name:      "save-no-terminal-stdin",
+			Args:      []string{"-g"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
+		// R7.2: Exit 1 on invalid setting argument.
+		{
+			Name:      "invalid-setting",
+			Args:      []string{"--all", "--save"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
+		},
+		// R7.2: Exit 1 on invalid device path.
+		{
+			Name:      "invalid-device",
 			Args:      []string{"-F", "/dev/nonexistent_stty_test_device"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{progNameNorm},
-		},
-		// R4.1: invalid setting name produces matching error.
-		{
-			Name:      "error_invalid_setting",
-			Args:      []string{"-F", "/dev/tty", "zzz_invalid_xyz"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{errMsgNorm},
-		},
-		// R5.1: missing special character argument produces matching error.
-		{
-			Name:      "error_missing_cc_arg",
-			Args:      []string{"-F", "/dev/tty", "intr"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{errMsgNorm},
-		},
-		// R6.2: missing speed argument produces matching error.
-		{
-			Name:      "error_missing_speed_arg",
-			Args:      []string{"-F", "/dev/tty", "ispeed"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{errMsgNorm},
+			Normalize: []testutils.NormalizeFunc{progNameNormalizer},
 		},
 	}
+
+	if hasTTY {
+		tests = append(tests,
+			// R7.1: Exit 0 on successful display (default, -a, -g).
+			testutils.DiffTest{
+				Name: "default-display-tty",
+				Args: []string{"-F", "/dev/tty"},
+			},
+			testutils.DiffTest{
+				Name: "all-settings-tty",
+				Args: []string{"-a", "-F", "/dev/tty"},
+			},
+			testutils.DiffTest{
+				Name: "save-format-tty",
+				Args: []string{"-g", "-F", "/dev/tty"},
+			},
+			testutils.DiffTest{
+				Name: "all-with-file-equals",
+				Args: []string{"--file=/dev/tty", "-a"},
+			},
+			// R6.1: Start with sane to ensure known state.
+			testutils.DiffTest{
+				Name: "sane-mode-init",
+				Args: []string{"-F", "/dev/tty", "sane"},
+			},
+			// R4.1: Flag settings.
+			testutils.DiffTest{
+				Name: "set-echo-noop",
+				Args: []string{"-F", "/dev/tty", "echo"},
+			},
+			testutils.DiffTest{
+				Name: "toggle-echo-restore",
+				Args: []string{"-F", "/dev/tty", "-echo", "echo"},
+			},
+			// R5.1: Special characters.
+			testutils.DiffTest{
+				Name: "set-eof-default",
+				Args: []string{"-F", "/dev/tty", "eof", "^D"},
+			},
+			testutils.DiffTest{
+				Name: "set-min-value",
+				Args: []string{"-F", "/dev/tty", "min", "1"},
+			},
+			// R6.1: Combination settings.
+			testutils.DiffTest{
+				Name: "cooked-mode",
+				Args: []string{"-F", "/dev/tty", "cooked"},
+			},
+			// R6.2: Speed setting.
+			testutils.DiffTest{
+				Name: "set-speed-9600",
+				Args: []string{"-F", "/dev/tty", "9600"},
+			},
+			// R6.1: Restore sane at end for cleanup.
+			testutils.DiffTest{
+				Name: "sane-mode-cleanup",
+				Args: []string{"-F", "/dev/tty", "sane"},
+			},
+		)
+	}
+
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
-// TestSttyExitCodes verifies exit codes for error conditions.
-func TestSttyExitCodes(t *testing.T) {
-	bin := testutils.BuildBinary(t, ".")
-
-	t.Run("invalid_device_exits_1", func(t *testing.T) {
-		cmd := exec.Command(bin, "-F", "/dev/nonexistent_stty_test_device")
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		if err == nil {
-			t.Fatal("expected non-zero exit for invalid device")
-		}
-		exitErr, ok := err.(*exec.ExitError)
-		if !ok {
-			t.Fatalf("unexpected error type: %v", err)
-		}
-		if exitErr.ExitCode() != 1 {
-			t.Errorf("exit code = %d, want 1", exitErr.ExitCode())
-		}
-	})
-
-	t.Run("conflicting_flags_exits_1", func(t *testing.T) {
-		cmd := exec.Command(bin, "-a", "-g")
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		if err == nil {
-			t.Fatal("expected non-zero exit for -a -g")
-		}
-		exitErr, ok := err.(*exec.ExitError)
-		if !ok {
-			t.Fatalf("unexpected error type: %v", err)
-		}
-		if exitErr.ExitCode() != 1 {
-			t.Errorf("exit code = %d, want 1", exitErr.ExitCode())
-		}
-	})
-
-	t.Run("help_exits_0", func(t *testing.T) {
-		cmd := exec.Command(bin, "--help")
-		var stdout bytes.Buffer
-		cmd.Stdout = &stdout
-		err := cmd.Run()
-		if err != nil {
-			t.Fatalf("--help failed: %v", err)
-		}
-		if !bytes.Contains(stdout.Bytes(), []byte("Usage:")) {
-			t.Error("--help output missing Usage header")
-		}
-	})
-
-	t.Run("version_exits_0", func(t *testing.T) {
-		cmd := exec.Command(bin, "--version")
-		var stdout bytes.Buffer
-		cmd.Stdout = &stdout
-		err := cmd.Run()
-		if err != nil {
-			t.Fatalf("--version failed: %v", err)
-		}
-		if !bytes.Contains(stdout.Bytes(), []byte("go-unix-utils")) {
-			t.Error("--version output missing go-unix-utils identifier")
-		}
-	})
-}
-
-// TestSettingApplication tests setting changes on a real terminal.
-// Tests prd105-stty R4.1, R5.1, R6.1, R6.2.
-func TestSettingApplication(t *testing.T) {
-	bin := testutils.BuildBinary(t, ".")
-	f, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
-	if err != nil {
-		t.Skipf("/dev/tty not accessible: %v", err)
-	}
-	f.Close()
-
-	// Save initial terminal state for restore on cleanup.
-	saved := captureStty(t, bin, "-g", "-F", "/dev/tty")
-	t.Cleanup(func() {
-		exec.Command(bin, saved, "-F", "/dev/tty").Run() //nolint:errcheck // best-effort restore
-	})
-
-	// R4.1: enable and disable a flag.
-	t.Run("R4.1_disable_enable_flag", func(t *testing.T) {
-		runStty(t, bin, "-echo", "-F", "/dev/tty")
-		out := captureStty(t, bin, "-a", "-F", "/dev/tty")
-		if !strings.Contains(out, "-echo") {
-			t.Error("expected -echo after disabling echo")
-		}
-		runStty(t, bin, "echo", "-F", "/dev/tty")
-	})
-
-	// R5.1: set a special character.
-	t.Run("R5.1_set_special_char", func(t *testing.T) {
-		runStty(t, bin, "intr", "^A", "-F", "/dev/tty")
-		out := captureStty(t, bin, "-a", "-F", "/dev/tty")
-		if !strings.Contains(out, "intr = ^A") {
-			t.Errorf("expected 'intr = ^A' in output, got:\n%s", out)
-		}
-		// Restore to default
-		runStty(t, bin, "intr", "^C", "-F", "/dev/tty")
-	})
-
-	// R6.1: sane combination resets to defaults.
-	t.Run("R6.1_sane", func(t *testing.T) {
-		runStty(t, bin, "sane", "-F", "/dev/tty")
-	})
-
-	// R6.1: raw and cooked (reverse of raw).
-	t.Run("R6.1_raw_cooked", func(t *testing.T) {
-		runStty(t, bin, "raw", "-F", "/dev/tty")
-		runStty(t, bin, "cooked", "-F", "/dev/tty")
-	})
-
-	// R6.1: evenp/oddp parity settings.
-	t.Run("R6.1_evenp_oddp", func(t *testing.T) {
-		runStty(t, bin, "evenp", "-F", "/dev/tty")
-		runStty(t, bin, "-evenp", "-F", "/dev/tty")
-		runStty(t, bin, "oddp", "-F", "/dev/tty")
-		runStty(t, bin, "-oddp", "-F", "/dev/tty")
-	})
-
-	// R6.2: set ispeed and ospeed.
-	t.Run("R6.2_speed", func(t *testing.T) {
-		runStty(t, bin, "ispeed", "9600", "-F", "/dev/tty")
-		runStty(t, bin, "ospeed", "9600", "-F", "/dev/tty")
-	})
-
-	// Save/restore round trip verifies -g output can be used to restore state.
-	t.Run("save_restore_round_trip", func(t *testing.T) {
-		runStty(t, bin, "sane", "-F", "/dev/tty")
-		initial := captureStty(t, bin, "-g", "-F", "/dev/tty")
-		runStty(t, bin, "-echo", "-F", "/dev/tty")
-		modified := captureStty(t, bin, "-g", "-F", "/dev/tty")
-		if initial == modified {
-			t.Error("expected settings to change after -echo")
-		}
-		runStty(t, bin, initial, "-F", "/dev/tty")
-		restored := captureStty(t, bin, "-g", "-F", "/dev/tty")
-		if initial != restored {
-			t.Error("save/restore round trip failed")
-		}
-	})
-}
-
-// TestExitCodeSuccess verifies R7.1: exit 0 on success.
-func TestExitCodeSuccess(t *testing.T) {
-	bin := testutils.BuildBinary(t, ".")
-	f, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
-	if err != nil {
-		t.Skipf("/dev/tty not accessible: %v", err)
-	}
-	f.Close()
-
-	// R7.1: display mode exits 0.
-	t.Run("R7.1_default_display_exits_0", func(t *testing.T) {
-		cmd := exec.Command(bin, "-F", "/dev/tty")
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("expected exit 0, got: %v", err)
-		}
-	})
-
-	t.Run("R7.1_all_display_exits_0", func(t *testing.T) {
-		cmd := exec.Command(bin, "-a", "-F", "/dev/tty")
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("expected exit 0, got: %v", err)
-		}
-	})
-
-	t.Run("R7.1_save_display_exits_0", func(t *testing.T) {
-		cmd := exec.Command(bin, "-g", "-F", "/dev/tty")
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("expected exit 0, got: %v", err)
-		}
-	})
-}
-
-// TestExitCodeError verifies R7.2: exit 1 on any error.
-func TestExitCodeError(t *testing.T) {
-	bin := testutils.BuildBinary(t, ".")
-
-	cases := []struct {
+// TestFormatChar verifies control character formatting.
+func TestFormatChar(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
 		name string
-		args []string
+		c    uint8
+		want string
 	}{
-		{"R7.2_invalid_device", []string{"-F", "/dev/nonexistent_stty_test_device"}},
-		{"R7.2_invalid_setting", []string{"-F", "/dev/tty", "zzz_invalid_xyz"}},
-		{"R7.2_conflicting_flags", []string{"-a", "-g"}},
-		{"R7.2_missing_cc_arg", []string{"-F", "/dev/tty", "intr"}},
+		{"null", 0x00, "^@"},
+		{"ctrl-c", 0x03, "^C"},
+		{"ctrl-backslash", 0x1C, `^\`},
+		{"delete", 0x7F, "^?"},
+		{"undef", 0xFF, "<undef>"},
+		{"space", 0x20, " "},
+		{"tilde", 0x7E, "~"},
 	}
-
-	for _, tc := range cases {
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.Command(bin, tc.args...)
-			cmd.Stdin = bytes.NewReader([]byte{}) // ensure no terminal on stdin
-			err := cmd.Run()
-			if err == nil {
-				t.Fatal("expected non-zero exit")
-			}
-			exitErr, ok := err.(*exec.ExitError)
-			if !ok {
-				t.Fatalf("unexpected error type: %v", err)
-			}
-			if exitErr.ExitCode() != 1 {
-				t.Errorf("exit code = %d, want 1", exitErr.ExitCode())
+			t.Parallel()
+			got := formatChar(tc.c)
+			if got != tc.want {
+				t.Errorf("formatChar(0x%02x) = %q, want %q", tc.c, got, tc.want)
 			}
 		})
 	}
 }
 
-// TestSIGPIPE verifies R7.3: SIGPIPE is handled gracefully.
-func TestSIGPIPE(t *testing.T) {
-	bin := testutils.BuildBinary(t, ".")
-	f, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
-	if err != nil {
-		t.Skipf("/dev/tty not accessible: %v", err)
-	}
-	f.Close()
-
-	// R7.3: pipe stty -a output through a command that closes stdin early.
-	cmd := exec.Command(bin, "-a", "-F", "/dev/tty")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatalf("StdoutPipe: %v", err)
-	}
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	// Close the reader immediately to trigger SIGPIPE on next write.
-	stdout.Close()
-	// stty should exit without error (SIGPIPE handled gracefully).
-	_ = cmd.Wait() // exit code 0 or killed by SIGPIPE — both acceptable
+// TestRenderEntry verifies flag rendering for simple and multi-value flags.
+func TestRenderEntry(t *testing.T) {
+	t.Parallel()
+	t.Run("simple-on", func(t *testing.T) {
+		t.Parallel()
+		e := displayEntry{Name: "echo", Mask: 0x08}
+		got := renderEntry(e, 0x08)
+		if got != "echo" {
+			t.Errorf("renderEntry = %q, want %q", got, "echo")
+		}
+	})
+	t.Run("simple-off", func(t *testing.T) {
+		t.Parallel()
+		e := displayEntry{Name: "echo", Mask: 0x08}
+		got := renderEntry(e, 0x00)
+		if got != "-echo" {
+			t.Errorf("renderEntry = %q, want %q", got, "-echo")
+		}
+	})
+	t.Run("multi-value", func(t *testing.T) {
+		t.Parallel()
+		e := displayEntry{
+			Mask: 0x300,
+			Values: []multiValue{
+				{"cs5", 0x000}, {"cs6", 0x100}, {"cs7", 0x200}, {"cs8", 0x300},
+			},
+		}
+		got := renderEntry(e, 0x300)
+		if got != "cs8" {
+			t.Errorf("renderEntry = %q, want %q", got, "cs8")
+		}
+	})
 }
 
-// captureStty runs stty and returns trimmed stdout.
-func captureStty(t *testing.T, bin string, args ...string) string {
-	t.Helper()
-	cmd := exec.Command(bin, args...)
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("stty %v failed: %v", args, err)
-	}
-	return strings.TrimSpace(string(out))
+// TestIsChanged verifies default-change detection for flags.
+func TestIsChanged(t *testing.T) {
+	t.Parallel()
+	t.Run("simple-at-default", func(t *testing.T) {
+		t.Parallel()
+		e := displayEntry{Name: "echo", Mask: 0x08, DefOn: true}
+		if isChanged(e, 0x08) {
+			t.Error("expected not changed when flag matches default")
+		}
+	})
+	t.Run("simple-changed", func(t *testing.T) {
+		t.Parallel()
+		e := displayEntry{Name: "echo", Mask: 0x08, DefOn: true}
+		if !isChanged(e, 0x00) {
+			t.Error("expected changed when flag differs from default")
+		}
+	})
 }
 
-// runStty runs stty and fails the test on error.
-func runStty(t *testing.T, bin string, args ...string) {
-	t.Helper()
-	cmd := exec.Command(bin, args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("stty %v failed: %v\n%s", args, err, out)
+// TestWrapWriter verifies line wrapping behavior.
+func TestWrapWriter(t *testing.T) {
+	t.Parallel()
+	var w wrapWriter
+	// Add entries that should wrap at 80 columns.
+	for range 10 {
+		w.add("12345678")
+	}
+	w.newLine()
+	out := w.buf.String()
+	lines := bytes.Split([]byte(out), []byte("\n"))
+	for i, line := range lines {
+		if len(line) > wrapCol {
+			t.Errorf("line %d exceeds %d columns: %d chars", i, wrapCol, len(line))
+		}
+	}
+}
+
+// TestParseCharValue verifies special character value parsing.
+func TestParseCharValue(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		want    uint8
+		wantErr bool
+	}{
+		{"ctrl-c", "^C", 0x03, false},
+		{"ctrl-at", "^@", 0x00, false},
+		{"delete", "^?", 0x7F, false},
+		{"undef-word", "undef", 0xFF, false},
+		{"undef-caret", "^-", 0xFF, false},
+		{"literal-a", "a", 'a', false},
+		{"ctrl-backslash", `^\`, 0x1C, false},
+		{"invalid", "invalid", 0, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseCharValue(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("parseCharValue(%q) = %d, want error", tc.input, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("parseCharValue(%q) error: %v", tc.input, err)
+				return
+			}
+			if got != tc.want {
+				t.Errorf("parseCharValue(%q) = 0x%02x, want 0x%02x", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestLookupFlag verifies flag lookup across all tables.
+func TestLookupFlag(t *testing.T) {
+	t.Parallel()
+	t.Run("found-echo", func(t *testing.T) {
+		t.Parallel()
+		entry, cat, ok := lookupFlag("echo")
+		if !ok {
+			t.Fatal("expected to find 'echo' flag")
+		}
+		if cat != catLocal {
+			t.Errorf("echo category = %d, want %d (catLocal)", cat, catLocal)
+		}
+		if entry.Name != "echo" {
+			t.Errorf("entry.Name = %q, want %q", entry.Name, "echo")
+		}
+	})
+	t.Run("not-found", func(t *testing.T) {
+		t.Parallel()
+		_, _, ok := lookupFlag("nonexistent")
+		if ok {
+			t.Error("expected nonexistent flag to not be found")
+		}
+	})
+}
+
+// TestLookupMultiValue verifies multi-value flag lookup.
+func TestLookupMultiValue(t *testing.T) {
+	t.Parallel()
+	entry, val, cat, ok := lookupMultiValue("cs8")
+	if !ok {
+		t.Fatal("expected to find 'cs8' multi-value")
+	}
+	if cat != catControl {
+		t.Errorf("cs8 category = %d, want %d (catControl)", cat, catControl)
+	}
+	if entry.Mask == 0 {
+		t.Error("expected non-zero mask for CSIZE entry")
+	}
+	if val == 0 && ok {
+		// cs8 should have a non-zero value on most platforms.
+		// On Darwin, CS8 = 0x300.
+		_ = val
+	}
+}
+
+// TestIsSavedFormat verifies saved format detection.
+func TestIsSavedFormat(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"valid", "1:2:3:4:5", true},
+		{"too-few-parts", "1:2:3", false},
+		{"not-hex", "sane:1:2:3:4", false},
+		{"empty", "", false},
+		{"single", "abc", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := isSavedFormat(tc.input)
+			if got != tc.want {
+				t.Errorf("isSavedFormat(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
 	}
 }

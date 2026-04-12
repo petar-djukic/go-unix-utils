@@ -1,41 +1,52 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Process priority management for pkg/sys.
+// Implements srd002-sys architecture capability: process priority (setpriority)
+// for nice and renice utility support.
 package sys
 
-import "syscall"
+import (
+	"fmt"
 
-// SetPriority sets the scheduling priority for the specified process.
-// which is one of syscall.PRIO_PROCESS, PRIO_PGRP, or PRIO_USER.
-// who identifies the target (pid, pgid, or uid; 0 means the caller).
-// prio is the new priority value (typically -20 to 19).
-//
-// R2.6 (prd002): wraps syscall.Setpriority for use by nice and renice commands.
-func SetPriority(which, who, prio int) error {
-	return syscall.Setpriority(which, who, prio)
+	"golang.org/x/sys/unix"
+)
+
+// Priority "which" constants matching POSIX PRIO_PROCESS, PRIO_PGRP, PRIO_USER.
+const (
+	PrioProcess = unix.PRIO_PROCESS
+	PrioPgrp    = unix.PRIO_PGRP
+	PrioUser    = unix.PRIO_USER
+)
+
+// Getpriority returns the scheduling priority for the target identified by
+// which (PrioProcess, PrioPgrp, or PrioUser) and who (PID, PGID, or UID;
+// 0 means the calling process/group/user). Wraps unix.Getpriority.
+// Required by cmd/nice to read the current priority before adjustment.
+func Getpriority(which, who int) (int, error) {
+	prio, err := unix.Getpriority(which, who)
+	if err != nil {
+		return 0, fmt.Errorf("getpriority(%d, %d): %w", which, who, err)
+	}
+	// unix.Getpriority returns 20 - actual_priority on Linux to avoid
+	// ambiguity with -1 error return. The unix package handles this
+	// internally and returns the actual priority value.
+	return prio, nil
 }
 
-// GetPriority returns the scheduling priority for the specified process.
-// which and who have the same meaning as in SetPriority.
-//
-// R3.1 (prd002): wraps syscall.Getpriority for reading current process priority.
-func GetPriority(which, who int) (int, error) {
-	return syscall.Getpriority(which, who)
+// Setpriority sets the scheduling priority for the target identified by
+// which (PrioProcess, PrioPgrp, or PrioUser) and who (PID, PGID, or UID;
+// 0 means the calling process/group/user). prio is the new priority value
+// (typically -20 to 19). Wraps unix.Setpriority.
+// Required by cmd/nice and cmd/renice to adjust process priority.
+func Setpriority(which, who, prio int) error {
+	if err := unix.Setpriority(which, who, prio); err != nil {
+		return fmt.Errorf("setpriority(%d, %d, %d): %w", which, who, prio, err)
+	}
+	return nil
 }
 
-// Setpgid sets the process group ID of the process specified by pid.
-// If pid is 0, the caller's process group is set. If pgid is 0, the
-// process ID of the specified process is used as the process group ID.
-//
-// R3.2 (prd002): wraps syscall.Setpgid for use by timeout and xargs -P.
-func Setpgid(pid, pgid int) error {
-	return syscall.Setpgid(pid, pgid)
-}
-
-// Killpg sends a signal to all processes in the specified process group.
-// It calls syscall.Kill with a negated pgid per POSIX convention.
-//
-// R3.3 (prd002): wraps syscall.Kill(-pgid, sig) to signal an entire process group.
-func Killpg(pgid int, sig syscall.Signal) error {
-	return syscall.Kill(-pgid, sig)
-}
+// TODO: Process group management (Setpgid, Killpg, Getpgid) requested by task R1
+// but listed in srd002-sys non_goals: "pkg/sys does not provide process-group or
+// terminal control (TIOCGPGRP, tcsetpgrp); those are deferred to the xargs SRD."
+// Per constitution E6, skipping implementation. See srd002-sys non_goals.

@@ -1,9 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/env implements GNU env: run a command in a modified environment.
-//
-// Implements prd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
+// Package main implements cmd/env: run a command in a modified environment.
+// Implements srd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R3.1.
 package main
 
 import (
@@ -17,161 +16,257 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const programName = "env"
+const progName = "env"
+
+const versionText = progName + " (go-unix-utils)"
+
+const helpText = `Usage: env [OPTION]... [-] [NAME=VALUE]... [COMMAND [ARG]...]
+Set each NAME to VALUE in the environment and run COMMAND.
+
+  -i, --ignore-environment  start with an empty environment
+  -0, --null                end each output line with NUL, not newline
+  -u, --unset=NAME          remove variable from the environment
+      --help                display this help and exit
+      --version             output version information and exit
+
+A mere - implies -i.  If no COMMAND, print the resulting environment.
+`
+
+// exitCodeNotFound is returned when COMMAND is not found. R1.3.
+const exitCodeNotFound = 127
+
+// exitCodeNotExecutable is returned when COMMAND cannot be executed. R1.3.
+const exitCodeNotExecutable = 126
+
+// exitCodeInvalidOption is returned for invalid options. R3.3.
+const exitCodeInvalidOption = 125
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+
+	code := run(os.Args[1:])
+	os.Exit(code)
 }
 
-// envConfig holds parsed arguments for env.
-type envConfig struct {
-	ignoreEnv bool
-	nullDelim bool
-	unsetVars []string
-	setVars   []string
-	command   string
-	cmdArgs   []string
+// envOptions holds parsed flag state for env.
+type envOptions struct {
+	ignoreEnv  bool
+	nullTerm   bool
+	unsetNames []string
+	pairs      []string
+	cmdArgs    []string
 }
 
-// run parses arguments and either prints the environment or executes a command.
-func run(args []string, stdout, stderr *os.File) int {
-	cfg, err := parseArgs(args)
+// run parses arguments, modifies the environment, and either prints it or
+// executes the command. Returns the exit code.
+func run(args []string) int {
+	opts, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err) //nolint:errcheck
-		return 125
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		return exitCodeInvalidOption
 	}
-	env := buildEnv(cfg)
-	if cfg.command == "" {
-		return printEnv(env, cfg.nullDelim, stdout)
+
+	env := buildEnv(opts)
+
+	if len(opts.cmdArgs) == 0 {
+		return printEnv(env, opts.nullTerm)
 	}
-	return execCommand(cfg.command, cfg.cmdArgs, env, stderr)
+	return executeCommand(opts.cmdArgs, env)
 }
 
-// parseArgs processes flags, NAME=VALUE pairs, and the optional command.
-func parseArgs(args []string) (envConfig, error) {
-	var cfg envConfig
-	i, err := parseFlags(args, &cfg)
-	if err != nil {
-		return envConfig{}, err
-	}
-	i = collectVars(args, i, &cfg)
-	if i < len(args) {
-		cfg.command = args[i]
-		cfg.cmdArgs = args[i+1:]
-	}
-	return cfg, nil
-}
-
-// parseFlags processes option flags and returns the index of the first non-flag.
-// R2.1: -i / --ignore-environment sets ignoreEnv.
-// R2.2: -u NAME / --unset=NAME removes a variable.
-// R3.1: -0 / --null enables NUL-delimited output.
-func parseFlags(args []string, cfg *envConfig) (int, error) {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-i" || arg == "--ignore-environment":
-			cfg.ignoreEnv = true
-		case arg == "-0" || arg == "--null":
-			cfg.nullDelim = true
-		case arg == "-u":
-			i++
-			if i >= len(args) {
-				return 0, fmt.Errorf("option requires an argument -- 'u'")
-			}
-			cfg.unsetVars = append(cfg.unsetVars, args[i])
-		case strings.HasPrefix(arg, "--unset="):
-			cfg.unsetVars = append(cfg.unsetVars, arg[len("--unset="):])
-		case arg == "--":
-			return i + 1, nil
-		default:
-			if len(arg) > 0 && arg[0] == '-' {
-				return 0, fmt.Errorf("unrecognized option '%s'", arg)
-			}
-			return i, nil
-		}
-	}
-	return len(args), nil
-}
-
-// collectVars gathers NAME=VALUE pairs starting at index i.
-// R2.3: the first argument without '=' marks the start of COMMAND.
-func collectVars(args []string, i int, cfg *envConfig) int {
-	for i < len(args) {
-		if !strings.Contains(args[i], "=") {
-			break
-		}
-		cfg.setVars = append(cfg.setVars, args[i])
-		i++
-	}
-	return i
-}
-
-// buildEnv constructs the environment for command execution or printing.
-// R2.1: when ignoreEnv is true, starts with an empty environment.
-// R2.2: removes variables listed in unsetVars.
-func buildEnv(cfg envConfig) []string {
+// buildEnv constructs the environment slice.
+// R2.1: when ignoreEnv is true, start from empty; otherwise inherit.
+// R2.2: unset names are removed before NAME=VALUE pairs are applied.
+func buildEnv(opts envOptions) []string {
 	var env []string
-	if !cfg.ignoreEnv {
+	if !opts.ignoreEnv {
 		env = os.Environ()
 	}
-	env = removeVars(env, cfg.unsetVars)
-	return append(env, cfg.setVars...)
+	env = applyUnsets(env, opts.unsetNames)
+	return applyPairs(env, opts.pairs)
 }
 
-// removeVars filters out environment entries matching the given names.
-func removeVars(env, names []string) []string {
-	if len(names) == 0 {
-		return env
+// applyUnsets removes named variables from the environment. R2.2.
+func applyUnsets(env []string, names []string) []string {
+	for _, name := range names {
+		env = removeEnvVar(env, name)
 	}
-	unset := make(map[string]bool, len(names))
-	for _, n := range names {
-		unset[n] = true
-	}
-	result := env[:0]
+	return env
+}
+
+// removeEnvVar removes a variable by name from the environment slice.
+func removeEnvVar(env []string, name string) []string {
+	prefix := name + "="
+	n := 0
 	for _, e := range env {
-		k, _, _ := strings.Cut(e, "=")
-		if !unset[k] {
-			result = append(result, e)
+		if !strings.HasPrefix(e, prefix) {
+			env[n] = e
+			n++
 		}
 	}
-	return result
+	return env[:n]
 }
 
-// printEnv writes each environment variable to stdout.
-// R1.1: NAME=VALUE format, one per line, exit 0.
-// R3.1: when nullDelim is true, terminates with NUL instead of newline.
-func printEnv(env []string, nullDelim bool, stdout *os.File) int {
-	delim := "\n"
-	if nullDelim {
-		delim = "\x00"
+// applyPairs sets or overrides NAME=VALUE entries in the environment.
+func applyPairs(env []string, pairs []string) []string {
+	for _, pair := range pairs {
+		name := pair[:strings.Index(pair, "=")]
+		env = setEnvVar(env, name, pair)
+	}
+	return env
+}
+
+// setEnvVar replaces an existing variable or appends a new one.
+func setEnvVar(env []string, name, pair string) []string {
+	prefix := name + "="
+	for i, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			env[i] = pair
+			return env
+		}
+	}
+	return append(env, pair)
+}
+
+// printEnv writes each environment variable to stdout. R1.1, R3.1.
+func printEnv(env []string, nullTerm bool) int {
+	sep := "\n"
+	if nullTerm {
+		sep = "\x00"
 	}
 	for _, e := range env {
-		fmt.Fprint(stdout, e+delim) //nolint:errcheck // best-effort
+		fmt.Print(e + sep)
 	}
 	return 0
 }
 
-// execCommand replaces the current process with the named command.
-// R1.2: execute COMMAND with the resulting environment.
+// executeCommand runs the specified command with the given environment.
+// R1.2: execute COMMAND with modified environment.
 // R1.3: exit 127 if not found, 126 if not executable.
-// R3.2: exit code passthrough is automatic via syscall.Exec.
-func execCommand(name string, args, env []string, stderr *os.File) int {
-	path, err := exec.LookPath(name)
-	if err != nil {
-		return handleExecError(name, err, stderr)
+func executeCommand(cmdArgs []string, env []string) int {
+	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
+	cmd.Env = env
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	if err == nil {
+		return 0
 	}
-	execErr := syscall.Exec(path, append([]string{name}, args...), env)
-	return handleExecError(name, execErr, stderr)
+	return extractExitCode(err, cmdArgs[0])
 }
 
-// handleExecError prints an error and returns the appropriate exit code.
-// R1.3: 126 for permission denied, 127 for not found.
-func handleExecError(name string, err error, stderr *os.File) int {
-	fmt.Fprintf(stderr, "%s: '%s': %v\n", programName, name, err) //nolint:errcheck
-	if errors.Is(err, syscall.EACCES) || errors.Is(err, os.ErrPermission) {
-		return 126
+// extractExitCode determines the exit code from a command execution error.
+func extractExitCode(err error, cmdName string) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
 	}
-	return 127
+	// R1.3: distinguish not-found from not-executable.
+	if isNotFound(err) {
+		fmt.Fprintf(os.Stderr, "%s: '%s': No such file or directory\n", progName, cmdName)
+		return exitCodeNotFound
+	}
+	if isPermissionError(err) {
+		fmt.Fprintf(os.Stderr, "%s: '%s': Permission denied\n", progName, cmdName)
+		return exitCodeNotExecutable
+	}
+	fmt.Fprintf(os.Stderr, "%s: '%s': %s\n", progName, cmdName, err)
+	return exitCodeNotExecutable
+}
+
+// isNotFound checks if the error indicates the command was not found.
+func isNotFound(err error) bool {
+	return errors.Is(err, exec.ErrNotFound) || errors.Is(err, syscall.ENOENT)
+}
+
+// isPermissionError checks if the error indicates a permission problem.
+func isPermissionError(err error) bool {
+	return errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EACCES)
+}
+
+// parseArgs separates flags, NAME=VALUE pairs, and command arguments.
+// R1.1: NAME=VALUE pairs before COMMAND set environment variables.
+// R2.1: -i / --ignore-environment starts with empty environment.
+// R2.2: -u NAME / --unset=NAME removes variables.
+// R3.1: -0 / --null enables NUL-terminated output.
+func parseArgs(args []string) (envOptions, error) {
+	var opts envOptions
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		done, advance, err := parseFlag(arg, args, i, &opts)
+		if err != nil {
+			return envOptions{}, err
+		}
+		if done {
+			i += advance
+			break
+		}
+		if advance > 0 {
+			i += advance
+			continue
+		}
+		break
+	}
+
+	// Remaining args: NAME=VALUE pairs followed by COMMAND [ARG ...]
+	for i < len(args) {
+		if strings.Contains(args[i], "=") {
+			opts.pairs = append(opts.pairs, args[i])
+			i++
+			continue
+		}
+		break
+	}
+
+	opts.cmdArgs = args[i:]
+	return opts, nil
+}
+
+// parseFlag handles a single flag argument. Returns (done, advance, err)
+// where done=true means stop flag parsing, advance is how many args consumed.
+func parseFlag(arg string, args []string, i int, opts *envOptions) (bool, int, error) {
+	if arg == "--help" {
+		fmt.Print(helpText)
+		os.Exit(0)
+	}
+	if arg == "--version" {
+		fmt.Println(versionText)
+		os.Exit(0)
+	}
+	if arg == "-i" || arg == "--ignore-environment" || arg == "-" {
+		opts.ignoreEnv = true
+		return false, 1, nil
+	}
+	if arg == "-0" || arg == "--null" {
+		opts.nullTerm = true
+		return false, 1, nil
+	}
+	if arg == "--" {
+		return true, 1, nil
+	}
+	// R2.2: --unset=NAME form.
+	if strings.HasPrefix(arg, "--unset=") {
+		opts.unsetNames = append(opts.unsetNames, arg[len("--unset="):])
+		return false, 1, nil
+	}
+	// R2.2: -u NAME (separate argument) or -uNAME (attached).
+	if arg == "-u" {
+		if i+1 >= len(args) {
+			return false, 0, fmt.Errorf("option requires an argument -- 'u'")
+		}
+		opts.unsetNames = append(opts.unsetNames, args[i+1])
+		return false, 2, nil
+	}
+	if strings.HasPrefix(arg, "-u") {
+		opts.unsetNames = append(opts.unsetNames, arg[2:])
+		return false, 1, nil
+	}
+	if strings.HasPrefix(arg, "-") && !strings.Contains(arg, "=") {
+		return false, 0, fmt.Errorf("unrecognized option '%s'", arg)
+	}
+	return true, 0, nil
 }

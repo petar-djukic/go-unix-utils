@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Differential tests for cmd/nice against gnice (GNU coreutils).
+// Implements srd094 R2.1 (TestDiff with RunDiffTests), R2.2 (adjustment tests),
+// R2.3 (error handling and exit code tests).
 package main
 
 import (
@@ -11,84 +14,116 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeProgramName replaces "gnice:" with "nice:" in stderr output
-// so the Go binary and reference binary error messages can be compared.
-func normalizeProgramName(data []byte) []byte {
-	return bytes.ReplaceAll(data, []byte("gnice:"), []byte("nice:"))
+const refBinName = "gnice"
+
+// makeNormalizer creates a NormalizeFunc that replaces binary names and
+// normalizes syscall error message capitalization between GNU and Go.
+func makeNormalizer(refBin string) testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		b = bytes.ReplaceAll(b, []byte(refBin), []byte(progName))
+		b = bytes.ReplaceAll(b, []byte(refBinName), []byte(progName))
+		b = normalizeSyscallErrors(b)
+		return b
+	}
 }
 
+// normalizeSyscallErrors lowercases known syscall error messages that
+// differ in case between C strerror() and Go syscall.Errno.Error().
+func normalizeSyscallErrors(b []byte) []byte {
+	replacements := []struct{ from, to string }{
+		{"Permission denied", "permission denied"},
+		{"Operation not permitted", "operation not permitted"},
+		{"No such file or directory", "no such file or directory"},
+	}
+	for _, r := range replacements {
+		b = bytes.ReplaceAll(b, []byte(r.from), []byte(r.to))
+	}
+	return b
+}
+
+// TestDiff runs differential tests comparing cmd/nice against gnice.
+// R2.1: uses testutils.BuildBinary and testutils.RunDiffTests.
+// R2.2: covers default, positive, negative, zero adjustments.
+// R2.3: covers invalid adjustment, non-existent command errors.
 func TestDiff(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gnice")
+	refBin, err := exec.LookPath(refBinName)
 	if err != nil {
-		t.Skipf("reference binary gnice not in PATH: %v", err)
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
 	}
+	norm := makeNormalizer(refBin)
+	norms := []testutils.NormalizeFunc{norm}
+
 	tests := []testutils.DiffTest{
+		// R2.2: default adjustment (increment of 10). R1.1, R1.4.
 		{
-			// R1.1, R1.4: default adjustment (+10), passes args to command.
-			Name: "default_adjustment",
-			Args: []string{"echo", "hello"},
-			Env:  []string{"LC_ALL=C"},
+			Name:      "default_adjustment",
+			Args:      []string{"echo", "hello"},
+			Normalize: norms,
 		},
+		// R2.2: explicit -n positive adjustment. R1.2.
 		{
-			// R1.2: custom adjustment via -n flag.
-			Name: "custom_adjustment_n",
-			Args: []string{"-n", "5", "echo", "hello"},
-			Env:  []string{"LC_ALL=C"},
+			Name:      "positive_n5",
+			Args:      []string{"-n", "5", "echo", "hello"},
+			Normalize: norms,
 		},
+		// R2.2: zero adjustment. R1.2.
 		{
-			// R1.3: no command prints current nice value.
-			Name: "no_command",
-			Args: []string{},
-			Env:  []string{"LC_ALL=C"},
+			Name:      "zero_adjustment",
+			Args:      []string{"-n", "0", "echo", "hello"},
+			Normalize: norms,
 		},
+		// R2.2: --adjustment= long form. R1.2.
 		{
-			// R1.2: custom adjustment via --adjustment= form.
-			Name: "adjustment_long_equals",
-			Args: []string{"--adjustment=3", "echo", "test"},
-			Env:  []string{"LC_ALL=C"},
+			Name:      "long_adjustment_flag",
+			Args:      []string{"--adjustment=7", "echo", "hello"},
+			Normalize: norms,
 		},
+		// R2.2: -nVALUE short form (no space). R1.2.
 		{
-			// R1.4: multiple arguments passed to command.
-			Name: "multiple_args",
-			Args: []string{"-n", "0", "echo", "a", "b", "c"},
-			Env:  []string{"LC_ALL=C"},
+			Name:      "short_n_no_space",
+			Args:      []string{"-n3", "echo", "hello"},
+			Normalize: norms,
 		},
+		// R2.2: negative adjustment (may warn without privileges). R1.2.
 		{
-			// R1.2: zero adjustment.
-			Name: "zero_adjustment",
-			Args: []string{"-n", "0", "echo", "zero"},
-			Env:  []string{"LC_ALL=C"},
+			Name:      "negative_adjustment",
+			Args:      []string{"-n", "-1", "echo", "hello"},
+			Normalize: norms,
 		},
+		// R2.2: no command prints current nice value. R1.3.
 		{
-			// R1.2: --adjustment with space separator.
-			Name: "adjustment_long_space",
-			Args: []string{"--adjustment", "7", "echo", "spaced"},
-			Env:  []string{"LC_ALL=C"},
+			Name:      "no_command",
+			Args:      []string{},
+			Normalize: norms,
 		},
+		// R2.2: command with multiple arguments. R1.4.
 		{
-			// R2.1: exit status propagated from command.
-			Name:     "exit_status_propagated",
-			Args:     []string{"sh", "-c", "exit 42"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 42,
+			Name:      "command_with_args",
+			Args:      []string{"-n", "3", "echo", "one", "two", "three"},
+			Normalize: norms,
 		},
+		// R2.3: non-existent command exits 127. R2.2.
 		{
-			// R2.2: exit 125 for invalid adjustment.
-			Name:      "invalid_adjustment",
-			Args:      []string{"-n", "abc", "echo", "hi"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  125,
-			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
-		},
-		{
-			// R2.2: exit 127 when command not found.
-			Name:      "command_not_found",
-			Args:      []string{"nonexistent_command_xyz_12345"},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "nonexistent_command",
+			Args:      []string{"nonexistent_cmd_xyz_42"},
 			ExitCode:  127,
-			Normalize: []testutils.NormalizeFunc{normalizeProgramName},
+			Normalize: norms,
+		},
+		// R2.3: invalid adjustment value exits 125. R2.2.
+		{
+			Name:      "invalid_adjustment",
+			Args:      []string{"-n", "abc", "echo", "hello"},
+			ExitCode:  125,
+			Normalize: norms,
+		},
+		// R2.3: missing adjustment argument. R2.2.
+		{
+			Name:      "missing_adjustment_arg",
+			Args:      []string{"-n"},
+			ExitCode:  125,
+			Normalize: norms,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

@@ -1,43 +1,19 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/seq against gseq (GNU coreutils).
-//
-// Covers prd019-seq R4.4: single argument, two arguments, three arguments,
-// descending sequence, floating-point sequence, equal-width, custom separator,
-// format string, empty sequence, zero step error, and invalid format error.
+// Package main provides differential tests for cmd/seq.
+// Tests cover srd019-seq R1.1-R1.5, R2.1-R2.4, R3.1-R3.4, R4.4.
 package main
 
 import (
-	"bytes"
 	"os/exec"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeSeqErrors replaces the program name prefix so "gseq:" and "seq:"
-// compare identically, and strips "Try ... --help" hint lines that gseq
-// emits but the Go binary does not.
-func normalizeSeqErrors(data []byte) []byte {
-	lines := bytes.Split(data, []byte("\n"))
-	var result [][]byte
-	for _, line := range lines {
-		if bytes.Contains(line, []byte("--help")) &&
-			bytes.Contains(line, []byte("Try")) {
-			continue
-		}
-		// Replace "gseq:" prefix with "seq:"
-		if bytes.HasPrefix(line, []byte("gseq:")) {
-			line = append([]byte("seq:"), line[5:]...)
-		}
-		result = append(result, line)
-	}
-	return bytes.Join(result, []byte("\n"))
-}
-
-// discardAll blanks all output so tests check only exit code.
-func discardAll(data []byte) []byte {
+// dropStderr discards stderr entirely for tests where error messages differ.
+func dropStderr(data []byte) []byte {
 	return nil
 }
 
@@ -47,169 +23,157 @@ func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gseq")
 	if err != nil {
-		t.Skip("reference binary gseq not in PATH")
+		t.Skipf("reference binary gseq not in PATH: %v", err)
 	}
 
-	errNorm := []testutils.NormalizeFunc{normalizeSeqErrors}
-
 	tests := []testutils.DiffTest{
-		// R4.4: single argument (seq 5)
-		{
-			Name:     "single_arg_5",
-			Args:     []string{"5"},
-			ExitCode: 0,
-		},
-		// R4.4: single argument (seq 1)
-		{
-			Name:     "single_arg_1",
-			Args:     []string{"1"},
-			ExitCode: 0,
-		},
-		// R4.4: two arguments (seq 2 5)
-		{
-			Name:     "two_args_2_5",
-			Args:     []string{"2", "5"},
-			ExitCode: 0,
-		},
-		// R4.4: three arguments (seq 1 2 10)
-		{
-			Name:     "three_args_1_2_10",
-			Args:     []string{"1", "2", "10"},
-			ExitCode: 0,
-		},
-		// R4.4: descending sequence (seq 5 -1 1)
-		{
-			Name:     "descending_5_to_1",
-			Args:     []string{"5", "-1", "1"},
-			ExitCode: 0,
-		},
-		// R4.4: floating-point sequence (seq 0.1 0.1 0.5)
-		{
-			Name:     "float_0.1_0.1_0.5",
-			Args:     []string{"0.1", "0.1", "0.5"},
-			ExitCode: 0,
-		},
-		// R4.4: equal-width (seq -w 8 12)
-		{
-			Name:     "equal_width_8_12",
-			Args:     []string{"-w", "8", "12"},
-			ExitCode: 0,
-		},
-		// R4.4: custom separator (seq -s ', ' 1 5)
-		{
-			Name:     "separator_comma_space",
-			Args:     []string{"-s", ", ", "1", "5"},
-			ExitCode: 0,
-		},
-		// R4.4: format string (seq -f '%.2f' 1 3)
-		{
-			Name:     "format_percent_2f",
-			Args:     []string{"-f", "%.2f", "1", "3"},
-			ExitCode: 0,
-		},
-		// R4.4: empty sequence (FIRST > LAST with positive STEP)
-		{
-			Name:     "empty_sequence",
-			Args:     []string{"5", "1"},
-			ExitCode: 0,
-		},
-		// R4.4: zero step error
-		{
-			Name:      "zero_step_error",
-			Args:      []string{"1", "0", "5"},
-			ExitCode:  1,
-			Normalize: errNorm,
-		},
-		// R4.4: invalid format error
-		{
-			Name:      "invalid_format_no_directive",
-			Args:      []string{"-f", "hello", "1", "3"},
-			ExitCode:  1,
-			Normalize: errNorm,
-		},
-		// R1.3: FIRST equals LAST prints one number
-		{
-			Name:     "first_equals_last",
-			Args:     []string{"3", "3"},
-			ExitCode: 0,
-		},
-		// R1.4: negative step with FIRST < LAST produces no output
-		{
-			Name:     "negative_step_empty",
-			Args:     []string{"1", "-1", "5"},
-			ExitCode: 0,
-		},
-		// R2.2: separator with --separator= long form
-		{
-			Name:     "separator_long_form",
-			Args:     []string{"--separator=:", "1", "4"},
-			ExitCode: 0,
-		},
-		// R3.1: format with %e specifier
-		{
-			Name:     "format_percent_e",
-			Args:     []string{"-f", "%e", "1", "3"},
-			ExitCode: 0,
-		},
-		// R3.1: format with %g specifier
-		{
-			Name:     "format_percent_g",
-			Args:     []string{"-f", "%g", "1", "3"},
-			ExitCode: 0,
-		},
-		// R3.3: equal-width with negative numbers
-		{
-			Name:     "equal_width_negative",
-			Args:     []string{"-w", "-5", "5"},
-			ExitCode: 0,
-		},
-		// R2.3: float precision from input
-		{
-			Name:     "float_precision_two_decimals",
-			Args:     []string{"0.50", "0.25", "1.50"},
-			ExitCode: 0,
-		},
-		// R3.2: format with two conversion specifiers is an error
-		{
-			Name:      "format_two_directives",
-			Args:      []string{"-f", "%f %f", "1", "3"},
-			ExitCode:  1,
-			Normalize: errNorm,
-		},
-		// R4.2: non-numeric argument
-		{
-			Name:      "non_numeric_argument",
-			Args:      []string{"abc"},
-			ExitCode:  1,
-			Normalize: errNorm,
-		},
-		// R1.1: seq with large step skipping
-		{
-			Name:     "large_step",
-			Args:     []string{"1", "3", "10"},
-			ExitCode: 0,
-		},
-		// R2.1: separator with empty string
-		{
-			Name:     "separator_empty_string",
-			Args:     []string{"-s", "", "1", "3"},
-			ExitCode: 0,
-		},
-		// --help exits 0
-		{
-			Name:      "help",
-			Args:      []string{"--help"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// --version exits 0
-		{
-			Name:      "version",
-			Args:      []string{"--version"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
+		// R1.1: one-argument form (seq LAST).
+		{Name: "one_arg_5", Args: []string{"5"}},
+		{Name: "one_arg_1", Args: []string{"1"}},
+		{Name: "one_arg_10", Args: []string{"10"}},
+		// R1.1: LAST < 1 produces no output.
+		{Name: "one_arg_0", Args: []string{"0"}},
+		{Name: "one_arg_negative", Args: []string{"-1"}},
+
+		// R1.2: two-argument form (seq FIRST LAST).
+		{Name: "two_arg_2_5", Args: []string{"2", "5"}},
+		{Name: "two_arg_neg3_3", Args: []string{"-3", "3"}},
+
+		// R1.3: three-argument form (seq FIRST STEP LAST).
+		{Name: "three_arg_1_2_10", Args: []string{"1", "2", "10"}},
+		{Name: "three_arg_1_3_10", Args: []string{"1", "3", "10"}},
+		{Name: "three_arg_descend", Args: []string{"5", "-1", "1"}},
+		{Name: "three_arg_descend_2", Args: []string{"10", "-3", "1"}},
+
+		// R1.3: FIRST equals LAST prints one number.
+		{Name: "first_eq_last_one", Args: []string{"3", "3"}},
+		{Name: "first_eq_last_three", Args: []string{"3", "1", "3"}},
+
+		// R1.4: empty sequences (positive step, FIRST > LAST).
+		{Name: "empty_pos_step", Args: []string{"5", "1", "3"}},
+		// R1.4: empty sequences (negative step, FIRST < LAST).
+		{Name: "empty_neg_step", Args: []string{"1", "-1", "5"}},
+
+		// R1.4: floating-point arguments.
+		{Name: "float_half_step", Args: []string{"0.5", "0.5", "2.5"}},
+		{Name: "float_first_last", Args: []string{"1.5", "3.5"}},
+		{Name: "float_quarter", Args: []string{"0.25", "0.25", "1.0"}},
+
+		// R1.5: descending sequences.
+		{Name: "descend_neg_incr", Args: []string{"5", "-1", "1"}},
+		{Name: "descend_neg_incr_float", Args: []string{"2.0", "-0.5", "0.0"}},
+		{Name: "descend_large_step", Args: []string{"100", "-25", "0"}},
+
+		// R2.2: custom separator (-s).
+		{Name: "sep_comma", Args: []string{"-s", ", ", "3"}},
+		{Name: "sep_colon", Args: []string{"-s", ":", "1", "4"}},
+		{Name: "sep_empty", Args: []string{"-s", "", "3"}},
+		{Name: "sep_long_flag", Args: []string{"--separator=, ", "3"}},
+		{Name: "sep_tab", Args: []string{"-s", "\t", "1", "3"}},
+
+		// R3.1: format string (-f).
+		{Name: "fmt_2f", Args: []string{"-f", "%.2f", "1", "3"}},
+		{Name: "fmt_05_2f", Args: []string{"-f", "%05.2f", "1", "3"}},
+		{Name: "fmt_e", Args: []string{"-f", "%e", "1", "3"}},
+		{Name: "fmt_g", Args: []string{"-f", "%g", "1", "5"}},
+		{Name: "fmt_long_flag", Args: []string{"--format=%.1f", "1", "3"}},
+		{Name: "fmt_prefix_suffix", Args: []string{"-f", "num:%g:", "1", "3"}},
+
+		// R3.2: invalid format strings exit 1.
+		// Stderr wording differs between gseq and seq; drop stderr for comparison.
+		{Name: "fmt_invalid_d", Args: []string{"-f", "%d", "1", "3"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "fmt_invalid_two", Args: []string{"-f", "%f %f", "1", "3"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "fmt_no_conv", Args: []string{"-f", "hello", "1", "3"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "fmt_invalid_s", Args: []string{"-f", "%s", "1", "3"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+
+		// R3.3: equal-width (-w).
+		{Name: "ew_8_12", Args: []string{"-w", "8", "12"}},
+		{Name: "ew_1_10", Args: []string{"-w", "1", "10"}},
+		{Name: "ew_1_100", Args: []string{"-w", "1", "100"}},
+		{Name: "ew_neg5_5", Args: []string{"-w", "-5", "5"}},
+		{Name: "ew_long_flag", Args: []string{"--equal-width", "8", "12"}},
+
+		// R3.4: -f and -w together is an error (GNU behavior).
+		{Name: "fmt_and_ew_error", Args: []string{"-w", "-f", "%.2f", "1", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "fmt_and_ew_error_g", Args: []string{"-w", "-f", "%g", "1", "10"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+
+		// R4.1: non-numeric arguments exit 1.
+		{Name: "invalid_arg_abc", Args: []string{"abc"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "invalid_arg_first", Args: []string{"foo", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "invalid_arg_incr", Args: []string{"1", "bar", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "invalid_arg_last", Args: []string{"1", "1", "baz"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+
+		// R4.2: zero increment exits 1.
+		{Name: "zero_step_int", Args: []string{"1", "0", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+		{Name: "zero_step_float", Args: []string{"1", "0.0", "5"},
+			ExitCode: 1, Normalize: []testutils.NormalizeFunc{dropStderr}},
+
+		// R4.3: empty sequence from direction conflict exits 0.
+		{Name: "empty_two_arg", Args: []string{"5", "1"}},
+		{Name: "empty_neg_first_gt_last", Args: []string{"1", "-1", "5"}},
+
+		// R2.4: large integers.
+		{Name: "large_int", Args: []string{"9999999999", "1", "9999999999"}},
+
+		// R4.4: floating-point precision edge cases.
+		{Name: "fp_0_01_1", Args: []string{"0", "0.1", "1"}},
+		{Name: "fp_1_03_2", Args: []string{"1", "0.3", "2"}},
+		{Name: "fp_01_01_05", Args: []string{"0.1", "0.1", "0.5"}},
+		{Name: "fp_0_01_03", Args: []string{"0", "0.1", "0.3"}},
+		{Name: "fp_neg_step_fp", Args: []string{"1.0", "-0.1", "0.0"}},
+		{Name: "fp_third_step", Args: []string{"0", "0.333333333", "1"}},
+		{Name: "fp_07_step", Args: []string{"0", "0.7", "2.1"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestZeroStep verifies that zero increment exits non-zero.
+// R1.5: STEP must not be zero.
+func TestZeroStep(t *testing.T) {
+	t.Parallel()
+	bin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(bin, "1", "0", "5")
+	if err := cmd.Run(); err == nil {
+		t.Fatal("expected non-zero exit for zero step")
+	}
+}
+
+// TestVersion verifies --version prints output and exits 0.
+func TestVersion(t *testing.T) {
+	t.Parallel()
+	bin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(bin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+	if len(out) == 0 {
+		t.Fatal("--version produced no output")
+	}
+}
+
+// TestHelp verifies --help prints output and exits 0.
+func TestHelp(t *testing.T) {
+	t.Parallel()
+	bin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(bin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help failed: %v", err)
+	}
+	if len(out) == 0 {
+		t.Fatal("--help produced no output")
+	}
 }

@@ -1,201 +1,319 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/du implements recursive directory disk usage reporting.
-// Implements prd009 R1.1-R1.5, R2.1-R2.8, R3.1-R3.3, R4.1, R4.2, R5.1.
-//
-// TODO: prd009 R3.2 -H (--dereference-args) and -L (--dereference) are listed
-// in non_goals. Default no-follow-symlink behavior (Lstat) satisfies R1.4.
+// Package main implements du: recursive directory disk usage reporting.
+// Implements srd009-du R1.1-R1.5, R2.1-R2.8, R3.1-R3.3, R4.1, R4.2, R5.1.
 package main
 
 import (
-	"flag"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/format"
-	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const progName = "du"
-
-// duOptions holds command-line flag values for du.
-type duOptions struct {
-	blockSize     int64
-	humanReadable bool
-	apparentSize  bool
-	maxDepth      int
-	maxDepthSet   bool
-	total         bool
-	threshold     int64
-	thresholdSet  bool
-	oneFileSystem bool
+// inode uniquely identifies a file by device and inode number for
+// hard-link deduplication (R3.1, R3.2).
+type inode struct {
+	Dev uint64
+	Ino uint64
 }
 
+// options holds all parsed du flags (R2.1-R2.8).
+type options struct {
+	humanReadable bool // -h: human-readable output (R2.1)
+	summary       bool // -s: print only total per argument (R2.2)
+	allFiles      bool // -a: print sizes for all files (R2.3)
+	maxDepth      int  // -d N / --max-depth=N: limit depth (R2.4)
+	useMBlocks    bool // -m: 1M blocks (R2.6)
+	grandTotal    bool // -c: print grand total (R2.7)
+	apparentSize  bool // --apparent-size / -b: use st_size (R2.8)
+	useBytes      bool // -b: display raw bytes
+	hasMaxDepth   bool // whether -d was explicitly set
+}
+
+// walker holds traversal state for a single du invocation.
+type walker struct {
+	opts     options
+	seen     map[inode]bool // hard-link deduplication (R3.1, R3.3)
+	hasError bool           // R4.2: set when any error occurs
+}
+
+// R5.1: install SIGPIPE handler at startup.
 func main() {
-	// R5.1: SIGPIPE handler for piped output to head/grep -q
 	sys.InstallSIGPIPEHandler()
+	os.Exit(run())
+}
 
-	opts := parseFlags()
-	args := flag.Args()
-	if len(args) == 0 {
-		args = []string{"."}
+// run parses arguments, walks each path, and returns an exit code.
+// R4.1: returns 0 on success. R4.2: returns 1 on any error.
+func run() int {
+	opts, paths := parseArgs()
+	if len(paths) == 0 {
+		paths = []string{"."}
 	}
-
-	seen := make(map[uint64]map[uint64]bool)
-	exitCode := 0
+	w := &walker{
+		opts: opts,
+		seen: make(map[inode]bool),
+	}
 	var grandTotal int64
+	for _, p := range paths {
+		grandTotal += w.processArg(p)
+	}
+	// R2.7: -c prints a grand total line after all arguments.
+	if w.opts.grandTotal {
+		w.printEntry(grandTotal, "total")
+	}
+	if w.hasError {
+		return 1
+	}
+	return 0
+}
 
-	// R1.5: process multiple arguments in order
-	for _, arg := range args {
-		argBytes, hasErr := duWalk(arg, 0, seen, opts, 0)
-		if hasErr {
-			exitCode = 1
+// parseArgs extracts flags and paths from command-line arguments.
+func parseArgs() (options, []string) {
+	opts := options{maxDepth: -1}
+	var paths []string
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		consumed, extra := parseFlag(args[i], &opts, args[i+1:])
+		if consumed {
+			i += extra
+			continue
 		}
-		grandTotal += argBytes
+		paths = append(paths, args[i])
 	}
-
-	// R2.7: grand total line
-	if opts.total {
-		fmt.Printf("%s\ttotal\n", formatSize(grandTotal, opts))
-	}
-
-	// R4.1, R4.2: exit 0 on success, exit 1 on any traversal error
-	os.Exit(exitCode)
-}
-
-// parseFlags parses du command-line flags and returns options.
-func parseFlags() duOptions {
-	opts := duOptions{blockSize: 1024, maxDepth: -1}
-	var kFlag, mFlag, summarize, showVersion bool
-	var thresholdStr string
-
-	registerSizeFlags(&opts, &kFlag, &mFlag)
-	registerDisplayFlags(&opts, &summarize)
-	registerFilterFlags(&opts, &thresholdStr)
-	flag.BoolVar(&showVersion, "version", false, "")
-
-	// R4.2: --help prints usage to stdout and exits 0
-	flag.CommandLine.SetOutput(os.Stdout)
-	flag.Usage = func() {
-		printUsage()
-	}
-
-	flag.Parse()
-
-	// R4.2: --version prints version info to stdout and exits 0
-	if showVersion {
-		printVersion()
-		os.Exit(0)
-	}
-
-	applyFlagDefaults(&opts, mFlag, summarize, thresholdStr)
-	return opts
-}
-
-// printUsage writes the usage synopsis and flag descriptions to stdout.
-func printUsage() {
-	fmt.Fprintf(os.Stdout, "Usage: %s [OPTION]... [FILE]...\n", progName)
-	fmt.Fprintln(os.Stdout, "Summarize device usage of the set of FILEs, recursively for directories.")
-	fmt.Fprintln(os.Stdout)
-	fmt.Fprintln(os.Stdout, "  -a, --all             write counts for all files, not just directories")
-	fmt.Fprintln(os.Stdout, "      --apparent-size    print apparent sizes rather than device usage")
-	fmt.Fprintln(os.Stdout, "  -c, --total            produce a grand total")
-	fmt.Fprintln(os.Stdout, "  -d, --max-depth=N      print the total for a directory only if it is N or")
-	fmt.Fprintln(os.Stdout, "                           fewer levels below the command line argument")
-	fmt.Fprintln(os.Stdout, "  -h, --human-readable   print sizes in human readable format (e.g., 1K 234M 2G)")
-	fmt.Fprintln(os.Stdout, "  -k                     like --block-size=1K")
-	fmt.Fprintln(os.Stdout, "  -m                     like --block-size=1M")
-	fmt.Fprintln(os.Stdout, "  -s, --summarize        display only a total for each argument")
-	fmt.Fprintln(os.Stdout, "  -t, --threshold=SIZE   exclude entries smaller than SIZE if positive,")
-	fmt.Fprintln(os.Stdout, "                           or entries greater than SIZE if negative")
-	fmt.Fprintln(os.Stdout, "  -x, --one-file-system  skip directories on different file systems")
-	fmt.Fprintln(os.Stdout, "      --version          output version information and exit")
-	fmt.Fprintln(os.Stdout, "      --help             display this help and exit")
-}
-
-// printVersion writes version information to stdout.
-func printVersion() {
-	fmt.Fprintf(os.Stdout, "%s (go-unix-utils) 0.1\n", progName)
-}
-
-// registerSizeFlags registers size-related flags.
-func registerSizeFlags(opts *duOptions, kFlag, mFlag *bool) {
-	flag.BoolVar(kFlag, "k", false, "display sizes in 1024-byte blocks")
-	flag.BoolVar(mFlag, "m", false, "display sizes in 1048576-byte blocks")
-	flag.BoolVar(&opts.humanReadable, "h", false, "human-readable output")
-	flag.BoolVar(&opts.humanReadable, "human-readable", false, "human-readable output")
-	flag.BoolVar(&opts.apparentSize, "apparent-size", false, "print apparent sizes")
-}
-
-// registerDisplayFlags registers display-related flags.
-func registerDisplayFlags(opts *duOptions, summarize *bool) {
-	flag.BoolVar(summarize, "s", false, "display only a total for each argument")
-	flag.BoolVar(summarize, "summarize", false, "display only a total for each argument")
-	flag.BoolVar(&opts.total, "c", false, "produce a grand total")
-	flag.BoolVar(&opts.total, "total", false, "produce a grand total")
-	flag.IntVar(&opts.maxDepth, "d", -1, "max display depth")
-	flag.IntVar(&opts.maxDepth, "max-depth", -1, "max display depth")
-}
-
-// registerFilterFlags registers filtering-related flags.
-func registerFilterFlags(opts *duOptions, thresholdStr *string) {
-	flag.StringVar(thresholdStr, "t", "", "size threshold")
-	flag.StringVar(thresholdStr, "threshold", "", "size threshold")
-	flag.BoolVar(&opts.oneFileSystem, "x", false, "skip directories on different file systems")
-	flag.BoolVar(&opts.oneFileSystem, "one-file-system", false, "skip directories on different file systems")
-}
-
-// applyFlagDefaults resolves flag interactions after parsing.
-func applyFlagDefaults(opts *duOptions, mFlag, summarize bool, thresholdStr string) {
-	if mFlag {
-		opts.blockSize = 1048576
-	}
-	if opts.maxDepth >= 0 {
-		opts.maxDepthSet = true
-	}
-	// R2.2: -s is equivalent to --max-depth=0
-	if summarize {
+	// R2.2: -s is equivalent to --max-depth=0.
+	if opts.summary && !opts.hasMaxDepth {
 		opts.maxDepth = 0
-		opts.maxDepthSet = true
+		opts.hasMaxDepth = true
 	}
-	if thresholdStr != "" {
-		parseThreshold(opts, thresholdStr)
-	}
+	return opts, paths
 }
 
-// parseThreshold parses the -t/--threshold value and sets options.
-func parseThreshold(opts *duOptions, s string) {
-	val, err := sizeparse.ParseWithOptions(s, sizeparse.ParseOptions{AllowSign: true})
+// parseFlag handles a single flag. Returns (consumed, extraArgsConsumed).
+func parseFlag(arg string, opts *options, rest []string) (bool, int) {
+	switch {
+	case arg == "-k":
+		return true, 0
+	case arg == "-m":
+		opts.useMBlocks = true
+		return true, 0
+	case arg == "-b" || arg == "--bytes":
+		opts.useBytes = true
+		opts.apparentSize = true
+		return true, 0
+	case arg == "-c" || arg == "--total":
+		opts.grandTotal = true
+		return true, 0
+	case arg == "-h" || arg == "--human-readable":
+		opts.humanReadable = true
+		return true, 0
+	case arg == "-s" || arg == "--summarize":
+		opts.summary = true
+		return true, 0
+	case arg == "-a" || arg == "--all":
+		opts.allFiles = true
+		return true, 0
+	case arg == "--apparent-size":
+		opts.apparentSize = true
+		return true, 0
+	case strings.HasPrefix(arg, "--max-depth="):
+		parseMaxDepthValue(arg[len("--max-depth="):], opts)
+		return true, 0
+	case arg == "--max-depth" || arg == "-d":
+		return parseSeparateDepth(opts, rest)
+	case strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--"):
+		return parseCombinedFlags(arg[1:], opts, rest)
+	}
+	return false, 0
+}
+
+// parseSeparateDepth handles -d or --max-depth when the value is the next arg.
+func parseSeparateDepth(opts *options, rest []string) (bool, int) {
+	if len(rest) > 0 {
+		parseMaxDepthValue(rest[0], opts)
+		return true, 1
+	}
+	return true, 0
+}
+
+// parseMaxDepthValue parses a depth value string and sets opts.maxDepth.
+func parseMaxDepthValue(val string, opts *options) {
+	n, err := strconv.Atoi(val)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: invalid threshold '%s': %v\n", progName, s, err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "du: invalid maximum depth '%s'\n", val)
+		return
 	}
-	opts.threshold = val
-	opts.thresholdSet = true
+	opts.maxDepth = n
+	opts.hasMaxDepth = true
 }
 
-// fileRawBytes returns the size of a file in bytes.
-// R2.8: --apparent-size uses fi.Size; default uses fi.Blocks * 512.
-func fileRawBytes(fi *sys.FileInfo, apparentSize bool) int64 {
-	if apparentSize {
+// parseCombinedFlags handles combined short flags like -hs, -ack.
+func parseCombinedFlags(flags string, opts *options, rest []string) (bool, int) {
+	for i := 0; i < len(flags); i++ {
+		switch flags[i] {
+		case 'k':
+			// R2.5: no-op, default is 1K blocks
+		case 'm':
+			opts.useMBlocks = true
+		case 'h':
+			opts.humanReadable = true
+		case 's':
+			opts.summary = true
+		case 'a':
+			opts.allFiles = true
+		case 'c':
+			opts.grandTotal = true
+		case 'b':
+			opts.useBytes = true
+			opts.apparentSize = true
+		case 'd':
+			return parseCombinedDepth(flags[i+1:], opts, rest)
+		default:
+			return false, 0
+		}
+	}
+	return true, 0
+}
+
+// parseCombinedDepth handles -d within combined flags (e.g., -ad1).
+func parseCombinedDepth(remainder string, opts *options, rest []string) (bool, int) {
+	if remainder != "" {
+		parseMaxDepthValue(remainder, opts)
+		return true, 0
+	}
+	if len(rest) > 0 {
+		parseMaxDepthValue(rest[0], opts)
+		return true, 1
+	}
+	return true, 0
+}
+
+// processArg handles a single command-line argument and returns its total.
+func (w *walker) processArg(path string) int64 {
+	fi, err := sys.Lstat(path)
+	if err != nil {
+		w.reportAccessError(path, err)
+		return 0
+	}
+	if fi.Mode.IsDir() {
+		return w.walkDir(path, fi, 0)
+	}
+	size := w.fileSize(fi)
+	w.printEntry(size, path)
+	return size
+}
+
+// walkDir reads a directory, recurses into children, and prints the
+// accumulated size. R1.1, R1.3: format is "SIZE\tPATH\n".
+func (w *walker) walkDir(path string, fi *sys.FileInfo, depth int) int64 {
+	// Directory entry size uses block-based accounting. R2.8 (--apparent-size)
+	// applies to regular files via fileSize/rawSize; directories use blocks
+	// to match GNU du behavior on APFS and other filesystems.
+	total := fi.Blocks * 512
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		// R4.2: report ReadDir failure with GNU du-compatible message.
+		w.reportReadDirError(path, err)
+		if w.shouldPrintDir(depth) {
+			w.printEntry(total, path)
+		}
+		return total
+	}
+	for _, e := range entries {
+		total += w.walkChild(joinPath(path, e.Name()), depth+1)
+	}
+	if w.shouldPrintDir(depth) {
+		w.printEntry(total, path)
+	}
+	return total
+}
+
+// shouldPrintDir decides whether to print a directory at the given depth.
+// R2.2: -s suppresses all except depth 0. R2.4: -d N limits to depth <= N.
+func (w *walker) shouldPrintDir(depth int) bool {
+	if w.opts.hasMaxDepth {
+		return depth <= w.opts.maxDepth
+	}
+	return true
+}
+
+// walkChild processes a single entry during directory traversal.
+// R1.4: uses Lstat so symbolic links are not followed.
+func (w *walker) walkChild(path string, depth int) int64 {
+	fi, err := sys.Lstat(path)
+	if err != nil {
+		w.reportAccessError(path, err)
+		return 0
+	}
+	if fi.Mode.IsDir() {
+		return w.walkDir(path, fi, depth)
+	}
+	size := w.fileSize(fi)
+	if w.shouldPrintFile(depth) {
+		w.printEntry(size, path)
+	}
+	return size
+}
+
+// shouldPrintFile decides whether to print a file at the given depth.
+// R2.3: -a prints all files. R2.4: respects max depth.
+func (w *walker) shouldPrintFile(depth int) bool {
+	if !w.opts.allFiles {
+		return false
+	}
+	if w.opts.hasMaxDepth {
+		return depth <= w.opts.maxDepth
+	}
+	return true
+}
+
+// fileSize returns the size in bytes for a file, applying hard-link
+// deduplication. R3.1: files with the same dev+ino counted once.
+func (w *walker) fileSize(fi *sys.FileInfo) int64 {
+	key := inode{Dev: fi.Dev, Ino: fi.Ino}
+	if w.seen[key] {
+		return 0
+	}
+	if fi.Nlink > 1 {
+		w.seen[key] = true
+	}
+	return w.rawSize(fi)
+}
+
+// rawSize returns the size in bytes based on the measurement mode.
+// R2.8: --apparent-size/-b uses st_size; default uses st_blocks * 512.
+func (w *walker) rawSize(fi *sys.FileInfo) int64 {
+	if w.opts.apparentSize {
 		return fi.Size
 	}
 	return fi.Blocks * 512
 }
 
-// formatSize formats a raw byte count for display.
-// R2.1: -h uses format.HumanSize with Binary=true.
-// R2.5, R2.6: otherwise divides by blockSize with ceiling.
-func formatSize(rawBytes int64, opts duOptions) string {
-	if opts.humanReadable {
-		return format.HumanSize(rawBytes, format.HumanSizeOpts{Binary: true})
+// formatSize converts a size in bytes to the display unit.
+// R2.1: -h uses HumanSize. R2.5: -k is 1K blocks (default).
+// R2.6: -m is 1M blocks. -b is raw bytes.
+func (w *walker) formatSize(sizeBytes int64) string {
+	if w.opts.humanReadable {
+		return format.HumanSize(sizeBytes, format.HumanSizeOpts{Binary: true})
 	}
-	return fmt.Sprintf("%d", ceilDiv(rawBytes, opts.blockSize))
+	if w.opts.useBytes {
+		return fmt.Sprintf("%d", sizeBytes)
+	}
+	if w.opts.useMBlocks {
+		return fmt.Sprintf("%d", ceilDiv(sizeBytes, 1048576))
+	}
+	// Default: 1024-byte (1K) blocks
+	return fmt.Sprintf("%d", ceilDiv(sizeBytes, 1024))
 }
 
-// ceilDiv returns the ceiling of a/b for positive a.
+// ceilDiv returns the ceiling of a / b for positive values.
 func ceilDiv(a, b int64) int64 {
 	if a <= 0 {
 		return 0
@@ -203,106 +321,48 @@ func ceilDiv(a, b int64) int64 {
 	return (a + b - 1) / b
 }
 
-// shouldPrint checks whether an entry should be printed based on depth and threshold.
-// R2.4: entries deeper than maxDepth are accumulated but not printed.
-func shouldPrint(rawBytes int64, depth int, opts duOptions) bool {
-	if opts.maxDepthSet && depth > opts.maxDepth {
-		return false
-	}
-	if opts.thresholdSet {
-		return passesThreshold(rawBytes, opts.threshold)
-	}
-	return true
+// printEntry prints one output line in "SIZE\tPATH\n" format (R1.3).
+func (w *walker) printEntry(sizeBytes int64, path string) {
+	fmt.Fprintf(os.Stdout, "%s\t%s\n", w.formatSize(sizeBytes), path)
 }
 
-// passesThreshold checks if a size passes the threshold filter.
-// Positive threshold excludes entries smaller; negative excludes entries larger.
-func passesThreshold(rawBytes, threshold int64) bool {
-	if threshold >= 0 {
-		return rawBytes >= threshold
-	}
-	return rawBytes <= -threshold
+// joinPath concatenates a parent directory and child name, preserving
+// the parent path prefix to match GNU du behavior.
+func joinPath(parent, child string) string {
+	return parent + "/" + child
 }
 
-// duWalk recursively computes disk usage for path at the given depth.
-// Returns total raw bytes and whether any error occurred.
-// rootDev is the device ID of the starting argument for --one-file-system;
-// it is set automatically on the first call (depth 0).
-// R1.4: uses sys.Lstat to avoid following symbolic links.
-func duWalk(path string, depth int, seen map[uint64]map[uint64]bool, opts duOptions, rootDev uint64) (int64, bool) {
-	fi, err := sys.Lstat(path)
-	if err != nil {
-		// R4.2: diagnostic to stderr, skip entry, continue processing
-		fmt.Fprintf(os.Stderr, "%s: cannot access '%s': %v\n", progName, path, err)
-		return 0, true
-	}
-
-	// D1: capture root device from starting argument for -x
-	if depth == 0 {
-		rootDev = fi.Dev
-	}
-
-	// -x/--one-file-system: skip entries on different filesystems
-	if opts.oneFileSystem && fi.Dev != rootDev {
-		return 0, false
-	}
-
-	if isDuplicate(fi, seen) {
-		return 0, false
-	}
-
-	rawBytes := fileRawBytes(fi, opts.apparentSize)
-	if !fi.Mode.IsDir() {
-		return rawBytes, false
-	}
-
-	childBytes, hasErr := walkChildren(path, depth, seen, opts, rootDev)
-	rawBytes += childBytes
-
-	// R1.3: SIZE\tPATH\n, filtered by depth and threshold
-	if shouldPrint(rawBytes, depth, opts) {
-		fmt.Printf("%s\t%s\n", formatSize(rawBytes, opts), path)
-	}
-	return rawBytes, hasErr
+// reportAccessError prints a stat/access diagnostic to stderr and sets
+// the error flag. R4.2: matches GNU du "cannot access" format.
+func (w *walker) reportAccessError(path string, err error) {
+	fmt.Fprintf(os.Stderr, "du: cannot access '%s': %s\n", path, osErrorMessage(err))
+	w.hasError = true
 }
 
-// isDuplicate checks whether a file has already been counted.
-// R3.1: tracks by dev+ino across the entire invocation.
-// R3.3: deduplication is per invocation, not per argument.
-func isDuplicate(fi *sys.FileInfo, seen map[uint64]map[uint64]bool) bool {
-	if fi.Mode.IsDir() || fi.Nlink <= 1 {
-		return false
-	}
-	inodes, ok := seen[fi.Dev]
-	if !ok {
-		inodes = make(map[uint64]bool)
-		seen[fi.Dev] = inodes
-	}
-	if inodes[fi.Ino] {
-		return true
-	}
-	inodes[fi.Ino] = true
-	return false
+// reportReadDirError prints a directory-read diagnostic to stderr and sets
+// the error flag. R4.2: matches GNU du "cannot read directory" format.
+func (w *walker) reportReadDirError(path string, err error) {
+	fmt.Fprintf(os.Stderr, "du: cannot read directory '%s': %s\n", path, osErrorMessage(err))
+	w.hasError = true
 }
 
-// walkChildren reads directory entries and accumulates their disk usage.
-// R4.2: errors reading directory contents produce stderr diagnostics.
-func walkChildren(dir string, depth int, seen map[uint64]map[uint64]bool, opts duOptions, rootDev uint64) (int64, bool) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: cannot read directory '%s': %v\n", progName, dir, err)
-		return 0, true
+// osErrorMessage extracts the underlying OS error message from a Go error.
+func osErrorMessage(err error) string {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return capitalizeFirst(errno.Error())
 	}
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return capitalizeFirst(pathErr.Err.Error())
+	}
+	return err.Error()
+}
 
-	var total int64
-	hasErr := false
-	for _, e := range entries {
-		childPath := dir + "/" + e.Name()
-		childBytes, childErr := duWalk(childPath, depth+1, seen, opts, rootDev)
-		total += childBytes
-		if childErr {
-			hasErr = true
-		}
+// capitalizeFirst returns s with the first rune uppercased.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
 	}
-	return total, hasErr
+	return strings.ToUpper(s[:1]) + s[1:]
 }

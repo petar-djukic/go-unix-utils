@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/sync covering prd085-sync R2.1, R2.2, R2.3.
-package main_test
+// Differential tests for cmd/sync against gsync (GNU coreutils).
+// Implements srd085 R1.1-R1.4, R2.1-R2.3.
+package main
 
 import (
 	"bytes"
@@ -14,84 +15,142 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// lowercaseNormalizer lowercases output to neutralize platform differences in
-// syscall error string capitalization (e.g., "No such file" vs "no such file").
-func lowercaseNormalizer(data []byte) []byte {
-	return bytes.ToLower(data)
+const refBinName = "gsync"
+
+// makeNormalizer creates a NormalizeFunc that replaces binary-specific
+// names and normalizes syscall error message capitalization.
+func makeNormalizer(refBin string) testutils.NormalizeFunc {
+	return func(b []byte) []byte {
+		b = bytes.ReplaceAll(b, []byte(refBin), []byte(programName))
+		b = bytes.ReplaceAll(b, []byte(refBinName), []byte(programName))
+		b = normalizeSyscallErrors(b)
+		return b
+	}
 }
 
-// progNameNormalizer replaces "gsync:" with "sync:" in output so that
-// error messages from the reference binary can be compared against ours.
-func progNameNormalizer(data []byte) []byte {
-	return bytes.ReplaceAll(data, []byte("gsync:"), []byte("sync:"))
+// normalizeSyscallErrors lowercases known syscall error messages that
+// differ in case between C strerror() and Go syscall.Errno.Error().
+func normalizeSyscallErrors(b []byte) []byte {
+	replacements := []struct{ from, to string }{
+		{"No such file or directory", "no such file or directory"},
+		{"Not a directory", "not a directory"},
+		{"Permission denied", "permission denied"},
+		{"Is a directory", "is a directory"},
+	}
+	for _, r := range replacements {
+		b = bytes.ReplaceAll(b, []byte(r.from), []byte(r.to))
+	}
+	return b
 }
 
-// discardOutput replaces all output with empty bytes, effectively comparing
-// only exit codes. Used for --help and --version whose content differs by
-// design between GNU and our implementation.
-func discardOutput(data []byte) []byte {
-	return nil
-}
-
+// TestDiff runs differential tests comparing cmd/sync against gsync.
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
-	refBin, err := exec.LookPath("gsync")
+	refBin, err := exec.LookPath(refBinName)
 	if err != nil {
-		t.Skipf("reference binary gsync not in PATH: %v", err)
+		t.Skipf("reference binary %s not in PATH: %v", refBinName, err)
 	}
+	norm := makeNormalizer(refBin)
+	norms := []testutils.NormalizeFunc{norm}
 
-	tmpDir := t.TempDir()
-	existingFile := filepath.Join(tmpDir, "testfile")
-	if err := os.WriteFile(existingFile, []byte("hello\n"), 0o644); err != nil {
-		t.Fatalf("creating test file: %v", err)
-	}
-
-	nonexistentFile := filepath.Join(tmpDir, "no_such_file")
+	workDir := t.TempDir()
+	setupTestFiles(t, workDir)
 
 	tests := []testutils.DiffTest{
-		// R2.1: exit 0 when all sync operations succeed (no args).
+		// R1.1: no arguments — global sync(2).
 		{
-			Name:     "no_args_sync_all",
-			Args:     []string{},
-			ExitCode: 0,
+			Name: "no_args", Args: []string{},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
 		},
-		// R2.1: exit 0 when syncing an existing file.
+		// R1.2: per-file fsync.
 		{
-			Name:     "sync_existing_file",
-			Args:     []string{existingFile},
-			ExitCode: 0,
+			Name: "single_file", Args: []string{"testfile1"},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
 		},
-		// R2.2: exit 1 when file cannot be opened.
 		{
-			Name:      "nonexistent_file_exits_1",
-			Args:      []string{nonexistentFile},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{progNameNormalizer, lowercaseNormalizer},
+			Name: "multiple_files",
+			Args:    []string{"testfile1", "testfile2"},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
 		},
-		// R2.2: exit 1 reported for each bad file, exit 0 files still succeed.
+		// R1.3: fdatasync via -d flag.
 		{
-			Name:      "mixed_existing_and_nonexistent",
-			Args:      []string{existingFile, nonexistentFile},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{progNameNormalizer, lowercaseNormalizer},
+			Name: "data_flag", Args: []string{"-d", "testfile1"},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
 		},
-		// R2.1: --version exits 0.
 		{
-			Name:      "version_flag",
-			Args:      []string{"--version"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardOutput},
+			Name: "data_long_flag",
+			Args:    []string{"--data", "testfile1"},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
 		},
-		// R2.1: --help exits 0.
+		// R1.4: filesystem sync via -f flag.
 		{
-			Name:      "help_flag",
-			Args:      []string{"--help"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{discardOutput},
+			Name: "filesystem_flag", Args: []string{"-f", "testfile1"},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
 		},
-		// R2.3: SIGPIPE handling is verified implicitly — the Go binary
-		// calls sys.InstallSIGPIPEHandler and does not crash on pipe close.
+		{
+			Name: "filesystem_long_flag",
+			Args:    []string{"--file-system", "testfile1"},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
+		},
+		// R1.3: -d without files exits 1.
+		{
+			Name: "data_no_files", Args: []string{"-d"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		// -f without files falls through to global sync(2), exits 0.
+		{
+			Name: "filesystem_no_files", Args: []string{"-f"},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
+		},
+		// R2.2: nonexistent file exits 1.
+		{
+			Name: "nonexistent_file",
+			Args:    []string{"doesnotexist"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		// R2.2: unrecognized long option exits 1.
+		{
+			Name: "unrecognized_long_option",
+			Args:    []string{"--invalid"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		// R2.2: invalid short option exits 1.
+		{
+			Name: "invalid_short_option",
+			Args:    []string{"-x"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		// R2.1: nonexistent file with -d flag exits 1.
+		{
+			Name: "data_nonexistent_file",
+			Args:    []string{"-d", "doesnotexist"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
+		// R2.1: -f with nonexistent file — on macOS, syncfs(2) is
+		// unavailable so GNU falls back to global sync(2), exit 0.
+		{
+			Name: "filesystem_nonexistent_file",
+			Args:    []string{"-f", "doesnotexist"},
+			WorkDir: workDir, ExitCode: 0, Normalize: norms,
+		},
+		// R2.1: mix of existing and nonexistent files exits 1.
+		{
+			Name: "mixed_existing_nonexistent",
+			Args:    []string{"testfile1", "doesnotexist"},
+			WorkDir: workDir, ExitCode: 1, Normalize: norms,
+		},
 	}
-
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// setupTestFiles creates test fixture files in the work directory.
+func setupTestFiles(t *testing.T, dir string) {
+	t.Helper()
+	for _, name := range []string{"testfile1", "testfile2"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("hello"), 0o644); err != nil {
+			t.Fatalf("setup: write %s: %v", name, err)
+		}
+	}
 }

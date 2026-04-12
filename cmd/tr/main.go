@@ -1,19 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/tr implements GNU tr: translate or delete characters.
-//
-// Implements prd054-tr R1.1 (character translation), R1.2 (stdin/stdout I/O),
-// R1.3 (SET specifications: ranges, escapes, repetition),
-// R1.4 (POSIX character classes), R2.1 (delete mode), R2.2 (squeeze mode),
-// R2.3 (delete+squeeze), R2.4 (complement mode), R3.1 (class case conversion),
-// R3.2 (empty SET2 validation), R3.3 (equivalence classes),
-// R4.1 (exit 0 on success), R4.2 (exit 1 on usage errors).
+// Package main implements cmd/tr: translate or delete characters.
+// Implements srd054-tr R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.3.
 package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,236 +16,296 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const programName = "tr"
+// progName is used in diagnostic messages.
+const progName = "tr"
 
-var (
-	errVersion = errors.New("version requested")
-	errHelp    = errors.New("help requested")
+// trMode distinguishes the operating mode of tr.
+type trMode int
+
+const (
+	modeTranslate trMode = iota
+	modeDelete
+	modeSqueeze
+	modeDeleteSqueeze
 )
 
-// noTryError is a semantic validation error that should not trigger
-// the "Try --help" message, matching GNU tr behavior.
-type noTryError struct {
-	msg string
-}
-
-func (e *noTryError) Error() string { return e.msg }
-
-// config holds parsed command-line flags.
-// R2.1: delete, R2.2: squeeze, R2.4: complement.
+// config holds parsed command-line options.
 type config struct {
 	delete     bool
 	squeeze    bool
 	complement bool
-}
-
-// streamConfig holds the configuration for stream processing.
-type streamConfig struct {
-	doDelete   bool
-	doSqueeze  bool
-	table      [256]byte
-	deleteSet  [256]bool
-	squeezeSet [256]bool
-}
-
-// setToken is a parsed element from a SET specification.
-type setToken struct {
-	chars  []byte
-	fill   byte
-	isFill bool
+	truncate   bool
+	sets       []string
+	mode       trMode
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:]))
 }
 
-// run parses arguments and performs character translation/deletion/squeezing.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	cfg, set1Spec, set2Spec, err := parseConfig(args)
+// run executes the tr logic and returns the exit code.
+// R4.1: returns 0 on success. R4.2: returns 1 on usage errors.
+func run(args []string) int {
+	cfg, err := parseArgs(args)
 	if err != nil {
-		return handleParseError(err, stdout, stderr)
-	}
-	set1, set2, err := expandSets(cfg, set1Spec, set2Spec)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", programName, err)
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 		return 1
 	}
-	sc := buildStreamConfig(cfg, set1, set2)
-	if err := processStream(stdin, stdout, &sc); err != nil {
-		fmt.Fprintf(stderr, "%s: write error: %v\n", programName, err)
+	if err := validateOperands(&cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		return 1
+	}
+	cfg.mode = resolveMode(cfg.delete, cfg.squeeze)
+	if err := execute(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 		return 1
 	}
 	return 0
 }
 
-// handleParseError dispatches --version, --help, and real errors.
-func handleParseError(err error, stdout, stderr io.Writer) int {
-	if errors.Is(err, errVersion) {
-		fmt.Fprintln(stdout, "tr (go-unix-utils)")
-		return 0
-	}
-	if errors.Is(err, errHelp) {
-		printUsage(stdout)
-		return 0
-	}
-	fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-	var nte *noTryError
-	if !errors.As(err, &nte) {
-		fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", programName)
-	}
-	return 1
-}
-
-// printUsage writes usage information.
-func printUsage(w io.Writer) {
-	fmt.Fprintf(w, "Usage: %s [OPTION]... SET1 [SET2]\n", programName)
-	fmt.Fprintln(w, "Translate, squeeze, and/or delete characters from standard input,")
-	fmt.Fprintln(w, "writing to standard output.")
-}
-
-// parseConfig extracts flags and SET specifications from arguments.
-func parseConfig(args []string) (config, string, string, error) {
-	cfg, positional, err := parseFlags(args)
-	if err != nil {
-		return cfg, "", "", err
-	}
-	set1, set2, err := validatePositional(cfg, positional)
-	return cfg, set1, set2, err
-}
-
-// parseFlags separates flags from positional arguments.
-func parseFlags(args []string) (config, []string, error) {
-	var cfg config
-	var positional []string
-	flagsDone := false
-	for _, arg := range args {
-		if flagsDone || (!strings.HasPrefix(arg, "-") || arg == "-") {
-			positional = append(positional, arg)
-			continue
-		}
-		if arg == "--" {
-			flagsDone = true
-			continue
-		}
-		if err := applyFlag(arg, &cfg); err != nil {
-			return cfg, nil, err
-		}
-	}
-	return cfg, positional, nil
-}
-
-// applyFlag applies a single flag argument to the config.
-func applyFlag(arg string, cfg *config) error {
-	switch arg {
-	case "--help":
-		return errHelp
-	case "--version":
-		return errVersion
-	case "--delete":
-		cfg.delete = true
-	case "--squeeze-repeats":
-		cfg.squeeze = true
-	case "--complement":
-		cfg.complement = true
+// execute dispatches to the appropriate mode handler.
+func execute(cfg config) error {
+	switch cfg.mode {
+	case modeTranslate:
+		return execTranslate(cfg)
+	case modeDelete:
+		return execDelete(cfg)
+	case modeSqueeze:
+		return execSqueeze(cfg)
+	case modeDeleteSqueeze:
+		return execDeleteSqueeze(cfg)
 	default:
-		if strings.HasPrefix(arg, "--") {
-			return fmt.Errorf("unrecognized option '%s'", arg)
-		}
-		return parseShortFlags(arg[1:], cfg)
+		return fmt.Errorf("mode not implemented")
 	}
-	return nil
 }
 
-// parseShortFlags parses combined short flags like -ds, -cds.
-// R2.1: -d, R2.2: -s, R2.4: -c/-C.
-func parseShortFlags(flags string, cfg *config) error {
-	for _, ch := range flags {
-		switch ch {
-		case 'd':
-			cfg.delete = true
-		case 's':
-			cfg.squeeze = true
-		case 'c', 'C':
-			cfg.complement = true
-		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
-		}
-	}
-	return nil
-}
-
-// validatePositional checks positional argument count for the given mode.
-func validatePositional(cfg config, pos []string) (string, string, error) {
-	if len(pos) == 0 {
-		return "", "", fmt.Errorf("missing operand")
-	}
-	if cfg.delete && !cfg.squeeze {
-		return validateDeleteOnly(pos)
-	}
-	if cfg.squeeze && !cfg.delete && len(pos) == 1 {
-		return pos[0], "", nil
-	}
-	if len(pos) < 2 {
-		return "", "", fmt.Errorf("missing operand after '%s'\n"+
-			"Two strings must be given when translating.", pos[0])
-	}
-	if len(pos) > 2 {
-		return "", "", fmt.Errorf("extra operand '%s'", pos[2])
-	}
-	// R3.2: when translating (not deleting), SET2 must not be empty.
-	if !cfg.delete && pos[1] == "" {
-		return "", "", &noTryError{
-			msg: "when not truncating set1, string2 must be non-empty"}
-	}
-	// R3.3: equivalence classes may not appear in SET2 when translating.
-	if !cfg.delete && containsEquivClass(pos[1]) {
-		return "", "", &noTryError{
-			msg: "[=c=] expressions may not appear in string2 when translating"}
-	}
-	return pos[0], pos[1], nil
-}
-
-// validateDeleteOnly validates positional args for -d without -s.
-// R2.1: SET2 is not used with -d alone.
-func validateDeleteOnly(pos []string) (string, string, error) {
-	if len(pos) > 1 {
-		return "", "", fmt.Errorf(
-			"extra operand '%s'\nOnly one string may be given when "+
-				"deleting without squeezing repeats.", pos[1])
-	}
-	return pos[0], "", nil
-}
-
-// expandSets parses and expands SET1 and SET2 specifications.
-// R2.4: complements SET1 when -c is set.
-func expandSets(cfg config, set1Spec, set2Spec string) ([]byte, []byte, error) {
-	set1, err := expandSet(set1Spec, 0)
+// execTranslate implements translate mode (R1.1-R1.4).
+func execTranslate(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
 	if err != nil {
-		return nil, nil, err
+		return err
+	}
+	set2, err := expandSet(cfg.sets[1])
+	if err != nil {
+		return err
+	}
+	set1, set2 = adjustSets(set1, set2, cfg.complement, cfg.truncate)
+	table := buildTranslateTable(set1, set2)
+	return translateStream(table, os.Stdin, os.Stdout)
+}
+
+// execDelete implements delete mode (R2.1).
+// Deletes all characters in SET1 from input.
+func execDelete(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
+	if err != nil {
+		return err
 	}
 	if cfg.complement {
 		set1 = complementSet(set1)
 	}
-	set2, err := expandSet(set2Spec, len(set1))
-	if err != nil {
-		return nil, nil, err
-	}
-	if !cfg.delete && len(set2) > 0 {
-		set2 = extendSet(set2, len(set1))
-	}
-	return set1, set2, nil
+	deleteSet := buildMemberSet(set1)
+	return deleteStream(deleteSet, os.Stdin, os.Stdout)
 }
 
-// complementSet returns all bytes 0-255 not in the given set.
-// R2.4: complement operation for SET1.
+// execSqueeze implements squeeze mode (R2.2).
+// With one SET: squeeze repeats in SET1.
+// With two SETs: translate SET1->SET2, then squeeze SET2.
+func execSqueeze(cfg config) error {
+	if len(cfg.sets) == 1 {
+		return execSqueezeOnly(cfg)
+	}
+	return execTranslateSqueeze(cfg)
+}
+
+// execSqueezeOnly squeezes repeated characters in SET1.
+func execSqueezeOnly(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
+	if err != nil {
+		return err
+	}
+	if cfg.complement {
+		set1 = complementSet(set1)
+	}
+	squeezeSet := buildMemberSet(set1)
+	return squeezeStream(squeezeSet, os.Stdin, os.Stdout)
+}
+
+// execTranslateSqueeze translates then squeezes (two SETs with -s).
+func execTranslateSqueeze(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
+	if err != nil {
+		return err
+	}
+	set2, err := expandSet(cfg.sets[1])
+	if err != nil {
+		return err
+	}
+	set1, set2 = adjustSets(set1, set2, cfg.complement, cfg.truncate)
+	table := buildTranslateTable(set1, set2)
+	squeezeSet := buildMemberSet(set2)
+	return translateSqueezeStream(table, squeezeSet, os.Stdin, os.Stdout)
+}
+
+// execDeleteSqueeze implements delete+squeeze mode (R2.3).
+// Deletes characters in SET1, then squeezes characters in SET2.
+func execDeleteSqueeze(cfg config) error {
+	set1, err := expandSet(cfg.sets[0])
+	if err != nil {
+		return err
+	}
+	set2, err := expandSet(cfg.sets[1])
+	if err != nil {
+		return err
+	}
+	if cfg.complement {
+		set1 = complementSet(set1)
+	}
+	deleteSet := buildMemberSet(set1)
+	squeezeSet := buildMemberSet(set2)
+	return deleteSqueezeStream(deleteSet, squeezeSet, os.Stdin, os.Stdout)
+}
+
+// buildMemberSet creates a 256-entry membership table from a byte slice.
+func buildMemberSet(set []byte) [256]bool {
+	var table [256]bool
+	for _, b := range set {
+		table[b] = true
+	}
+	return table
+}
+
+// deleteStream reads from r, drops bytes in deleteSet, writes remainder to w.
+func deleteStream(deleteSet [256]bool, r io.Reader, w io.Writer) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush()
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		if deleteSet[b] {
+			continue
+		}
+		if wErr := writer.WriteByte(b); wErr != nil {
+			return wErr
+		}
+	}
+}
+
+// squeezeStream replaces runs of repeated squeezeSet characters.
+func squeezeStream(squeezeSet [256]bool, r io.Reader, w io.Writer) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush()
+	lastByte := -1
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		if squeezeSet[b] && int(b) == lastByte {
+			continue
+		}
+		lastByte = int(b)
+		if wErr := writer.WriteByte(b); wErr != nil {
+			return wErr
+		}
+	}
+}
+
+// translateSqueezeStream translates then squeezes output characters.
+func translateSqueezeStream(
+	table [256]byte, squeezeSet [256]bool,
+	r io.Reader, w io.Writer,
+) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush()
+	lastByte := -1
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		out := table[b]
+		if squeezeSet[out] && int(out) == lastByte {
+			continue
+		}
+		lastByte = int(out)
+		if wErr := writer.WriteByte(out); wErr != nil {
+			return wErr
+		}
+	}
+}
+
+// deleteSqueezeStream deletes SET1 chars and squeezes SET2 chars (R2.3).
+func deleteSqueezeStream(
+	deleteSet [256]bool, squeezeSet [256]bool,
+	r io.Reader, w io.Writer,
+) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush()
+	lastByte := -1
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		if deleteSet[b] {
+			continue
+		}
+		if squeezeSet[b] && int(b) == lastByte {
+			continue
+		}
+		lastByte = int(b)
+		if wErr := writer.WriteByte(b); wErr != nil {
+			return wErr
+		}
+	}
+}
+
+// adjustSets applies complement and truncate/extend logic to SET1/SET2.
+// R1.1: extend SET2 by repeating last char. R1.2: -t truncates SET1.
+// R1.3: -c complements SET1 (sorted ascending byte order).
+func adjustSets(set1, set2 []byte, complement, truncate bool) ([]byte, []byte) {
+	if complement {
+		set1 = complementSet(set1)
+	}
+	if truncate {
+		if len(set1) > len(set2) {
+			set1 = set1[:len(set2)]
+		}
+	} else {
+		set2 = extendSet2(set2, len(set1))
+	}
+	return set1, set2
+}
+
+// complementSet returns all 256 byte values NOT in the given set,
+// sorted in ascending byte order. R1.3: complement mode.
 func complementSet(set []byte) []byte {
 	var present [256]bool
 	for _, b := range set {
 		present[b] = true
 	}
 	var result []byte
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		if !present[byte(i)] {
 			result = append(result, byte(i))
 		}
@@ -260,426 +313,525 @@ func complementSet(set []byte) []byte {
 	return result
 }
 
-// buildStreamConfig creates processing configuration from parsed sets.
-// R2.1: delete mode, R2.2: squeeze mode, R2.3: combined delete+squeeze.
-func buildStreamConfig(cfg config, set1, set2 []byte) streamConfig {
-	var sc streamConfig
-	if cfg.delete {
-		sc.doDelete = true
-		sc.deleteSet = memberSet(set1)
-	} else {
-		sc.table = buildTable(set1, set2)
+// extendSet2 extends set2 to targetLen by repeating its last character.
+// R1.1: when SET2 is shorter than SET1.
+func extendSet2(set2 []byte, targetLen int) []byte {
+	if len(set2) >= targetLen || len(set2) == 0 {
+		return set2
 	}
-	if cfg.squeeze {
-		sc.doSqueeze = true
-		if len(set2) > 0 {
-			sc.squeezeSet = memberSet(set2)
-		} else {
-			sc.squeezeSet = memberSet(set1)
-		}
+	last := set2[len(set2)-1]
+	for len(set2) < targetLen {
+		set2 = append(set2, last)
 	}
-	return sc
+	return set2
 }
 
-// memberSet returns a 256-bool array marking membership.
-func memberSet(set []byte) [256]bool {
-	var m [256]bool
-	for _, b := range set {
-		m[b] = true
+// buildTranslateTable creates a 256-entry lookup table.
+// D1: O(1) translation per byte.
+func buildTranslateTable(set1, set2 []byte) [256]byte {
+	var table [256]byte
+	for i := range table {
+		table[i] = byte(i)
 	}
-	return m
+	n := min(len(set1), len(set2))
+	for i := range n {
+		table[set1[i]] = set2[i]
+	}
+	return table
 }
 
-// processStream reads from r, applies the stream config, writes to w.
-// R1.2: reads stdin and writes to stdout.
-func processStream(r io.Reader, w io.Writer, sc *streamConfig) error {
-	br := bufio.NewReader(r)
-	bw := bufio.NewWriter(w)
-	buf := make([]byte, 32*1024)
-	prev := -1
+// translateStream reads from r, translates each byte via table,
+// and writes to w using buffered I/O. D2, D3: byte-oriented, buffered.
+func translateStream(table [256]byte, r io.Reader, w io.Writer) error {
+	reader := bufio.NewReader(r)
+	writer := bufio.NewWriter(w)
+	defer writer.Flush() // best-effort flush on early return
 	for {
-		n, err := br.Read(buf)
-		var werr error
-		prev, werr = processChunk(bw, buf[:n], sc, prev)
-		if werr != nil {
-			return werr
-		}
-		if err == io.EOF {
-			return bw.Flush()
-		}
+		b, err := reader.ReadByte()
 		if err != nil {
+			if err == io.EOF {
+				return writer.Flush()
+			}
+			return err
+		}
+		if wErr := writer.WriteByte(table[b]); wErr != nil {
+			return wErr
+		}
+	}
+}
+
+// resolveMode determines the operating mode from flag combination.
+func resolveMode(del, squeeze bool) trMode {
+	switch {
+	case del && squeeze:
+		return modeDeleteSqueeze
+	case del:
+		return modeDelete
+	case squeeze:
+		return modeSqueeze
+	default:
+		return modeTranslate
+	}
+}
+
+// parseArgs extracts flags and SET operands from command-line arguments.
+// R2.1: -d/--delete. R2.2: -s/--squeeze-repeats.
+// R2.4: -c/-C/--complement. R1.3: -t/--truncate-set1.
+func parseArgs(args []string) (config, error) {
+	var cfg config
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--" {
+			cfg.sets = append(cfg.sets, args[i+1:]...)
+			return cfg, nil
+		}
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			cfg.sets = append(cfg.sets, args[i:]...)
+			return cfg, nil
+		}
+		if parsed := parseLongFlag(&cfg, arg); parsed {
+			i++
+			continue
+		}
+		if err := parseShortFlags(&cfg, arg); err != nil {
+			return cfg, err
+		}
+		i++
+	}
+	return cfg, nil
+}
+
+// parseLongFlag handles GNU-style long flags. Returns true if consumed.
+func parseLongFlag(cfg *config, arg string) bool {
+	switch arg {
+	case "--delete":
+		cfg.delete = true
+	case "--squeeze-repeats":
+		cfg.squeeze = true
+	case "--complement":
+		cfg.complement = true
+	case "--truncate-set1":
+		cfg.truncate = true
+	default:
+		return false
+	}
+	return true
+}
+
+// parseShortFlags handles single-letter flags, possibly combined (e.g. -ds).
+func parseShortFlags(cfg *config, arg string) error {
+	for _, c := range arg[1:] {
+		switch c {
+		case 'd':
+			cfg.delete = true
+		case 's':
+			cfg.squeeze = true
+		case 'c', 'C':
+			cfg.complement = true
+		case 't':
+			cfg.truncate = true
+		default:
+			return fmt.Errorf("invalid option -- '%c'", c)
+		}
+	}
+	return nil
+}
+
+// validateOperands checks that the correct number of SET operands are given.
+// R3.2: translate mode requires exactly two SETs.
+// R2.1: -d without -s requires exactly one SET.
+// R2.3: -d with -s requires exactly two SETs.
+// R2.2: -s alone requires one or two SETs.
+func validateOperands(cfg *config) error {
+	n := len(cfg.sets)
+	del, squeeze := cfg.delete, cfg.squeeze
+	switch {
+	case del && squeeze:
+		if n != 2 {
+			return fmt.Errorf("two strings must be given when both deleting and squeezing repeats")
+		}
+	case del:
+		if n > 1 {
+			return fmt.Errorf("extra operand '%s'\nOnly one string may be given when deleting without squeezing repeats.", extraOperand(cfg.sets, 1))
+		}
+		if n == 0 {
+			return fmt.Errorf("missing operand")
+		}
+	case squeeze:
+		if n < 1 || n > 2 {
+			return missingOrExtraError(n, 1, 2, cfg.sets)
+		}
+	default:
+		// R3.2: translate mode requires exactly two SETs.
+		if n == 0 {
+			return fmt.Errorf("missing operand")
+		}
+		if n == 1 {
+			return fmt.Errorf("missing operand after '%s'\nTwo strings must be given when translating.", cfg.sets[0])
+		}
+		if n > 2 {
+			return fmt.Errorf("extra operand '%s'", extraOperand(cfg.sets, 2))
+		}
+	}
+	if err := validateSETs(cfg.sets); err != nil {
+		return err
+	}
+	return validateEquivInTranslate(cfg)
+}
+
+// extraOperand returns the first extra operand beyond limit.
+func extraOperand(sets []string, limit int) string {
+	if limit < len(sets) {
+		return sets[limit]
+	}
+	return ""
+}
+
+// missingOrExtraError produces the appropriate error for wrong operand count.
+func missingOrExtraError(n, min, max int, sets []string) error {
+	if n < min {
+		return fmt.Errorf("missing operand")
+	}
+	return fmt.Errorf("extra operand '%s'", extraOperand(sets, max))
+}
+
+// validateSETs expands each SET to verify it is syntactically valid.
+func validateSETs(sets []string) error {
+	for _, s := range sets {
+		if _, err := expandSet(s); err != nil {
 			return err
 		}
 	}
+	return nil
 }
 
-// processChunk processes a buffer chunk through the stream configuration.
-// Handles translate, delete, and squeeze in a single pass.
-func processChunk(w *bufio.Writer, buf []byte, sc *streamConfig, prev int) (int, error) {
-	for _, b := range buf {
-		if sc.doDelete && sc.deleteSet[b] {
-			continue
-		}
-		out := b
-		if !sc.doDelete {
-			out = sc.table[b]
-		}
-		if sc.doSqueeze && sc.squeezeSet[out] && int(out) == prev {
-			continue
-		}
-		if err := w.WriteByte(out); err != nil {
-			return prev, err
-		}
-		prev = int(out)
+// validateEquivInTranslate rejects equivalence classes in SET2
+// during translate mode. R3.3: GNU tr forbids [=c=] in string2
+// when translating.
+func validateEquivInTranslate(cfg *config) error {
+	if cfg.delete || len(cfg.sets) < 2 {
+		return nil
 	}
-	return prev, nil
+	if containsEquivClass(cfg.sets[1]) {
+		return fmt.Errorf("[=c=] expressions may not appear in string2 when translating")
+	}
+	return nil
 }
 
-// --- SET expansion ---
-
-// expandSet parses a SET specification and returns expanded bytes.
-// targetLen controls [c*] expansion; pass 0 for SET1.
-func expandSet(spec string, targetLen int) ([]byte, error) {
-	if spec == "" {
-		return nil, nil
-	}
-	tokens, err := parseSetTokens(spec)
-	if err != nil {
-		return nil, err
-	}
-	return resolveTokens(tokens, targetLen), nil
-}
-
-// resolveTokens expands tokens into a byte slice, resolving fill markers.
-func resolveTokens(tokens []setToken, targetLen int) []byte {
-	fixed := countFixedBytes(tokens)
-	var result []byte
-	for _, t := range tokens {
-		if t.isFill {
-			count := max(targetLen-fixed, 1)
-			result = append(result, repeatByte(t.fill, count)...)
-		} else {
-			result = append(result, t.chars...)
-		}
-	}
-	return result
-}
-
-// countFixedBytes counts non-fill bytes across all tokens.
-func countFixedBytes(tokens []setToken) int {
-	n := 0
-	for _, t := range tokens {
-		if !t.isFill {
-			n += len(t.chars)
-		}
-	}
-	return n
-}
-
-// parseSetTokens parses a SET specification into tokens.
-// R1.3: supports ranges, escapes, repetition. R1.4: POSIX character classes.
-func parseSetTokens(spec string) ([]setToken, error) {
-	var tokens []setToken
-	i := 0
-	for i < len(spec) {
-		if spec[i] == '[' {
-			tok, n, ok, err := parseBracketExpr(spec, i)
-			if err != nil {
-				return nil, err
-			}
-			if ok {
-				tokens = append(tokens, tok)
-				i += n
-				continue
-			}
-		}
-		ch, n := parseSingleChar(spec, i)
-		i += n
-		tok, advance, err := tryParseRange(spec, i, ch)
-		if err != nil {
-			return nil, err
-		}
-		tokens = append(tokens, tok)
-		i += advance
-	}
-	return tokens, nil
-}
-
-// tryParseRange checks if the current position forms a range (c-d).
-func tryParseRange(spec string, pos int, startCh byte) (setToken, int, error) {
-	if pos >= len(spec) || spec[pos] != '-' || pos+1 >= len(spec) {
-		return setToken{chars: []byte{startCh}}, 0, nil
-	}
-	if spec[pos+1] == '[' {
-		return setToken{chars: []byte{startCh}}, 0, nil
-	}
-	endCh, n := parseSingleChar(spec, pos+1)
-	if endCh < startCh {
-		return setToken{}, 0, fmt.Errorf(
-			"range-endpoints of '%c-%c' are in reverse collating sequence order",
-			startCh, endCh)
-	}
-	return setToken{chars: byteRange(startCh, endCh)}, 1 + n, nil
-}
-
-// parseBracketExpr tries to parse [:class:], [=c=], or [c*n] at spec[pos].
-func parseBracketExpr(spec string, pos int) (setToken, int, bool, error) {
-	rest := spec[pos:]
-	if len(rest) < 4 {
-		return setToken{}, 0, false, nil
-	}
-	if strings.HasPrefix(rest, "[:") {
-		return parseCharClass(spec, pos)
-	}
-	if strings.HasPrefix(rest, "[=") {
-		return parseEquivClass(spec, pos)
-	}
-	return tryRepetition(spec, pos)
-}
-
-// parseCharClass parses [:name:] at spec[pos].
-// R1.4: POSIX character classes.
-func parseCharClass(spec string, pos int) (setToken, int, bool, error) {
-	rest := spec[pos+2:]
-	endIdx := strings.Index(rest, ":]")
-	if endIdx < 0 {
-		return setToken{}, 0, false, nil
-	}
-	name := rest[:endIdx]
-	consumed := 2 + endIdx + 2
-	chars, err := charClassBytes(name)
-	if err != nil {
-		return setToken{}, 0, false, err
-	}
-	return setToken{chars: chars}, consumed, true, nil
-}
-
-// parseEquivClass parses [=c=] at spec[pos].
-// Under LC_ALL=C, equivalence class is just the character itself.
-func parseEquivClass(spec string, pos int) (setToken, int, bool, error) {
-	rest := spec[pos+2:]
-	endIdx := strings.Index(rest, "=]")
-	if endIdx < 0 || endIdx != 1 {
-		return setToken{}, 0, false, nil
-	}
-	ch := rest[0]
-	return setToken{chars: []byte{ch}}, 5, true, nil
-}
-
-// tryRepetition tries to parse [c*n] or [c*] at spec[pos].
-// R1.3: repetition in SET specifications.
-func tryRepetition(spec string, pos int) (setToken, int, bool, error) {
-	ch, n := parseSingleChar(spec, pos+1)
-	starIdx := pos + 1 + n
-	if starIdx >= len(spec) || spec[starIdx] != '*' {
-		return setToken{}, 0, false, nil
-	}
-	closeIdx := strings.IndexByte(spec[starIdx:], ']')
-	if closeIdx < 0 {
-		return setToken{}, 0, false, nil
-	}
-	numStr := spec[starIdx+1 : starIdx+closeIdx]
-	consumed := starIdx + closeIdx - pos + 1
-	return buildRepToken(ch, numStr, consumed)
-}
-
-// buildRepToken creates a repetition token from the char and count string.
-func buildRepToken(ch byte, numStr string, consumed int) (setToken, int, bool, error) {
-	if numStr == "" {
-		return setToken{fill: ch, isFill: true}, consumed, true, nil
-	}
-	count, err := parseRepeatCount(numStr)
-	if err != nil {
-		return setToken{}, 0, false, nil
-	}
-	if count == 0 {
-		return setToken{fill: ch, isFill: true}, consumed, true, nil
-	}
-	return setToken{chars: repeatByte(ch, count)}, consumed, true, nil
-}
-
-// parseRepeatCount parses a repeat count (octal if starts with 0).
-func parseRepeatCount(s string) (int, error) {
-	base := 10
-	if len(s) > 1 && s[0] == '0' {
-		base = 8
-	}
-	val, err := strconv.ParseInt(s, base, 64)
-	if err != nil {
-		return 0, err
-	}
-	return int(val), nil
-}
-
-// parseSingleChar parses one character at spec[pos], handling escapes.
-func parseSingleChar(spec string, pos int) (byte, int) {
-	if pos >= len(spec) {
-		return 0, 0
-	}
-	if spec[pos] == '\\' && pos+1 < len(spec) {
-		return parseEscape(spec, pos)
-	}
-	return spec[pos], 1
-}
-
-// parseEscape parses a backslash escape sequence at spec[pos].
-// R1.3: \n, \t, \\, \a, \b, \f, \r, \v, and \NNN octal escapes.
-func parseEscape(spec string, pos int) (byte, int) {
-	next := spec[pos+1]
-	switch next {
-	case 'a':
-		return '\a', 2
-	case 'b':
-		return '\b', 2
-	case 'f':
-		return '\f', 2
-	case 'n':
-		return '\n', 2
-	case 'r':
-		return '\r', 2
-	case 't':
-		return '\t', 2
-	case 'v':
-		return '\v', 2
-	case '\\':
-		return '\\', 2
-	}
-	if next >= '0' && next <= '7' {
-		return parseOctal(spec, pos+1)
-	}
-	return next, 2
-}
-
-// parseOctal parses an octal escape starting at spec[start].
-// Returns the byte value and total consumed count (including backslash).
-func parseOctal(spec string, start int) (byte, int) {
-	end := start
-	for end < len(spec) && end-start < 3 && spec[end] >= '0' && spec[end] <= '7' {
-		end++
-	}
-	val, _ := strconv.ParseUint(spec[start:end], 8, 32)
-	return byte(val), 1 + (end - start)
-}
-
-// charClassBytes returns bytes in the named POSIX character class (C locale).
-// R1.4: alnum, alpha, blank, cntrl, digit, graph, lower, print, punct,
-// space, upper, xdigit.
-func charClassBytes(name string) ([]byte, error) {
-	switch name {
-	case "upper":
-		return byteRange('A', 'Z'), nil
-	case "lower":
-		return byteRange('a', 'z'), nil
-	case "digit":
-		return byteRange('0', '9'), nil
-	case "xdigit":
-		return concatSlices(byteRange('0', '9'), byteRange('A', 'F'), byteRange('a', 'f')), nil
-	case "alpha":
-		return concatSlices(byteRange('A', 'Z'), byteRange('a', 'z')), nil
-	case "alnum":
-		return concatSlices(byteRange('0', '9'), byteRange('A', 'Z'), byteRange('a', 'z')), nil
-	case "blank":
-		return []byte{'\t', ' '}, nil
-	case "space":
-		return []byte{'\t', '\n', '\v', '\f', '\r', ' '}, nil
-	case "cntrl":
-		return append(byteRange(0, 31), 127), nil
-	case "print":
-		return byteRange(32, 126), nil
-	case "graph":
-		return byteRange(33, 126), nil
-	case "punct":
-		return punctBytes(), nil
-	default:
-		return nil, fmt.Errorf("invalid character class '%s'", name)
-	}
-}
-
-// punctBytes returns all printable non-alphanumeric bytes (C locale).
-func punctBytes() []byte {
-	var r []byte
-	for i := 33; i <= 126; i++ {
-		b := byte(i)
-		if !isAlphaNum(b) {
-			r = append(r, b)
-		}
-	}
-	return r
-}
-
-// isAlphaNum returns true if b is alphanumeric in the C locale.
-func isAlphaNum(b byte) bool {
-	return (b >= '0' && b <= '9') || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
-}
-
-// containsEquivClass returns true if spec contains a [=c=] equivalence class.
-// R3.3: used to reject equivalence classes in SET2 when translating.
-func containsEquivClass(spec string) bool {
-	for i := range spec {
-		if i+4 < len(spec) && spec[i] == '[' && spec[i+1] == '=' &&
-			spec[i+3] == '=' && spec[i+4] == ']' {
+// containsEquivClass reports whether s contains an [=c=] expression.
+func containsEquivClass(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '[' && matchEquivClass(s, i) > 0 {
 			return true
 		}
 	}
 	return false
 }
 
-// --- Byte utilities ---
-
-// extendSet extends set to targetLen by repeating the last byte.
-// R1.1: if SET2 is shorter than SET1, the last character of SET2 is repeated.
-func extendSet(set []byte, targetLen int) []byte {
-	if len(set) == 0 || len(set) >= targetLen {
-		return set
-	}
-	last := set[len(set)-1]
-	for len(set) < targetLen {
-		set = append(set, last)
-	}
-	return set
-}
-
-// buildTable creates a 256-byte translation table mapping SET1 to SET2.
-// R1.1: each character in SET1 maps to the corresponding character in SET2.
-func buildTable(set1, set2 []byte) [256]byte {
-	var table [256]byte
-	for i := range table {
-		table[i] = byte(i)
-	}
-	for i, b := range set1 {
-		if i < len(set2) {
-			table[b] = set2[i]
-		}
-	}
-	return table
-}
-
-// byteRange returns a slice of bytes from start to end inclusive.
-func byteRange(start, end byte) []byte {
-	if start > end {
-		return nil
-	}
-	r := make([]byte, 0, int(end-start)+1)
-	for i := int(start); i <= int(end); i++ {
-		r = append(r, byte(i))
-	}
-	return r
-}
-
-// concatSlices concatenates multiple byte slices.
-func concatSlices(slices ...[]byte) []byte {
+// expandSet parses a SET specification string and returns the expanded bytes.
+// R1.3: supports ranges (a-z), octal escapes (\NNN), backslash escapes,
+// and repeat notation ([c*n]).
+// R1.4: supports POSIX character classes ([:alpha:], [:digit:], etc.).
+func expandSet(s string) ([]byte, error) {
 	var result []byte
-	for _, s := range slices {
-		result = append(result, s...)
+	i := 0
+	for i < len(s) {
+		consumed, expanded, err := expandElement(s, i)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, expanded...)
+		i += consumed
+	}
+	return result, nil
+}
+
+// expandElement parses one element at position i in the SET string.
+// Returns bytes consumed, expanded bytes, and any error.
+func expandElement(s string, i int) (int, []byte, error) {
+	if s[i] == '[' {
+		return expandBracket(s, i)
+	}
+	if s[i] == '\\' {
+		return expandEscape(s, i)
+	}
+	// Check for range: current char, dash, next char.
+	if i+2 < len(s) && s[i+1] == '-' && s[i+2] != ']' {
+		return expandRange(s[i], s[i+2])
+	}
+	return 1, []byte{s[i]}, nil
+}
+
+// expandBracket handles bracket expressions: character classes ([:class:]),
+// equivalence classes ([=c=]), and repeat notation ([c*n]).
+func expandBracket(s string, i int) (int, []byte, error) {
+	if end := matchCharClass(s, i); end > 0 {
+		return expandCharClass(s, i, end)
+	}
+	if end := matchEquivClass(s, i); end > 0 {
+		return expandEquivClass(s, i, end)
+	}
+	if end := matchRepeat(s, i); end > 0 {
+		return expandRepeat(s, i, end)
+	}
+	// Literal '['.
+	return 1, []byte{'['}, nil
+}
+
+// matchCharClass checks if s[i:] starts with "[:name:]" and returns
+// the index past the closing ']', or 0 if no match.
+func matchCharClass(s string, i int) int {
+	if i+3 >= len(s) || s[i+1] != ':' {
+		return 0
+	}
+	end := strings.Index(s[i+2:], ":]")
+	if end < 0 {
+		return 0
+	}
+	return i + 2 + end + 2
+}
+
+// expandCharClass extracts the class name and returns its expanded bytes.
+func expandCharClass(s string, i, end int) (int, []byte, error) {
+	name := s[i+2 : end-2]
+	bytes, err := classBytes(name)
+	if err != nil {
+		return 0, nil, err
+	}
+	return end - i, bytes, nil
+}
+
+// matchEquivClass checks if s[i:] starts with "[=c=]" and returns
+// the index past the closing ']', or 0 if no match.
+func matchEquivClass(s string, i int) int {
+	if i+4 >= len(s) || s[i+1] != '=' {
+		return 0
+	}
+	end := strings.Index(s[i+2:], "=]")
+	if end < 0 {
+		return 0
+	}
+	return i + 2 + end + 2
+}
+
+// expandEquivClass handles [=c=] equivalence class notation.
+// R3.3: in LC_ALL=C, equivalence class contains only the character itself.
+func expandEquivClass(s string, i, end int) (int, []byte, error) {
+	char := s[i+2 : end-2]
+	if len(char) != 1 {
+		return 0, nil, fmt.Errorf("invalid equivalence class '%s'", s[i:end])
+	}
+	return end - i, []byte{char[0]}, nil
+}
+
+// matchRepeat checks if s[i:] starts with "[c*n]" or "[c*]" and returns
+// the index past the closing ']', or 0 if no match.
+func matchRepeat(s string, i int) int {
+	// Minimum: [c*] = 4 chars.
+	if i+3 >= len(s) {
+		return 0
+	}
+	// s[i] is '[', s[i+1] is the char, s[i+2] must be '*'.
+	if s[i+2] != '*' {
+		return 0
+	}
+	end := strings.IndexByte(s[i+3:], ']')
+	if end < 0 {
+		return 0
+	}
+	return i + 3 + end + 1
+}
+
+// expandRepeat handles [c*n] repeat notation.
+// R1.3: [c*] repeats c as needed (returns one instance for parsing).
+// [c*n] repeats c exactly n times.
+func expandRepeat(s string, i, end int) (int, []byte, error) {
+	ch := s[i+1]
+	countStr := s[i+3 : end-1]
+	count, err := parseRepeatCount(countStr)
+	if err != nil {
+		return 0, nil, fmt.Errorf("invalid repeat count in '%s'", s[i:end])
+	}
+	result := make([]byte, count)
+	for j := range result {
+		result[j] = ch
+	}
+	return end - i, result, nil
+}
+
+// parseRepeatCount parses the count in [c*n] notation.
+// Empty string means repeat as needed (return 1 for now).
+// Leading 0 means octal.
+func parseRepeatCount(s string) (int, error) {
+	if s == "" {
+		return 1, nil
+	}
+	base := 10
+	if strings.HasPrefix(s, "0") && len(s) > 1 {
+		base = 8
+	}
+	n, err := strconv.ParseInt(s, base, 64)
+	if err != nil {
+		return 0, err
+	}
+	return int(n), nil
+}
+
+// expandEscape handles backslash escape sequences.
+// R1.3: \n, \t, \\, \a, \b, \f, \r, \v, and \NNN octal.
+func expandEscape(s string, i int) (int, []byte, error) {
+	if i+1 >= len(s) {
+		return 1, []byte{'\\'}, nil
+	}
+	next := s[i+1]
+	if b, ok := simpleEscape(next); ok {
+		return 2, []byte{b}, nil
+	}
+	if isOctalDigit(next) {
+		return expandOctalEscape(s, i+1)
+	}
+	// Unknown escape: treat backslash + char as literal char.
+	return 2, []byte{next}, nil
+}
+
+// simpleEscape maps a character after backslash to its byte value.
+func simpleEscape(c byte) (byte, bool) {
+	switch c {
+	case 'a':
+		return '\a', true
+	case 'b':
+		return '\b', true
+	case 'f':
+		return '\f', true
+	case 'n':
+		return '\n', true
+	case 'r':
+		return '\r', true
+	case 't':
+		return '\t', true
+	case 'v':
+		return '\v', true
+	case '\\':
+		return '\\', true
+	}
+	return 0, false
+}
+
+// expandOctalEscape parses up to 3 octal digits starting at position i.
+// Returns total consumed (including the leading backslash at i-1).
+func expandOctalEscape(s string, i int) (int, []byte, error) {
+	end := i
+	for end < len(s) && end < i+3 && isOctalDigit(s[end]) {
+		end++
+	}
+	val, err := strconv.ParseUint(s[i:end], 8, 8)
+	if err != nil {
+		return 0, nil, fmt.Errorf("invalid octal escape '\\%s'", s[i:end])
+	}
+	// +1 for the backslash.
+	return 1 + (end - i), []byte{byte(val)}, nil
+}
+
+// isOctalDigit reports whether c is an octal digit.
+func isOctalDigit(c byte) bool {
+	return c >= '0' && c <= '7'
+}
+
+// expandRange produces all bytes from lo to hi inclusive.
+// Returns 3 consumed characters (lo, '-', hi).
+func expandRange(lo, hi byte) (int, []byte, error) {
+	if lo > hi {
+		return 0, nil, fmt.Errorf("range-endpoints of '%c-%c' are in reverse collating sequence order", lo, hi)
+	}
+	size := int(hi-lo) + 1
+	result := make([]byte, size)
+	for j := range size {
+		result[j] = lo + byte(j)
+	}
+	return 3, result, nil
+}
+
+// classBytes returns the expanded byte slice for a POSIX character class.
+// R1.4, D4: all classes expanded for LC_ALL=C byte values.
+func classBytes(name string) ([]byte, error) {
+	switch name {
+	case "alnum":
+		return mergeClasses(digitBytes(), letterBytes()), nil
+	case "alpha":
+		return letterBytes(), nil
+	case "blank":
+		return []byte{'\t', ' '}, nil
+	case "cntrl":
+		return ctrlBytes(), nil
+	case "digit":
+		return digitBytes(), nil
+	case "graph":
+		return rangeBytes(0x21, 0x7E), nil
+	case "lower":
+		return rangeBytes('a', 'z'), nil
+	case "print":
+		return rangeBytes(0x20, 0x7E), nil
+	case "punct":
+		return punctBytes(), nil
+	case "space":
+		return []byte{'\t', '\n', '\v', '\f', '\r', ' '}, nil
+	case "upper":
+		return rangeBytes('A', 'Z'), nil
+	case "xdigit":
+		return mergeClasses(digitBytes(), mergeClasses(rangeBytes('A', 'F'), rangeBytes('a', 'f'))), nil
+	}
+	return nil, fmt.Errorf("invalid character class '%s'", name)
+}
+
+// rangeBytes returns a byte slice from lo to hi inclusive.
+func rangeBytes(lo, hi byte) []byte {
+	result := make([]byte, int(hi-lo)+1)
+	for i := range result {
+		result[i] = lo + byte(i)
 	}
 	return result
 }
 
-// repeatByte returns a slice of count copies of b.
-func repeatByte(b byte, count int) []byte {
-	r := make([]byte, count)
-	for i := range r {
-		r[i] = b
-	}
-	return r
+// digitBytes returns '0'-'9'.
+func digitBytes() []byte {
+	return rangeBytes('0', '9')
 }
+
+// letterBytes returns 'A'-'Z' followed by 'a'-'z'.
+func letterBytes() []byte {
+	return mergeClasses(rangeBytes('A', 'Z'), rangeBytes('a', 'z'))
+}
+
+// ctrlBytes returns all control characters (0x00-0x1F and 0x7F).
+func ctrlBytes() []byte {
+	result := rangeBytes(0x00, 0x1F)
+	return append(result, 0x7F)
+}
+
+// punctBytes returns all printable non-alphanumeric characters.
+func punctBytes() []byte {
+	var result []byte
+	for b := byte(0x21); b <= 0x7E; b++ {
+		if !isAlnum(b) {
+			result = append(result, b)
+		}
+	}
+	return result
+}
+
+// isAlnum reports whether b is an ASCII alphanumeric character.
+func isAlnum(b byte) bool {
+	return (b >= '0' && b <= '9') ||
+		(b >= 'A' && b <= 'Z') ||
+		(b >= 'a' && b <= 'z')
+}
+
+// mergeClasses concatenates two byte slices.
+func mergeClasses(a, b []byte) []byte {
+	result := make([]byte, len(a)+len(b))
+	copy(result, a)
+	copy(result[len(a):], b)
+	return result
+}
+

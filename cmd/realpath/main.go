@@ -1,10 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/realpath implements GNU realpath: print resolved absolute paths.
-//
-// Implements prd049-realpath R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
+// Package main implements cmd/realpath: print resolved absolute paths.
+// Implements srd049-realpath R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -18,129 +16,191 @@ import (
 
 const progName = "realpath"
 
-// mode represents the existence-checking mode for path resolution.
-type mode int
+const helpText = `Usage: realpath [OPTION]... FILE...
+Print the resolved absolute file name;
+all but the last component must exist
+
+  -e, --canonicalize-existing  all components of the path must exist
+  -m, --canonicalize-missing   no path components need exist or be a directory
+  -s, --strip, --no-symlinks   don't expand symlinks
+      --relative-to=DIR        print the resolved path relative to DIR
+      --relative-base=DIR      print absolute paths unless paths below DIR
+  -z, --zero                   end each output line with NUL, not newline
+      --help     display this help and exit
+      --version  output version information and exit
+`
+
+const versionText = progName + " (go-unix-utils)"
+
+// resolveMode controls how path resolution handles existence and symlinks.
+type resolveMode int
 
 const (
-	// R1.1, R1.2: resolve all but last component; last may be missing.
-	modeDefault mode = iota
-	// R1.3: -e, every component must exist.
-	modeStrict
-	// R1.4: -m, no component needs to exist.
+	// modeDefault resolves symlinks; all components must exist (same as -e).
+	modeDefault resolveMode = iota
+	// modeExisting requires every component to exist; resolves symlinks.
+	modeExisting
+	// modeMissing does not require any component to exist.
 	modeMissing
+	// modeStrip resolves . and .. only; does not follow symlinks.
+	modeStrip
 )
 
-// config holds all parsed command-line options.
-type config struct {
-	mode         mode
-	strip        bool   // R1.5: -s, --strip, --no-symlinks
-	relativeTo   string // R2.1: --relative-to=DIR
-	relativeBase string // R2.2: --relative-base=DIR
+// options holds all parsed command-line options.
+type options struct {
+	mode         resolveMode
+	relativeTo   string
+	relativeBase string
+	zero         bool
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	exitCode := run(os.Args[1:], os.Stdout, os.Stderr)
+	opts, paths, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
+	}
+
+	if len(paths) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: missing operand\n", progName)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(1)
+	}
+
+	exitCode := run(opts, paths)
 	os.Exit(exitCode)
 }
 
-// run parses arguments and resolves paths. Returns 0 on success, 1 on error.
-func run(args []string, stdout, stderr *os.File) int {
-	cfg, paths, err := parseArgs(args)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", progName, err) //nolint:errcheck
-		return 1
-	}
-	if len(paths) == 0 {
-		printMissingOperand(stderr)
-		return 1
+// run resolves each path and prints results. Returns 0 on full success, 1 if any failed.
+func run(opts options, paths []string) int {
+	terminator := "\n"
+	if opts.zero {
+		terminator = "\x00"
 	}
 
 	exitCode := 0
 	for _, p := range paths {
-		resolved, resolveErr := resolvePath(p, cfg)
-		if resolveErr != nil {
-			fmt.Fprintf(stderr, "%s: %s\n", progName, resolveErr) //nolint:errcheck
+		resolved, err := resolvePath(opts.mode, p)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
 			exitCode = 1
 			continue
 		}
-		output := applyRelative(resolved, cfg)
-		fmt.Fprintln(stdout, output) //nolint:errcheck
+		output := applyRelative(resolved, opts)
+		fmt.Print(output + terminator)
 	}
 	return exitCode
 }
 
-// printMissingOperand writes the missing-operand error to stderr.
-func printMissingOperand(stderr *os.File) {
-	fmt.Fprintf(stderr, "%s: missing operand\n", progName)                   //nolint:errcheck
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
+// applyRelative applies --relative-to and --relative-base to a resolved path.
+// R2.1: --relative-to prints relative to DIR.
+// R2.2: --relative-base prints relative only if path starts with base.
+// R2.3: When both set, --relative-to applies only if path starts with base.
+func applyRelative(resolved string, opts options) string {
+	if opts.relativeBase != "" && opts.relativeTo != "" {
+		return applyBothRelative(resolved, opts)
+	}
+	if opts.relativeBase != "" {
+		return applyRelativeBase(resolved, opts.relativeBase)
+	}
+	if opts.relativeTo != "" {
+		return computeRelative(resolved, opts.relativeTo)
+	}
+	return resolved
 }
 
-// applyRelative adjusts the resolved path for --relative-to and --relative-base.
-func applyRelative(resolved string, cfg config) string {
-	hasTo := cfg.relativeTo != ""
-	hasBase := cfg.relativeBase != ""
-
-	if !hasTo && !hasBase {
+// applyBothRelative handles the case where both --relative-to and --relative-base are set.
+func applyBothRelative(resolved string, opts options) string {
+	if !isUnderDir(resolved, opts.relativeBase) {
 		return resolved
 	}
-	// R2.3: both flags — apply relative-to only if path starts with base.
-	if hasTo && hasBase {
-		return applyBothRelative(resolved, cfg)
-	}
-	// R2.1: --relative-to only.
-	if hasTo {
-		return makeRelative(resolved, cfg.relativeTo)
-	}
-	// R2.2: --relative-base only.
-	return applyRelativeBase(resolved, cfg.relativeBase)
+	return computeRelative(resolved, opts.relativeTo)
 }
 
-// applyBothRelative handles R2.3: both --relative-to and --relative-base.
-func applyBothRelative(resolved string, cfg config) string {
-	if pathStartsWith(resolved, cfg.relativeBase) {
-		return makeRelative(resolved, cfg.relativeTo)
-	}
-	return resolved
-}
-
-// applyRelativeBase handles R2.2: --relative-base only.
+// applyRelativeBase handles --relative-base without --relative-to.
 func applyRelativeBase(resolved, base string) string {
-	if pathStartsWith(resolved, base) {
-		return makeRelative(resolved, base)
+	if !isUnderDir(resolved, base) {
+		return resolved
 	}
-	return resolved
+	return computeRelative(resolved, base)
 }
 
-// makeRelative computes the relative path from base to target.
-func makeRelative(target, base string) string {
-	rel, err := filepath.Rel(base, target)
+// isUnderDir returns true if path equals dir or is a descendant of dir.
+func isUnderDir(path, dir string) bool {
+	cleanDir := filepath.Clean(dir)
+	cleanPath := filepath.Clean(path)
+	if cleanPath == cleanDir {
+		return true
+	}
+	return strings.HasPrefix(cleanPath, cleanDir+string(filepath.Separator))
+}
+
+// computeRelative returns path relative to base using filepath.Rel.
+func computeRelative(path, base string) string {
+	rel, err := filepath.Rel(base, path)
 	if err != nil {
-		return target
+		return path
 	}
 	return rel
 }
 
-// pathStartsWith returns true if target starts with the prefix directory.
-func pathStartsWith(target, prefix string) bool {
-	// Normalize both to ensure trailing slashes don't interfere.
-	cleanTarget := filepath.Clean(target)
-	cleanPrefix := filepath.Clean(prefix)
-	if cleanTarget == cleanPrefix {
-		return true
+// resolvePath resolves a single path according to the given mode.
+// R1.1/R1.2: default and -e resolve symlinks and require existence.
+// R1.4: -m resolves without requiring existence.
+// R1.5: -s cleans . and .. without following symlinks.
+func resolvePath(m resolveMode, path string) (string, error) {
+	switch m {
+	case modeMissing:
+		return resolveCanonMissing(path)
+	case modeStrip:
+		return resolveStrip(path)
+	default:
+		return resolveCanonExisting(path)
 	}
-	return strings.HasPrefix(cleanTarget, cleanPrefix+string(filepath.Separator))
 }
 
-// parseArgs extracts the config and path operands from command-line arguments.
-func parseArgs(args []string) (config, []string, error) {
-	cfg := config{}
+// resolveCanonExisting resolves symlinks and verifies all components exist.
+// Used for default mode and -e mode (R1.1, R1.2, R1.3).
+func resolveCanonExisting(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	return resolved, nil
+}
+
+// resolveCanonMissing resolves as far as possible without requiring existence (R1.4).
+func resolveCanonMissing(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	return filepath.Clean(abs), nil
+}
+
+// resolveStrip cleans . and .. and makes absolute, without following symlinks (R1.5).
+func resolveStrip(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	return filepath.Clean(abs), nil
+}
+
+// parseArgs processes command-line arguments, returning options and path operands.
+func parseArgs(args []string) (options, []string, error) {
+	opts := options{}
 	var paths []string
 	endOfFlags := false
 
-	for i := range len(args) {
-		arg := args[i]
+	for _, arg := range args {
 		if endOfFlags || !strings.HasPrefix(arg, "-") || arg == "-" {
 			paths = append(paths, arg)
 			continue
@@ -149,210 +209,36 @@ func parseArgs(args []string) (config, []string, error) {
 			endOfFlags = true
 			continue
 		}
-		if parsed, err := parseLong(arg, &cfg); parsed {
-			if err != nil {
-				return cfg, nil, err
-			}
-			continue
-		}
-		if err := parseShort(arg, &cfg); err != nil {
-			return cfg, nil, err
+		if err := handleFlag(arg, &opts); err != nil {
+			return options{}, nil, err
 		}
 	}
-	// Resolve the relative dirs through the same canonicalization.
-	if err := resolveRelativeDirs(&cfg); err != nil {
-		return cfg, nil, err
-	}
-	return cfg, paths, nil
+	return opts, paths, nil
 }
 
-// resolveRelativeDirs resolves --relative-to and --relative-base dirs.
-func resolveRelativeDirs(cfg *config) error {
-	if cfg.relativeTo != "" {
-		resolved, err := resolveDir(cfg.relativeTo, *cfg)
-		if err != nil {
-			return err
-		}
-		cfg.relativeTo = resolved
-	}
-	if cfg.relativeBase != "" {
-		resolved, err := resolveDir(cfg.relativeBase, *cfg)
-		if err != nil {
-			return err
-		}
-		cfg.relativeBase = resolved
+// handleFlag processes a single flag argument, updating options.
+func handleFlag(arg string, opts *options) error {
+	switch {
+	case arg == "--help":
+		fmt.Print(helpText)
+		os.Exit(0)
+	case arg == "--version":
+		fmt.Println(versionText)
+		os.Exit(0)
+	case arg == "-e" || arg == "--canonicalize-existing":
+		opts.mode = modeExisting
+	case arg == "-m" || arg == "--canonicalize-missing":
+		opts.mode = modeMissing
+	case arg == "-s" || arg == "--strip" || arg == "--no-symlinks":
+		opts.mode = modeStrip
+	case arg == "-z" || arg == "--zero":
+		opts.zero = true
+	case strings.HasPrefix(arg, "--relative-to="):
+		opts.relativeTo = strings.TrimPrefix(arg, "--relative-to=")
+	case strings.HasPrefix(arg, "--relative-base="):
+		opts.relativeBase = strings.TrimPrefix(arg, "--relative-base=")
+	default:
+		return fmt.Errorf("unrecognized option '%s'", arg)
 	}
 	return nil
-}
-
-// resolveDir resolves a directory path using the current config's mode/strip.
-func resolveDir(dir string, cfg config) (string, error) {
-	return resolvePath(dir, cfg)
-}
-
-// parseLong handles long flags. Returns true if the arg was a long flag.
-func parseLong(arg string, cfg *config) (bool, error) {
-	switch arg {
-	case "--canonicalize-existing":
-		cfg.mode = modeStrict
-		return true, nil
-	case "--canonicalize-missing":
-		cfg.mode = modeMissing
-		return true, nil
-	case "--strip", "--no-symlinks":
-		cfg.strip = true
-		return true, nil
-	}
-	// Handle --relative-to=DIR and --relative-base=DIR
-	if val, ok := parseLongValue(arg, "--relative-to"); ok {
-		cfg.relativeTo = val
-		return true, nil
-	}
-	if val, ok := parseLongValue(arg, "--relative-base"); ok {
-		cfg.relativeBase = val
-		return true, nil
-	}
-	if strings.HasPrefix(arg, "--") {
-		return true, fmt.Errorf("unrecognized option '%s'", arg)
-	}
-	return false, nil
-}
-
-// parseLongValue extracts the value from --key=value. Returns ("", false) if
-// the arg does not match the prefix.
-func parseLongValue(arg, prefix string) (string, bool) {
-	if !strings.HasPrefix(arg, prefix+"=") {
-		return "", false
-	}
-	return arg[len(prefix)+1:], true
-}
-
-// parseShort handles short flag bundles like -em, -s.
-func parseShort(arg string, cfg *config) error {
-	for _, ch := range arg[1:] {
-		switch ch {
-		case 'e':
-			cfg.mode = modeStrict
-		case 'm':
-			cfg.mode = modeMissing
-		case 's':
-			cfg.strip = true
-		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
-		}
-	}
-	return nil
-}
-
-// resolvePath resolves a single path according to the given config.
-func resolvePath(p string, cfg config) (string, error) {
-	if cfg.strip {
-		return resolveStrip(p, cfg.mode)
-	}
-	switch cfg.mode {
-	case modeMissing:
-		return resolveMissing(p)
-	case modeStrict:
-		return resolveStrict(p)
-	default:
-		return resolveDefault(p)
-	}
-}
-
-// resolveStrip resolves a path without following symlinks (R1.5).
-func resolveStrip(p string, m mode) (string, error) {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", fmt.Errorf("%s: %s", p, errMessage(err))
-	}
-	cleaned := filepath.Clean(abs)
-
-	switch m {
-	case modeStrict:
-		if _, err := os.Lstat(cleaned); err != nil {
-			return "", fmt.Errorf("%s: %s", p, errMessage(err))
-		}
-	case modeMissing:
-		// No existence check needed.
-	default:
-		// Default: parent must exist.
-		dir := filepath.Dir(cleaned)
-		if _, err := os.Lstat(dir); err != nil {
-			return "", fmt.Errorf("%s: %s", p, errMessage(err))
-		}
-	}
-	return cleaned, nil
-}
-
-// resolveDefault resolves symlinks for all but the last component (R1.1, R1.2).
-// The parent directory must exist; the last component may be missing.
-func resolveDefault(p string) (string, error) {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", fmt.Errorf("%s: %s", p, errMessage(err))
-	}
-	dir := filepath.Dir(abs)
-	base := filepath.Base(abs)
-
-	resolvedDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return "", fmt.Errorf("%s: %s", p, errMessage(err))
-	}
-	// If the full path exists, resolve its symlinks too.
-	full := filepath.Join(resolvedDir, base)
-	if resolved, evalErr := filepath.EvalSymlinks(full); evalErr == nil {
-		return resolved, nil
-	}
-	return full, nil
-}
-
-// resolveStrict resolves symlinks and requires every component to exist (R1.3).
-func resolveStrict(p string) (string, error) {
-	resolved, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		return "", fmt.Errorf("%s: %s", p, errMessage(err))
-	}
-	abs, err := filepath.Abs(resolved)
-	if err != nil {
-		return "", fmt.Errorf("%s: %s", p, errMessage(err))
-	}
-	return abs, nil
-}
-
-// resolveMissing resolves as far as possible, constructs the rest (R1.4).
-func resolveMissing(p string) (string, error) {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", fmt.Errorf("%s: %s", p, errMessage(err))
-	}
-	return resolveExistingPrefix(abs), nil
-}
-
-// resolveExistingPrefix walks from the root, resolving symlinks for
-// components that exist and appending the rest literally.
-func resolveExistingPrefix(abs string) string {
-	parts := strings.Split(abs, string(filepath.Separator))
-	resolved := "/"
-	for i := 1; i < len(parts); i++ {
-		if parts[i] == "" {
-			continue
-		}
-		candidate := filepath.Join(resolved, parts[i])
-		real, err := filepath.EvalSymlinks(candidate)
-		if err != nil {
-			remaining := filepath.Join(parts[i:]...)
-			return filepath.Join(resolved, remaining)
-		}
-		resolved = real
-	}
-	return resolved
-}
-
-// errMessage extracts the inner message from a *os.PathError or returns
-// the full error string.
-func errMessage(err error) string {
-	if pe, ok := err.(*os.PathError); ok {
-		return pe.Err.Error()
-	}
-	return err.Error()
 }

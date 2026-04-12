@@ -1,203 +1,111 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/tty implements GNU tty: print the terminal file name connected to stdin.
-//
-// Implements prd052-tty R1.1, R1.2, R1.3, R2.1, R2.2.
+// Package main implements cmd/tty: print terminal file name.
+// Implements srd052-tty R1.1, R1.2, R1.3, R2.1.
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"runtime"
 	"strings"
-	"syscall"
-	"unsafe"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+// progName is used in error messages.
 const progName = "tty"
 
-// version is set at build time via -ldflags "-X main.version=<tag>".
-var version = "dev"
+// helpText is the usage message printed when --help is passed.
+// R2.1: --help prints usage to stdout and exits 0.
+const helpText = `Usage: tty [OPTION]...
+Print the file name of the terminal connected to standard input.
+
+  -s, --silent, --quiet   print nothing, only return an exit status
+      --help     display this help and exit
+      --version  output version information and exit
+`
+
+// versionText is printed when --version is passed.
+const versionText = progName + " (go-unix-utils)"
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	exitCode := run(os.Args[1:], os.Stdout, os.Stderr)
-	os.Exit(exitCode)
-}
-
-// run parses arguments and prints the terminal name. Returns exit code.
-// R1.1: exit 0 when stdin is a terminal.
-// R1.2: exit 1 when stdin is not a terminal.
-// R1.3: -s suppresses output; exit code still indicates terminal status.
-func run(args []string, stdout, stderr *os.File) int {
-	silent, result, err := parseArgs(args)
+	silent, err := parseArgs(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", progName, err) //nolint:errcheck
-		printTryHelp(stderr)
-		return 2
+		fmt.Fprintf(os.Stderr, "%s: %s\n", progName, err)
+		fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", progName)
+		os.Exit(2)
 	}
-	if result == resultHelp {
-		printHelp(stdout)
-		return 0
-	}
-	if result == resultVersion {
-		printVersion(stdout)
-		return 0
-	}
-	return printTTY(silent, stdout)
+
+	os.Exit(runTTY(silent))
 }
 
-// printTTY detects whether stdin is a terminal and prints the device name.
-// R1.1: prints device path and exits 0 when stdin is a terminal.
-// R1.2: prints "not a tty" and exits 1 when stdin is not a terminal.
-// R1.3: -s suppresses all output.
-func printTTY(silent bool, stdout *os.File) int {
-	isTerm := sys.IsTerminal(os.Stdin.Fd())
-	if !silent {
-		if isTerm {
-			name := ttyName()
-			fmt.Fprintln(stdout, name) //nolint:errcheck
-		} else {
-			fmt.Fprintln(stdout, "not a tty") //nolint:errcheck
+// runTTY checks whether stdin is a terminal and prints the device name.
+// R1.1: terminal → print device path, exit 0.
+// R1.2: not terminal → print "not a tty", exit 1.
+// R1.3: silent → suppress output, exit code only.
+func runTTY(silent bool) int {
+	if !sys.IsTerminal(os.Stdin.Fd()) {
+		if !silent {
+			fmt.Println("not a tty")
 		}
+		return 1
 	}
-	if isTerm {
-		return 0
+	if !silent {
+		name, err := ttyName()
+		if err != nil {
+			fmt.Println("not a tty")
+			return 1
+		}
+		fmt.Println(name)
 	}
-	return 1
+	return 0
 }
 
 // ttyName returns the terminal device path for stdin.
-// R1.1: resolves the actual device path using platform-specific mechanisms.
-func ttyName() string {
-	if runtime.GOOS == "linux" {
-		return ttyNameFromProc()
-	}
-	return ttyNameFromFcntl()
-}
-
-// ttyNameFromFcntl uses fcntl(F_GETPATH) to resolve the device path (macOS).
-func ttyNameFromFcntl() string {
-	const fGetPath = 50 // F_GETPATH on macOS
-	const maxPathLen = 1024
-	buf := make([]byte, maxPathLen)
-	_, _, errno := syscall.Syscall(
-		syscall.SYS_FCNTL,
-		os.Stdin.Fd(),
-		fGetPath,
-		uintptr(unsafe.Pointer(&buf[0])),
-	)
-	if errno != 0 {
-		return "/dev/tty"
-	}
-	n := bytes.IndexByte(buf, 0)
-	if n < 0 {
-		n = len(buf)
-	}
-	return string(buf[:n])
-}
-
-// ttyNameFromProc reads /proc/self/fd/0 to resolve the device path (Linux).
-func ttyNameFromProc() string {
-	name, err := os.Readlink("/proc/self/fd/0")
+// Uses /dev/fd/0 on Darwin and /proc/self/fd/0 on Linux.
+func ttyName() (string, error) {
+	path := stdinFDPath()
+	target, err := os.Readlink(path)
 	if err != nil {
-		return "/dev/tty"
+		return "", fmt.Errorf("reading terminal name: %w", err)
 	}
-	return name
+	return target, nil
 }
 
-// parseResult describes the outcome of argument parsing.
-type parseResult int
+// stdinFDPath returns the platform-specific path to the stdin fd symlink.
+func stdinFDPath() string {
+	if runtime.GOOS == "linux" {
+		return "/proc/self/fd/0"
+	}
+	return "/dev/fd/0"
+}
 
-const (
-	resultContinue parseResult = iota
-	resultHelp
-	resultVersion
-)
-
-// parseArgs extracts the silent flag from command-line arguments.
-// R1.3: -s, --silent, --quiet enable silent mode.
-// R2.1: extra operands produce an error and exit 2.
-// R2.2: unknown flags produce an error and exit 2.
-func parseArgs(args []string) (bool, parseResult, error) {
+// parseArgs processes command-line arguments and returns the silent flag.
+// R1.3: -s, --silent, --quiet set silent mode.
+// R2.1: extra operands produce an error with exit 2.
+// R2.2: unknown flags produce an error with exit 2.
+func parseArgs(args []string) (bool, error) {
 	silent := false
 	for _, arg := range args {
-		if arg == "--" {
-			break
-		}
-		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			return silent, resultContinue, fmt.Errorf("extra operand '%s'", arg)
-		}
-		s, result, err := parseFlag(arg, silent)
-		if err != nil {
-			return silent, resultContinue, err
-		}
-		if result != resultContinue {
-			return s, result, nil
-		}
-		silent = s
-	}
-	return silent, resultContinue, nil
-}
-
-// parseFlag parses a single flag argument and returns the updated silent state.
-func parseFlag(arg string, current bool) (bool, parseResult, error) {
-	if strings.HasPrefix(arg, "--") {
-		return parseLongFlag(arg, current)
-	}
-	s, err := parseShortFlags(arg, current)
-	return s, resultContinue, err
-}
-
-// parseLongFlag handles --silent, --quiet, --help, and --version.
-func parseLongFlag(arg string, current bool) (bool, parseResult, error) {
-	switch arg {
-	case "--silent", "--quiet":
-		return true, resultContinue, nil
-	case "--help":
-		return current, resultHelp, nil
-	case "--version":
-		return current, resultVersion, nil
-	default:
-		return current, resultContinue, fmt.Errorf("unrecognized option '%s'", arg)
-	}
-}
-
-// parseShortFlags handles short flag bundles like -s.
-func parseShortFlags(arg string, current bool) (bool, error) {
-	s := current
-	for _, ch := range arg[1:] {
-		switch ch {
-		case 's':
-			s = true
+		switch arg {
+		case "--help":
+			fmt.Print(helpText)
+			os.Exit(0)
+		case "--version":
+			fmt.Println(versionText)
+			os.Exit(0)
+		case "-s", "--silent", "--quiet":
+			silent = true
 		default:
-			return s, fmt.Errorf("invalid option -- '%c'", ch)
+			if strings.HasPrefix(arg, "-") && arg != "-" {
+				return false, fmt.Errorf("unrecognized option '%s'", arg)
+			}
+			return false, fmt.Errorf("extra operand '%s'", arg)
 		}
 	}
-	return s, nil
-}
-
-// printTryHelp writes the "Try --help" hint to stderr.
-func printTryHelp(stderr *os.File) {
-	fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
-}
-
-// printHelp writes usage information to stdout.
-func printHelp(stdout *os.File) {
-	fmt.Fprintf(stdout, "Usage: %s [OPTION]...\n", progName)                          //nolint:errcheck
-	fmt.Fprintln(stdout, "Print the file name of the terminal connected to standard input.") //nolint:errcheck
-	fmt.Fprintln(stdout)                                                               //nolint:errcheck
-	fmt.Fprintln(stdout, "  -s, --silent, --quiet   print nothing, only return an exit status") //nolint:errcheck
-	fmt.Fprintln(stdout, "      --help              display this help and exit")       //nolint:errcheck
-	fmt.Fprintln(stdout, "      --version           output version information and exit") //nolint:errcheck
-}
-
-// printVersion writes version information to stdout.
-func printVersion(stdout *os.File) {
-	fmt.Fprintf(stdout, "%s (go-unix-utils) %s\n", progName, version) //nolint:errcheck
+	return silent, nil
 }

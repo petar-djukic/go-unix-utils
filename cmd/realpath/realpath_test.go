@@ -1,23 +1,129 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/realpath against grealpath (GNU coreutils).
-//
-// Covers prd049-realpath R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
+// Package main provides differential tests for cmd/realpath.
+// Tests cover srd049-realpath R3.1, R3.2, R3.3, R4.1, R4.2, R4.3.
 package main
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// discardAll blanks all output so tests check only exit code.
-// Used for error messages where GNU includes the full binary path.
-func discardAll(data []byte) []byte {
-	return nil
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+// R3.1/R3.2/R3.3: replaces binary paths with "PROG" so error message
+// structure can be compared between Go and GNU binaries.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	return b
+}
+
+// stderrPresenceNormalizer replaces non-empty stderr with a constant.
+// Used when error message format differs between Go and GNU binaries
+// but both produce an error on the same input.
+func stderrPresenceNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	return []byte("ERROR\n")
+}
+
+// resolvedTempDir creates a temp directory and resolves symlinks in the path.
+// On macOS, t.TempDir() returns /var/folders/... but the physical path is
+// /private/var/folders/.... Resolving ensures test paths match GNU output.
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("resolve temp dir: %v", err)
+	}
+	return resolved
+}
+
+// createFixtures sets up a directory with files, subdirectories,
+// and symlinks for differential tests. Returns the resolved fixture root.
+func createFixtures(t *testing.T) string {
+	t.Helper()
+	dir := resolvedTempDir(t)
+
+	realFile := filepath.Join(dir, "real_file.txt")
+	if err := os.WriteFile(realFile, []byte("content"), 0o644); err != nil {
+		t.Fatalf("create fixture file: %v", err)
+	}
+
+	subDir := filepath.Join(dir, "subdir")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("create fixture subdir: %v", err)
+	}
+
+	symLink := filepath.Join(dir, "link_to_file")
+	if err := os.Symlink(realFile, symLink); err != nil {
+		t.Fatalf("create fixture symlink: %v", err)
+	}
+
+	return dir
+}
+
+// createNestedFixtures sets up a deeper directory tree for relative path tests.
+// Returns the resolved fixture root. Tree structure:
+//
+//	root/
+//	  a/
+//	    b/
+//	      c/
+//	        deep.txt
+//	    file_a.txt
+//	  other/
+//	    file_o.txt
+//	  link_to_a -> a
+func createNestedFixtures(t *testing.T) string {
+	t.Helper()
+	dir := resolvedTempDir(t)
+
+	dirs := []string{
+		filepath.Join(dir, "a", "b", "c"),
+		filepath.Join(dir, "other"),
+	}
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("create nested dir %s: %v", d, err)
+		}
+	}
+
+	files := map[string]string{
+		filepath.Join(dir, "a", "b", "c", "deep.txt"): "deep",
+		filepath.Join(dir, "a", "file_a.txt"):          "a",
+		filepath.Join(dir, "other", "file_o.txt"):      "o",
+	}
+	for path, content := range files {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("create nested file %s: %v", path, err)
+		}
+	}
+
+	linkSrc := filepath.Join(dir, "a")
+	linkDst := filepath.Join(dir, "link_to_a")
+	if err := os.Symlink(linkSrc, linkDst); err != nil {
+		t.Fatalf("create nested symlink: %v", err)
+	}
+
+	return dir
 }
 
 func TestDiff(t *testing.T) {
@@ -26,303 +132,323 @@ func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("grealpath")
 	if err != nil {
-		t.Skip("reference binary grealpath not in PATH")
+		t.Skipf("reference binary grealpath not in PATH: %v", err)
 	}
 
+	fixtureDir := createFixtures(t)
+	realFile := filepath.Join(fixtureDir, "real_file.txt")
+	subDir := filepath.Join(fixtureDir, "subdir")
+	symLink := filepath.Join(fixtureDir, "link_to_file")
+	nonexistent := filepath.Join(fixtureDir, "nonexistent")
+
 	tests := []testutils.DiffTest{
-		// R1.1: resolve absolute path with no symlinks
+		// R3.1: no operand produces usage error, exit 1.
 		{
-			Name:     "R1.1_absolute_existing",
-			Args:     []string{"/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.1: resolve relative path "."
-		{
-			Name:     "R1.1_dot",
-			Args:     []string{"."},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.1: resolve relative path ".."
-		{
-			Name:     "R1.1_dotdot",
-			Args:     []string{".."},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.1: resolve root
-		{
-			Name:     "R1.1_root",
-			Args:     []string{"/"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.1: multiple existing paths
-		{
-			Name:     "R1.1_multiple_existing",
-			Args:     []string{"/tmp", "/"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.1: default mode allows last component to be missing
-		{
-			Name:     "R1.1_last_missing_ok",
-			Args:     []string{"/tmp/nonexistent_xyz_99999"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.2: default mode errors when parent directory is missing
-		{
-			Name:      "R1.2_parent_missing",
-			Args:      []string{"/nonexistent_xyz_99999/child/grandchild"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R1.2: mixed existing and failing paths
-		{
-			Name:      "R1.2_mixed_paths",
-			Args:      []string{"/tmp", "/nonexistent_xyz_99999/child/grandchild"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R1.3: -e with existing path succeeds
-		{
-			Name:     "R1.3_e_existing",
-			Args:     []string{"-e", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.3: -e with nonexistent path fails
-		{
-			Name:      "R1.3_e_nonexistent",
-			Args:      []string{"-e", "/nonexistent_xyz_99999"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R1.3: --canonicalize-existing long form
-		{
-			Name:     "R1.3_canonicalize_existing_long",
-			Args:     []string{"--canonicalize-existing", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.3: -e with missing last component fails (stricter than default)
-		{
-			Name:      "R1.3_e_last_missing",
-			Args:      []string{"-e", "/tmp/nonexistent_xyz_99999"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R1.4: -m with nonexistent path succeeds
-		{
-			Name:     "R1.4_m_nonexistent",
-			Args:     []string{"-m", "/nonexistent_xyz_99999/foo/bar"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.4: -m with existing path
-		{
-			Name:     "R1.4_m_existing",
-			Args:     []string{"-m", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.4: --canonicalize-missing long form
-		{
-			Name:     "R1.4_canonicalize_missing_long",
-			Args:     []string{"--canonicalize-missing", "/nonexistent_xyz_99999"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// No operand — error exit 1
-		{
-			Name:      "no_args_error",
+			Name:      "no_operand",
 			Args:      []string{},
-			Env:       []string{"LC_ALL=C"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// Unknown flag — error exit 1
-		{
-			Name:      "unknown_flag_error",
-			Args:      []string{"--bogus-flag"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 
-		// R1.5: -s does not resolve symlinks, only cleans path
+		// R3.2: unknown flag produces error, exit 1.
 		{
-			Name:     "R1.5_strip_absolute",
-			Args:     []string{"-s", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.5: -s cleans .. components with -m (no existence check)
-		{
-			Name:     "R1.5_strip_dotdot",
-			Args:     []string{"-s", "-m", "/tmp/foo/.."},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.5: --strip long form
-		{
-			Name:     "R1.5_strip_long",
-			Args:     []string{"--strip", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.5: --no-symlinks long form
-		{
-			Name:     "R1.5_no_symlinks_long",
-			Args:     []string{"--no-symlinks", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.5: -s with -m allows nonexistent paths
-		{
-			Name:     "R1.5_strip_missing",
-			Args:     []string{"-s", "-m", "/nonexistent_xyz_99999/foo/bar"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R1.5: -s with -e requires existence
-		{
-			Name:      "R1.5_strip_strict_nonexistent",
-			Args:      []string{"-s", "-e", "/nonexistent_xyz_99999"},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "unknown_flag",
+			Args:      []string{"--bogus"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R1.5: -s with -e on existing path
-		{
-			Name:     "R1.5_strip_strict_existing",
-			Args:     []string{"-s", "-e", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 
-		// R2.1: --relative-to prints path relative to DIR
+		// Default: resolve existing file to canonical path.
 		{
-			Name:     "R2.1_relative_to",
-			Args:     []string{"--relative-to=/", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.1: --relative-to with same directory
-		{
-			Name:     "R2.1_relative_to_same",
-			Args:     []string{"--relative-to=/tmp", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.1: --relative-to with sibling
-		{
-			Name:     "R2.1_relative_to_sibling",
-			Args:     []string{"-m", "--relative-to=/usr/local", "/usr/bin"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "default_existing_file",
+			Args: []string{realFile},
 		},
 
-		// R2.2: --relative-base prints relative when path starts with base
+		// Default: resolve symlink to target's canonical path.
 		{
-			Name:     "R2.2_relative_base_inside",
-			Args:     []string{"-m", "--relative-base=/usr", "/usr/local/bin"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.2: --relative-base prints absolute when path does not start with base
-		{
-			Name:     "R2.2_relative_base_outside",
-			Args:     []string{"-m", "--relative-base=/usr", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "default_resolve_symlink",
+			Args: []string{symLink},
 		},
 
-		// R2.3: both --relative-to and --relative-base
+		// Default: resolve relative .. components.
 		{
-			Name:     "R2.3_both_inside_base",
-			Args:     []string{"-m", "--relative-to=/usr", "--relative-base=/usr", "/usr/local/bin"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
-		},
-		// R2.3: both flags, path outside base — absolute output
-		{
-			Name:     "R2.3_both_outside_base",
-			Args:     []string{"-m", "--relative-to=/usr", "--relative-base=/usr", "/tmp"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "default_dotdot",
+			Args: []string{filepath.Join(subDir, "..", "real_file.txt")},
 		},
 
-		// R3.1: no operand prints usage error and exits 1
+		// -e: existing file resolves successfully.
 		{
-			Name:      "R3.1_no_operand",
-			Args:      []string{},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R3.1: flags only, no operand
-		{
-			Name:      "R3.1_flags_only_no_operand",
-			Args:      []string{"-m", "-s"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "canonicalize_existing_ok",
+			Args: []string{"-e", realFile},
 		},
 
-		// R3.2: unknown long flag
+		// -e: symlink with existing target resolves.
 		{
-			Name:      "R3.2_unknown_long_flag",
-			Args:      []string{"--bogus-flag"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
-		},
-		// R3.2: unknown short flag
-		{
-			Name:      "R3.2_unknown_short_flag",
-			Args:      []string{"-z"},
-			Env:       []string{"LC_ALL=C"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Name: "canonicalize_existing_symlink",
+			Args: []string{"-e", symLink},
 		},
 
-		// R3.3: multiple paths, first fails, second succeeds — exit 1
+		// -e: nonexistent path produces error, exit 1.
+		// Stderr format differs between Go and GNU; check presence only.
 		{
-			Name:      "R3.3_first_fails_second_succeeds",
-			Args:      []string{"/nonexistent_xyz_99999/child", "/tmp"},
-			Env:       []string{"LC_ALL=C"},
+			Name:      "canonicalize_existing_missing",
+			Args:      []string{"-e", nonexistent},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrPresenceNormalizer},
 		},
-		// R3.3: multiple paths, some succeed some fail — exit 1
+
+		// -m: nonexistent path still resolves without error.
 		{
-			Name:      "R3.3_mixed_three_paths",
-			Args:      []string{"/tmp", "/nonexistent_xyz_99999/a/b", "/"},
-			Env:       []string{"LC_ALL=C"},
+			Name: "canonicalize_missing_nonexistent",
+			Args: []string{"-m", filepath.Join(fixtureDir, "no", "such", "path")},
+		},
+
+		// -m: existing path resolves normally.
+		{
+			Name: "canonicalize_missing_existing",
+			Args: []string{"-m", realFile},
+		},
+
+		// -s: does not resolve symlink, prints the symlink path itself.
+		{
+			Name: "strip_symlink_not_resolved",
+			Args: []string{"-s", symLink},
+		},
+
+		// -s: cleans .. components without following symlinks.
+		{
+			Name: "strip_dotdot",
+			Args: []string{"-s", filepath.Join(subDir, "..", "real_file.txt")},
+		},
+
+		// -s: nonexistent path is cleaned without error.
+		{
+			Name: "strip_nonexistent",
+			Args: []string{"-s", filepath.Join(fixtureDir, "no", "..", "real_file.txt")},
+		},
+
+		// R3.3: multiple paths with -e, some fail — errors for failures,
+		// successful resolutions still printed, exit 1.
+		{
+			Name:      "mixed_success_failure_e",
+			Args:      []string{"-e", realFile, nonexistent, symLink},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrPresenceNormalizer},
 		},
-		// R3.3: all paths succeed — exit 0
+
+		// Multiple valid paths all succeed, exit 0.
 		{
-			Name:     "R3.3_all_succeed",
-			Args:     []string{"/tmp", "/", "/usr"},
-			Env:      []string{"LC_ALL=C"},
-			ExitCode: 0,
+			Name: "multiple_valid_paths",
+			Args: []string{realFile, symLink},
 		},
-		// R3.3: -e with multiple paths, one missing — exit 1
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffRelative exercises --relative-to and --relative-base flags.
+// R4.1: differential tests for relative path output.
+// R4.2: covers --relative-to, --relative-base, and combined flag interactions.
+// R4.3: all tests inherit LC_ALL=C from RunDiffTests.
+func TestDiffRelative(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grealpath")
+	if err != nil {
+		t.Skipf("reference binary grealpath not in PATH: %v", err)
+	}
+
+	root := createNestedFixtures(t)
+	dirA := filepath.Join(root, "a")
+	dirB := filepath.Join(root, "a", "b")
+	dirC := filepath.Join(root, "a", "b", "c")
+	deepFile := filepath.Join(root, "a", "b", "c", "deep.txt")
+	fileA := filepath.Join(root, "a", "file_a.txt")
+	dirOther := filepath.Join(root, "other")
+	fileO := filepath.Join(root, "other", "file_o.txt")
+	linkA := filepath.Join(root, "link_to_a")
+
+	tests := []testutils.DiffTest{
+		// R2.1: --relative-to prints path relative to the given directory.
 		{
-			Name:      "R3.3_strict_mixed",
-			Args:      []string{"-e", "/tmp", "/nonexistent_xyz_99999"},
-			Env:       []string{"LC_ALL=C"},
+			Name: "relative_to_child",
+			Args: []string{"--relative-to=" + dirA, deepFile},
+		},
+		// R2.1: --relative-to with sibling directory requires ../
+		{
+			Name: "relative_to_sibling",
+			Args: []string{"--relative-to=" + dirOther, fileA},
+		},
+		// R2.1: --relative-to with same directory returns file name.
+		{
+			Name: "relative_to_same_dir",
+			Args: []string{"--relative-to=" + dirC, deepFile},
+		},
+		// R2.1: --relative-to with directory itself returns ".".
+		{
+			Name: "relative_to_dir_itself",
+			Args: []string{"--relative-to=" + dirA, dirA},
+		},
+		// R2.1: --relative-to with multiple paths.
+		{
+			Name: "relative_to_multiple_paths",
+			Args: []string{"--relative-to=" + root, fileA, deepFile, fileO},
+		},
+
+		// R2.2: --relative-base prints relative when path is under base.
+		{
+			Name: "relative_base_under",
+			Args: []string{"--relative-base=" + dirA, deepFile},
+		},
+		// R2.2: --relative-base prints absolute when path is NOT under base.
+		{
+			Name: "relative_base_not_under",
+			Args: []string{"--relative-base=" + dirA, fileO},
+		},
+		// R2.2: --relative-base with path equal to base returns ".".
+		{
+			Name: "relative_base_exact_match",
+			Args: []string{"--relative-base=" + dirA, dirA},
+		},
+		// R2.2: --relative-base with multiple paths, some under and some not.
+		{
+			Name: "relative_base_mixed_paths",
+			Args: []string{"--relative-base=" + dirA, fileA, fileO, deepFile},
+		},
+
+		// R2.3: both --relative-to and --relative-base set; path under base.
+		{
+			Name: "both_relative_under_base",
+			Args: []string{
+				"--relative-to=" + dirB,
+				"--relative-base=" + dirA,
+				deepFile,
+			},
+		},
+		// R2.3: both set; path NOT under base prints absolute.
+		{
+			Name: "both_relative_not_under_base",
+			Args: []string{
+				"--relative-to=" + dirB,
+				"--relative-base=" + dirA,
+				fileO,
+			},
+		},
+		// R2.3: both set; multiple paths with mixed base membership.
+		{
+			Name: "both_relative_mixed",
+			Args: []string{
+				"--relative-to=" + dirA,
+				"--relative-base=" + dirA,
+				fileA, fileO, deepFile,
+			},
+		},
+
+		// D3: --relative-to combined with -s (no symlink resolution).
+		{
+			Name: "relative_to_with_strip",
+			Args: []string{"-s", "--relative-to=" + root, linkA},
+		},
+
+		// D3: --relative-base combined with -e (canonicalize-existing).
+		{
+			Name: "relative_base_with_existing",
+			Args: []string{"-e", "--relative-base=" + dirA, fileA},
+		},
+
+		// D3: --relative-base combined with -m (canonicalize-missing).
+		{
+			Name: "relative_base_with_missing",
+			Args: []string{
+				"-m",
+				"--relative-base=" + root,
+				filepath.Join(root, "no", "such", "path"),
+			},
+		},
+
+		// D3: --relative-to combined with -m for nonexistent path.
+		{
+			Name: "relative_to_with_missing",
+			Args: []string{
+				"-m",
+				"--relative-to=" + root,
+				filepath.Join(root, "x", "y", "z"),
+			},
+		},
+
+		// D3: --relative-base with -e on nonexistent path (error case).
+		{
+			Name:      "relative_base_existing_nonexistent",
+			Args:      []string{"-e", "--relative-base=" + root, filepath.Join(root, "nope")},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{discardAll},
+			Normalize: []testutils.NormalizeFunc{stderrPresenceNormalizer},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// TestDiffErrorCases exercises additional error handling paths.
+// R4.2/R4.3: error cases, nonexistent paths, multiple operands with failures.
+func TestDiffErrorCases(t *testing.T) {
+	t.Parallel()
+
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("grealpath")
+	if err != nil {
+		t.Skipf("reference binary grealpath not in PATH: %v", err)
+	}
+
+	root := createFixtures(t)
+	realFile := filepath.Join(root, "real_file.txt")
+	symLink := filepath.Join(root, "link_to_file")
+	nonexistent := filepath.Join(root, "nonexistent")
+	deepNonexistent := filepath.Join(root, "a", "b", "c")
+
+	tests := []testutils.DiffTest{
+		// R3.3: -e with deeply nonexistent path.
+		{
+			Name:      "e_deep_nonexistent",
+			Args:      []string{"-e", deepNonexistent},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrPresenceNormalizer},
+		},
+
+		// R3.3: multiple paths all nonexistent with -e.
+		{
+			Name:      "e_all_nonexistent",
+			Args:      []string{"-e", nonexistent, deepNonexistent},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrPresenceNormalizer},
+		},
+
+		// R3.3: multiple args, first fails, rest succeed — exit 1.
+		{
+			Name:      "first_fails_rest_succeed",
+			Args:      []string{"-e", nonexistent, realFile, symLink},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrPresenceNormalizer},
+		},
+
+		// R3.3: multiple args, last fails — exit 1.
+		{
+			Name:      "last_fails",
+			Args:      []string{"-e", realFile, symLink, nonexistent},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrPresenceNormalizer},
+		},
+
+		// -m resolves deeply nonexistent path without error.
+		{
+			Name: "m_deep_nonexistent",
+			Args: []string{"-m", deepNonexistent},
+		},
+
+		// Double-dash ends flag processing; path-like arg treated as operand.
+		{
+			Name: "double_dash_existing_path",
+			Args: []string{"--", realFile},
 		},
 	}
 

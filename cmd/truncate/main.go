@@ -1,267 +1,218 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/truncate implements GNU truncate: shrink or extend file size.
-//
-// Implements prd083-truncate R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2.
+// Package main implements cmd/truncate: shrink or extend file size.
+// Implements srd083 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3.
 package main
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// sizeOp represents the size operation to apply.
+const programName = "truncate"
+
+// sizeOp represents the type of size adjustment operation.
 type sizeOp int
 
 const (
-	opAbsolute  sizeOp = iota // set to exact size
-	opGrow                    // +N: grow by N bytes
-	opShrink                  // -N: shrink by N bytes
-	opAtMost                  // <N: set to min(current, N)
-	opAtLeast                 // >N: set to max(current, N)
-	opRoundDown               // /N: round down to multiple of N
-	opRoundUp                 // %N: round up to multiple of N
+	opSet       sizeOp = iota // set to exact value
+	opGrow                    // add to current/ref size
+	opShrink                  // subtract from current/ref size
+	opAtMost                  // min(current, value)
+	opAtLeast                 // max(current, value)
+	opRoundDown               // round down to multiple
+	opRoundUp                 // round up to multiple
 )
 
-const programName = "truncate"
-
-const usageText = `Usage: truncate OPTION... FILE...
-Shrink or extend the size of each FILE to the specified size.
-
-  -c, --no-create        do not create any files
-  -o, --io-blocks        treat SIZE as number of IO blocks instead of bytes
-  -r, --reference=RFILE  base size on RFILE
-  -s, --size=SIZE        set or adjust the file size by SIZE bytes
-      --help             display this help and exit
-      --version          output version information and exit
-
-SIZE may be prefixed by: '+' grow, '-' shrink, '<' at most, '>' at least,
-'/' round down to multiple, '%' round up to multiple.
-SIZE may also have a suffix: K (1024), KB (1000), M, MB, G, GB, T, P, E.
-`
-
-const versionText = "truncate (go-unix-utils) 0.1\n"
-
-// truncateOptions holds parsed flag state.
-type truncateOptions struct {
-	sizeStr  string // -s, --size=SIZE
-	refFile  string // -r, --reference=RFILE
-	noCreate bool   // -c, --no-create
-	ioBlocks bool   // -o, --io-blocks
-	showHelp bool   // --help
-	showVer  bool   // --version
-}
-
-// parsedSize holds the parsed size specification.
+// parsedSize holds a parsed size specification with its operation type.
 type parsedSize struct {
 	op    sizeOp
 	value int64
 }
 
+// config holds parsed command-line options.
+type config struct {
+	size     *parsedSize
+	refFile  string
+	noCreate bool
+	files    []string
+}
+
+// usageError indicates a command-line usage error that warrants a "Try --help" hint.
+type usageError struct {
+	msg string
+}
+
+// Error implements the error interface.
+func (e *usageError) Error() string { return e.msg }
+
+// main entry point with SIGPIPE handler.
+// R3.3: InstallSIGPIPEHandler for graceful SIGPIPE exit.
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
-}
-
-// run parses flags and processes each file argument.
-// R3.1: exits 0 on success, non-zero on failure.
-// R3.2: prints usage on --help, version on --version.
-func run(args []string, stdout *os.File, stderr *os.File) int {
-	opts, files := parseArgs(args)
-	if opts.showHelp {
-		fmt.Fprint(stdout, usageText)
-		return 0
-	}
-	if opts.showVer {
-		fmt.Fprint(stdout, versionText)
-		return 0
-	}
-	return runTruncate(opts, files, stderr)
-}
-
-// runTruncate validates options and processes files.
-func runTruncate(opts truncateOptions, files []string, stderr *os.File) int {
-	if opts.sizeStr == "" && opts.refFile == "" {
-		fmt.Fprintf(stderr, "%s: you must specify either '--size=SIZE' or '--reference=RFILE'\n", programName)
-		return 1
-	}
-	if len(files) == 0 {
-		fmt.Fprintf(stderr, "%s: missing file operand\n", programName)
-		return 1
-	}
-	baseSize, err := resolveBaseSize(opts)
+	cfg, err := parseArgs(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", programName, err)
-		return 1
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		if _, ok := err.(*usageError); ok {
+			fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
+		}
+		os.Exit(1)
 	}
-	ps, err := buildParsedSize(opts, baseSize)
+	if !execute(cfg) {
+		os.Exit(1)
+	}
+}
+
+// execute processes all files and returns true if all succeed.
+// R1.3: iterates over multiple FILE arguments.
+func execute(cfg *config) bool {
+	refSize, ok := resolveRefSize(cfg)
+	if !ok {
+		return false
+	}
+	success := true
+	for _, name := range cfg.files {
+		if err := processFile(name, cfg, refSize); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+			success = false
+		}
+	}
+	return success
+}
+
+// resolveRefSize returns the reference file size, or 0 if no reference.
+// R2.1: stat the reference file to obtain its size.
+// R2.2: exit 1 if the reference file cannot be accessed.
+func resolveRefSize(cfg *config) (int64, bool) {
+	if cfg.refFile == "" {
+		return 0, true
+	}
+	info, err := os.Stat(cfg.refFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", programName, err)
-		return 1
+		fmt.Fprintf(os.Stderr, "%s: cannot stat '%s': %s\n",
+			programName, cfg.refFile, sysErrMsg(err))
+		return 0, false
 	}
-	return processFiles(files, ps, opts, stderr)
+	return info.Size(), true
 }
 
-// resolveBaseSize returns the reference file size if -r is set, or -1 if not.
-// R2.1: uses os.Stat to obtain RFILE size without reading contents.
-// R2.2: exits 1 if the reference file cannot be accessed.
-func resolveBaseSize(opts truncateOptions) (int64, error) {
-	if opts.refFile == "" {
-		return -1, nil
+// processFile opens, computes the new size, and truncates a single file.
+// R1.1: creates the file if it does not exist (unless -c).
+// R1.4: with -c, silently skips files that do not exist.
+func processFile(name string, cfg *config, refSize int64) error {
+	flags := os.O_WRONLY
+	if cfg.noCreate {
+		if _, err := os.Stat(name); os.IsNotExist(err) {
+			return nil
+		}
+	} else {
+		flags |= os.O_CREATE
 	}
-	fi, err := os.Stat(opts.refFile)
+	f, err := os.OpenFile(name, flags, 0o666)
 	if err != nil {
-		return 0, fmt.Errorf("cannot stat %q: %v", opts.refFile, err)
+		return fmt.Errorf("cannot open '%s' for writing: %s",
+			name, sysErrMsg(err))
 	}
-	return fi.Size(), nil
+	defer f.Close()
+	return truncateFile(f, cfg, refSize)
 }
 
-// buildParsedSize constructs a parsedSize from options and optional base size.
-// R2.2: when both -r and -s are given, applies -s adjustment relative to ref size.
-func buildParsedSize(opts truncateOptions, baseSize int64) (parsedSize, error) {
-	if opts.sizeStr == "" {
-		// -r only: set to reference file size
-		return parsedSize{op: opAbsolute, value: baseSize}, nil
-	}
-	ps, err := parseSizeSpec(opts.sizeStr)
+// truncateFile computes and applies the new size to an open file.
+func truncateFile(f *os.File, cfg *config, refSize int64) error {
+	newSize, err := computeNewSize(f, cfg, refSize)
 	if err != nil {
-		return parsedSize{}, err
+		return err
 	}
-	if baseSize >= 0 && ps.op == opAbsolute {
-		// -r and -s without operator: treat -s value as relative grow
-		return parsedSize{op: opAbsolute, value: baseSize + ps.value}, nil
+	if err := f.Truncate(newSize); err != nil {
+		return fmt.Errorf("failed to truncate '%s' at %d bytes: %s",
+			f.Name(), newSize, sysErrMsg(err))
 	}
-	if baseSize >= 0 {
-		// -r and -s with operator: compute target from ref size
-		target := computeTarget(baseSize, ps.value, ps.op)
-		if target < 0 {
-			target = 0
-		}
-		return parsedSize{op: opAbsolute, value: target}, nil
-	}
-	return ps, nil
+	return nil
 }
 
-// processFiles truncates each file, returning 0 on success or 1 on any error.
-// R3.1: exit 0 when all succeed, exit 1 when any fail.
-func processFiles(files []string, ps parsedSize, opts truncateOptions, stderr *os.File) int {
-	exitCode := 0
-	for _, f := range files {
-		if err := truncateFile(f, ps, opts); err != nil {
-			fmt.Fprintf(stderr, "%s: %v\n", programName, err)
-			exitCode = 1
-		}
+// computeNewSize determines the target file size based on config.
+// R2.1: when -r is set, uses refSize as the base for relative ops.
+func computeNewSize(f *os.File, cfg *config, refSize int64) (int64, error) {
+	if cfg.size == nil {
+		return refSize, nil
 	}
-	return exitCode
+	base := refSize
+	if cfg.refFile == "" && cfg.size.op != opSet {
+		info, err := f.Stat()
+		if err != nil {
+			return 0, fmt.Errorf("cannot fstat '%s': %s",
+				f.Name(), sysErrMsg(err))
+		}
+		base = info.Size()
+	}
+	return applySize(base, cfg.size), nil
 }
 
-// parseArgs separates flags from file arguments.
-func parseArgs(args []string) (truncateOptions, []string) {
-	var opts truncateOptions
-	var files []string
-	flagsDone := false
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if flagsDone {
-			files = append(files, arg)
-			continue
+// applySize computes the new file size from a base and a size operation.
+// R1.2: supports +, -, <, >, /, % prefix operators.
+func applySize(base int64, ps *parsedSize) int64 {
+	switch ps.op {
+	case opSet:
+		return ps.value
+	case opGrow:
+		return base + ps.value
+	case opShrink:
+		return base - ps.value
+	case opAtMost:
+		if base < ps.value {
+			return base
 		}
-		if arg == "--" {
-			flagsDone = true
-			continue
+		return ps.value
+	case opAtLeast:
+		if base > ps.value {
+			return base
 		}
-		if strings.HasPrefix(arg, "--") {
-			i += parseLongFlag(&opts, arg, args, i)
-			continue
-		}
-		if len(arg) >= 2 && arg[0] == '-' {
-			i += parseShortFlags(&opts, arg[1:], args, i)
-			continue
-		}
-		files = append(files, arg)
+		return ps.value
+	case opRoundDown:
+		return roundDown(base, ps.value)
+	case opRoundUp:
+		return roundUp(base, ps.value)
 	}
-	return opts, files
+	return base
 }
 
-// parseLongFlag handles --flag and --flag=VALUE forms.
-// Returns the number of additional args consumed.
-func parseLongFlag(opts *truncateOptions, arg string, args []string, idx int) int {
-	switch {
-	case arg == "--no-create":
-		opts.noCreate = true
-	case arg == "--io-blocks":
-		opts.ioBlocks = true
-	case arg == "--help":
-		opts.showHelp = true
-	case arg == "--version":
-		opts.showVer = true
-	case strings.HasPrefix(arg, "--size="):
-		opts.sizeStr = arg[len("--size="):]
-	case arg == "--size" && idx+1 < len(args):
-		opts.sizeStr = args[idx+1]
-		return 1
-	case strings.HasPrefix(arg, "--reference="):
-		opts.refFile = arg[len("--reference="):]
-	case arg == "--reference" && idx+1 < len(args):
-		opts.refFile = args[idx+1]
-		return 1
+// roundDown returns base rounded down to the nearest multiple of mult.
+func roundDown(base, mult int64) int64 {
+	if mult == 0 {
+		return base
 	}
-	return 0
+	return (base / mult) * mult
 }
 
-// parseShortFlags processes short flag characters.
-// Returns the number of additional args consumed.
-func parseShortFlags(opts *truncateOptions, chars string, args []string, idx int) int {
-	for i, ch := range chars {
-		switch ch {
-		case 'c':
-			opts.noCreate = true
-		case 'o':
-			opts.ioBlocks = true
-		case 's':
-			return consumeFlagValue(chars[i+1:], args, idx, &opts.sizeStr)
-		case 'r':
-			return consumeFlagValue(chars[i+1:], args, idx, &opts.refFile)
-		}
+// roundUp returns base rounded up to the nearest multiple of mult.
+func roundUp(base, mult int64) int64 {
+	if mult == 0 {
+		return base
 	}
-	return 0
+	return ((base + mult - 1) / mult) * mult
 }
 
-// consumeFlagValue extracts the value for a short flag from either the remaining
-// chars or the next argument.
-func consumeFlagValue(rest string, args []string, idx int, target *string) int {
-	if rest != "" {
-		*target = rest
-		return 0
-	}
-	if idx+1 < len(args) {
-		*target = args[idx+1]
-		return 1
-	}
-	return 0
-}
-
-// parseSizeSpec parses a size specification with optional operator prefix.
-// R1.2: supports +, -, <, >, /, % prefixes before the numeric value.
+// parseSizeSpec parses a SIZE string with optional operator prefix.
+// R1.1: numeric value with optional suffix via pkg/sizeparse.
+// R1.2: operator prefix (+, -, <, >, /, %).
 func parseSizeSpec(s string) (parsedSize, error) {
 	if s == "" {
-		return parsedSize{}, fmt.Errorf("invalid number: %q", s)
+		return parsedSize{}, fmt.Errorf("invalid number: '%s'", s)
 	}
 	op, rest := extractOp(s)
 	value, err := sizeparse.Parse(rest)
 	if err != nil {
-		return parsedSize{}, fmt.Errorf("invalid number: %q", s)
+		return parsedSize{}, fmt.Errorf("invalid number: '%s'", s)
 	}
 	return parsedSize{op: op, value: value}, nil
 }
 
-// extractOp separates the operator prefix from the size string.
+// extractOp splits a size string into its operator and numeric part.
 func extractOp(s string) (sizeOp, string) {
 	switch s[0] {
 	case '+':
@@ -276,95 +227,132 @@ func extractOp(s string) (sizeOp, string) {
 		return opRoundDown, s[1:]
 	case '%':
 		return opRoundUp, s[1:]
-	default:
-		return opAbsolute, s
 	}
+	return opSet, s
 }
 
-// truncateFile applies the size operation to a single file.
-// R1.1: truncates or extends the file to the computed size.
-// R1.4: -c suppresses creation of nonexistent files.
-func truncateFile(path string, ps parsedSize, opts truncateOptions) error {
-	fi, statErr := os.Stat(path)
-	if os.IsNotExist(statErr) {
-		if opts.noCreate {
+// parseArgs parses command-line arguments into a config.
+func parseArgs(args []string) (*config, error) {
+	cfg := &config{}
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--" {
+			i++
+			break
+		}
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			break
+		}
+		next, err := handleFlag(args, i, cfg)
+		if err != nil {
+			return nil, err
+		}
+		i = next
+	}
+	cfg.files = args[i:]
+	return validateConfig(cfg)
+}
+
+// handleFlag processes a single flag argument and returns the next index.
+func handleFlag(args []string, i int, cfg *config) (int, error) {
+	arg := args[i]
+	if v, ok := strings.CutPrefix(arg, "--size="); ok {
+		return i + 1, setSize(cfg, v)
+	}
+	if v, ok := strings.CutPrefix(arg, "--reference="); ok {
+		cfg.refFile = v
+		return i + 1, nil
+	}
+	switch arg {
+	case "--help":
+		printUsage()
+		os.Exit(0)
+	case "--version":
+		fmt.Println("truncate (go-unix-utils)")
+		os.Exit(0)
+	case "-c", "--no-create":
+		cfg.noCreate = true
+		return i + 1, nil
+	case "-s", "--size":
+		return consumeNextArg(args, i, 's', func(v string) error {
+			return setSize(cfg, v)
+		})
+	case "-r", "--reference":
+		return consumeNextArg(args, i, 'r', func(v string) error {
+			cfg.refFile = v
 			return nil
-		}
-		if err := createFile(path); err != nil {
-			return err
-		}
-		fi, statErr = os.Stat(path)
+		})
 	}
-	if statErr != nil {
-		return fmt.Errorf("cannot open %q for writing: %v", path, statErr)
-	}
-	return applyTruncate(path, fi.Size(), ps, opts)
+	return handleShortFlag(args, i, cfg)
 }
 
-// createFile creates an empty file.
-func createFile(path string) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o666)
+// consumeNextArg takes the next arg as a value for flag flagChar.
+func consumeNextArg(args []string, i int, flagChar byte, apply func(string) error) (int, error) {
+	if i+1 >= len(args) {
+		return 0, &usageError{fmt.Sprintf("option requires an argument -- '%c'", flagChar)}
+	}
+	return i + 2, apply(args[i+1])
+}
+
+// handleShortFlag handles combined short flags like -s100 or -rFILE.
+func handleShortFlag(args []string, i int, cfg *config) (int, error) {
+	arg := args[i]
+	if len(arg) > 2 && arg[0] == '-' {
+		switch arg[1] {
+		case 's':
+			return i + 1, setSize(cfg, arg[2:])
+		case 'r':
+			cfg.refFile = arg[2:]
+			return i + 1, nil
+		}
+	}
+	return 0, &usageError{fmt.Sprintf("unrecognized option '%s'", arg)}
+}
+
+// setSize parses a size spec and stores it in cfg.
+func setSize(cfg *config, val string) error {
+	ps, err := parseSizeSpec(val)
 	if err != nil {
-		return fmt.Errorf("cannot open %q for writing: %v", path, err)
+		return err
 	}
-	f.Close() // best-effort close; truncation is the critical op
+	cfg.size = &ps
 	return nil
 }
 
-// applyTruncate computes the target size and truncates the file.
-// R1.4: multiplies by IO block size when --io-blocks is set.
-func applyTruncate(path string, current int64, ps parsedSize, opts truncateOptions) error {
-	size := ps.value
-	if opts.ioBlocks {
-		size *= getBlockSize(path)
+// validateConfig checks that required options are present.
+func validateConfig(cfg *config) (*config, error) {
+	if len(cfg.files) == 0 {
+		return nil, &usageError{"missing file operand"}
 	}
-	target := computeTarget(current, size, ps.op)
-	if target < 0 {
-		target = 0
+	if cfg.size == nil && cfg.refFile == "" {
+		return nil, &usageError{"you must specify either '--size' or '--reference'"}
 	}
-	if err := os.Truncate(path, target); err != nil {
-		return fmt.Errorf("failed to truncate %q at %d bytes: %v", path, target, err)
-	}
-	return nil
+	return cfg, nil
 }
 
-// getBlockSize returns the IO block size for the file or its parent directory.
-func getBlockSize(path string) int64 {
-	fi, err := sys.Stat(path)
-	if err == nil && fi.Blksize > 0 {
-		return fi.Blksize
+// sysErrMsg extracts the syscall error message from an os error.
+func sysErrMsg(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
 	}
-	fi, err = sys.Stat(filepath.Dir(path))
-	if err == nil && fi.Blksize > 0 {
-		return fi.Blksize
-	}
-	return 512
+	return err.Error()
 }
 
-// computeTarget applies the size operation to produce the final file size.
-// R1.2: handles absolute, relative (+/-), at-most (<), at-least (>),
-// round-down (/), and round-up (%) operations.
-func computeTarget(current, size int64, op sizeOp) int64 {
-	switch op {
-	case opGrow:
-		return current + size
-	case opShrink:
-		return current - size
-	case opAtMost:
-		return min(current, size)
-	case opAtLeast:
-		return max(current, size)
-	case opRoundDown:
-		if size == 0 {
-			return current
-		}
-		return (current / size) * size
-	case opRoundUp:
-		if size == 0 {
-			return current
-		}
-		return ((current + size - 1) / size) * size
-	default:
-		return size
-	}
+// printUsage prints the help message.
+func printUsage() {
+	fmt.Print(`Usage: truncate OPTION... FILE...
+Shrink or extend the size of each FILE to the specified size.
+
+  -c, --no-create        do not create any files
+  -r, --reference=RFILE  base size on RFILE
+  -s, --size=SIZE        set or adjust the file size by SIZE bytes
+      --help     display this help and exit
+      --version  output version information and exit
+
+SIZE is an integer and optional unit (example: 10K is 10*1024).
+Units: K,M,G,T,P,E (powers of 1024) or KB,MB,... (powers of 1000).
+SIZE may be prefixed by: '+' grow, '-' shrink, '<' at most, '>' at least,
+'/' round down to multiple of, '%' round up to multiple of.
+`)
 }

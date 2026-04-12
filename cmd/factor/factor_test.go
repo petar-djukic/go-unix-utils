@@ -1,10 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Differential tests for cmd/factor against gfactor (GNU coreutils).
-//
-// Covers prd065-factor R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
+// Package main provides differential tests for cmd/factor.
+// Tests cover srd065-factor R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.4.
 package main
 
 import (
@@ -15,18 +13,28 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeBinaryName replaces program name prefixes in error messages
-// so that "gfactor:" and "factor:" both become "PROG:".
-var normalizeBinaryName testutils.NormalizeFunc = func(data []byte) []byte {
-	return binaryNameRe.ReplaceAll(data, []byte("PROG:"))
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+// R3.4/R4.2: replaces binary paths with "PROG" so error message structure
+// can be compared between Go and GNU binaries.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	return b
 }
 
-var binaryNameRe = regexp.MustCompile(`(?m)^g?factor:`)
-
-// normalizeHelpVersion strips all output content for --help and --version
-// tests, keeping only the exit code comparison. GNU and Go binaries produce
-// different help/version text, so byte-level comparison is not meaningful.
-var normalizeHelpVersion testutils.NormalizeFunc = func(data []byte) []byte {
+// discardOutput normalizes by discarding all output, used when
+// output content differs by design (--version, --help) and only
+// exit code comparison is meaningful.
+func discardOutput(b []byte) []byte {
 	return nil
 }
 
@@ -36,201 +44,136 @@ func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gfactor")
 	if err != nil {
-		t.Skip("reference binary gfactor not in PATH")
+		t.Skipf("reference binary gfactor not in PATH: %v", err)
 	}
 
 	tests := []testutils.DiffTest{
-		// R1.1: composite number — ascending factors with multiplicity
+		// R1.1: composite number factorization format.
 		{
-			Name:     "R1.1_composite_12",
-			Args:     []string{"12"},
-			ExitCode: 0,
+			Name: "composite_12",
+			Args: []string{"12"},
 		},
-		// R1.1: larger composite with repeated factors
 		{
-			Name:     "R1.1_composite_360",
-			Args:     []string{"360"},
-			ExitCode: 0,
+			Name: "composite_100",
+			Args: []string{"100"},
 		},
-		// R1.1: power of two
+
+		// R1.2: the number 1 has no factors.
 		{
-			Name:     "R1.1_power_of_two",
-			Args:     []string{"64"},
-			ExitCode: 0,
+			Name: "one",
+			Args: []string{"1"},
 		},
-		// R1.2: the number 1 prints no factors
+
+		// R1.3: prime numbers print the number as the sole factor.
 		{
-			Name:     "R1.2_one",
-			Args:     []string{"1"},
-			ExitCode: 0,
+			Name: "prime_2",
+			Args: []string{"2"},
 		},
-		// R1.2: zero
 		{
-			Name:     "R1.2_zero",
-			Args:     []string{"0"},
-			ExitCode: 0,
+			Name: "prime_97",
+			Args: []string{"97"},
 		},
-		// R1.3: prime number is its own sole factor
 		{
-			Name:     "R1.3_prime_97",
-			Args:     []string{"97"},
-			ExitCode: 0,
+			Name: "prime_7919",
+			Args: []string{"7919"},
 		},
-		// R1.3: small prime
+
+		// R1.4: multiple arguments produce one line each.
 		{
-			Name:     "R1.3_prime_2",
-			Args:     []string{"2"},
-			ExitCode: 0,
+			Name: "multiple_args",
+			Args: []string{"12", "97", "1", "100"},
 		},
-		// R1.3: prime 3
+
+		// R2.1: stdin mode reads one integer per line.
 		{
-			Name:     "R1.3_prime_3",
-			Args:     []string{"3"},
-			ExitCode: 0,
+			Name: "stdin_single",
+			Stdin: []byte("15\n"),
 		},
-		// R1.3, R2.2: large prime within int64 range
 		{
-			Name:     "R1.3_large_prime",
-			Args:     []string{"999999937"},
-			ExitCode: 0,
+			Name: "stdin_multiple",
+			Stdin: []byte("12\n97\n100\n"),
 		},
-		// R1.4: multiple arguments processed in order
+
+		// R2.2: large number near int64 max.
 		{
-			Name:     "R1.4_multiple_args",
-			Args:     []string{"12", "97", "1", "360"},
-			ExitCode: 0,
+			Name: "large_number",
+			Args: []string{"9223372036854775783"},
 		},
-		// R1.4: two arguments
 		{
-			Name:     "R1.4_two_args",
-			Args:     []string{"15", "28"},
-			ExitCode: 0,
+			Name: "large_composite",
+			Args: []string{"9999999999999"},
 		},
-		// R2.1: stdin mode with single number
+
+		// R2.3: blank lines in stdin are skipped.
 		{
-			Name:     "R2.1_stdin_single",
-			Stdin:    []byte("15\n"),
-			ExitCode: 0,
+			Name: "stdin_blank_lines",
+			Stdin: []byte("12\n\n97\n\n"),
 		},
-		// R2.1: stdin mode with multiple lines
+
+		// R2.4/R4.2: non-integer input produces error, exit 1.
 		{
-			Name:     "R2.1_stdin_multiple",
-			Stdin:    []byte("12\n97\n15\n"),
-			ExitCode: 0,
-		},
-		// R2.2: large composite within int64 range (2^40)
-		{
-			Name:     "R2.2_large_power_of_two",
-			Args:     []string{"1099511627776"},
-			ExitCode: 0,
-		},
-		// R2.3: blank lines in stdin are skipped
-		{
-			Name:     "R2.3_blank_lines",
-			Stdin:    []byte("12\n\n15\n\n"),
-			ExitCode: 0,
-		},
-		// R2.3: stdin with leading blank line
-		{
-			Name:     "R2.3_leading_blank",
-			Stdin:    []byte("\n12\n"),
-			ExitCode: 0,
-		},
-		// R2.4: non-integer input in stdin
-		{
-			Name:      "R2.4_non_integer_stdin",
-			Stdin:     []byte("abc\n"),
+			Name:      "error_non_integer",
+			Args:      []string{"abc"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R2.4: negative number in stdin
+
+		// R2.4/R4.2: negative input produces error, exit 1.
 		{
-			Name:      "R2.4_negative_stdin",
-			Stdin:     []byte("-5\n"),
+			Name:      "error_negative",
+			Args:      []string{"-5"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R2.4: mixed valid and invalid in stdin — continues processing
+
+		// R2.4/R3.4: invalid input mixed with valid, processing continues.
 		{
-			Name:      "R2.4_mixed_valid_invalid",
-			Stdin:     []byte("12\nabc\n15\n"),
+			Name:      "mixed_valid_invalid",
+			Args:      []string{"12", "abc", "97"},
 			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
-		// R3.1: --help prints usage to stdout and exits 0
+
+		// R2.4: stdin with non-integer produces error, continues.
 		{
-			Name:      "R3.1_help",
+			Name:      "stdin_error_non_integer",
+			Stdin:     []byte("12\nabc\n97\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
+		},
+
+		// R3.1: --help prints usage and exits 0.
+		{
+			Name:      "help_flag",
 			Args:      []string{"--help"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{normalizeHelpVersion},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
 		},
-		// R3.2: --version prints version info to stdout and exits 0
+
+		// R3.2: --version prints version and exits 0.
 		{
-			Name:      "R3.2_version",
+			Name:      "version_flag",
 			Args:      []string{"--version"},
-			ExitCode:  0,
-			Normalize: []testutils.NormalizeFunc{normalizeHelpVersion},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
 		},
-		// R3.3: factorization output goes to stdout (verified by all passing tests)
+
+		// R4.1: all valid inputs exit 0.
 		{
-			Name:     "R3.3_output_stdout",
-			Args:     []string{"42"},
-			ExitCode: 0,
+			Name: "exit_0_all_valid",
+			Args: []string{"1", "2", "12", "97"},
 		},
-		// R3.4: error to stderr without stopping — mixed valid and invalid args
+
+		// R4.4: power of two (composite with repeated factors).
 		{
-			Name:      "R3.4_error_continues",
-			Args:      []string{"12", "notanumber", "15"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			Name: "power_of_two",
+			Args: []string{"1024"},
 		},
-		// R4.1: exit 0 when all inputs are valid (single)
+
+		// R4.4: zero is handled.
 		{
-			Name:     "R4.1_exit_0_single",
-			Args:     []string{"7"},
-			ExitCode: 0,
-		},
-		// R4.1: exit 0 when all inputs are valid (multiple)
-		{
-			Name:     "R4.1_exit_0_multiple",
-			Args:     []string{"2", "3", "4", "5"},
-			ExitCode: 0,
-		},
-		// R4.1: exit 0 for stdin with all valid inputs
-		{
-			Name:     "R4.1_exit_0_stdin",
-			Stdin:    []byte("6\n10\n"),
-			ExitCode: 0,
-		},
-		// R4.2: exit 1 when any input is invalid (non-integer arg)
-		{
-			Name:      "R4.2_exit_1_non_integer_arg",
-			Args:      []string{"xyz"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
-		},
-		// R4.2: exit 1 when any input is invalid (negative via stdin)
-		{
-			Name:      "R4.2_exit_1_negative_stdin",
-			Stdin:     []byte("-3\n"),
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
-		},
-		// R4.2: exit 1 when mixed valid and invalid args
-		{
-			Name:      "R4.2_exit_1_mixed_args",
-			Args:      []string{"10", "abc", "20"},
-			ExitCode:  1,
-			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
-		},
-		// R4.4: large number factorization
-		{
-			Name:     "R4.4_large_composite",
-			Args:     []string{"9223372036854775783"},
-			ExitCode: 0,
+			Name: "zero",
+			Args: []string{"0"},
 		},
 	}
 
-	// R4.3: differential tests compare stdout and exit codes via pkg/testutils.
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

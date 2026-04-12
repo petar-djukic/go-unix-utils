@@ -1,348 +1,391 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/paste implements GNU paste: merge lines of files.
-//
-// Implements prd027-paste R1.1 (parallel merge), R1.2 (unequal line counts),
-// R1.3 (stdin via dash), R1.4 (no-file passthrough and SIGPIPE),
-// R2.1 (delimiter flag), R2.2 (escape sequences), R2.3 (delimiter cycling),
-// R3.1 (serial mode), R3.2 (serial delimiter cycling), R3.3 (serial overrides parallel).
+// Package main implements cmd/paste: merge lines of files side by side.
+// Implements srd027-paste R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const programName = "paste"
+// version is set via -ldflags; defaults to "dev".
+var version = "dev"
 
-var (
-	errVersion = errors.New("version requested")
-	errHelp    = errors.New("help requested")
-)
-
-// pasteOptions holds parsed flag state.
-type pasteOptions struct {
+// config holds the parsed command-line options.
+// R1.3: types for parallel merge, serial mode, delimiter cycling, and file/stdin management.
+type config struct {
+	delimiters []rune
 	serial     bool
-	delimiters []string
+	files      []string
 }
 
-func main() {
-	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+// fileReader wraps a file and its buffered reader for parallel merge.
+// R1.3: manages file/stdin readers for parallel and serial modes.
+type fileReader struct {
+	name   string
+	file   *os.File
+	reader *bufio.Reader
+	done   bool
 }
 
-// run parses flags and dispatches to parallel or serial paste.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	opts, files, err := parseArgs(args)
-	if err != nil {
-		return handleParseError(err, stdout, stderr)
+// parseDelimiters parses the delimiter string, handling escape sequences.
+// R2.2: recognizes \n, \t, \\, and \0.
+func parseDelimiters(s string) []rune {
+	var delims []rune
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		if runes[i] == '\\' && i+1 < len(runes) {
+			switch runes[i+1] {
+			case 'n':
+				delims = append(delims, '\n')
+				i++
+			case 't':
+				delims = append(delims, '\t')
+				i++
+			case '\\':
+				delims = append(delims, '\\')
+				i++
+			case '0':
+				delims = append(delims, 0)
+				i++
+			default:
+				delims = append(delims, runes[i])
+			}
+		} else {
+			delims = append(delims, runes[i])
+		}
 	}
-	if len(files) == 0 {
-		files = []string{"-"}
+	if len(delims) == 0 {
+		delims = []rune{'\t'}
 	}
-	bw := bufio.NewWriter(stdout)
-	exitCode := executePaste(files, stdin, bw, stderr, opts)
-	if flushErr := bw.Flush(); flushErr != nil {
-		fmt.Fprintf(stderr, "%s: write error\n", programName)
-		return 1
-	}
-	return exitCode
+	return delims
 }
 
-// executePaste dispatches to serial or parallel mode.
-func executePaste(files []string, stdin io.Reader, w *bufio.Writer, stderr io.Writer, opts pasteOptions) int {
-	if opts.serial {
-		return serialPaste(files, stdin, w, stderr, opts)
+// parseArgs parses command-line arguments into a config.
+// R1.1: flag parsing for -d and -s.
+// R1.4: --version and --help handling.
+func parseArgs(args []string) (config, bool, error) {
+	cfg := config{
+		delimiters: []rune{'\t'},
 	}
-	return parallelPaste(files, stdin, w, stderr, opts)
-}
-
-// handleParseError dispatches --version, --help, and real errors.
-func handleParseError(err error, stdout, stderr io.Writer) int {
-	if errors.Is(err, errVersion) {
-		fmt.Fprintln(stdout, "paste (go-unix-utils)")
-		return 0
-	}
-	if errors.Is(err, errHelp) {
-		printHelp(stdout)
-		return 0
-	}
-	fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-	return 1
-}
-
-// printHelp writes usage information.
-func printHelp(w io.Writer) {
-	fmt.Fprintf(w, "Usage: %s [OPTION]... [FILE]...\n", programName)
-	fmt.Fprintln(w, "Write lines consisting of the sequentially corresponding lines from")
-	fmt.Fprintln(w, "each FILE, separated by TABs, to standard output.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  -d, --delimiters=LIST   reuse characters from LIST instead of TABs")
-	fmt.Fprintln(w, "  -s, --serial            paste one file at a time instead of in parallel")
-	fmt.Fprintln(w, "      --help              display this help and exit")
-	fmt.Fprintln(w, "      --version           output version information and exit")
-}
-
-// parseArgs separates flags from file arguments.
-func parseArgs(args []string) (pasteOptions, []string, error) {
-	opts := pasteOptions{delimiters: []string{"\t"}}
-	var files []string
 	flagsDone := false
+
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if flagsDone || arg == "-" || len(arg) == 0 || arg[0] != '-' {
-			files = append(files, arg)
+
+		if flagsDone || (arg != "-" && !strings.HasPrefix(arg, "-")) {
+			cfg.files = append(cfg.files, arg)
 			continue
 		}
 		if arg == "--" {
 			flagsDone = true
 			continue
 		}
-		var err error
-		i, err = parseFlag(&opts, args, i)
-		if err != nil {
-			return opts, nil, err
-		}
-	}
-	return opts, files, nil
-}
-
-// parseFlag handles a single flag at args[i].
-func parseFlag(opts *pasteOptions, args []string, i int) (int, error) {
-	arg := args[i]
-	switch {
-	case arg == "--version":
-		return i, errVersion
-	case arg == "--help":
-		return i, errHelp
-	case arg == "-s" || arg == "--serial":
-		opts.serial = true
-	case arg == "-d":
-		i++
-		if i >= len(args) {
-			return i, fmt.Errorf("option requires an argument -- 'd'")
-		}
-		opts.delimiters = parseDelimiters(args[i])
-	case strings.HasPrefix(arg, "-d"):
-		opts.delimiters = parseDelimiters(arg[2:])
-	case strings.HasPrefix(arg, "--delimiters="):
-		opts.delimiters = parseDelimiters(arg[len("--delimiters="):])
-	default:
-		return i, fmt.Errorf("invalid option -- '%s'", arg[1:])
-	}
-	return i, nil
-}
-
-// parseDelimiters expands escape sequences in the delimiter string and returns
-// a slice of delimiter strings for cycling.
-// R2.2: \n (newline), \t (tab), \\ (backslash), \0 (empty string).
-func parseDelimiters(s string) []string {
-	var delims []string
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+1 < len(s) {
-			d := expandEscape(s[i+1])
-			delims = append(delims, d)
-			i++
-		} else {
-			delims = append(delims, string(s[i]))
-		}
-	}
-	if len(delims) == 0 {
-		delims = []string{"\t"}
-	}
-	return delims
-}
-
-// expandEscape returns the string for a backslash escape character.
-func expandEscape(c byte) string {
-	switch c {
-	case 'n':
-		return "\n"
-	case 't':
-		return "\t"
-	case '\\':
-		return "\\"
-	case '0':
-		return ""
-	default:
-		return "\\" + string(c)
-	}
-}
-
-// openInputs opens all files and returns scanners and closers.
-// R1.3: "-" means stdin; multiple "-" share the same scanner.
-// R3.2: prints diagnostic to stderr for files that cannot be opened and
-// continues processing; returns hadError true if any file failed.
-// D3: failed files get a nil scanner (treated as immediately exhausted).
-func openInputs(files []string, stdin io.Reader, stderr io.Writer) ([]*bufio.Scanner, []io.Closer, bool) {
-	scanners := make([]*bufio.Scanner, len(files))
-	closers := make([]io.Closer, len(files))
-	var stdinScanner *bufio.Scanner
-	hadError := false
-	for i, name := range files {
-		if name == "-" {
-			if stdinScanner == nil {
-				stdinScanner = bufio.NewScanner(stdin)
-			}
-			scanners[i] = stdinScanner
+		if arg == "-" {
+			cfg.files = append(cfg.files, arg)
 			continue
 		}
+
+		skip, done, err := parseFlag(&cfg, arg, args, i)
+		if err != nil {
+			return config{}, false, err
+		}
+		if done {
+			return cfg, true, nil
+		}
+		i += skip
+	}
+
+	return cfg, false, nil
+}
+
+// parseFlag handles a single flag argument, returning extra args consumed
+// and whether the program should exit after printing version/help.
+func parseFlag(cfg *config, arg string, args []string, i int) (int, bool, error) {
+	if arg == "--version" {
+		fmt.Fprintf(os.Stdout, "paste (%s)\n", version)
+		return 0, true, nil
+	}
+	if arg == "--help" {
+		printUsage()
+		return 0, true, nil
+	}
+	if arg == "-s" || arg == "--serial" {
+		cfg.serial = true
+		return 0, false, nil
+	}
+	return parseDelimFlag(cfg, arg, args, i)
+}
+
+// parseDelimFlag handles -d DELIM and --delimiters=DELIM.
+// R2.1: DELIM may be a single character or a list for cycling.
+func parseDelimFlag(cfg *config, arg string, args []string, i int) (int, bool, error) {
+	if strings.HasPrefix(arg, "--delimiters=") {
+		cfg.delimiters = parseDelimiters(arg[len("--delimiters="):])
+		return 0, false, nil
+	}
+	if arg == "--delimiters" {
+		if i+1 >= len(args) {
+			return 0, false, fmt.Errorf("option '--delimiters' requires an argument")
+		}
+		cfg.delimiters = parseDelimiters(args[i+1])
+		return 1, false, nil
+	}
+	if strings.HasPrefix(arg, "-d") {
+		rest := arg[2:]
+		if rest != "" {
+			cfg.delimiters = parseDelimiters(rest)
+			return 0, false, nil
+		}
+		if i+1 >= len(args) {
+			return 0, false, fmt.Errorf("option requires an argument -- 'd'")
+		}
+		cfg.delimiters = parseDelimiters(args[i+1])
+		return 1, false, nil
+	}
+	return 0, false, fmt.Errorf("invalid option -- '%s'", strings.TrimLeft(arg, "-"))
+}
+
+// printUsage prints usage information to stdout.
+// R1.4: --help prints usage and exits 0.
+func printUsage() {
+	fmt.Fprint(os.Stdout, `Usage: paste [OPTION]... [FILE]...
+Write lines consisting of the sequentially corresponding lines from
+each FILE, separated by TABs, to standard output.
+
+With no FILE, or when FILE is -, read standard input.
+
+Mandatory arguments to long options are mandatory for short options too.
+  -d, --delimiters=LIST   reuse characters from LIST instead of TABs
+  -s, --serial            paste one file at a time instead of in parallel
+      --help        display this help and exit
+      --version     output version information and exit
+`)
+}
+
+// openFileReader opens a file or stdin for reading.
+// R1.3: stdin is used when "-" is given as a filename.
+func openFileReader(name string) (*fileReader, error) {
+	fr := &fileReader{name: name}
+	if name == "-" {
+		fr.file = os.Stdin
+	} else {
 		f, err := os.Open(name)
 		if err != nil {
-			fmt.Fprintf(stderr, "%s: %s: No such file or directory\n", programName, name)
-			hadError = true
-			continue
+			// R4.2: extract the underlying error message to match GNU paste format.
+			if pe, ok := err.(*os.PathError); ok {
+				return nil, fmt.Errorf("%s: %s", name, pe.Err)
+			}
+			return nil, fmt.Errorf("%s: %s", name, err)
 		}
-		scanners[i] = bufio.NewScanner(f)
-		closers[i] = f
+		fr.file = f
 	}
-	return scanners, closers, hadError
+	fr.reader = bufio.NewReader(fr.file)
+	return fr, nil
 }
 
-// closeAll closes all non-nil closers.
-func closeAll(closers []io.Closer) {
-	for _, c := range closers {
-		if c != nil {
-			c.Close() // best-effort close
-		}
+// close closes the underlying file if it is not stdin.
+func (fr *fileReader) close() {
+	if fr.file != os.Stdin {
+		fr.file.Close() // best-effort close
 	}
 }
 
-// parallelPaste opens all files and merges them line by line.
-// R1.1: join lines with delimiter. R1.2: empty fields for exhausted files.
-// R3.2: continue processing when a file cannot be opened.
-func parallelPaste(files []string, stdin io.Reader, w *bufio.Writer, stderr io.Writer, opts pasteOptions) int {
-	scanners, closers, hadError := openInputs(files, stdin, stderr)
-	defer closeAll(closers)
-	if mergeParallel(scanners, w, opts) != 0 {
-		return 1
-	}
-	if hadError {
-		return 1
-	}
-	return 0
-}
-
-// mergeParallel reads one line from each scanner per iteration.
-// Nil scanners (failed opens) are treated as immediately exhausted.
-func mergeParallel(scanners []*bufio.Scanner, w *bufio.Writer, opts pasteOptions) int {
-	for {
-		line, active := buildParallelLine(scanners, opts)
-		if !active {
-			break
-		}
-		if _, err := w.WriteString(line); err != nil {
-			return 1
-		}
-		if _, err := w.WriteString("\n"); err != nil {
-			return 1
-		}
-	}
-	return 0
-}
-
-// buildParallelLine reads one line from each scanner and joins them
-// with cycling delimiters. R2.3: delimiter index resets per output line.
-// Nil scanners contribute empty strings (D3).
-func buildParallelLine(scanners []*bufio.Scanner, opts pasteOptions) (string, bool) {
-	parts := make([]string, len(scanners))
-	anyActive := false
-	for i, s := range scanners {
-		if s != nil && s.Scan() {
-			parts[i] = s.Text()
-			anyActive = true
-		}
-	}
-	if !anyActive {
+// readLine reads one line from the file reader, stripping the trailing newline.
+// Returns the line content and whether a line was read.
+func (fr *fileReader) readLine() (string, bool) {
+	if fr.done {
 		return "", false
 	}
-	return joinWithCycling(parts, opts.delimiters), true
+	line, err := fr.reader.ReadString('\n')
+	if len(line) > 0 {
+		line = strings.TrimRight(line, "\n")
+		return line, true
+	}
+	if err != nil {
+		fr.done = true
+		return "", false
+	}
+	return line, true
 }
 
-// joinWithCycling joins parts using cycling delimiters.
-// R2.1: delimiter[i % len(delimiters)] between part i and i+1.
-func joinWithCycling(parts []string, delimiters []string) string {
-	if len(parts) <= 1 {
-		return parts[0]
-	}
-	var b strings.Builder
-	for i, p := range parts {
-		if i > 0 {
-			b.WriteString(delimiters[(i-1)%len(delimiters)])
-		}
-		b.WriteString(p)
-	}
-	return b.String()
-}
-
-// serialPaste processes files one at a time, joining all lines per file.
-// R3.2: prints diagnostic and continues when a file cannot be opened.
-func serialPaste(files []string, stdin io.Reader, w *bufio.Writer, stderr io.Writer, opts pasteOptions) int {
-	var stdinScanner *bufio.Scanner
-	hadError := false
-	for _, name := range files {
-		if err := serialPasteOne(name, &stdinScanner, stdin, w, opts); err != nil {
-			fmt.Fprintf(stderr, "%s: %s\n", programName, err)
-			hadError = true
-		}
-	}
-	if hadError {
+// pasteParallel merges lines from all files in parallel mode.
+// R1.1: read one line from each file per output line, joined by delimiter.
+// R1.2: shorter files contribute empty fields until all are exhausted.
+// R2.1: delimiter character (or cycling list) separates fields.
+// R2.3: delimiter cycling resets from the first delimiter each output line.
+func pasteParallel(cfg config, w *bufio.Writer) int {
+	readers, err := openAllReaders(cfg.files)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "paste: %s\n", err)
 		return 1
+	}
+	defer closeAllReaders(readers)
+
+	lines := make([]string, len(readers))
+	for {
+		anyData := readAllLines(readers, lines)
+		if !anyData {
+			break
+		}
+		if err := writeParallelLine(w, lines, cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "paste: write error\n")
+			return 1
+		}
 	}
 	return 0
 }
 
-// serialPasteOne reads all lines from one file and writes them as a single line.
-func serialPasteOne(name string, stdinScanner **bufio.Scanner, stdin io.Reader, w *bufio.Writer, opts pasteOptions) error {
-	scanner, closer, err := openOneInput(name, stdinScanner, stdin)
-	if err != nil {
-		return err
-	}
-	if closer != nil {
-		defer closer.Close() // best-effort close
-	}
-	return writeSerialLines(scanner, w, opts)
-}
-
-// openOneInput opens a single file or returns the shared stdin scanner.
-func openOneInput(name string, stdinScanner **bufio.Scanner, stdin io.Reader) (*bufio.Scanner, io.Closer, error) {
-	if name == "-" {
-		if *stdinScanner == nil {
-			*stdinScanner = bufio.NewScanner(stdin)
-		}
-		return *stdinScanner, nil, nil
-	}
-	f, err := os.Open(name)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%s: No such file or directory", name)
-	}
-	return bufio.NewScanner(f), f, nil
-}
-
-// writeSerialLines reads all lines from a scanner and writes them joined
-// with cycling delimiters. R3.2: delimiter cycles within each file's line.
-func writeSerialLines(scanner *bufio.Scanner, w *bufio.Writer, opts pasteOptions) error {
-	delimIdx := 0
-	first := true
-	for scanner.Scan() {
-		if !first {
-			if _, err := w.WriteString(opts.delimiters[delimIdx%len(opts.delimiters)]); err != nil {
-				return err
+// openAllReaders opens all file readers for the given names.
+func openAllReaders(files []string) ([]*fileReader, error) {
+	readers := make([]*fileReader, 0, len(files))
+	for _, name := range files {
+		fr, err := openFileReader(name)
+		if err != nil {
+			for _, r := range readers {
+				r.close()
 			}
-			delimIdx++
+			return nil, err
 		}
-		if _, err := w.WriteString(scanner.Text()); err != nil {
+		readers = append(readers, fr)
+	}
+	return readers, nil
+}
+
+// closeAllReaders closes all file readers.
+func closeAllReaders(readers []*fileReader) {
+	for _, fr := range readers {
+		fr.close()
+	}
+}
+
+// readAllLines reads one line from each reader into lines.
+// Returns true if at least one reader produced data.
+func readAllLines(readers []*fileReader, lines []string) bool {
+	anyData := false
+	for i, fr := range readers {
+		line, ok := fr.readLine()
+		lines[i] = line
+		if ok {
+			anyData = true
+		}
+	}
+	return anyData
+}
+
+// writeParallelLine writes a single output line from collected fields.
+// R2.1: joins fields with the delimiter character or cycling list.
+// R2.3: cycling resets from the first delimiter for each output line.
+func writeParallelLine(w *bufio.Writer, lines []string, cfg config) error {
+	for idx, line := range lines {
+		if idx > 0 {
+			delimIdx := (idx - 1) % len(cfg.delimiters)
+			d := cfg.delimiters[delimIdx]
+			if d != 0 {
+				if _, err := w.WriteRune(d); err != nil {
+					return err
+				}
+			}
+		}
+		if _, err := w.WriteString(line); err != nil {
 			return err
 		}
-		first = false
 	}
-	_, err := w.WriteString("\n")
-	return err
+	return w.WriteByte('\n')
 }
+
+// pasteSerial processes files one at a time in serial mode.
+// R3.1: all lines of one file joined with delimiter on a single output line.
+// R3.2: delimiter list cycles across fields within the output line.
+func pasteSerial(cfg config, w *bufio.Writer) int {
+	for _, name := range cfg.files {
+		fr, err := openFileReader(name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "paste: %s\n", err)
+			return 1
+		}
+		delimIdx := 0
+		first := true
+		for {
+			line, ok := fr.readLine()
+			if !ok {
+				break
+			}
+			if !first {
+				d := cfg.delimiters[delimIdx%len(cfg.delimiters)]
+				if d != 0 {
+					if _, err := w.WriteRune(d); err != nil {
+						fmt.Fprintf(os.Stderr, "paste: write error\n")
+						fr.close()
+						return 1
+					}
+				}
+				delimIdx++
+			}
+			if _, err := w.WriteString(line); err != nil {
+				fmt.Fprintf(os.Stderr, "paste: write error\n")
+				fr.close()
+				return 1
+			}
+			first = false
+		}
+		if err := w.WriteByte('\n'); err != nil {
+			fmt.Fprintf(os.Stderr, "paste: write error\n")
+			fr.close()
+			return 1
+		}
+		fr.close()
+	}
+	return 0
+}
+
+// run executes the paste logic, returning the exit code.
+// R1.1: main function flow dispatches to parallel or serial mode.
+// R4.1: exit 0 on success.
+// R4.2: exit 1 on file open failure.
+// R4.3: exit 1 on write error.
+func run(cfg config) int {
+	w := bufio.NewWriter(os.Stdout)
+	var exitCode int
+	if cfg.serial {
+		exitCode = pasteSerial(cfg, w)
+	} else {
+		exitCode = pasteParallel(cfg, w)
+	}
+	if err := w.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "paste: write error\n")
+		return 1
+	}
+	return exitCode
+}
+
+// R4.4: SIGPIPE handler installed at start.
+// R1.1: main skeleton with flag parsing and dispatch.
+// R1.2: argument validation requires at least one operand or defaults to stdin.
+func main() {
+	sys.InstallSIGPIPEHandler()
+
+	cfg, done, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "paste: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Try 'paste --help' for more information.\n")
+		os.Exit(1)
+	}
+	if done {
+		os.Exit(0)
+	}
+
+	// R1.4: when no files are given, default to stdin passthrough.
+	if len(cfg.files) == 0 {
+		cfg.files = []string{"-"}
+	}
+
+	os.Exit(run(cfg))
+}
+

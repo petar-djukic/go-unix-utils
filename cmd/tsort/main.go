@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/tsort implements topological sort (prd102-tsort R1, R2).
+// Package main implements cmd/tsort: topological sort of partial orderings.
+// Implements srd102-tsort R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
@@ -9,240 +10,366 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const progName = "tsort"
+const programName = "tsort"
 
+type runAction int
+
+const (
+	runSort runAction = iota
+	runHelp
+	runVersion
+)
+
+// graph holds the directed graph for topological sorting.
+type graph struct {
+	order   []string            // nodes in insertion order
+	succs   map[string][]string // successors per node (insertion order)
+	predCnt map[string]int      // predecessor count per node
+	done    map[string]bool     // already output
+	file    string              // filename for error messages
+}
+
+// queue is a FIFO queue of node names, matching GNU tsort's zeros queue.
+type queue struct {
+	items []string
+	front int
+}
+
+// enqueue adds a node to the back of the queue.
+func (q *queue) enqueue(s string) { q.items = append(q.items, s) }
+
+// dequeue removes and returns the front node.
+func (q *queue) dequeue() string {
+	s := q.items[q.front]
+	q.front++
+	return s
+}
+
+// empty returns true if the queue has no elements.
+func (q *queue) empty() bool { return q.front >= len(q.items) }
+
+// R2.3: SIGPIPE handler installed at start.
+// R1.4: main entry with argument parsing.
 func main() {
 	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
-}
 
-// run executes the tsort logic and returns the exit code.
-// R1.4: reads from FILE argument, stdin when no argument or "-".
-// R2.1: exits 0 on success. R2.2: exits 1 on cycle or malformed input.
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if len(args) > 1 {
-		fmt.Fprintf(stderr, "%s: extra operand '%s'\n", progName, args[1])
-		return 1
-	}
-	filename := "-"
-	r := stdin
-	if len(args) == 1 && args[0] != "-" {
-		filename = args[0]
-		f, err := os.Open(filename)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-			return 1
-		}
-		defer f.Close() // best-effort close
-		r = f
-	}
-	return toposort(r, filename, stdout, stderr)
-}
-
-// toposort reads pairs, builds a DAG, and emits a topological order.
-// R1.1: reads pairs "A B" meaning A before B.
-// R1.2: detects and reports cycles, continues sorting, exits 1.
-// R1.3: exits 1 on odd number of tokens.
-func toposort(r io.Reader, filename string, stdout, stderr io.Writer) int {
-	tokens, err := readTokens(r)
+	file, act, err := parseArgs(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(stderr, "%s: %v\n", progName, err)
-		return 1
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		tryHelp()
+		os.Exit(1)
 	}
-	if len(tokens)%2 != 0 {
-		fmt.Fprintf(stderr, "%s: %s: input contains an odd number of tokens\n",
-			progName, filename)
-		return 1
+
+	switch act {
+	case runHelp:
+		printUsage()
+		return
+	case runVersion:
+		printVersion()
+		return
 	}
-	g, order := buildGraph(tokens)
-	return emitOrder(g, order, filename, stdout, stderr)
+
+	os.Exit(run(file))
 }
 
-// readTokens scans all whitespace-delimited tokens from the reader.
-func readTokens(r io.Reader) ([]string, error) {
-	var tokens []string
-	scanner := bufio.NewScanner(r)
-	scanner.Split(bufio.ScanWords)
-	for scanner.Scan() {
-		tokens = append(tokens, scanner.Text())
-	}
-	return tokens, scanner.Err()
+// tryHelp prints the "Try --help" hint to stderr.
+func tryHelp() {
+	fmt.Fprintf(os.Stderr, "Try '%s --help' for more information.\n", programName)
 }
 
-// dagGraph holds adjacency lists and in-degree counts for topological sort.
-type dagGraph struct {
-	adj    map[string][]string
-	indeg  map[string]int
-	exists map[string]bool
+// printVersion prints version to stdout.
+func printVersion() {
+	fmt.Println("tsort (go-unix-utils) 0.1.0")
 }
 
-// buildGraph constructs the DAG from token pairs and returns insertion order.
-func buildGraph(tokens []string) (*dagGraph, []string) {
-	g := &dagGraph{
-		adj:    make(map[string][]string),
-		indeg:  make(map[string]int),
-		exists: make(map[string]bool),
-	}
-	var order []string
-	for i := 0; i < len(tokens); i += 2 {
-		a, b := tokens[i], tokens[i+1]
-		order = ensureNode(g, a, order)
-		order = ensureNode(g, b, order)
-		if a != b {
-			g.adj[a] = append(g.adj[a], b)
-			g.indeg[b]++
-		}
-	}
-	return g, order
+// printUsage prints the help message to stdout.
+func printUsage() {
+	fmt.Print(`Usage: tsort [OPTION] [FILE]
+Write totally ordered list consistent with the partial ordering in FILE.
+
+With no FILE, or when FILE is -, read standard input.
+
+      --help     display this help and exit
+      --version  output version information and exit
+`)
 }
 
-// ensureNode registers a node if not yet seen, preserving insertion order.
-func ensureNode(g *dagGraph, name string, order []string) []string {
-	if !g.exists[name] {
-		g.exists[name] = true
-		if _, ok := g.indeg[name]; !ok {
-			g.indeg[name] = 0
-		}
-		order = append(order, name)
-	}
-	return order
-}
+// parseArgs parses command-line arguments.
+// R1.4: accepts optional FILE argument, --help, --version.
+// R2.1: rejects invalid options and extra operands with exit 1.
+func parseArgs(args []string) (string, runAction, error) {
+	file := "-"
+	flagsDone := false
+	var operands []string
 
-// emitOrder performs Kahn's algorithm matching GNU tsort ordering.
-// GNU uses a FIFO queue with alphabetically-sorted initial zeros and
-// reverse-insertion-order successor iteration (due to prepended linked list).
-// R1.2: reports cycles and continues sorting.
-func emitOrder(g *dagGraph, order []string, filename string, stdout, stderr io.Writer) int {
-	queue := collectReady(g, order)
-	exitCode := 0
-	w := bufio.NewWriter(stdout)
-	for len(queue) > 0 || len(g.indeg) > 0 {
-		if len(queue) == 0 {
-			exitCode = 1
-			queue = breakCycle(g, order, filename, stderr)
+	for _, arg := range args {
+		if flagsDone {
+			operands = append(operands, arg)
 			continue
 		}
-		node := queue[0]
-		queue = queue[1:]
-		fmt.Fprintln(w, node)
-		queue = decrementSuccessors(g, node, queue)
+		if arg == "--" {
+			flagsDone = true
+			continue
+		}
+		switch arg {
+		case "--help":
+			return "", runHelp, nil
+		case "--version":
+			return "", runVersion, nil
+		}
+		if strings.HasPrefix(arg, "--") {
+			return "", 0, fmt.Errorf("unrecognized option '%s'", arg)
+		}
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			return "", 0, fmt.Errorf("invalid option -- '%c'", arg[1])
+		}
+		operands = append(operands, arg)
 	}
-	w.Flush() // best-effort flush
-	return exitCode
+
+	if len(operands) > 1 {
+		return "", 0, fmt.Errorf("extra operand '%s'", operands[1])
+	}
+	if len(operands) == 1 {
+		file = operands[0]
+	}
+	return file, runSort, nil
 }
 
-// collectReady gathers zero in-degree nodes sorted alphabetically.
-// GNU tsort uses a BST traversal that produces alphabetical order.
-func collectReady(g *dagGraph, order []string) []string {
-	var q []string
-	for _, n := range order {
-		if g.indeg[n] == 0 {
-			q = append(q, n)
-			delete(g.indeg, n)
+// run opens the input, builds the graph, and performs topological sort.
+// R2.1: returns 0 on success. R2.2: returns 1 on cycle, malformed input, or I/O error.
+func run(file string) int {
+	r, err := openInput(file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, err)
+		return 1
+	}
+	defer closeInput(r, file)
+
+	tokens, err := readTokens(r)
+	if err != nil {
+		// R2.2: include filename in read error for parity with gtsort.
+		fmt.Fprintf(os.Stderr, "%s: %s: %s\n", programName, file, err)
+		return 1
+	}
+
+	// R1.3: odd number of tokens is an error.
+	if len(tokens)%2 != 0 {
+		fmt.Fprintf(os.Stderr, "%s: %s: input contains an odd number of tokens\n",
+			programName, file)
+		return 1
+	}
+
+	g := buildGraph(tokens, file)
+	if topoSort(g) {
+		return 1
+	}
+	return 0
+}
+
+// openInput opens a file for reading; "-" means stdin.
+// R2.2: returns error on file open failure.
+func openInput(name string) (io.ReadCloser, error) {
+	if name == "-" {
+		return os.Stdin, nil
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %s", name, unwrapPathErr(err))
+	}
+	return f, nil
+}
+
+// closeInput closes a reader if it's not stdin.
+func closeInput(r io.ReadCloser, name string) {
+	if name != "-" {
+		r.Close() // best-effort close
+	}
+}
+
+// unwrapPathErr extracts the inner error from a PathError.
+func unwrapPathErr(err error) error {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err
+	}
+	return err
+}
+
+// readTokens reads all whitespace-separated tokens from the reader.
+// R1.1: tokens are separated by any whitespace (spaces, tabs, newlines).
+func readTokens(r io.Reader) ([]string, error) {
+	var tokens []string
+	sc := bufio.NewScanner(r)
+	sc.Split(bufio.ScanWords)
+	for sc.Scan() {
+		tokens = append(tokens, sc.Text())
+	}
+	return tokens, sc.Err()
+}
+
+// buildGraph constructs a directed graph from pairs of tokens.
+// R1.1: each pair "A B" means A must come before B.
+func buildGraph(tokens []string, file string) *graph {
+	g := &graph{
+		succs:   make(map[string][]string),
+		predCnt: make(map[string]int),
+		done:    make(map[string]bool),
+		file:    file,
+	}
+	nodeSet := make(map[string]bool)
+
+	for i := 0; i < len(tokens); i += 2 {
+		a, b := tokens[i], tokens[i+1]
+		addNode(g, a, nodeSet)
+		addNode(g, b, nodeSet)
+		if a != b {
+			addEdge(g, a, b)
 		}
 	}
-	sort.Strings(q)
+	return g
+}
+
+// addNode registers a node if not already present.
+func addNode(g *graph, name string, nodeSet map[string]bool) {
+	if nodeSet[name] {
+		return
+	}
+	nodeSet[name] = true
+	g.order = append(g.order, name)
+}
+
+// addEdge adds a directed edge from a to b.
+// Skips if the last successor of a is already b (matching GNU behavior).
+func addEdge(g *graph, a, b string) {
+	succs := g.succs[a]
+	if len(succs) > 0 && succs[len(succs)-1] == b {
+		return
+	}
+	g.succs[a] = append(succs, b)
+	g.predCnt[b]++
+}
+
+// topoSort performs topological sort with cycle detection.
+// Returns true if any cycle was detected.
+// R1.2: outputs one node per line. Reports cycles to stderr.
+func topoSort(g *graph) bool {
+	q := initZeros(g)
+	w := bufio.NewWriter(os.Stdout)
+	hasCycle := false
+	remaining := len(g.order)
+
+	for remaining > 0 {
+		if q.empty() {
+			hasCycle = true
+			node := findAndReportCycle(g)
+			q.enqueue(node)
+		}
+		node := q.dequeue()
+		if g.done[node] {
+			continue
+		}
+		g.done[node] = true
+		remaining--
+		fmt.Fprintln(w, node)
+		freeSuccessors(g, node, q)
+	}
+	w.Flush()
+	return hasCycle
+}
+
+// initZeros builds the initial FIFO queue of zero-predecessor nodes.
+// Scans in insertion order so first-inserted nodes are dequeued first.
+func initZeros(g *graph) *queue {
+	q := &queue{}
+	for _, n := range g.order {
+		if g.predCnt[n] == 0 {
+			q.enqueue(n)
+		}
+	}
 	return q
 }
 
-// decrementSuccessors reduces in-degree for successors in reverse order.
-// GNU tsort prepends successors to a linked list, so iteration is in reverse
-// insertion order. Our adjacency lists use append, so we iterate backwards
-// and append newly ready nodes to the FIFO queue.
-func decrementSuccessors(g *dagGraph, node string, queue []string) []string {
-	succs := g.adj[node]
+// freeSuccessors decrements predecessor counts for node's successors.
+// Iterates in reverse insertion order to match GNU's prepend-based ordering.
+func freeSuccessors(g *graph, node string, q *queue) {
+	succs := g.succs[node]
 	for i := len(succs) - 1; i >= 0; i-- {
-		succ := succs[i]
-		if _, ok := g.indeg[succ]; !ok {
+		s := succs[i]
+		if g.done[s] {
 			continue
 		}
-		g.indeg[succ]--
-		if g.indeg[succ] == 0 {
-			queue = append(queue, succ)
-			delete(g.indeg, succ)
+		g.predCnt[s]--
+		if g.predCnt[s] == 0 {
+			q.enqueue(s)
 		}
 	}
-	delete(g.adj, node)
-	return queue
 }
 
-// breakCycle finds a cycle, reports it in GNU format, and frees one node.
-func breakCycle(g *dagGraph, order []string, filename string, stderr io.Writer) []string {
-	start := firstRemaining(g, order)
-	cycle := findCycle(g, start)
-	reportCycle(cycle, filename, stderr)
-	node := cycle[0]
-	delete(g.indeg, node)
-	return []string{node}
+// findAndReportCycle finds a cycle and reports it to stderr.
+// R1.2: prints "input contains a loop:" followed by nodes in the cycle.
+func findAndReportCycle(g *graph) string {
+	fmt.Fprintf(os.Stderr, "%s: %s: input contains a loop:\n",
+		programName, g.file)
+	start := findCycleStart(g)
+	walkCycle(g, start)
+	return start
 }
 
-// firstRemaining returns the first node in order still in g.indeg.
-func firstRemaining(g *dagGraph, order []string) string {
-	for _, n := range order {
-		if _, ok := g.indeg[n]; ok {
+// findCycleStart finds a node in a cycle: one with pred count > 0
+// that has at least one successor with pred count > 0.
+// Scans in insertion order to match GNU behavior.
+func findCycleStart(g *graph) string {
+	for _, n := range g.order {
+		if g.done[n] || g.predCnt[n] == 0 {
+			continue
+		}
+		if hasUndoneSuccWithPred(g, n) {
+			return n
+		}
+	}
+	// Fallback: any undone node.
+	for _, n := range g.order {
+		if !g.done[n] {
 			return n
 		}
 	}
 	return ""
 }
 
-// dfsFrame holds a DFS stack entry with the current successor index.
-type dfsFrame struct {
-	node string
-	idx  int
-}
-
-// findCycle traces a cycle from start using DFS, returning the cycle path.
-func findCycle(g *dagGraph, start string) []string {
-	onPath := make(map[string]bool)
-	stack := []dfsFrame{{node: start, idx: 0}}
-	onPath[start] = true
-	for len(stack) > 0 {
-		top := &stack[len(stack)-1]
-		succs := g.adj[top.node]
-		if top.idx >= len(succs) {
-			onPath[top.node] = false
-			stack = stack[:len(stack)-1]
-			continue
-		}
-		succ := succs[top.idx]
-		top.idx++
-		if _, ok := g.indeg[succ]; !ok {
-			continue // already removed
-		}
-		if onPath[succ] {
-			return extractCycle(stack, succ)
-		}
-		onPath[succ] = true
-		stack = append(stack, dfsFrame{node: succ, idx: 0})
-	}
-	return []string{start}
-}
-
-// extractCycle returns the cycle from the DFS stack starting at target.
-func extractCycle(stack []dfsFrame, target string) []string {
-	var cycle []string
-	found := false
-	for _, f := range stack {
-		if f.node == target {
-			found = true
-		}
-		if found {
-			cycle = append(cycle, f.node)
+// hasUndoneSuccWithPred returns true if n has a successor with pred count > 0.
+func hasUndoneSuccWithPred(g *graph, n string) bool {
+	for _, s := range g.succs[n] {
+		if !g.done[s] && g.predCnt[s] > 0 {
+			return true
 		}
 	}
-	return cycle
+	return false
 }
 
-// reportCycle writes the GNU-style cycle diagnostic to stderr.
-func reportCycle(cycle []string, filename string, stderr io.Writer) {
-	fmt.Fprintf(stderr, "%s: %s: input contains a loop:\n", progName, filename)
-	for _, n := range cycle {
-		fmt.Fprintf(stderr, "%s: %s\n", progName, n)
+// walkCycle follows the cycle path and prints each node to stderr.
+func walkCycle(g *graph, start string) {
+	node := start
+	for {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", programName, node)
+		next := firstUndoneSuccWithPred(g, node)
+		if next == "" || next == start {
+			break
+		}
+		node = next
 	}
+}
+
+// firstUndoneSuccWithPred returns the first successor of node (scanning
+// in insertion order) that is not done and has pred count > 0.
+func firstUndoneSuccWithPred(g *graph, node string) string {
+	for _, s := range g.succs[node] {
+		if !g.done[s] && g.predCnt[s] > 0 {
+			return s
+		}
+	}
+	return ""
 }

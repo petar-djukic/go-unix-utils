@@ -1,86 +1,122 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Package main provides differential tests for cmd/groups.
+// Tests cover srd043-groups R3.1, R3.2, R3.3.
 package main
 
 import (
-	"bytes"
 	"os/exec"
 	"os/user"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
-// normalizeProgramName replaces "ggroups:" with "groups:" so stderr
-// from the reference binary matches our output.
-func normalizeProgramName(data []byte) []byte {
-	return bytes.ReplaceAll(data, []byte("ggroups:"), []byte("groups:"))
+// stderrProgRe matches the program name/path prefix before a colon at line start.
+var stderrProgRe = regexp.MustCompile(`(?m)^[^\s:]+:`)
+
+// stderrTryRe matches the quoted program reference in Try hint lines.
+var stderrTryRe = regexp.MustCompile(`'[^']*--help'`)
+
+// stderrNormalizer normalizes program name differences in error messages.
+// R3.1/R3.2: replaces binary paths with "PROG" so error message structure
+// can be compared between Go and GNU binaries.
+func stderrNormalizer(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	b = stderrProgRe.ReplaceAll(b, []byte("PROG:"))
+	b = stderrTryRe.ReplaceAll(b, []byte("'PROG --help'"))
+	return b
+}
+
+// discardOutput normalizes by discarding all output, used when
+// output content differs by design (--version, --help) and only
+// exit code comparison is meaningful.
+func discardOutput(b []byte) []byte {
+	return nil
+}
+
+// currentUsername returns the current user's login name for test cases.
+func currentUsername(t *testing.T) string {
+	t.Helper()
+	u, err := user.Current()
+	if err != nil {
+		t.Fatalf("cannot determine current user: %v", err)
+	}
+	return u.Username
 }
 
 func TestDiff(t *testing.T) {
+	t.Parallel()
+
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("ggroups")
 	if err != nil {
 		t.Skipf("reference binary ggroups not in PATH: %v", err)
 	}
 
-	currentUser, err := user.Current()
-	if err != nil {
-		t.Fatalf("cannot determine current user: %v", err)
-	}
-
-	normalize := []testutils.NormalizeFunc{normalizeProgramName}
+	username := currentUsername(t)
 
 	tests := []testutils.DiffTest{
+		// R3.1: default invocation with no arguments prints current
+		// user's group memberships.
 		{
-			// R1.1, R2.1: no arguments prints current user's groups with no prefix.
-			Name: "no_args_current_user",
+			Name: "default_no_args",
 			Args: []string{},
 		},
+
+		// R3.2/R3.3: single named user prints "user : groups" format.
 		{
-			// R1.2, R2.2: single named user with "user : group1 group2" format.
-			// R3.3: verifies prefix format.
-			Name: "single_named_user",
-			Args: []string{currentUser.Username},
+			Name: "named_current_user",
+			Args: []string{username},
 		},
+
+		// R3.2/R3.3: multiple named users, one line per user with prefix.
 		{
-			// R1.2, R2.2: multiple named users, one line each with "user :" prefix.
-			// R2.3: group names in system order for each user.
 			Name: "multiple_named_users",
-			Args: []string{currentUser.Username, "root"},
+			Args: []string{username, username},
 		},
+
+		// R3.2: nonexistent user prints error to stderr and exits 1.
 		{
-			// R1.3: nonexistent user produces error, exit 1.
 			Name:      "nonexistent_user",
-			Args:      []string{"nonexistent_user_xyz_999"},
+			Args:      []string{"no_such_user_xyzzy_42"},
 			ExitCode:  1,
-			Normalize: normalize,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
+
+		// R3.2: mixed valid and invalid users — error for invalid,
+		// output for valid, exit 1 overall.
 		{
-			// R1.3, R3.2: mixed valid and invalid users.
-			// R2.2: valid users still get "user :" prefix format.
 			Name:      "mixed_valid_invalid",
-			Args:      []string{currentUser.Username, "nonexistent_user_xyz_999"},
+			Args:      []string{username, "no_such_user_xyzzy_42"},
 			ExitCode:  1,
-			Normalize: normalize,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
+
+		// R3.3: --help flag exits 0.
 		{
-			// R2.2, R3.3: named user root verifies "user : group1 group2" format.
-			// R2.3: group order matches system database.
-			Name: "root_user",
-			Args: []string{"root"},
+			Name:      "help_flag",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
 		},
+
+		// R3.3: --version flag exits 0.
 		{
-			// R2.1, R2.3: no-argument output has no prefix and preserves system order.
-			// Differential test confirms format parity with ggroups.
-			Name: "no_args_format_no_prefix",
-			Args: nil,
+			Name:      "version_flag",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{discardOutput},
 		},
+
+		// R3.2: unknown flag produces error and exit 1.
 		{
-			// R2.2: same user repeated — each line has "user :" prefix.
-			Name: "same_user_twice",
-			Args: []string{currentUser.Username, currentUser.Username},
+			Name:      "unknown_flag",
+			Args:      []string{"--bogus"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{stderrNormalizer},
 		},
 	}
 

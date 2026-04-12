@@ -1,526 +1,477 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/stty implements GNU stty: change and print terminal line settings.
-//
-// Implements prd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2, R7.1, R7.2, R7.3.
+// cmd/stty: Change and print terminal line settings.
+// Implements srd105-stty R1.1, R2.1, R3.1, R3.2, R4.1, R5.1, R6.1, R6.2, R7.1, R7.2, R7.3.
 package main
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
-	"syscall"
+	"unicode"
 
 	"golang.org/x/sys/unix"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-const progName = "stty"
+// wrapCol is the column width for line wrapping in display output.
+const wrapCol = 80
 
-// defaultWrapCol is the wrap width when stdout is not a terminal.
-const defaultWrapCol = 80
+// specialChar represents a terminal special character for display.
+type specialChar struct {
+	Name  string
+	Index int
+	IsNum bool // min, time use numeric display
+}
 
-// posixVDisable is the value indicating a disabled special character.
-const posixVDisable = 0xff
+// displayEntry represents a single flag or multi-value entry for display.
+type displayEntry struct {
+	Name   string       // simple flag name
+	Mask   uint64       // flag bitmask
+	DefOn  bool         // true if flag is ON in default/sane state
+	Values []multiValue // non-nil for multi-value flags (e.g., cs5-cs8)
+	DefVal uint64       // default value for multi-value flags
+}
 
-// version is set at build time via -ldflags.
-var version = "dev"
+// multiValue represents one named option in a multi-value flag set.
+type multiValue struct {
+	Name  string
+	Value uint64
+}
 
-// displayMode selects the output format.
-type displayMode int
-
+// Darwin output flag constants not always exported by x/sys/unix.
 const (
-	modeDefault displayMode = iota
-	modeAll
-	modeSave
-	modeHelp
-	modeVersion
+	darwinOCRNL  uint64 = 0x00000010
+	darwinONOCR  uint64 = 0x00000020
+	darwinONLRET uint64 = 0x00000040
+	darwinOFILL  uint64 = 0x00000080
+	darwinOFDEL  uint64 = 0x00020000
+	darwinNLDLY  uint64 = 0x00000300
+	darwinNL1    uint64 = 0x00000100
+	darwinCRDLY  uint64 = 0x00003000
+	darwinCR1    uint64 = 0x00001000
+	darwinCR2    uint64 = 0x00002000
+	darwinCR3    uint64 = 0x00003000
+	darwinTABDLY uint64 = 0x00000c04
+	darwinTAB1   uint64 = 0x00000400
+	darwinTAB2   uint64 = 0x00000800
+	darwinTAB3   uint64 = 0x00000004 // OXTABS
+	darwinBSDLY  uint64 = 0x00008000
+	darwinBS1    uint64 = 0x00008000
+	darwinVTDLY  uint64 = 0x00010000
+	darwinVT1    uint64 = 0x00010000
+	darwinFFDLY  uint64 = 0x00004000
+	darwinFF1    uint64 = 0x00004000
+	darwinIUTF8  uint64 = 0x00004000 // IUTF8 input flag on Darwin
 )
 
-// saneState describes a flag's value in "sane" mode.
-type saneState int
-
-const (
-	saneNone  saneState = iota // no sane default; not shown in default display
-	saneSet                    // sane enables this flag
-	saneUnset                  // sane disables this flag
-)
-
-// modeFlag describes a single terminal mode flag.
-type modeFlag struct {
-	name string
-	bits uint64
-	sane saneState
+// specialCharDisplay lists special characters in GNU stty display order.
+var specialCharDisplay = []specialChar{
+	{"intr", unix.VINTR, false},
+	{"quit", unix.VQUIT, false},
+	{"erase", unix.VERASE, false},
+	{"kill", unix.VKILL, false},
+	{"eof", unix.VEOF, false},
+	{"eol", unix.VEOL, false},
+	{"eol2", unix.VEOL2, false},
+	{"start", unix.VSTART, false},
+	{"stop", unix.VSTOP, false},
+	{"susp", unix.VSUSP, false},
+	{"dsusp", unix.VDSUSP, false},
+	{"rprnt", unix.VREPRINT, false},
+	{"werase", unix.VWERASE, false},
+	{"lnext", unix.VLNEXT, false},
+	{"discard", unix.VDISCARD, false},
+	{"status", unix.VSTATUS, false},
+	{"min", unix.VMIN, true},
+	{"time", unix.VTIME, true},
 }
 
-// ccEntry describes a special character slot.
-type ccEntry struct {
-	name    string
-	index   uint8
-	saneVal uint8
-	isNum   bool // min and time are displayed as decimal numbers
+// controlFlags defines control mode flag display entries in GNU stty order.
+var controlFlags = []displayEntry{
+	{Name: "parenb", Mask: unix.PARENB},
+	{Name: "parodd", Mask: unix.PARODD},
+	{Mask: unix.CSIZE, DefVal: uint64(unix.CS8), Values: []multiValue{
+		{"cs5", uint64(unix.CS5)}, {"cs6", uint64(unix.CS6)},
+		{"cs7", uint64(unix.CS7)}, {"cs8", uint64(unix.CS8)},
+	}},
+	{Name: "hupcl", Mask: unix.HUPCL, DefOn: true},
+	{Name: "cstopb", Mask: unix.CSTOPB},
+	{Name: "cread", Mask: unix.CREAD, DefOn: true},
+	{Name: "clocal", Mask: unix.CLOCAL},
+	{Name: "crtscts", Mask: unix.CRTSCTS},
 }
 
-// config holds parsed command-line options.
-type config struct {
-	mode   displayMode
-	device string
-	ops    []settingOp
+// inputFlags defines input mode flag display entries in GNU stty order.
+var inputFlags = []displayEntry{
+	{Name: "ignbrk", Mask: unix.IGNBRK},
+	{Name: "brkint", Mask: unix.BRKINT, DefOn: true},
+	{Name: "ignpar", Mask: unix.IGNPAR},
+	{Name: "parmrk", Mask: unix.PARMRK},
+	{Name: "inpck", Mask: unix.INPCK},
+	{Name: "istrip", Mask: unix.ISTRIP},
+	{Name: "inlcr", Mask: unix.INLCR},
+	{Name: "igncr", Mask: unix.IGNCR},
+	{Name: "icrnl", Mask: unix.ICRNL, DefOn: true},
+	{Name: "ixon", Mask: unix.IXON, DefOn: true},
+	{Name: "ixoff", Mask: unix.IXOFF},
+	{Name: "ixany", Mask: unix.IXANY},
+	{Name: "imaxbel", Mask: unix.IMAXBEL, DefOn: true},
+	{Name: "iutf8", Mask: darwinIUTF8},
 }
 
-// Control flags in GNU stty display order (macOS).
-// R2.1: CSIZE is inserted between parodd and hupcl in display code.
-var controlFlags = []modeFlag{
-	{"parenb", unix.PARENB, saneNone},
-	{"parodd", unix.PARODD, saneNone},
-	{"hupcl", unix.HUPCL, saneUnset},
-	{"cstopb", unix.CSTOPB, saneNone},
-	{"cread", unix.CREAD, saneSet},
-	{"clocal", unix.CLOCAL, saneNone},
-	{"crtscts", unix.CRTSCTS, saneNone},
+// outputFlags defines output mode flag display entries in GNU stty order.
+var outputFlags = []displayEntry{
+	{Name: "opost", Mask: unix.OPOST, DefOn: true},
+	{Name: "ocrnl", Mask: darwinOCRNL},
+	{Name: "onlcr", Mask: unix.ONLCR, DefOn: true},
+	{Name: "onocr", Mask: darwinONOCR},
+	{Name: "onlret", Mask: darwinONLRET},
+	{Name: "ofill", Mask: darwinOFILL},
+	{Name: "ofdel", Mask: darwinOFDEL},
+	{Mask: darwinNLDLY, Values: []multiValue{{"nl0", 0}, {"nl1", darwinNL1}}},
+	{Mask: darwinCRDLY, Values: []multiValue{
+		{"cr0", 0}, {"cr1", darwinCR1}, {"cr2", darwinCR2}, {"cr3", darwinCR3},
+	}},
+	{Mask: darwinTABDLY, Values: []multiValue{
+		{"tab0", 0}, {"tab1", darwinTAB1}, {"tab2", darwinTAB2}, {"tab3", darwinTAB3},
+	}},
+	{Mask: darwinBSDLY, Values: []multiValue{{"bs0", 0}, {"bs1", darwinBS1}}},
+	{Mask: darwinVTDLY, Values: []multiValue{{"vt0", 0}, {"vt1", darwinVT1}}},
+	{Mask: darwinFFDLY, Values: []multiValue{{"ff0", 0}, {"ff1", darwinFF1}}},
 }
 
-// Input flags in GNU stty display order (macOS).
-var inputFlags = []modeFlag{
-	{"ignbrk", unix.IGNBRK, saneUnset},
-	{"brkint", unix.BRKINT, saneSet},
-	{"ignpar", unix.IGNPAR, saneNone},
-	{"parmrk", unix.PARMRK, saneNone},
-	{"inpck", unix.INPCK, saneNone},
-	{"istrip", unix.ISTRIP, saneUnset},
-	{"inlcr", unix.INLCR, saneUnset},
-	{"igncr", unix.IGNCR, saneUnset},
-	{"icrnl", unix.ICRNL, saneSet},
-	{"ixon", unix.IXON, saneNone},
-	{"ixoff", unix.IXOFF, saneUnset},
-	{"ixany", unix.IXANY, saneNone},
-	{"imaxbel", unix.IMAXBEL, saneSet},
-	{"iutf8", unix.IUTF8, saneSet},
+// localFlags defines local mode flag display entries in GNU stty order.
+var localFlags = []displayEntry{
+	{Name: "isig", Mask: unix.ISIG, DefOn: true},
+	{Name: "icanon", Mask: unix.ICANON, DefOn: true},
+	{Name: "iexten", Mask: unix.IEXTEN, DefOn: true},
+	{Name: "echo", Mask: unix.ECHO, DefOn: true},
+	{Name: "echoe", Mask: unix.ECHOE, DefOn: true},
+	{Name: "echok", Mask: unix.ECHOK, DefOn: true},
+	{Name: "echonl", Mask: unix.ECHONL},
+	{Name: "noflsh", Mask: unix.NOFLSH},
+	{Name: "tostop", Mask: unix.TOSTOP},
+	{Name: "echoprt", Mask: unix.ECHOPRT},
+	{Name: "echoctl", Mask: unix.ECHOCTL, DefOn: true},
+	{Name: "echoke", Mask: unix.ECHOKE, DefOn: true},
+	{Name: "flusho", Mask: unix.FLUSHO},
+	{Name: "extproc", Mask: unix.EXTPROC},
 }
 
-// Output flags in GNU stty display order (macOS).
-var outputFlags = []modeFlag{
-	{"opost", unix.OPOST, saneSet},
-	{"ocrnl", unix.OCRNL, saneUnset},
-	{"onlcr", unix.ONLCR, saneSet},
-	{"onocr", unix.ONOCR, saneUnset},
-	{"onlret", unix.ONLRET, saneUnset},
-	{"oxtabs", unix.OXTABS, saneUnset},
-	{"onoeot", unix.ONOEOT, saneUnset},
-}
-
-// Local flags in GNU stty display order (macOS).
-var localFlags = []modeFlag{
-	{"isig", unix.ISIG, saneSet},
-	{"icanon", unix.ICANON, saneSet},
-	{"iexten", unix.IEXTEN, saneSet},
-	{"echo", unix.ECHO, saneSet},
-	{"echoe", unix.ECHOE, saneSet},
-	{"echok", unix.ECHOK, saneSet},
-	{"echonl", unix.ECHONL, saneUnset},
-	{"noflsh", unix.NOFLSH, saneUnset},
-	{"tostop", unix.TOSTOP, saneUnset},
-	{"echoprt", unix.ECHOPRT, saneUnset},
-	{"echoctl", unix.ECHOCTL, saneSet},
-	{"echoke", unix.ECHOKE, saneSet},
-	{"altwerase", unix.ALTWERASE, saneUnset},
-	{"flusho", unix.FLUSHO, saneUnset},
-	{"pendin", unix.PENDIN, saneUnset},
-	{"nokerninfo", unix.NOKERNINFO, saneUnset},
-	{"extproc", unix.EXTPROC, saneUnset},
-}
-
-// specialChars lists special character slots in GNU stty display order (macOS).
-// R2.1: displayed in -a mode; R1.1: changed-from-sane shown in default mode.
-var specialChars = []ccEntry{
-	{"intr", unix.VINTR, 0x03, false},
-	{"quit", unix.VQUIT, 0x1c, false},
-	{"erase", unix.VERASE, 0x7f, false},
-	{"kill", unix.VKILL, 0x15, false},
-	{"eof", unix.VEOF, 0x04, false},
-	{"eol", unix.VEOL, posixVDisable, false},
-	{"eol2", unix.VEOL2, posixVDisable, false},
-	{"start", unix.VSTART, 0x11, false},
-	{"stop", unix.VSTOP, 0x13, false},
-	{"susp", unix.VSUSP, 0x1a, false},
-	{"dsusp", unix.VDSUSP, 0x19, false},
-	{"rprnt", unix.VREPRINT, 0x12, false},
-	{"werase", unix.VWERASE, 0x17, false},
-	{"lnext", unix.VLNEXT, 0x16, false},
-	{"discard", unix.VDISCARD, 0x0f, false},
-	{"status", unix.VSTATUS, 0x14, false},
-	{"min", unix.VMIN, 1, true},
-	{"time", unix.VTIME, 0, true},
-}
-
-// R7.3: install SIGPIPE handler for graceful pipe termination.
-func main() {
-	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
-}
-
-// run implements the main logic. Returns exit code.
-// R1.1: default display. R2.1: -a display. R3.1: -g display. R3.2: -F device.
-func run(args []string, stdout, stderr *os.File) int {
-	cfg, err := parseArgs(args)
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: %s\n", progName, err)             //nolint:errcheck
-		fmt.Fprintf(stderr, "Try '%s --help' for more information.\n", progName) //nolint:errcheck
-		return 1
-	}
-	if cfg.mode == modeHelp {
-		printHelp(stdout)
-		return 0
-	}
-	if cfg.mode == modeVersion {
-		printVersion(stdout)
-		return 0
-	}
-	if len(cfg.ops) > 0 {
-		return applySettings(cfg, stderr)
-	}
-	return runDisplay(cfg, stdout, stderr)
-}
-
-// runDisplay opens the terminal and prints settings. Returns exit code.
-func runDisplay(cfg *config, stdout, stderr *os.File) int {
-	fd, cleanup, source, err := openTermFD(cfg.device)
-	if err != nil {
-		printQuotedErr(stderr, source, err)
-		return 1
-	}
-	defer cleanup()
-
-	termios, err := unix.IoctlGetTermios(fd, unix.TIOCGETA)
-	if err != nil {
-		printQuotedErr(stderr, source, err)
-		return 1
-	}
-	switch cfg.mode {
-	case modeSave:
-		displaySave(stdout, termios)
-	case modeAll:
-		ws, _ := unix.IoctlGetWinsize(fd, unix.TIOCGWINSZ) // best-effort
-		displayAll(stdout, termios, ws)
+// formatChar formats a terminal control character value for display.
+func formatChar(c uint8) string {
+	switch {
+	case c == 0xFF:
+		return "<undef>"
+	case c < 0x20:
+		return fmt.Sprintf("^%c", c+0x40)
+	case c == 0x7F:
+		return "^?"
 	default:
-		displayDefault(stdout, termios)
+		return string(rune(c))
+	}
+}
+
+// renderEntry returns the display string for a flag entry given current flags.
+func renderEntry(e displayEntry, flags uint64) string {
+	if len(e.Values) > 0 {
+		val := flags & e.Mask
+		for _, v := range e.Values {
+			if v.Value == val {
+				return v.Name
+			}
+		}
+		return ""
+	}
+	if flags&e.Mask != 0 {
+		return e.Name
+	}
+	return "-" + e.Name
+}
+
+// isChanged reports whether a flag entry differs from its default value.
+func isChanged(e displayEntry, flags uint64) bool {
+	if len(e.Values) > 0 {
+		return (flags & e.Mask) != e.DefVal
+	}
+	return (flags&e.Mask != 0) != e.DefOn
+}
+
+// wrapWriter accumulates display output with line wrapping at wrapCol.
+type wrapWriter struct {
+	buf strings.Builder
+	col int
+}
+
+// add appends an entry with space-separation and automatic line wrapping.
+func (w *wrapWriter) add(entry string) {
+	if w.col > 0 && w.col+1+len(entry) > wrapCol {
+		w.buf.WriteByte('\n')
+		w.col = 0
+	} else if w.col > 0 {
+		w.buf.WriteByte(' ')
+		w.col++
+	}
+	w.buf.WriteString(entry)
+	w.col += len(entry)
+}
+
+// newLine forces a line break if there is content on the current line.
+func (w *wrapWriter) newLine() {
+	if w.col > 0 {
+		w.buf.WriteByte('\n')
+		w.col = 0
+	}
+}
+
+// getWinSize returns the terminal rows and columns for a file descriptor.
+// Returns (0, 0) if the ioctl fails (best-effort).
+func getWinSize(fd int) (int, int) {
+	ws, err := unix.IoctlGetWinsize(fd, unix.TIOCGWINSZ)
+	if err != nil {
+		return 0, 0
+	}
+	return int(ws.Row), int(ws.Col)
+}
+
+// writeSpeedLine writes the speed line with optional window dimensions.
+func writeSpeedLine(w *wrapWriter, t *unix.Termios, fd int, all bool) {
+	if t.Ispeed == t.Ospeed {
+		fmt.Fprintf(&w.buf, "speed %d baud;", t.Ispeed)
+	} else {
+		fmt.Fprintf(&w.buf, "ispeed %d baud; ospeed %d baud;", t.Ispeed, t.Ospeed)
+	}
+	if all {
+		rows, cols := getWinSize(fd)
+		fmt.Fprintf(&w.buf, " rows %d; columns %d;", rows, cols)
+	}
+	w.buf.WriteByte('\n')
+}
+
+// writeSpecialChars writes all special character settings with wrapping.
+func writeSpecialChars(w *wrapWriter, cc [20]uint8) {
+	for _, sc := range specialCharDisplay {
+		var entry string
+		if sc.IsNum {
+			entry = fmt.Sprintf("%s = %d;", sc.Name, cc[sc.Index])
+		} else {
+			entry = fmt.Sprintf("%s = %s;", sc.Name, formatChar(cc[sc.Index]))
+		}
+		w.add(entry)
+	}
+	w.newLine()
+}
+
+// writeFlagGroupAll writes all flags in a group for -a display mode.
+func writeFlagGroupAll(w *wrapWriter, entries []displayEntry, flags uint64) {
+	for _, e := range entries {
+		if name := renderEntry(e, flags); name != "" {
+			w.add(name)
+		}
+	}
+	w.newLine()
+}
+
+// writeFlagGroupChanged writes only flags that differ from defaults.
+func writeFlagGroupChanged(w *wrapWriter, entries []displayEntry, flags uint64) {
+	for _, e := range entries {
+		if isChanged(e, flags) {
+			if name := renderEntry(e, flags); name != "" {
+				w.add(name)
+			}
+		}
+	}
+	w.newLine()
+}
+
+// R1.1: Print summary of current terminal settings matching GNU stty format.
+func printDefaultDisplay(fd int) error {
+	t, err := unix.IoctlGetTermios(fd, unix.TIOCGETA)
+	if err != nil {
+		return err
+	}
+	var w wrapWriter
+	writeSpeedLine(&w, t, fd, false)
+	writeFlagGroupChanged(&w, controlFlags, t.Cflag)
+	writeFlagGroupChanged(&w, inputFlags, t.Iflag)
+	writeFlagGroupChanged(&w, outputFlags, t.Oflag)
+	writeFlagGroupChanged(&w, localFlags, t.Lflag)
+	fmt.Print(w.buf.String())
+	return nil
+}
+
+// R2.1: Print all current terminal settings in human-readable format.
+func printAllSettings(fd int) error {
+	t, err := unix.IoctlGetTermios(fd, unix.TIOCGETA)
+	if err != nil {
+		return err
+	}
+	var w wrapWriter
+	writeSpeedLine(&w, t, fd, true)
+	writeSpecialChars(&w, t.Cc)
+	writeFlagGroupAll(&w, controlFlags, t.Cflag)
+	writeFlagGroupAll(&w, inputFlags, t.Iflag)
+	writeFlagGroupAll(&w, outputFlags, t.Oflag)
+	writeFlagGroupAll(&w, localFlags, t.Lflag)
+	fmt.Print(w.buf.String())
+	return nil
+}
+
+// R3.1: Print all current terminal settings in machine-readable format.
+func printSaveFormat(fd int) error {
+	t, err := unix.IoctlGetTermios(fd, unix.TIOCGETA)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%x:%x:%x:%x", t.Iflag, t.Oflag, t.Cflag, t.Lflag)
+	for _, c := range t.Cc {
+		fmt.Printf(":%x", c)
+	}
+	fmt.Println()
+	return nil
+}
+
+// R3.2: Open the specified terminal device and return its file descriptor.
+func openDevice(path string) (int, *os.File, error) {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return 0, nil, err
+	}
+	return int(f.Fd()), f, nil
+}
+
+// unwrapSyscallError extracts the underlying error message from os.PathError
+// to match GNU coreutils strerror() formatting.
+func unwrapSyscallError(err error) string {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return capitalizeError(pe.Err)
+	}
+	return capitalizeError(err)
+}
+
+// resolveDevice returns the fd and optional file for the target terminal.
+func resolveDevice(device string) (int, *os.File, error) {
+	if device == "" {
+		return int(os.Stdin.Fd()), nil, nil
+	}
+	fd, f, err := openDevice(device)
+	if err != nil {
+		return 0, nil, fmt.Errorf("%s: %s", device, unwrapSyscallError(err))
+	}
+	return fd, f, nil
+}
+
+// capitalizeError capitalizes the first letter of an error message to match
+// GNU coreutils strerror() formatting (e.g., "Operation not supported").
+func capitalizeError(err error) string {
+	msg := err.Error()
+	if msg == "" {
+		return msg
+	}
+	runes := []rune(msg)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
+}
+
+// dispatch calls the appropriate display function based on flags.
+func dispatch(fd int, showAll, showSave bool, device string) error {
+	var err error
+	switch {
+	case showSave:
+		err = printSaveFormat(fd)
+	case showAll:
+		err = printAllSettings(fd)
+	default:
+		err = printDefaultDisplay(fd)
+	}
+	if err != nil {
+		name := "'standard input'"
+		if device != "" {
+			name = fmt.Sprintf("'%s'", device)
+		}
+		return fmt.Errorf("%s: %s", name, capitalizeError(err))
+	}
+	return nil
+}
+
+// parseArgs extracts display flags, device, and setting arguments.
+func parseArgs(args []string) (showAll, showSave bool, device string, settings []string, err error) {
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		switch {
+		case arg == "-a" || arg == "--all":
+			showAll = true
+		case arg == "-g" || arg == "--save":
+			showSave = true
+		case arg == "-F":
+			if i+1 >= len(args) {
+				return false, false, "", nil, fmt.Errorf("option requires an argument -- 'F'")
+			}
+			i++
+			device = args[i]
+		case strings.HasPrefix(arg, "-F"):
+			device = arg[2:]
+		case strings.HasPrefix(arg, "--file="):
+			device = arg[len("--file="):]
+		case arg == "--file":
+			if i+1 >= len(args) {
+				return false, false, "", nil, fmt.Errorf("option '--file' requires an argument")
+			}
+			i++
+			device = args[i]
+		default:
+			// R4.1, R5.1, R6.1, R6.2: Collect setting arguments.
+			settings = append(settings, arg)
+		}
+		i++
+	}
+	return showAll, showSave, device, settings, nil
+}
+
+// run is the main entry point logic, separated for testability.
+// Returns the exit code per R7.1 and R7.2.
+func run(args []string) int {
+	showAll, showSave, device, settings, err := parseArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "stty: %v\n", err)
+		return 1
+	}
+	if showAll && showSave {
+		fmt.Fprintln(os.Stderr, "stty: the options for verbose and stty-readable output styles are")
+		fmt.Fprintln(os.Stderr, "mutually exclusive")
+		return 1
+	}
+	fd, deviceFile, err := resolveDevice(device)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "stty: %v\n", err)
+		return 1
+	}
+	if deviceFile != nil {
+		defer deviceFile.Close()
+	}
+	if len(settings) > 0 {
+		if err := processSettings(fd, settings); err != nil {
+			fmt.Fprintf(os.Stderr, "stty: %v\n", err)
+			return 1
+		}
+	}
+	if showAll || showSave || len(settings) == 0 {
+		if err := dispatch(fd, showAll, showSave, device); err != nil {
+			fmt.Fprintf(os.Stderr, "stty: %v\n", err)
+			return 1
+		}
 	}
 	return 0
 }
 
-// parseArgs extracts display mode and device from command-line arguments.
-func parseArgs(args []string) (*config, error) {
-	cfg := &config{mode: modeDefault}
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-a" || arg == "--all":
-			if cfg.mode == modeSave {
-				return nil, fmt.Errorf("only one of -a and -g may be used")
-			}
-			cfg.mode = modeAll
-		case arg == "-g" || arg == "--save":
-			if cfg.mode == modeAll {
-				return nil, fmt.Errorf("only one of -a and -g may be used")
-			}
-			cfg.mode = modeSave
-		case arg == "-F":
-			if i+1 >= len(args) {
-				return nil, fmt.Errorf("option requires an argument -- 'F'")
-			}
-			i++
-			cfg.device = args[i]
-		case strings.HasPrefix(arg, "--file="):
-			cfg.device = strings.TrimPrefix(arg, "--file=")
-		case arg == "--help":
-			cfg.mode = modeHelp
-		case arg == "--version":
-			cfg.mode = modeVersion
-		default:
-			consumed, err := parseSetting(cfg, args[i:])
-			if err != nil {
-				return nil, err
-			}
-			i += consumed - 1
-		}
-	}
-	if len(cfg.ops) > 0 && (cfg.mode == modeAll || cfg.mode == modeSave) {
-		return nil, fmt.Errorf("when specifying an output style, modes may not be set")
-	}
-	return cfg, nil
-}
-
-// openTermFD returns the file descriptor, cleanup, source name, and error.
-// R3.2: opens the specified device instead of stdin.
-func openTermFD(device string) (int, func(), string, error) {
-	if device == "" {
-		return int(os.Stdin.Fd()), func() {}, "standard input", nil
-	}
-	f, err := os.OpenFile(device, os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		if pe, ok := err.(*os.PathError); ok {
-			return 0, func() {}, device, pe.Err
-		}
-		return 0, func() {}, device, err
-	}
-	return int(f.Fd()), func() { f.Close() }, device, nil //nolint:errcheck
-}
-
-// displayDefault prints only settings that differ from "sane" defaults.
-// R1.1: speed line followed by changed cc values and mode flags.
-func displayDefault(w io.Writer, t *unix.Termios) {
-	wr := newWrapper(w)
-	writeSpeedLine(wr, t, nil, false)
-	wr.newline()
-	ccWrote := writeChangedCC(wr, t)
-	flagWrote := writeChangedFlags(wr, t)
-	if ccWrote || flagWrote {
-		wr.newline()
-	}
-}
-
-// displayAll prints all terminal settings in human-readable format.
-// R2.1: speed, rows, columns, special characters, and all mode flags.
-func displayAll(w io.Writer, t *unix.Termios, ws *unix.Winsize) {
-	wr := newWrapper(w)
-	writeSpeedLine(wr, t, ws, true)
-	wr.newline()
-	writeAllCC(wr, t)
-	wr.newline()
-	writeControlFlagsAll(wr, t.Cflag)
-	wr.newline()
-	writeGroupFlags(wr, inputFlags, t.Iflag)
-	wr.newline()
-	writeGroupFlags(wr, outputFlags, t.Oflag)
-	wr.newline()
-	writeGroupFlags(wr, localFlags, t.Lflag)
-	wr.newline()
-}
-
-// displaySave prints all settings in machine-readable hex format.
-// R3.1: colon-separated hex values of iflag:oflag:cflag:lflag:cc[0..19]:ispeed:ospeed.
-func displaySave(w io.Writer, t *unix.Termios) {
-	fmt.Fprintf(w, "%x:%x:%x:%x", t.Iflag, t.Oflag, t.Cflag, t.Lflag) //nolint:errcheck
-	for _, v := range t.Cc {
-		fmt.Fprintf(w, ":%x", v) //nolint:errcheck
-	}
-	fmt.Fprintf(w, ":%x:%x\n", t.Ispeed, t.Ospeed) //nolint:errcheck
-}
-
-// writeSpeedLine prints the speed line, with optional rows and columns.
-func writeSpeedLine(wr *wrapper, t *unix.Termios, ws *unix.Winsize, showSize bool) {
-	if t.Ispeed == t.Ospeed {
-		wr.write(fmt.Sprintf("speed %d baud;", t.Ospeed))
-	} else {
-		wr.write(fmt.Sprintf("ispeed %d baud;", t.Ispeed))
-		wr.write(fmt.Sprintf("ospeed %d baud;", t.Ospeed))
-	}
-	if showSize && ws != nil {
-		wr.write(fmt.Sprintf("rows %d;", ws.Row))
-		wr.write(fmt.Sprintf("columns %d;", ws.Col))
-	}
-}
-
-// writeAllCC prints all special character values for -a display.
-func writeAllCC(wr *wrapper, t *unix.Termios) {
-	for _, cc := range specialChars {
-		wr.write(fmt.Sprintf("%s = %s;", cc.name, formatCC(t.Cc[cc.index], cc.isNum)))
-	}
-}
-
-// writeControlFlagsAll prints all control flags with CSIZE for -a display.
-func writeControlFlagsAll(wr *wrapper, cflag uint64) {
-	writeSingleFlag(wr, "parenb", cflag, unix.PARENB)
-	writeSingleFlag(wr, "parodd", cflag, unix.PARODD)
-	wr.write(csizeStr(cflag))
-	for _, f := range controlFlags[2:] {
-		writeSingleFlag(wr, f.name, cflag, f.bits)
-	}
-}
-
-// writeGroupFlags prints all flags in a group for -a display.
-func writeGroupFlags(wr *wrapper, flags []modeFlag, bitfield uint64) {
-	for _, f := range flags {
-		writeSingleFlag(wr, f.name, bitfield, f.bits)
-	}
-}
-
-// writeSingleFlag writes a flag as "name" (set) or "-name" (not set).
-func writeSingleFlag(wr *wrapper, name string, bitfield, bits uint64) {
-	if bitfield&bits != 0 {
-		wr.write(name)
-	} else {
-		wr.write("-" + name)
-	}
-}
-
-// writeChangedCC prints cc values that differ from sane defaults.
-func writeChangedCC(wr *wrapper, t *unix.Termios) bool {
-	wrote := false
-	for _, cc := range specialChars {
-		if cc.isNum && t.Lflag&unix.ICANON != 0 {
-			continue // min/time not shown when icanon is set
-		}
-		if t.Cc[cc.index] != cc.saneVal {
-			wr.write(fmt.Sprintf("%s = %s;", cc.name, formatCC(t.Cc[cc.index], cc.isNum)))
-			wrote = true
-		}
-	}
-	return wrote
-}
-
-// writeChangedFlags prints mode flags that differ from sane defaults.
-func writeChangedFlags(wr *wrapper, t *unix.Termios) bool {
-	wrote := false
-	// Control flags with CSIZE special case
-	for i, f := range controlFlags {
-		if i == 2 && t.Cflag&unix.CSIZE != unix.CS8 {
-			wr.write(csizeStr(t.Cflag))
-			wrote = true
-		}
-		wrote = writeIfChanged(wr, f.name, t.Cflag, f.bits, f.sane) || wrote
-	}
-	wrote = checkChangedGroup(wr, inputFlags, t.Iflag) || wrote
-	wrote = checkChangedGroup(wr, outputFlags, t.Oflag) || wrote
-	wrote = checkChangedGroup(wr, localFlags, t.Lflag) || wrote
-	return wrote
-}
-
-// checkChangedGroup writes flags in a group that differ from sane.
-func checkChangedGroup(wr *wrapper, flags []modeFlag, bitfield uint64) bool {
-	wrote := false
-	for _, f := range flags {
-		wrote = writeIfChanged(wr, f.name, bitfield, f.bits, f.sane) || wrote
-	}
-	return wrote
-}
-
-// writeIfChanged writes a flag if it differs from its sane default.
-func writeIfChanged(wr *wrapper, name string, bitfield, bits uint64, sane saneState) bool {
-	isSet := bitfield&bits != 0
-	if sane == saneSet && !isSet {
-		wr.write("-" + name)
-		return true
-	}
-	if sane == saneUnset && isSet {
-		wr.write(name)
-		return true
-	}
-	return false
-}
-
-// wrapper handles space-separated output with line wrapping.
-type wrapper struct {
-	w      io.Writer
-	col    int
-	maxCol int
-}
-
-// newWrapper creates a wrapper with appropriate wrap width.
-func newWrapper(w io.Writer) *wrapper {
-	col := defaultWrapCol
-	if ws, err := unix.IoctlGetWinsize(int(os.Stdout.Fd()), unix.TIOCGWINSZ); err == nil && ws.Col > 0 {
-		col = int(ws.Col)
-	}
-	return &wrapper{w: w, maxCol: col}
-}
-
-// write adds an entry to the current line with space separation and wrapping.
-func (wr *wrapper) write(s string) {
-	extra := 0
-	if wr.col > 0 {
-		extra = 1
-	}
-	if wr.col+extra+len(s) > wr.maxCol {
-		fmt.Fprint(wr.w, "\n") //nolint:errcheck
-		wr.col = 0
-		extra = 0
-	}
-	if extra > 0 {
-		fmt.Fprint(wr.w, " ") //nolint:errcheck
-		wr.col++
-	}
-	fmt.Fprint(wr.w, s) //nolint:errcheck
-	wr.col += len(s)
-}
-
-// newline forces a line break and resets the column counter.
-func (wr *wrapper) newline() {
-	if wr.col > 0 {
-		fmt.Fprint(wr.w, "\n") //nolint:errcheck
-	}
-	wr.col = 0
-}
-
-// formatCC formats a cc value for display.
-func formatCC(val byte, isNum bool) string {
-	if isNum {
-		return fmt.Sprintf("%d", val)
-	}
-	if val == posixVDisable {
-		return "<undef>"
-	}
-	ch := val
-	prefix := ""
-	if ch >= 128 {
-		prefix = "M-"
-		ch -= 128
-	}
-	if ch < 32 {
-		return fmt.Sprintf("%s^%c", prefix, ch+64)
-	}
-	if ch == 127 {
-		return prefix + "^?"
-	}
-	return fmt.Sprintf("%s%c", prefix, ch)
-}
-
-// csizeStr returns the character size string for the given cflag.
-func csizeStr(cflag uint64) string {
-	switch cflag & unix.CSIZE {
-	case unix.CS5:
-		return "cs5"
-	case unix.CS6:
-		return "cs6"
-	case unix.CS7:
-		return "cs7"
-	default:
-		return "cs8"
-	}
-}
-
-// capitalizeFirst returns s with the first byte uppercased.
-func capitalizeFirst(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
-}
-
-// printQuotedErr prints an error with GNU-style quoting.
-func printQuotedErr(w io.Writer, source string, err error) {
-	msg := capitalizeFirst(err.Error())
-	fmt.Fprintf(w, "%s: '%s': %s\n", progName, source, msg) //nolint:errcheck
-}
-
-// printHelp writes usage information.
-func printHelp(w io.Writer) {
-	fmt.Fprintf(w, "Usage: %s [-F DEVICE | --file=DEVICE] [SETTING]...\n", progName) //nolint:errcheck
-	fmt.Fprintf(w, "  or:  %s [-F DEVICE | --file=DEVICE] [-a|--all]\n", progName)   //nolint:errcheck
-	fmt.Fprintf(w, "  or:  %s [-F DEVICE | --file=DEVICE] [-g|--save]\n", progName)  //nolint:errcheck
-	fmt.Fprintln(w, "Print or change terminal line settings.")                        //nolint:errcheck
-	fmt.Fprintln(w)                                                                   //nolint:errcheck
-	fmt.Fprintln(w, "  -a, --all      print all current settings in human-readable form") //nolint:errcheck
-	fmt.Fprintln(w, "  -g, --save     print all current settings in a stty-readable form") //nolint:errcheck
-	fmt.Fprintln(w, "  -F, --file=DEVICE  open and use the specified DEVICE instead of stdin") //nolint:errcheck
-	fmt.Fprintln(w, "      --help     display this help and exit")                    //nolint:errcheck
-	fmt.Fprintln(w, "      --version  output version information and exit")           //nolint:errcheck
-}
-
-// printVersion writes version information.
-func printVersion(w io.Writer) {
-	fmt.Fprintf(w, "%s (go-unix-utils) %s\n", progName, version) //nolint:errcheck
+// R7.3: main entry point with SIGPIPE handler.
+func main() {
+	sys.InstallSIGPIPEHandler()
+	os.Exit(run(os.Args[1:]))
 }
