@@ -14,14 +14,47 @@ project:
         docs/engineering/
         docs/prompts/
         cmd/
-    releases: []
+    releases:
+        - "00.0"
+        - "01.1"
+        - "01.2"
+        - "01.3"
+        - "02.0"
+        - "02.1"
+        - "02.2"
+        - "03.0"
+        - "03.1"
+        - "04.0"
+        - "04.1"
+        - "05.0"
+        - "05.1"
+        - "05.2"
+        - "05.3"
+        - "05.4"
+        - "06.0"
+        - "06.1"
+        - "07.0"
+        - "07.1"
+        - "08.0"
+        - "08.1"
+        - "09.0"
+        - "09.1"
+        - "10.0"
+        - "10.1"
+        - "11.0"
+        - "11.1"
+        - "12.0"
+        - "12.1"
+        - "13.0"
+        - "14.0"
+        - "15.0"
 generation:
     prefix: generation-
-    cycles: 30
+    cycles: 100
 cobbler:
     dir: .cobbler/
     max_stitch_issues_per_cycle: 1
-    max_measure_issues: 4
+    max_measure_issues: 1
     measure_prompt: docs/prompts/measure.yaml
     stitch_prompt: docs/prompts/stitch.yaml
     planning_constitution: docs/constitutions/planning.yaml
