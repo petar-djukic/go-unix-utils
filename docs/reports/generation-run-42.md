@@ -106,6 +106,23 @@ The new measure prompt generates short-form SRD references (`srd087`) instead of
 | #2120 | Measure generates short-form SRD refs, breaking stats:generator | Open |
 | #2123 | requirements.yaml needs complete state machine for dedup and stops | Open |
 
+## Missing and Reduced Tests
+
+Run 42 produced 4,549 fewer test lines than run 40b (31,043 vs 35,592). The test-to-prod LOC ratio dropped from 0.86 to 0.70. Several utilities have significantly fewer or missing tests:
+
+| Utility | Run 40b test | Run 42 test | Delta |
+|---|---|---|---|
+| wc | 764 | 0 | -764 (no test file) |
+| rm | 1,229 | 837 | -392 |
+| mv | 984 | 620 | -364 |
+| sponge | 857 | 472 | -385 |
+| cat | 365 | 80 | -285 |
+| ln | 876 | 785 | -91 |
+
+Root cause: the duplicate task bug (cobbler-scaffold#2123). When measure proposes duplicate tasks, the stitch agent finds the production code already written and closes the task with zero changes — including skipping test creation. The test-writing tasks that follow inherit the "already done" state and produce nothing.
+
+wc is the worst case: zero test lines despite 548 lines of production code. The differential test file was never created.
+
 ## Comparison with Run 40b
 
 Run 42 achieved 100% requirements like run 40b but at higher cost ($594 vs $521, +14%). The cost increase is driven by:
@@ -113,6 +130,6 @@ Run 42 achieved 100% requirements like run 40b but at higher cost ($594 vs $521,
 - Rate limiting (246 minutes total, vs minimal in run 40b)
 - More retries on complex utilities (od, stty)
 
-LOC is comparable (75,393 vs 76,933, -2%). The test-to-prod LOC ratio decreased from 0.86 to 0.70, indicating the scaffold is generating slightly fewer tests per command in this run.
+LOC is comparable (75,393 vs 76,933, -2%) but the quality is lower due to missing tests. Production code increased (+3,009 lines) while test code decreased (-4,549 lines).
 
-The key validation: all scaffold changes (PRD→SRD, interfaces, weight migration, CoT) work correctly. The run completed without any scaffold-related failures.
+The key validation: all scaffold changes (PRD→SRD, interfaces, weight migration, CoT) work correctly. The run completed without any scaffold-related failures. The deduplication bug is the primary quality issue and is tracked in cobbler-scaffold#2123.
