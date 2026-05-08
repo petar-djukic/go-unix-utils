@@ -46,6 +46,17 @@ def assign_run_id(tasks: pd.DataFrame, runs: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_task_attempts(tasks: pd.DataFrame) -> pd.DataFrame:
+    """Group by task_id over commit-trailer rows.
+
+    NOTE: tasks.csv uses commit author dates (%aI) which are preserved across
+    rebases and cherry-picks. Multiple commits with the same task_id at the
+    same author date are usually git artifacts (e.g., a generation-branch
+    commit cherry-picked onto main), not real Claude retries. The fields here
+    are named with a `git_` prefix to make this provenance explicit.
+
+    For real-retry analysis, see task_retries.csv (built from
+    *-stitch-stats.yaml log files via extract_stitch_invocations.py).
+    """
     rows = []
     for task_id, group in tasks.sort_values(["task_id", "commit_date"]).groupby("task_id", sort=True):
         group = group.sort_values("commit_date")
@@ -58,21 +69,59 @@ def build_task_attempts(tasks: pd.DataFrame) -> pd.DataFrame:
         total_cost = float(group["cost_usd"].sum())
         rows.append({
             "task_id": int(task_id),
-            "attempt_count": int(len(group)),
+            "git_commit_count": int(len(group)),
             "final_target": last["target"],
             "final_srd_id": last["srd_id"],
             "total_cost_usd": round(total_cost, 6),
             "total_duration_s": int(group["duration_seconds"].sum()),
             "total_tokens_input": int(group["tokens_input"].sum()),
-            "productive_attempts": int(productive_mask.sum()),
-            "zero_loc_attempts": int((~productive_mask).sum()),
-            "wasted_cost_usd": round(total_cost - productive_cost, 6),
-            "first_attempt_at": group.iloc[0]["commit_date"].isoformat(),
-            "last_attempt_at": last["commit_date"].isoformat(),
+            "productive_commits": int(productive_mask.sum()),
+            "zero_loc_commits": int((~productive_mask).sum()),
+            "git_wasted_cost_proxy": round(total_cost - productive_cost, 6),
+            "first_commit_at": group.iloc[0]["commit_date"].isoformat(),
+            "last_commit_at": last["commit_date"].isoformat(),
             "span_hours": round(
                 (last["commit_date"] - group.iloc[0]["commit_date"]).total_seconds() / 3600,
                 2,
             ),
+        })
+    return pd.DataFrame(rows)
+
+
+def build_task_retries(invocations: pd.DataFrame) -> pd.DataFrame:
+    """Group stitch_invocations.csv by task_id — the authoritative retry source.
+
+    Each row in stitch_invocations.csv represents one Claude Code stitch
+    invocation. invocation_count > 1 means the orchestrator invoked Claude
+    multiple times on the same task_id — a real retry.
+    """
+    rows = []
+    for task_id, group in invocations.sort_values(["task_id", "started_at"]).groupby("task_id", sort=True):
+        group = group.sort_values("started_at")
+        productive_mask = (group["loc_prod_delta"] > 0) | (group["loc_test_delta"] > 0)
+        productive = group.loc[productive_mask]
+        productive_cost = (
+            float(productive.iloc[-1]["cost_usd"]) if len(productive) > 0 else 0.0
+        )
+        total_cost = float(group["cost_usd"].sum())
+        first = group.iloc[0]
+        last = group.iloc[-1]
+        first_started = pd.Timestamp(first["started_at"])
+        last_started = pd.Timestamp(last["started_at"])
+        rows.append({
+            "task_id": str(task_id),
+            "task_id_kind": first["task_id_kind"],
+            "invocation_count": int(len(group)),
+            "status_history": ";".join(group["status"].astype(str).tolist()),
+            "successful_invocations": int((group["status"] == "success").sum()),
+            "productive_invocations": int(productive_mask.sum()),
+            "total_cost_usd": round(total_cost, 6),
+            "wasted_cost_usd": round(total_cost - productive_cost, 6),
+            "total_duration_s": int(group["duration_s"].sum()),
+            "total_num_turns": int(group["num_turns"].sum()),
+            "first_started_at": first["started_at"],
+            "last_started_at": last["started_at"],
+            "span_hours": round((last_started - first_started).total_seconds() / 3600, 2),
         })
     return pd.DataFrame(rows)
 
@@ -138,15 +187,30 @@ def main() -> int:
     utils.to_csv(out_utils, index=False)
 
     print(f"\nWrote {len(attempts)} rows to {out_attempts.relative_to(repo_root)}")
-    counts = attempts["attempt_count"].value_counts().sort_index()
-    print(f"  attempt_count distribution: {counts.to_dict()}")
-    print(f"  task_ids with zero-LOC attempts: {(attempts['zero_loc_attempts'] > 0).sum()}")
-    print(f"  total wasted cost: ${attempts['wasted_cost_usd'].sum():.2f}")
+    counts = attempts["git_commit_count"].value_counts().sort_index()
+    print(f"  git_commit_count distribution: {counts.to_dict()}")
+    print(f"  task_ids with zero_loc_commits: {(attempts['zero_loc_commits'] > 0).sum()}")
+    print(f"  total git_wasted_cost_proxy: ${attempts['git_wasted_cost_proxy'].sum():.2f}")
 
     print(f"\nWrote {len(utils)} rows to {out_utils.relative_to(repo_root)}")
     print(f"  target_kind: {utils['target_kind'].value_counts().to_dict()}")
     print(f"  total cost (utilities, excludes orphan target=None): ${utils['total_cost_usd'].sum():.2f}")
     print(f"  total cost in tasks.csv: ${tasks['cost_usd'].sum():.2f}")
+
+    invocations_path = datasets / "stitch_invocations.csv"
+    if invocations_path.exists():
+        invocations = pd.read_csv(invocations_path)
+        retries = build_task_retries(invocations)
+        out_retries = datasets / "task_retries.csv"
+        retries.to_csv(out_retries, index=False)
+        retry_counts = retries["invocation_count"].value_counts().sort_index()
+        print(f"\nWrote {len(retries)} rows to {out_retries.relative_to(repo_root)}")
+        print(f"  invocation_count distribution: {retry_counts.to_dict()}")
+        print(f"  task_ids with retries (count > 1): {(retries['invocation_count'] > 1).sum()}")
+        print(f"  total wasted_cost_usd (log-based): ${retries['wasted_cost_usd'].sum():.2f}")
+    else:
+        print(f"\n(skipped task_retries.csv: stitch_invocations.csv not found)")
+
     return 0
 
 

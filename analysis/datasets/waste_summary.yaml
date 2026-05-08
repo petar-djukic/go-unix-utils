@@ -1,11 +1,27 @@
 total_tasks: 2307
 total_unique_task_ids: 2210
-total_wasted_cost_usd: 222.27
+task_duration_p50_s: 142
+task_duration_p95_s: 654
+task_duration_p99_s: 969
+task_duration_max_s: 1469
 zero_loc_task_count: 120
-retry_count: 94
-max_attempts_for_a_single_task: 5
-timeout_count: 0
+git_commit_count_distribution:
+  1: 2116
+  2: 93
+  5: 1
+git_wasted_cost_proxy_usd: 222.27
+log_based_retry_coverage_task_ids: 185
+log_based_invocation_count_distribution:
+  1: 171
+  2: 7
+  3: 3
+  4: 3
+  7: 1
+log_based_retry_count_task_ids: 14
+log_based_max_invocations_for_a_single_task: 7
+log_based_total_wasted_cost_usd: 34.45
+near_timeout_task_count: 8
 abandoned_run_count: 7
-abandoned_run_cost_usd: 0.0
+abandoned_run_committed_cost_usd: 0.0
 total_rate_limited_seconds_reported: 15384
 total_rate_limited_minutes_reported: 256.4
