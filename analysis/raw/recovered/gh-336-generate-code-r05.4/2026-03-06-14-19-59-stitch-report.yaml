@@ -1,0 +1,43 @@
+task_id: "365"
+task_title: Implement checksum quartet cmd/ binaries (prd md5sum, sha1sum, sha256sum, sha512sum)
+status: success
+branch: task/generation-gh-336-generate-code-r05.4-365
+diff:
+    files: 7
+    insertions: 715
+    deletions: 18
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+    - path: .cobbler/measure-20260306-134420.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 659
+      deletions: 0
+    - path: cmd/md5sum/main.go
+      status: M
+      insertions: 14
+      deletions: 5
+    - path: cmd/sha1sum/main.go
+      status: M
+      insertions: 13
+      deletions: 3
+    - path: cmd/sha256sum/main.go
+      status: M
+      insertions: 13
+      deletions: 3
+    - path: cmd/sha512sum/main.go
+      status: M
+      insertions: 13
+      deletions: 3
+loc_before:
+    production: 837
+    test: 204
+loc_after:
+    production: 876
+    test: 204

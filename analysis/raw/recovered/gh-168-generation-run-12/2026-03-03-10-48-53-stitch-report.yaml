@@ -1,0 +1,31 @@
+task_id: "183"
+task_title: pkg/testutils -- DiffTest struct and RunDiffTests harness (rel00.0-uc004-testutils)
+status: success
+branch: task/generation-gh-168-generation-run-12-183
+diff:
+    files: 4
+    insertions: 262
+    deletions: 2
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 53
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 49
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: pkg/testutils/difftest.go
+      status: A
+      insertions: 159
+      deletions: 0
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 159
+    test: 0

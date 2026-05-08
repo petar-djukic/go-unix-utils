@@ -1,0 +1,43 @@
+task_id: "297"
+task_title: Write differential tests for cmd/cat (rel01.1-uc001-cat)
+status: success
+branch: task/generation-gh-262-codegen-297
+diff:
+    files: 7
+    insertions: 964
+    deletions: 61
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 6
+      deletions: 6
+    - path: .cobbler/measure-20260304-174737.yaml
+      status: D
+      insertions: 0
+      deletions: 53
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 604
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/cat/cat_test.go
+      status: A
+      insertions: 350
+      deletions: 0
+    - path: magefiles/go.mod
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.sum
+      status: M
+      insertions: 2
+      deletions: 0
+loc_before:
+    production: 957
+    test: 687
+loc_after:
+    production: 957
+    test: 1037

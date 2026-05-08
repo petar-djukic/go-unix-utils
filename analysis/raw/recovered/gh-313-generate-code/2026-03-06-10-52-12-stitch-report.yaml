@@ -1,0 +1,43 @@
+task_id: "333"
+task_title: Implement cmd/basename and cmd/dirname -- prd basename R1-R2, prd dirname R1-R2
+status: success
+branch: task/generation-gh-313-generate-code-333
+diff:
+    files: 7
+    insertions: 968
+    deletions: 32
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 123
+      deletions: 31
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 334
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/basename/basename_test.go
+      status: A
+      insertions: 108
+      deletions: 0
+    - path: cmd/basename/main.go
+      status: A
+      insertions: 183
+      deletions: 0
+    - path: cmd/dirname/dirname_test.go
+      status: A
+      insertions: 93
+      deletions: 0
+    - path: cmd/dirname/main.go
+      status: A
+      insertions: 126
+      deletions: 0
+loc_before:
+    production: 316
+    test: 263
+loc_after:
+    production: 625
+    test: 464

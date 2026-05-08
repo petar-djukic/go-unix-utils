@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "124"
+task_title: 'prd007-sponge R1-R5: differential tests for cmd/sponge'
+status: success
+started_at: "2026-03-02T18:44:17Z"
+duration: 6m14s
+duration_s: 373
+tokens:
+    input: 730417
+    output: 26117
+    cache_creation: 72472
+    cache_read: 657935
+cost_usd: 1.4358955
+loc_before:
+    production: 1940
+    test: 2212
+loc_after:
+    production: 1940
+    test: 2553
+diff:
+    files: 3
+    insertions: 1100
+    deletions: 0

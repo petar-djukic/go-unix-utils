@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "200"
+task_title: Test cmd/version (prd011-magefiles R1)
+status: success
+started_at: "2026-03-03T18:34:00Z"
+duration: 47s
+duration_s: 47
+tokens:
+    input: 250022
+    output: 2426
+    cache_creation: 35563
+    cache_read: 214453
+cost_usd: 0.39147424999999997
+loc_before:
+    production: 2223
+    test: 2697
+loc_after:
+    production: 2223
+    test: 2852
+diff:
+    files: 4
+    insertions: 1311
+    deletions: 2

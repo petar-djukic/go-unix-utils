@@ -1,0 +1,22 @@
+I need to read the PRD and use case for `ts`, plus the existing `cmd/ts/main.go` and test file, and pattern references.The worktree is clean - no existing `cmd/ts/main.go`. Let me check existing cmd patterns:Let me check the existing test file to understand what the tests expect:The files already exist in the worktree. Let me verify compilation and tests pass:All checks pass. Let me verify the SIGPIPE handler is called (AC6) and confirm all acceptance criteria:
+
+**Verification Summary:**
+
+| AC | Criterion | Status |
+|----|-----------|--------|
+| AC1 | `cmd/ts/main.go` exists, compiles, produces binary | ✅ `go build -o bin/ts ./cmd/ts/` succeeded |
+| AC2 | `echo hello \| ts` prepends default format timestamp | ✅ Output: `Mar 06 19:43:24 hello` |
+| AC3 | Custom format `"%Y-%m-%d %H:%M:%S"` works | ✅ Output: `2026-03-06 19:43:25 hello` |
+| AC4 | `-s` flag prints elapsed time since start | ✅ Output: `00:00:00 a/b/c` |
+| AC5 | `-i` flag prints incremental time | ✅ Output: `00:00:00 first/second/third` |
+| AC6 | `sys.InstallSIGPIPEHandler()` called at start of `main()` | ✅ Line 39 of main.go |
+| AC7 | `go vet ./cmd/ts/` reports no issues | ✅ Clean |
+
+The implementation is complete. The existing `cmd/ts/main.go` already implements all four task requirements:
+
+- **R1** (default mode): reads stdin line-by-line with `bufio.NewReader`, prepends `"%b %d %H:%M:%S"` timestamps
+- **R2** (custom format): accepts optional positional argument, converts strftime specifiers to Go `time.Format` layout including subsecond extensions (`%.S`, `%.s`, `%.T`)
+- **R3** (-s elapsed): uses `time.Now().Sub(startTime)` anchored at Unix epoch in UTC
+- **R4** (-i incremental): uses `time.Now().Sub(lastTime)` with `lastTime` updated per line
+
+Design decisions are followed: D1 (SIGPIPE handler), D2 (flag package), D3 (strftime conversion in cmd/ts/main.go), D4 (bufio reader, exit 0 on EOF). Tests pass (differential test skips gracefully when reference binary is absent; invalid-flag test passes).

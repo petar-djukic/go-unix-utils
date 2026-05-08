@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "247"
+task_title: 'prd008-ls: Add --color flag to ls (auto/always/never)'
+status: success
+started_at: "2026-03-04T03:37:58Z"
+duration: 6m16s
+duration_s: 375
+tokens:
+    input: 4065867
+    output: 18001
+    cache_creation: 123189
+    cache_read: 3940758
+cost_usd: 3.206705250000002
+loc_before:
+    production: 2042
+    test: 2443
+loc_after:
+    production: 2086
+    test: 2443
+diff:
+    files: 5
+    insertions: 1256
+    deletions: 97

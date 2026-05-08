@@ -1,0 +1,24 @@
+caller: measure
+status: success
+started_at: "2026-03-07T00:36:55Z"
+duration: 1m29s
+duration_s: 89
+tokens:
+    input: 2
+    output: 4283
+    cache_creation: 0
+    cache_read: 23862
+cost_usd: 0.119016
+num_turns: 1
+duration_api_ms: 88354
+session_id: 1d0b788c-c19d-4d8a-9ac4-3a8874c37853
+loc_before:
+    production: 415
+    test: 114
+loc_after:
+    production: 415
+    test: 114
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

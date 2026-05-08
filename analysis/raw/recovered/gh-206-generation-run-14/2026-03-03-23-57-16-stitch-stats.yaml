@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "260"
+task_title: 'prd011-magefiles R1.1, R1.2, R1.4: cmd/version unit tests'
+status: success
+started_at: "2026-03-04T04:57:16Z"
+duration: 51s
+duration_s: 51
+tokens:
+    input: 231561
+    output: 2255
+    cache_creation: 31773
+    cache_read: 199782
+cost_usd: 0.35607325
+loc_before:
+    production: 2238
+    test: 3176
+loc_after:
+    production: 2238
+    test: 3319
+diff:
+    files: 5
+    insertions: 1898
+    deletions: 67

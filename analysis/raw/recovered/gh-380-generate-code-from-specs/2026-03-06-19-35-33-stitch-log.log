@@ -1,0 +1,18 @@
+The file already exists with a full implementation. Let me verify it compiles and meets all acceptance criteria.All acceptance criteria verified:
+
+- **AC1** ✅ — `go build ./cmd/ts/` compiles without errors
+- **AC2** ✅ — `echo hello | go run ./cmd/ts/` outputs `Mar 06 19:36:24 hello` (default format)
+- **AC3** ✅ — `-s` flag produces elapsed timestamps starting from `00:00:00`
+- **AC4** ✅ — `-i` flag produces incremental timestamps showing time since previous line
+- **AC5** ✅ — Custom format `%H:%M:%S` is respected in output
+- **AC6** ✅ — `sys.InstallSIGPIPEHandler()` is called at line 39 of main()
+- **AC7** ✅ — `go vet` passes with no warnings
+
+The existing `cmd/ts/main.go` implementation already fully satisfies all four requirements (R1–R4):
+
+- **R1**: Line-by-line stdin reading via `bufio.NewReader`, timestamp prepending with default format `%b %d %H:%M:%S`, proper newline handling, SIGPIPE handling
+- **R2**: `-s` flag uses elapsed time since program start via `time.Now().Sub(startTime)`, formatted as `%H:%M:%S` by default
+- **R3**: `-i` flag uses incremental elapsed time since previous line via `time.Now().Sub(lastTime)`
+- **R4**: Optional positional format argument with full strftime-to-Go mapping including `%.S`, `%.s`, and `%.T` subsecond extensions
+
+Tests pass (differential test skipped due to missing reference binary in this environment, which is the correct graceful-skip behavior per the shared protocol). No code changes needed.

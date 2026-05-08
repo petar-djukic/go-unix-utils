@@ -1,0 +1,67 @@
+task_id: "360"
+task_title: Implement checksum quartet cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)
+status: success
+branch: task/generation-gh-336-generate-code-r05.4-360
+diff:
+    files: 13
+    insertions: 1139
+    deletions: 4
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+    - path: .cobbler/measure-20260306-134420.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 127
+      deletions: 0
+    - path: cmd/md5sum/main.go
+      status: A
+      insertions: 177
+      deletions: 0
+    - path: cmd/md5sum/md5sum_test.go
+      status: A
+      insertions: 48
+      deletions: 0
+    - path: cmd/sha1sum/main.go
+      status: A
+      insertions: 176
+      deletions: 0
+    - path: cmd/sha1sum/sha1sum_test.go
+      status: A
+      insertions: 48
+      deletions: 0
+    - path: cmd/sha256sum/main.go
+      status: A
+      insertions: 176
+      deletions: 0
+    - path: cmd/sha256sum/sha256sum_test.go
+      status: A
+      insertions: 48
+      deletions: 0
+    - path: cmd/sha512sum/main.go
+      status: A
+      insertions: 176
+      deletions: 0
+    - path: cmd/sha512sum/sha512sum_test.go
+      status: A
+      insertions: 48
+      deletions: 0
+    - path: pkg/sys/sigpipe.go
+      status: A
+      insertions: 22
+      deletions: 0
+    - path: pkg/testutils/testutils.go
+      status: A
+      insertions: 90
+      deletions: 0
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 817
+    test: 192

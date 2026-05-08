@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "115"
+task_title: cmd/wc core implementation
+status: success
+started_at: "2026-03-02T17:58:38Z"
+duration: 11m50s
+duration_s: 709
+tokens:
+    input: 1294613
+    output: 36556
+    cache_creation: 91313
+    cache_read: 1201862
+cost_usd: 2.1261735500000007
+loc_before:
+    production: 923
+    test: 1393
+loc_after:
+    production: 1279
+    test: 1393
+diff:
+    files: 3
+    insertions: 811
+    deletions: 0

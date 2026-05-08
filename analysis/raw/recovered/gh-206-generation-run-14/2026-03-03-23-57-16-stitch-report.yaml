@@ -1,0 +1,35 @@
+task_id: "260"
+task_title: 'prd011-magefiles R1.1, R1.2, R1.4: cmd/version unit tests'
+status: success
+branch: task/generation-gh-206-generation-run-14-260
+diff:
+    files: 5
+    insertions: 1898
+    deletions: 67
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 25
+      deletions: 21
+    - path: .cobbler/measure-20260303-140350.yaml
+      status: D
+      insertions: 0
+      deletions: 45
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 1729
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/version/version_test.go
+      status: A
+      insertions: 143
+      deletions: 0
+loc_before:
+    production: 2238
+    test: 3176
+loc_after:
+    production: 2238
+    test: 3319

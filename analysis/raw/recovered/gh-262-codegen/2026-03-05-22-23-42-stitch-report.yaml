@@ -1,0 +1,47 @@
+task_id: "299"
+task_title: Implement cmd/sponge main.go and differential tests (rel01.2-uc001)
+status: success
+branch: task/generation-gh-262-codegen-299
+diff:
+    files: 8
+    insertions: 1314
+    deletions: 62
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 7
+      deletions: 7
+    - path: .cobbler/measure-20260304-174737.yaml
+      status: D
+      insertions: 0
+      deletions: 53
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 724
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/sponge/main.go
+      status: A
+      insertions: 196
+      deletions: 0
+    - path: cmd/sponge/sponge_test.go
+      status: A
+      insertions: 383
+      deletions: 0
+    - path: magefiles/go.mod
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.sum
+      status: M
+      insertions: 2
+      deletions: 0
+loc_before:
+    production: 957
+    test: 1037
+loc_after:
+    production: 1153
+    test: 1420

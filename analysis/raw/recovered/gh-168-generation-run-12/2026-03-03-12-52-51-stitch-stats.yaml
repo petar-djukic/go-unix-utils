@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "195"
+task_title: Implement cmd/du main.go -- directory traversal and disk usage reporting (rel01.3-uc001-du)
+status: success
+started_at: "2026-03-03T17:52:51Z"
+duration: 12m5s
+duration_s: 725
+tokens:
+    input: 1977240
+    output: 44310
+    cache_creation: 121678
+    cache_read: 1855545
+cost_usd: 2.8599950999999995
+loc_before:
+    production: 1774
+    test: 1766
+loc_after:
+    production: 2153
+    test: 1766
+diff:
+    files: 4
+    insertions: 1258
+    deletions: 2

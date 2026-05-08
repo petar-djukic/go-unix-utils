@@ -1,0 +1,26 @@
+caller: stitch
+task_id: "391"
+task_title: cmd/ts implementation -- prd R1-R4 timestamp prepend, flags, format
+status: success
+started_at: "2026-03-07T00:31:58Z"
+duration: 58s
+duration_s: 57
+tokens:
+    input: 13
+    output: 2511
+    cache_creation: 45584
+    cache_read: 265806
+cost_usd: 0.48064300000000004
+num_turns: 17
+duration_api_ms: 54224
+session_id: 1eb906a2-760b-4456-90c4-174b45738dc4
+loc_before:
+    production: 415
+    test: 114
+loc_after:
+    production: 415
+    test: 114
+diff:
+    files: 4
+    insertions: 487
+    deletions: 7

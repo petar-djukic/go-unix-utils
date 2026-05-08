@@ -1,0 +1,47 @@
+task_id: "290"
+task_title: Implement magefiles build lifecycle and cmd/version binary (rel00.0-uc001)
+status: success
+branch: task/generation-gh-262-codegen-290
+diff:
+    files: 8
+    insertions: 520
+    deletions: 58
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+    - path: .cobbler/measure-20260304-174737.yaml
+      status: D
+      insertions: 0
+      deletions: 53
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 415
+      deletions: 0
+    - path: .golangci.yml
+      status: A
+      insertions: 59
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/version/main.go
+      status: A
+      insertions: 39
+      deletions: 0
+    - path: magefiles/go.mod
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.sum
+      status: M
+      insertions: 2
+      deletions: 0
+loc_before:
+    production: 419
+    test: 510
+loc_after:
+    production: 458
+    test: 510

@@ -1,0 +1,23 @@
+caller: stitch
+task_id: generation-2026-02-25-08-44-27-6qn
+task_title: Implement pkg/format column alignment, ANSI color, and human-readable size (prd003-format R1, R2, R3)
+status: success
+started_at: "2026-02-25T13:56:43Z"
+duration: 4m35s
+duration_s: 275
+tokens:
+    input: 2776018
+    output: 15550
+    cache_creation: 95161
+    cache_read: 2680828
+cost_usd: 2.33280825
+loc_before:
+    production: 2531
+    test: 1416
+loc_after:
+    production: 2842
+    test: 1744
+diff:
+    files: 7
+    insertions: 777
+    deletions: 0

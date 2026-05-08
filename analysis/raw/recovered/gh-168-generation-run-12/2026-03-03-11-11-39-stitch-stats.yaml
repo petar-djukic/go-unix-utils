@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "185"
+task_title: 'pkg/sys: implement file metadata, signals, and terminal size (rel00.0-uc003-sys)'
+status: success
+started_at: "2026-03-03T16:11:39Z"
+duration: 4m33s
+duration_s: 273
+tokens:
+    input: 743106
+    output: 15443
+    cache_creation: 47646
+    cache_read: 695446
+cost_usd: 1.0346104999999999
+loc_before:
+    production: 197
+    test: 304
+loc_after:
+    production: 417
+    test: 304
+diff:
+    files: 11
+    insertions: 471
+    deletions: 2

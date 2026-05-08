@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "90"
+task_title: Implement pkg/sys terminal size queries -- prd002-sys R1
+status: success
+started_at: "2026-03-02T14:32:14Z"
+duration: 1m54s
+duration_s: 113
+tokens:
+    input: 219662
+    output: 3052
+    cache_creation: 29509
+    cache_read: 190147
+cost_usd: 0.35679675
+loc_before:
+    production: 761
+    test: 0
+loc_after:
+    production: 810
+    test: 0
+diff:
+    files: 3
+    insertions: 338
+    deletions: 1

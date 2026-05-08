@@ -1,0 +1,35 @@
+task_id: "237"
+task_title: Implement cmd/du core directory traversal and disk usage output (prd-du R1.1, R1.2, R2.1, R5.1)
+status: success
+branch: task/generation-gh-206-generation-run-14-237
+diff:
+    files: 5
+    insertions: 831
+    deletions: 68
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 23
+      deletions: 22
+    - path: .cobbler/measure-20260303-140350.yaml
+      status: D
+      insertions: 0
+      deletions: 45
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 646
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/du/main.go
+      status: A
+      insertions: 161
+      deletions: 0
+loc_before:
+    production: 1314
+    test: 1617
+loc_after:
+    production: 1475
+    test: 1617

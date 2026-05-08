@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "226"
+task_title: Test pkg/testutils RunDiffTests core comparison (prd001 R2.1, R3.2, R3.3, R3.4)
+status: success
+started_at: "2026-03-03T23:39:49Z"
+duration: 7m7s
+duration_s: 426
+tokens:
+    input: 442202
+    output: 23817
+    cache_creation: 55372
+    cache_read: 386822
+cost_usd: 1.136272
+loc_before:
+    production: 305
+    test: 0
+loc_after:
+    production: 305
+    test: 247
+diff:
+    files: 5
+    insertions: 368
+    deletions: 68

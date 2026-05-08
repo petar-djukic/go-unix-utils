@@ -1,0 +1,35 @@
+task_id: "393"
+task_title: Implement cmd/ts main.go -- ts timestamp stdin utility
+status: success
+branch: task/generation-gh-380-generate-code-from-specs-393
+diff:
+    files: 5
+    insertions: 607
+    deletions: 12
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 5
+      deletions: 5
+    - path: .cobbler/measure-20260306-145245.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 590
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/ts/main.go
+      status: M
+      insertions: 11
+      deletions: 5
+loc_before:
+    production: 415
+    test: 114
+loc_after:
+    production: 421
+    test: 114

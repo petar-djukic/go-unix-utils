@@ -1,0 +1,2328 @@
+role: |
+    You are a software architect planning work for an AI code generation pipeline. Each task you propose will be executed by a separate Claude instance (the "stitch agent") that sees only its task description and the project rules. The stitch agent has no memory of this conversation and no access to your analysis.
+project_context:
+    vision:
+        file: docs/VISION.yaml
+        id: go-unix-utils
+        title: 'go-unix-utils: Specification-Driven Regeneration of Unix Utilities in Go'
+        executive_summary: |
+            go-unix-utils is an experiment in specification-driven development using classic Unix
+            utilities as the test bed. We derive formal specifications from C source code, generate
+            Go implementations from those specs using an AI coding agent, and verify parity against
+            reference binaries through differential testing. The goal is not to ship utilities; it
+            is to find where the methodology breaks down.
+        problem: |
+            Classic Unix utilities have no formal specifications accessible to implementers. Man
+            pages omit edge cases, flag interactions, and exit-code contracts. Re-implementations
+            built from documentation alone diverge in observable behavior -- they break scripts,
+            pipelines, and tools that depend on precise semantics.
+
+            Existing Go re-implementations treat utilities as isolated exercises. They lack shared
+            infrastructure, behavioral contracts, and systematic verification. The result is
+            utilities that work for common cases but fail on edge cases that production users
+            encounter.
+        what_this_does: |
+            We run a four-stage pipeline for each utility. In the extraction stage, we clone the
+            C source (coreutils, moreutils, grep, findutils) and analyze behavior directly from
+            the source of truth. In the specification stage, a human operator uses the make-work
+            and do-work Claude Code skills to produce two artifacts: a PRD (numbered requirements
+            and acceptance criteria covering all flags, exit codes, and stream behaviors) and a
+            use case (concrete end-to-end execution path through the system). Shared library
+            components (pkg/) also receive PRDs when their requirements span multiple utilities.
+            In the synthesis stage, the mage-claude-orchestrator library drives a Claude agent to
+            generate idiomatic Go from the PRD. In the verification stage, a differential testing
+            harness runs the Go binary and the Homebrew reference binary side by side and compares
+            outputs.
+        why_we_build_this: |
+            We use GNU utilities as a stress test for the mage-claude-orchestrator code generation
+            system. GNU utilities are an ideal subject: their behavior is authoritative (C source
+            is public), their correctness is verifiable (differential testing against reference
+            binaries), and they span a wide range of complexity -- from ts (trivial) to ls
+            (hundreds of flags and edge cases). The human operator guides spec development through
+            make-work and do-work skills; the orchestrator then takes over and generates Go code
+            autonomously. We want to know where the system holds and where it fails: how much
+            spec detail the orchestrator needs, how it handles complex flag interactions, and
+            whether differential testing catches the gaps. The shared Go library (pkg/) is a
+            by-product, not the goal.
+        success_criteria:
+            SC1: |
+                Every utility passes differential tests against its Homebrew reference binary with 100% output parity on exit code, stdout, and stderr.
+            SC2: |
+                Every utility has a PRD that covers all flags, exit codes, and stream behaviors derived from C source.
+            SC3: |
+                Go binaries are idiomatic and compile with no warnings under standard linting (golangci-lint).
+            SC4: |
+                The shared pkg/ library is used by at least two utilities for common logic, with no duplication of syscall or formatting code across cmd/ packages.
+            SC5: mage analyze passes with no broken references or missing fields.
+            SC6: |
+                We can characterize where mage-claude-orchestrator succeeds and fails: which utility complexity levels it handles autonomously, which require spec refinement by the human operator, and which it cannot complete without manual intervention.
+        implementation_phases:
+            - phase: "1"
+              focus: 'Foundation: pipeline infrastructure, first utility (ts), shared pkg/ skeleton.'
+              deliverables: Differential testing harness in pkg/testutils/, pkg/sys/ and pkg/format/ initial implementations, cmd/ts/ with PRD and passing differential tests.
+            - phase: "2"
+              focus: 'Moreutils: remaining moreutils tools (sponge, vidir, pee, chronic).'
+              deliverables: PRD and Go implementation for sponge, vidir, pee, and chronic. Differential tests for each moreutils utility.
+            - phase: "3"
+              focus: 'Coreutils: high-complexity coreutils tools (ls, cat, cp, mv, wc, du).'
+              deliverables: PRD and Go implementation for each coreutils utility. Shared formatting and syscall logic promoted to pkg/.
+            - phase: "4"
+              focus: 'Search Utilities: grep, egrep, fgrep (grep package) and find, xargs (findutils).'
+              deliverables: PRD and Go implementations for all grep and findutils tools. Full differential test coverage for the search utility suite.
+        risks:
+            - risk: Platform divergence between GNU and macOS behavior.
+              impact: high
+              likelihood: medium
+              mitigation: |
+                We target Homebrew-installed GNU binaries (gls, gts, etc.) as the reference,
+                not the macOS BSD built-ins. All tests run against the GNU reference binary,
+                which is built from the same C source we use for spec extraction.
+            - risk: C source complexity makes full behavioral extraction impractical for some utilities.
+              impact: medium
+              likelihood: medium
+              mitigation: |
+                We combine C source analysis with behavioral testing of the reference binary
+                for edge cases. Specs note where behavior is observed rather than source-derived,
+                and we include those observations as test inputs in the differential harness.
+            - risk: Go standard library lacks POSIX syscall coverage on macOS.
+              impact: medium
+              likelihood: low
+              mitigation: |
+                We build pkg/sys/ as an abstraction layer over Darwin and Linux syscalls and
+                use golang.org/x/sys for extended coverage where the standard library falls short.
+            - risk: AI synthesis produces code that passes common cases but fails edge cases.
+              impact: high
+              likelihood: medium
+              mitigation: |
+                Differential testing is the gating check. Code cannot pass review until
+                differential tests pass. Edge cases are explicit in the PRD and exercised
+                as named test inputs in pkg/testutils/.
+            - risk: Go has no locale-aware string collation (strcoll equivalent).
+              impact: high
+              likelihood: high
+              mitigation: |
+                The current roadmap (rel01.0 through rel02.1) avoids locale-sensitive utilities.
+                All differential tests run with LC_ALL=C so Go and reference binary outputs agree.
+                When locale-sensitive utilities (sort, join, comm) are scheduled, we will evaluate
+                golang.org/x/text/collate as the implementation path. If it does not cover the
+                required POSIX LC_COLLATE semantics, those utilities will be deferred or scoped
+                to LC_ALL=C only.
+        not:
+            - This project is not a general-purpose Unix toolkit for production deployment.
+            - We do not target BSD utilities or macOS built-ins as reference binaries.
+            - We do not implement utilities outside coreutils, moreutils, grep, and findutils.
+            - We do not implement stdbuf. It requires injecting a shared library via LD_PRELOAD, which is not possible in pure Go. stdbuf is the only moreutils utility excluded.
+            - We do not target Windows.
+            - Specs are not replacements for man pages; they capture implementer-relevant behavior.
+            - We do not produce a drop-in replacement binary at a system path; binaries live in bin/.
+            - We do not implement full POSIX locale-aware collation (LC_COLLATE) in the current roadmap. Utilities that require strcoll() semantics (sort, join, comm, uniq) are constrained to LC_ALL=C behavior for now. golang.org/x/text/collate is the planned path when locale-sensitive utilities are scheduled.
+    architecture:
+        file: docs/ARCHITECTURE.yaml
+        id: go-unix-utils
+        title: go-unix-utils Architecture
+        overview:
+            summary: |
+                go-unix-utils is a pipeline from C-source-derived specifications to verified Go
+                binaries. Each utility follows the same four-stage flow: extract, specify, synthesize,
+                verify. The synthesis stage is driven by mage-claude-orchestrator, an automated code
+                generation system. Specification development is human-guided. A shared pkg/ library
+                accumulates common logic as utilities are added.
+            lifecycle: |
+                For each utility a human operator clones the C source repository, analyzes flags and
+                edge cases, and uses the make-work and do-work Claude Code skills to produce two
+                specification artifacts: a PRD (numbered requirements and acceptance criteria covering
+                all flags, exit codes, and stream behaviors) and a use case (concrete end-to-end
+                execution path through the system). The PRD is the primary input to code generation.
+                Once the spec artifacts are complete, the human invokes the mage-claude-orchestrator
+                via mage targets; the orchestrator drives a Claude agent to generate Go code in
+                cmd/<utility>/ and runs the differential testing harness. If tests fail, the operator
+                refines the PRD and the orchestrator re-generates.
+
+                Shared library components (pkg/sys, pkg/format, pkg/testutils) may also have PRDs
+                when their requirements are non-trivial and span multiple utilities.
+            coordination_pattern: |
+                The human operator owns the specification phase. The mage-claude-orchestrator owns
+                the synthesis and verification phases. Mage targets (magefiles/orchestrator.go)
+                expose the boundary between them: the operator calls mage targets to hand off to
+                the orchestrator after the spec is ready. The differential testing harness in
+                pkg/testutils/ is the shared acceptance criterion for both phases.
+        interfaces:
+            - name: Data Structures
+              summary: |
+                Specification artifacts and runtime data structures used across the pipeline.
+              data_structures:
+                - 'PRD (prd[NNN]-<utility>.yaml): per-utility product requirements document with numbered goals, requirements, and acceptance criteria.'
+                - 'Use case (rel[NN].[N]-uc[NNN]-<utility>.yaml): per-utility use case describing a concrete end-to-end execution path through the system.'
+                - 'DiffTest: Go struct in pkg/testutils/ defining a single differential test case with fields for input arguments, stdin, environment, expected exit code, and expected output.'
+                - 'configuration.yaml: orchestrator configuration file at the project root consumed by magefiles/ to configure build, analysis, and generation targets.'
+              operations:
+                - 'mage build: compiles all cmd/ binaries to bin/.'
+                - 'mage lint: runs golangci-lint on all Go source under cmd/ and pkg/.'
+                - 'mage stats:loc: prints Go lines of code (production and test) and documentation word counts.'
+                - 'mage analyze: runs cross-artifact consistency checks on docs/ (PRDs, use cases, test suites, roadmap).'
+                - 'go test ./...: runs all tests including differential tests in each cmd/ package.'
+            - name: Events
+              summary: |
+                Observable events emitted by the system during operation.
+              operations:
+                - 'Differential test failure: go test reports the divergence with the input that triggered it, the expected output (reference binary), and the actual output (Go binary).'
+        components:
+            - name: Human Operator
+              responsibility: |
+                Guides specification development for each utility. Clones the C source, analyzes
+                flags and edge cases, and uses the make-work and do-work Claude Code skills to
+                produce a PRD and a use case. Decides when the spec artifacts are complete enough
+                to hand off to the orchestrator. Refines PRDs when orchestrator-generated code
+                fails differential tests. Also authors PRDs for shared pkg/ components when their
+                requirements warrant it.
+              capabilities:
+                - make-work skill breaks a utility into specification issues
+                - do-work skill works through individual specification issues
+                - C source analysis via cloned coreutils/moreutils/grep/findutils repositories
+              references:
+                - .claude/commands/
+            - name: Specification Repository
+              responsibility: |
+                Holds the formal per-utility PRDs and use cases alongside this documentation suite.
+                Serves as the source of truth for synthesis and verification. Shared library
+                components (pkg/) may also have PRDs.
+              capabilities:
+                - One PRD per utility under docs/specs/product-requirements/ (plus PRDs for shared pkg/ components as needed)
+                - One use case per utility under docs/specs/use-cases/
+                - VISION.yaml and ARCHITECTURE.yaml project-level docs
+                - Test suites under docs/specs/test-suites/
+              references:
+                - docs/
+            - name: cmd/
+              responsibility: |
+                Holds the Go implementation of each utility. Each sub-package compiles to a
+                standalone binary and contains its differential tests alongside the implementation.
+                cmd/ grows as utilities are implemented following road-map.yaml. The full catalog
+                of 123 target utilities (coreutils, moreutils, grep, findutils) is in
+                docs/utilities.yaml; stdbuf is the only utility in those repos that is explicitly
+                excluded (LD_PRELOAD injection not possible in pure Go).
+              capabilities:
+                - One package per utility, named cmd/<utility>/
+                - Each package contains main.go (implementation) and <utility>_test.go (differential tests)
+                - Active roadmap in road-map.yaml for current release and use case status
+                - Full catalog in docs/utilities.yaml for difficulty, memory model, and implementation profile of each utility
+              references:
+                - cmd/
+            - name: pkg/sys/
+              responsibility: |
+                Wraps Darwin and Linux syscalls and signal handling. Provides a stable interface
+                that cmd/ packages use to avoid platform-specific code in utility implementations.
+                Only syscalls that have platform divergence between Darwin and Linux, or that Go's
+                standard library does not expose cleanly, belong here.
+              capabilities:
+                - Terminal size queries (TIOCGWINSZ ioctl)
+                - Signal handling (SIGPIPE, SIGHUP, SIGWINCH)
+                - File metadata (stat, lstat; abstracts st_mtimespec/st_mtim and st_blocks divergence)
+                - Process group management (setpgid, killpg) for timeout and xargs -P
+                - Process priority (setpriority) for nice and renice
+              references:
+                - pkg/sys/
+            - name: pkg/format/
+              responsibility: |
+                Provides output formatting shared across utilities including table alignment,
+                ANSI color output, and human-readable unit conversion (bytes to K/M/G).
+              capabilities:
+                - Column alignment for tabular output (ls -l style)
+                - ANSI color codes for file types and permissions
+                - Human-readable size formatting
+              references:
+                - pkg/format/
+            - name: pkg/testutils/
+              responsibility: |
+                The differential testing harness. Executes a Go binary and a reference GNU binary
+                with the same inputs and compares stdout, stderr, and exit code byte-for-byte or
+                with configured normalization.
+              capabilities:
+                - Execute two binaries with identical stdin, arguments, and environment
+                - Compare stdout, stderr, and exit code
+                - Report divergence with the input, expected output, and actual output
+                - Support normalization hooks for known acceptable differences (e.g., timestamps)
+              references:
+                - pkg/testutils/
+            - name: magefiles/
+              responsibility: |
+                Mage build targets for the project. Wraps build, lint, test, stats, and analyze
+                operations. Delegates to the mage-claude-orchestrator library, which drives Claude
+                agents for code generation. This is the boundary between the human-guided spec
+                phase and the automated synthesis phase.
+              capabilities:
+                - mage build compiles all binaries
+                - mage lint runs golangci-lint
+                - mage stats:loc prints LOC and doc word counts
+                - mage analyze runs cross-artifact consistency checks
+                - mage init initializes the project
+                - mage credentials extracts Claude credentials from macOS Keychain
+                - mage cobbler:measure and mage cobbler:stitch run the orchestrator generation cycle
+              references:
+                - magefiles/
+        design_decisions:
+            - id: 1
+              title: C source as the specification source of truth
+              decision: |
+                We derive specs from the C source code of coreutils, moreutils, grep, and findutils
+                rather than from man pages or documentation alone.
+              benefits:
+                - Captures edge cases and flag interactions not documented in man pages
+                - Eliminates ambiguity about intended behavior
+                - Enables completeness verification against the actual implementation
+              alternatives_rejected:
+                - 'Man-page-only specs: insufficient detail for edge cases and exit codes'
+                - 'Behavioral-only extraction: slower, misses implementation intent for unexposed paths'
+            - id: 2
+              title: Differential testing as the primary verification mechanism
+              decision: |
+                We verify Go implementations by running them side by side with the Homebrew GNU
+                reference binary and comparing outputs, not by writing unit tests against expected
+                constants.
+              benefits:
+                - Tests against the actual reference, not a human's interpretation of it
+                - Discovers regressions automatically when spec or code changes
+                - Scales to any number of inputs without manual expected-output authoring
+              alternatives_rejected:
+                - 'Unit tests with hardcoded expectations: brittle, based on documentation assumptions'
+                - 'Integration tests against a fixed corpus: does not verify against live GNU behavior'
+            - id: 3
+              title: Shared pkg/ library for Unix primitives
+              decision: |
+                Common logic (syscalls, formatting, I/O patterns) is promoted to pkg/ rather than
+                duplicated across cmd/ packages.
+              benefits:
+                - Reduces duplication and inconsistency between utilities
+                - Builds a reusable Go library of Unix primitives
+                - Makes each cmd/ package focused on utility-specific logic
+              alternatives_rejected:
+                - 'Per-utility internal packages: promotes duplication across cmd/'
+                - 'External formatting libraries: reduces control, increases supply-chain surface'
+            - id: 4
+              title: Homebrew GNU binaries as reference, not macOS built-ins
+              decision: |
+                On macOS we use gls, gts, and other g-prefixed Homebrew binaries as the reference,
+                not the BSD-derived macOS built-ins.
+              benefits:
+                - GNU behavior is well-defined and derived from the same C source we clone
+                - Avoids testing against BSD variants with different flag sets and semantics
+                - Homebrew binaries are the same version as the cloned source
+              alternatives_rejected:
+                - 'macOS built-ins: BSD-derived, significant flag and behavior differences from GNU'
+                - 'Building from source ourselves: adds complexity without benefit'
+            - id: 5
+              title: Human-guided specification, automated synthesis
+              decision: |
+                We split responsibility at the spec boundary. The human operator owns the PRD
+                via make-work and do-work skills. The mage-claude-orchestrator owns code generation
+                and testing from that point forward. The operator does not write Go; the orchestrator
+                does not write PRDs.
+              benefits:
+                - Isolates the experiment variable so orchestrator quality is evaluated independently of spec quality
+                - Human judgment is applied where it adds most value (behavioral analysis of C source)
+                - Orchestrator failure modes are observable without confounding spec quality
+              alternatives_rejected:
+                - Fully automated pipeline (orchestrator writes specs too) conflates two failure modes
+                - Fully manual pipeline (human writes Go) does not test the orchestrator at all
+            - id: 7
+              title: Generation scope excludes scaffolded and human-authored paths
+              decision: |
+                The code generation pipeline (measure + stitch) must not propose or execute
+                tasks for the following paths. These are either scaffolded by cobbler-scaffold
+                or human-authored content that the pipeline reads but does not write.
+
+                magefiles/ -- provided by cobbler-scaffold's orchestrator library.
+                orchestrator.go is auto-generated. The only code generation target in
+                prd011-magefiles is cmd/version, which lives in cmd/version/.
+
+                configuration.yaml -- consumed by cobbler-scaffold. Not a generation target.
+
+                .cobbler/ -- scaffold working directory. Not a generation target.
+
+                .claude/ -- Claude Code configuration. Not a generation target.
+
+                docs/ -- specifications are human-authored. The pipeline reads docs/ as input
+                but does not write to it.
+
+                The generation pipeline targets only cmd/ and pkg/ directories.
+              benefits:
+                - Prevents measure from proposing tasks for scaffolded infrastructure
+                - Avoids stitch timeouts caused by rewriting files that conflict with cobbler-scaffold
+                - Single authoritative list of exclusions in the architecture document
+              alternatives_rejected:
+                - 'Per-component provided_by field: rejected by cobbler-scaffold ArchComponent schema (see cobbler-scaffold #430)'
+                - 'Top-level generation_non_goals field: rejected by cobbler-scaffold ArchitectureDoc schema'
+                - 'Include all PRDs in measure context to let non_goals speak for themselves: increases prompt size'
+            - id: 6
+              title: Locale handling deferred; LC_ALL=C for the current roadmap
+              decision: |
+                Go's standard library has no strcoll() equivalent. Utilities that require locale-aware
+                string collation (sort, join, comm, uniq with locale ordering; ls sort order under
+                non-C locales; grep character classes under LC_COLLATE) cannot be implemented with
+                full POSIX locale semantics using only the Go standard library.
+
+                For the current roadmap (rel01.0 through rel02.1), all implementations target
+                LC_ALL=C behavior only. Every differential test that touches string comparison or
+                character classification sets LC_ALL=C so the Go and reference binary outputs agree.
+                This constraint is recorded as a precondition in each affected test suite.
+
+                When locale-sensitive utilities are scheduled beyond rel02.1, we will evaluate
+                golang.org/x/text/collate as the implementation path. If approved, the external
+                dependency policy (currently golang.org/x/sys only) will be updated to permit
+                golang.org/x/* packages. No other locale library will be considered; building CLDR
+                tables in-house is out of scope.
+              benefits:
+                - Unblocks the current roadmap without requiring a policy change or new dependency
+                - Makes the constraint explicit and testable rather than discovered mid-implementation
+                - golang.org/x/text is the same vendor and trust tier as golang.org/x/sys
+              alternatives_rejected:
+                - 'Implement strcoll in-house using CLDR tables: out of scope, maintenance burden'
+                - 'Allow any locale library: increases supply-chain surface beyond what the project accepts'
+                - 'Silently test only LC_ALL=C without documenting the gap: hides a behavioral difference'
+        technology_choices:
+            - component: Language
+              technology: Go
+              purpose: Idiomatic systems programming language with strong standard library for I/O and OS operations.
+            - component: Build
+              technology: Mage
+              purpose: Go-native build tool; targets are plain Go functions, no DSL to learn or maintain.
+            - component: Lint
+              technology: golangci-lint
+              purpose: Comprehensive linting for idiomatic Go; integrated with the mage lint target.
+            - component: Syscalls
+              technology: golang.org/x/sys
+              purpose: |
+                The only external Go dependency in the current roadmap. Provides stable Darwin and
+                Linux syscall coverage for Stat_t field access (field names diverge between
+                platforms), ioctl constants (TIOCGWINSZ), and signal mask operations. pkg/sys wraps
+                this into a single internal API; cmd/ packages do not import golang.org/x/sys
+                directly. golang.org/x/text/collate is the planned addition when locale-sensitive
+                utilities are scheduled (see DD6).
+            - component: Reference binaries
+              technology: Homebrew (GNU coreutils, moreutils, grep, findutils)
+              purpose: Provides the reference binaries (gls, gts, etc.) used in differential testing.
+            - component: Source extraction
+              technology: Git (coreutils, moreutils, grep, findutils mirrors)
+              purpose: Source repositories for C implementations used as spec extraction input.
+            - component: Code generation
+              technology: mage-claude-orchestrator (mesh-intelligence)
+              purpose: Drives Claude agents for code generation from the PRD; provides the cobbler measure/stitch generation cycle.
+            - component: Specification workflow
+              technology: make-work / do-work (Claude Code skills)
+              purpose: Human operator uses these skills to break utilities into specification issues and work through them systematically.
+        project_structure:
+            - path: docs/
+              role: Specification and documentation suite (VISION, ARCHITECTURE, PRDs, use cases, test suites)
+            - path: docs/VISION.yaml
+              role: Project goals, success criteria, risks, and explicit boundaries
+            - path: docs/ARCHITECTURE.yaml
+              role: Component descriptions, design decisions, and technology choices
+            - path: docs/utilities.yaml
+              role: Full catalog of 123 target utilities with difficulty, memory model, and implementation profiles
+            - path: docs/road-map.yaml
+              role: Release schedule; maps use cases to releases with status
+            - path: docs/specs/product-requirements/
+              role: Per-utility PRDs; also PRDs for shared pkg/ components
+            - path: docs/specs/use-cases/
+              role: Per-utility use cases (concrete execution paths through the system)
+            - path: docs/specs/test-suites/
+              role: Per-use-case test suites with explicit inputs and expected outputs
+            - path: docs/engineering/
+              role: Engineering guidelines (conventions, practices, patterns above the code)
+            - path: cmd/
+              role: Go implementation of each utility, one package per utility; grows with road-map.yaml
+            - path: pkg/sys/
+              role: Darwin and Linux syscall abstractions
+            - path: pkg/format/
+              role: Shared output formatting (tables, colors, units)
+            - path: pkg/testutils/
+              role: Differential testing harness
+            - path: magefiles/
+              role: Mage build targets (build, lint, stats, analyze, credentials)
+            - path: configuration.yaml
+              role: Orchestrator configuration
+            - path: go.mod
+              role: Go module definition (module github.com/petar-djukic/go-unix-utils)
+        implementation_status:
+            current_focus: |
+                The working branch contains specifications only. Generated Go code (4,586 LOC across
+                22 files) lives at the generation-merged tags from the first pipeline run: Gen A
+                (generation-2026-02-25-07-08-59-merged), Gen B (generation-2026-02-25-07-46-59-merged),
+                Gen C (generation-2026-02-25-08-44-27-merged). The combined code includes pkg/testutils,
+                cmd/ts, cmd/cat, cmd/wc, cmd/sponge, pkg/sys, and pkg/format. No generated code is
+                present on the working branch. See README Tagging Scheme and eng04 for details.
+
+                "spec complete" means PRD, use case, and code exist (code at v1 tag). "specs written"
+                means PRD, use case, and test suite exist but code generation has not run yet.
+                "pending" means no PRD yet. See road-map.yaml for the active release and
+                docs/utilities.yaml for the full catalog.
+            progress:
+                - pkg/testutils: spec complete (rel01.0), code at generation-merged tags
+                - pkg/sys: spec complete (rel02.0), code at generation-merged tags
+                - pkg/format: spec complete (rel02.0), code at generation-merged tags
+                - cmd/ts: spec complete (rel01.0), code at generation-merged tags
+                - cmd/wc: spec complete (rel01.1), code at generation-merged tags
+                - cmd/cat: spec complete (rel01.1), code at generation-merged tags
+                - cmd/sponge: spec complete (rel01.1), code at generation-merged tags
+                - cmd/ls: specs written (rel02.0 core / rel02.1 extended) — PRD, use case, and test suite complete; code generation pending
+                - cmd/du: specs written (rel02.0) — PRD, use case, and test suite complete; code generation pending
+                - cmd/grep: pending
+                - cmd/find: pending
+                - cmd/xargs: pending
+                - remaining 110 utilities: cataloged in docs/utilities.yaml, not yet scheduled
+        related_documents:
+            - doc: docs/VISION.yaml
+              purpose: Project goals, success criteria, risks, and explicit boundaries.
+            - doc: docs/utilities.yaml
+              purpose: Full catalog of 123 target utilities with difficulty and memory model profiles.
+            - doc: docs/road-map.yaml
+              purpose: Release schedule; current release and use case status.
+            - doc: docs/engineering/eng01-spec-extraction.yaml
+              purpose: Engineering guideline for extracting specifications from C/Perl source.
+            - doc: configuration.yaml
+              purpose: Orchestrator configuration for build, analysis, and generation targets.
+    analysis:
+        consistency_errors: 1
+        consistency_details:
+            - 'orphaned PRD: prd019-seq'
+        code_status:
+            releases:
+                - version: "00.0"
+                  name: Batch 0 — foundational infrastructure
+                  specstatus: spec_complete
+                  codereadiness: none
+                  usecases:
+                    - id: rel00.0-uc001-magefiles
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                    - id: rel00.0-uc002-format
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                    - id: rel00.0-uc003-sys
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                    - id: rel00.0-uc004-testutils
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "01.0"
+                  name: Batch 1 — wc specification and differential test
+                  specstatus: spec_complete
+                  codereadiness: none
+                  usecases:
+                    - id: rel01.0-uc001-wc
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "01.1"
+                  name: Batch 1.1 — cat specification and differential test
+                  specstatus: spec_complete
+                  codereadiness: none
+                  usecases:
+                    - id: rel01.1-uc001-cat
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "01.2"
+                  name: Batch 1.2 — sponge specification and differential test
+                  specstatus: spec_complete
+                  codereadiness: none
+                  usecases:
+                    - id: rel01.2-uc001-sponge
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "01.3"
+                  name: Batch 1.3 — du specification and differential test
+                  specstatus: spec_complete
+                  codereadiness: none
+                  usecases:
+                    - id: rel01.3-uc001-du
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "02.0"
+                  name: Batch 2 — trivial utilities (true, false, yes, basename, dirname)
+                  specstatus: pending
+                  codereadiness: none
+                  usecases:
+                    - id: rel02.0-uc001-true
+                      specstatus: pending
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                    - id: rel02.0-uc002-false
+                      specstatus: pending
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                    - id: rel02.0-uc003-yes
+                      specstatus: pending
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                    - id: rel02.0-uc004-basename
+                      specstatus: pending
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                    - id: rel02.0-uc005-dirname
+                      specstatus: pending
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "02.1"
+                  name: Batch 2.1 — tee specification and differential test
+                  specstatus: pending
+                  codereadiness: none
+                  usecases:
+                    - id: rel02.1-uc001-tee
+                      specstatus: pending
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "02.2"
+                  name: Batch 2.2 — head specification and differential test
+                  specstatus: pending
+                  codereadiness: none
+                  usecases:
+                    - id: rel02.2-uc001-head
+                      specstatus: pending
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "99.0"
+                  name: Deferred — ls core specification and differential test
+                  specstatus: spec_complete
+                  codereadiness: none
+                  usecases:
+                    - id: rel99.0-uc001-ls
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "99.1"
+                  name: Deferred — ls extended specification and differential test
+                  specstatus: spec_complete
+                  codereadiness: none
+                  usecases:
+                    - id: rel99.1-uc001-ls-extended
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+                - version: "99.2"
+                  name: Deferred — ts specification and differential test
+                  specstatus: spec_complete
+                  codereadiness: none
+                  usecases:
+                    - id: rel99.2-uc001-ts
+                      specstatus: spec_complete
+                      codestatus: not started
+                      testdir: ""
+                      testfiles: 0
+            gaps: []
+    source_code:
+        - file: pkg/format/columns.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | package format
+            6 | import (
+            7 | 	"strings"
+            8 | 	"unicode/utf8"
+            9 | )
+            11 | // columnGap is the number of spaces between adjacent columns in grid output.
+            12 | const columnGap = 2
+            14 | // Columns distributes entries into the maximum number of columns that fit
+            15 | // within termWidth, using the longest entry in each column to determine column
+            16 | // width (prd003-format R1.1, R1.4). Entries are ordered column-major: they
+            17 | // fill down the first column, then the second, matching GNU ls default layout.
+            18 | // Returns nil for empty input.
+            19 | func Columns(entries []string, termWidth int) [][]string {
+            20 | 	n := len(entries)
+            21 | 	if n == 0 {
+            22 | 		return nil
+            23 | 	}
+            25 | 	bestCols := 1
+            27 | 	for numCols := n; numCols >= 1; numCols-- {
+            28 | 		numRows := (n + numCols - 1) / numCols
+            30 | 		colWidths := make([]int, numCols)
+            31 | 		for i, entry := range entries {
+            32 | 			col := i / numRows
+            33 | 			w := utf8.RuneCountInString(entry)
+            34 | 			if w > colWidths[col] {
+            35 | 				colWidths[col] = w
+            36 | 			}
+            37 | 		}
+            39 | 		total := 0
+            40 | 		for _, w := range colWidths {
+            41 | 			total += w
+            42 | 		}
+            43 | 		if numCols > 1 {
+            44 | 			total += columnGap * (numCols - 1)
+            45 | 		}
+            47 | 		if total <= termWidth {
+            48 | 			bestCols = numCols
+            49 | 			break
+            50 | 		}
+            51 | 	}
+            53 | 	numRows := (n + bestCols - 1) / bestCols
+            54 | 	rows := make([][]string, numRows)
+            55 | 	for r := 0; r < numRows; r++ {
+            56 | 		row := make([]string, 0, bestCols)
+            57 | 		for c := 0; c < bestCols; c++ {
+            58 | 			idx := c*numRows + r
+            59 | 			if idx < n {
+            60 | 				row = append(row, entries[idx])
+            61 | 			}
+            62 | 		}
+            63 | 		rows[r] = row
+            64 | 	}
+            65 | 	return rows
+            66 | }
+            68 | // PadRight pads s with trailing spaces to the specified display width using
+            69 | // rune count (prd003-format R1.2, R1.3). If s is already at least width runes
+            70 | // wide, it is returned unchanged.
+            71 | func PadRight(s string, width int) string {
+            72 | 	runeCount := utf8.RuneCountInString(s)
+            73 | 	if runeCount >= width {
+            74 | 		return s
+            75 | 	}
+            76 | 	return s + strings.Repeat(" ", width-runeCount)
+            77 | }
+            79 | // PadLeft pads s with leading spaces to the specified display width using
+            80 | // rune count (prd003-format R1.2, R1.3). If s is already at least width runes
+            81 | // wide, it is returned unchanged.
+            82 | func PadLeft(s string, width int) string {
+            83 | 	runeCount := utf8.RuneCountInString(s)
+            84 | 	if runeCount >= width {
+            85 | 		return s
+            86 | 	}
+            87 | 	return strings.Repeat(" ", width-runeCount) + s
+            88 | }
+        - file: pkg/format/doc.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | // Package format provides output formatting shared across utilities including
+            5 | // column alignment for tabular output and human-readable unit conversion
+            6 | // (bytes to K/M/G/T/P/E).
+            7 | //
+            8 | // Implements prd003-format R1, R3.
+            9 | package format
+        - file: pkg/format/size.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | package format
+            6 | import (
+            7 | 	"fmt"
+            8 | 	"math"
+            9 | )
+            11 | // HumanSizeOpts configures the unit system for HumanSize (prd003-format R3.1).
+            12 | type HumanSizeOpts struct {
+            13 | 	// Binary selects 1024-based units with suffixes K/M/G/T/P/E when true,
+            14 | 	// or 1000-based SI units with suffixes kB/MB/GB/TB when false.
+            15 | 	Binary bool
+            16 | }
+            18 | // binarySuffixes are the unit suffixes for 1024-based size formatting
+            19 | // (prd003-format R3.2).
+            20 | var binarySuffixes = []string{"", "K", "M", "G", "T", "P", "E"}
+            22 | // siSuffixes are the unit suffixes for 1000-based SI size formatting
+            23 | // (prd003-format R3.2).
+            24 | var siSuffixes = []string{"", "kB", "MB", "GB", "TB"}
+            26 | // HumanSize converts a byte count to a human-readable string matching GNU
+            27 | // coreutils human_readable() behavior (prd003-format R3.1). Values below 10
+            28 | // at the chosen unit are formatted with one decimal place; values at 10 or
+            29 | // above use no decimal (prd003-format R3.3). Zero bytes returns "0"
+            30 | // (prd003-format R3.4).
+            31 | func HumanSize(bytes int64, opts HumanSizeOpts) string {
+            32 | 	if bytes == 0 {
+            33 | 		return "0"
+            34 | 	}
+            36 | 	var base float64
+            37 | 	var suffixes []string
+            38 | 	if opts.Binary {
+            39 | 		base = 1024
+            40 | 		suffixes = binarySuffixes
+            41 | 	} else {
+            42 | 		base = 1000
+            43 | 		suffixes = siSuffixes
+            44 | 	}
+            46 | 	value := float64(bytes)
+            47 | 	level := 0
+            48 | 	for level < len(suffixes)-1 && math.Abs(value) >= base {
+            49 | 		value /= base
+            50 | 		level++
+            51 | 	}
+            53 | 	if level == 0 {
+            54 | 		return fmt.Sprintf("%d", bytes)
+            55 | 	}
+            57 | 	if math.Abs(value) < 10 {
+            58 | 		return fmt.Sprintf("%.1f%s", value, suffixes[level])
+            59 | 	}
+            60 | 	return fmt.Sprintf("%.0f%s", value, suffixes[level])
+            61 | }
+        - file: pkg/sys/doc.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | // Package sys wraps Darwin and Linux syscalls and signal handling, providing a
+            5 | // stable interface that cmd/ packages use to avoid platform-specific code in
+            6 | // utility implementations. Only syscalls that have platform divergence between
+            7 | // Darwin and Linux, or that Go's standard library does not expose cleanly,
+            8 | // belong here.
+            9 | //
+            10 | // Implements prd002-sys R1, R2, R3.
+            11 | package sys
+        - file: pkg/sys/signal.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | package sys
+            6 | import (
+            7 | 	"os"
+            8 | 	"os/signal"
+            9 | 	"sync"
+            10 | 	"syscall"
+            11 | )
+            13 | // InstallSIGPIPEHandler installs a SIGPIPE handler that causes the process to
+            14 | // exit 0 when stdout or stderr is closed by a downstream consumer. This matches
+            15 | // GNU behavior where SIGPIPE terminates silently (prd002-sys R1.5, R1.6).
+            16 | //
+            17 | // Safe to call multiple times; each invocation starts exactly one goroutine.
+            18 | func InstallSIGPIPEHandler() {
+            19 | 	c := make(chan os.Signal, 1)
+            20 | 	signal.Notify(c, syscall.SIGPIPE)
+            21 | 	go func() {
+            22 | 		<-c
+            23 | 		os.Exit(0)
+            24 | 	}()
+            25 | }
+            27 | var (
+            28 | 	resizeMu        sync.Mutex
+            29 | 	resizeCallbacks []func(width int)
+            30 | 	resizeInstalled bool
+            31 | )
+            33 | // OnTerminalResize registers a callback invoked with the new terminal width
+            34 | // when a SIGWINCH signal is received. Multiple callbacks may be registered;
+            35 | // they are called in registration order. If TerminalWidth returns an error
+            36 | // the callback is not invoked (prd002-sys R3.1, R3.2).
+            37 | func OnTerminalResize(callback func(width int)) {
+            38 | 	resizeMu.Lock()
+            39 | 	defer resizeMu.Unlock()
+            41 | 	resizeCallbacks = append(resizeCallbacks, callback)
+            43 | 	if !resizeInstalled {
+            44 | 		resizeInstalled = true
+            45 | 		c := make(chan os.Signal, 1)
+            46 | 		signal.Notify(c, syscall.SIGWINCH)
+            47 | 		go func() {
+            48 | 			for range c {
+            49 | 				width, err := TerminalWidth()
+            50 | 				if err != nil {
+            51 | 					continue
+            52 | 				}
+            53 | 				resizeMu.Lock()
+            54 | 				cbs := make([]func(width int), len(resizeCallbacks))
+            55 | 				copy(cbs, resizeCallbacks)
+            56 | 				resizeMu.Unlock()
+            57 | 				for _, cb := range cbs {
+            58 | 					cb(width)
+            59 | 				}
+            60 | 			}
+            61 | 		}()
+            62 | 	}
+            63 | }
+        - file: pkg/sys/signal_test.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | // Tests for SIGPIPE and SIGWINCH signal handling (prd002-sys R1.5, R1.6, R3.1, R3.2).
+            5 | package sys
+            7 | import (
+            8 | 	"testing"
+            9 | )
+            11 | // TestInstallSIGPIPEHandler_NoPanic verifies that InstallSIGPIPEHandler can be
+            12 | // called without panicking (prd002-sys R1.5).
+            13 | func TestInstallSIGPIPEHandler_NoPanic(t *testing.T) {
+            14 | 	// Calling InstallSIGPIPEHandler should not panic.
+            15 | 	InstallSIGPIPEHandler()
+            16 | }
+            18 | // TestInstallSIGPIPEHandler_MultipleCallsSafe verifies that
+            19 | // InstallSIGPIPEHandler is safe to call multiple times without panic or error
+            20 | // (prd002-sys R1.6).
+            21 | func TestInstallSIGPIPEHandler_MultipleCallsSafe(t *testing.T) {
+            22 | 	for i := 0; i < 3; i++ {
+            23 | 		InstallSIGPIPEHandler()
+            24 | 	}
+            25 | }
+            27 | // TestOnTerminalResize_NoPanic verifies that OnTerminalResize can be called
+            28 | // with a callback without panicking (prd002-sys R3.1).
+            29 | func TestOnTerminalResize_NoPanic(t *testing.T) {
+            30 | 	OnTerminalResize(func(width int) {
+            31 | 		// no-op callback for registration test
+            32 | 	})
+            33 | }
+            35 | // TestOnTerminalResize_MultipleRegistrations verifies that multiple callbacks
+            36 | // can be registered without panic. The callback list grows with each call
+            37 | // (prd002-sys R3.2).
+            38 | func TestOnTerminalResize_MultipleRegistrations(t *testing.T) {
+            39 | 	for i := 0; i < 3; i++ {
+            40 | 		OnTerminalResize(func(width int) {
+            41 | 			// no-op callback
+            42 | 		})
+            43 | 	}
+            45 | 	// Verify that the global callback list has grown. We access the package-level
+            46 | 	// resizeCallbacks slice (white-box test per design decision D3).
+            47 | 	resizeMu.Lock()
+            48 | 	count := len(resizeCallbacks)
+            49 | 	resizeMu.Unlock()
+            51 | 	// We cannot know the exact count because other tests may have registered
+            52 | 	// callbacks, but we should have at least the 3 we just added plus the 1
+            53 | 	// from TestOnTerminalResize_NoPanic.
+            54 | 	if count < 4 {
+            55 | 		t.Errorf("resizeCallbacks has %d entries; expected at least 4", count)
+            56 | 	}
+            57 | }
+        - file: pkg/sys/stat.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | package sys
+            6 | import (
+            7 | 	"fmt"
+            8 | 	"os"
+            9 | 	"syscall"
+            10 | 	"time"
+            11 | )
+            13 | // FileInfo holds extended file metadata from syscall.Stat_t not available
+            14 | // from os.FileInfo (prd002-sys R2.2).
+            15 | type FileInfo struct {
+            16 | 	Mode    os.FileMode // file mode and type bits (from syscall.Stat_t.Mode)
+            17 | 	Size    int64       // apparent file size in bytes (st_size)
+            18 | 	Nlink   uint64      // hard-link count (st_nlink)
+            19 | 	Uid     uint32      // owner user ID (st_uid)
+            20 | 	Gid     uint32      // owner group ID (st_gid)
+            21 | 	Rdev    uint64      // device ID for special files (st_rdev)
+            22 | 	Dev     uint64      // device ID of the containing filesystem (st_dev)
+            23 | 	Ino     uint64      // inode number (st_ino)
+            24 | 	Blocks  int64       // number of 512-byte blocks allocated (st_blocks)
+            25 | 	Blksize int64       // preferred I/O block size (st_blksize)
+            26 | 	ModTime time.Time   // modification time (st_mtime / st_mtimespec)
+            27 | 	Info    os.FileInfo // underlying os.FileInfo for os package compatibility
+            28 | }
+            30 | // Stat returns extended file metadata for path, following symbolic links
+            31 | // (prd002-sys R2.1).
+            32 | func Stat(path string) (*FileInfo, error) {
+            33 | 	info, err := os.Stat(path)
+            34 | 	if err != nil {
+            35 | 		return nil, err
+            36 | 	}
+            37 | 	return newFileInfo(info)
+            38 | }
+            40 | // Lstat returns extended file metadata for path without following symbolic
+            41 | // links (prd002-sys R2.1).
+            42 | func Lstat(path string) (*FileInfo, error) {
+            43 | 	info, err := os.Lstat(path)
+            44 | 	if err != nil {
+            45 | 		return nil, err
+            46 | 	}
+            47 | 	return newFileInfo(info)
+            48 | }
+            50 | // newFileInfo extracts syscall.Stat_t from os.FileInfo and populates a
+            51 | // FileInfo with platform-independent and platform-specific fields.
+            52 | func newFileInfo(info os.FileInfo) (*FileInfo, error) {
+            53 | 	st, ok := info.Sys().(*syscall.Stat_t)
+            54 | 	if !ok {
+            55 | 		return nil, fmt.Errorf("extracting syscall.Stat_t: unsupported platform")
+            56 | 	}
+            57 | 	fi := &FileInfo{
+            58 | 		Mode: info.Mode(),
+            59 | 		Size: info.Size(),
+            60 | 		Info: info,
+            61 | 	}
+            62 | 	fillFromStat(fi, st)
+            63 | 	return fi, nil
+            64 | }
+        - file: pkg/sys/stat_darwin.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | //go:build darwin
+            6 | package sys
+            8 | import (
+            9 | 	"syscall"
+            10 | 	"time"
+            11 | )
+            13 | // fillFromStat populates FileInfo fields from Darwin's syscall.Stat_t.
+            14 | // Darwin uses Mtimespec (not Mtim) for modification time and has int32 Dev
+            15 | // and Rdev fields (prd002-sys R2.3).
+            16 | func fillFromStat(fi *FileInfo, st *syscall.Stat_t) {
+            17 | 	fi.Nlink = uint64(st.Nlink)
+            18 | 	fi.Uid = st.Uid
+            19 | 	fi.Gid = st.Gid
+            20 | 	fi.Rdev = uint64(st.Rdev)
+            21 | 	fi.Dev = uint64(st.Dev)
+            22 | 	fi.Ino = st.Ino
+            23 | 	fi.Blocks = st.Blocks
+            24 | 	fi.Blksize = int64(st.Blksize)
+            25 | 	fi.ModTime = time.Unix(st.Mtimespec.Sec, st.Mtimespec.Nsec)
+            26 | }
+        - file: pkg/sys/stat_linux.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | //go:build linux
+            6 | package sys
+            8 | import (
+            9 | 	"syscall"
+            10 | 	"time"
+            11 | )
+            13 | // fillFromStat populates FileInfo fields from Linux's syscall.Stat_t.
+            14 | // Linux uses Mtim (not Mtimespec) for modification time and has uint64 Dev
+            15 | // and Rdev fields on amd64 (prd002-sys R2.3).
+            16 | func fillFromStat(fi *FileInfo, st *syscall.Stat_t) {
+            17 | 	fi.Nlink = uint64(st.Nlink)
+            18 | 	fi.Uid = st.Uid
+            19 | 	fi.Gid = st.Gid
+            20 | 	fi.Rdev = uint64(st.Rdev)
+            21 | 	fi.Dev = uint64(st.Dev)
+            22 | 	fi.Ino = st.Ino
+            23 | 	fi.Blocks = st.Blocks
+            24 | 	fi.Blksize = int64(st.Blksize)
+            25 | 	fi.ModTime = time.Unix(st.Mtim.Sec, st.Mtim.Nsec)
+            26 | }
+        - file: pkg/sys/stat_test.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | // Tests for Stat, Lstat, and FileInfo field population (prd002-sys R2.1, R2.2, R2.3).
+            5 | package sys
+            7 | import (
+            8 | 	"os"
+            9 | 	"path/filepath"
+            10 | 	"testing"
+            11 | 	"time"
+            12 | )
+            14 | // TestStat_RegularFile verifies that Stat returns a fully populated FileInfo
+            15 | // for a regular file with known properties (prd002-sys R2.1, R2.2).
+            16 | func TestStat_RegularFile(t *testing.T) {
+            17 | 	dir := t.TempDir()
+            18 | 	path := filepath.Join(dir, "testfile")
+            19 | 	content := []byte("hello, stat\n")
+            20 | 	if err := os.WriteFile(path, content, 0644); err != nil {
+            21 | 		t.Fatalf("creating test file: %v", err)
+            22 | 	}
+            24 | 	fi, err := Stat(path)
+            25 | 	if err != nil {
+            26 | 		t.Fatalf("Stat(%q): %v", path, err)
+            27 | 	}
+            29 | 	// Mode: must be a regular file with 0644 permissions.
+            30 | 	if !fi.Mode.IsRegular() {
+            31 | 		t.Errorf("Mode.IsRegular() = false; expected true")
+            32 | 	}
+            33 | 	if perm := fi.Mode.Perm(); perm != 0644 {
+            34 | 		t.Errorf("Mode.Perm() = %04o; expected 0644", perm)
+            35 | 	}
+            37 | 	// Size: must equal the written content length.
+            38 | 	if fi.Size != int64(len(content)) {
+            39 | 		t.Errorf("Size = %d; expected %d", fi.Size, len(content))
+            40 | 	}
+            42 | 	// Nlink: a freshly created regular file has exactly 1 hard link.
+            43 | 	if fi.Nlink != 1 {
+            44 | 		t.Errorf("Nlink = %d; expected 1", fi.Nlink)
+            45 | 	}
+            47 | 	// Uid/Gid: must match the current process (we created the file).
+            48 | 	if fi.Uid != uint32(os.Getuid()) {
+            49 | 		t.Errorf("Uid = %d; expected %d", fi.Uid, os.Getuid())
+            50 | 	}
+            51 | 	if fi.Gid != uint32(os.Getgid()) {
+            52 | 		t.Errorf("Gid = %d; expected %d", fi.Gid, os.Getgid())
+            53 | 	}
+            55 | 	// Dev: must be nonzero (every filesystem has a device number).
+            56 | 	if fi.Dev == 0 {
+            57 | 		t.Error("Dev = 0; expected nonzero device ID")
+            58 | 	}
+            60 | 	// Ino: must be nonzero.
+            61 | 	if fi.Ino == 0 {
+            62 | 		t.Error("Ino = 0; expected nonzero inode number")
+            63 | 	}
+            65 | 	// Blocks: must be nonnegative (a 12-byte file still occupies at least one block).
+            66 | 	if fi.Blocks < 0 {
+            67 | 		t.Errorf("Blocks = %d; expected nonnegative", fi.Blocks)
+            68 | 	}
+            70 | 	// Blksize: must be positive.
+            71 | 	if fi.Blksize <= 0 {
+            72 | 		t.Errorf("Blksize = %d; expected positive", fi.Blksize)
+            73 | 	}
+            75 | 	// ModTime: must be recent (within the last 60 seconds).
+            76 | 	if time.Since(fi.ModTime) > 60*time.Second {
+            77 | 		t.Errorf("ModTime = %v; expected within the last 60 seconds", fi.ModTime)
+            78 | 	}
+            80 | 	// Info: the underlying os.FileInfo must be populated.
+            81 | 	if fi.Info == nil {
+            82 | 		t.Error("Info is nil; expected non-nil os.FileInfo")
+            83 | 	}
+            84 | 	if fi.Info.Name() != "testfile" {
+            85 | 		t.Errorf("Info.Name() = %q; expected %q", fi.Info.Name(), "testfile")
+            86 | 	}
+            87 | }
+            89 | // TestStat_HardLink verifies that Nlink increments when a hard link is created
+            90 | // (prd002-sys R2.2).
+            91 | func TestStat_HardLink(t *testing.T) {
+            92 | 	dir := t.TempDir()
+            93 | 	path := filepath.Join(dir, "original")
+            94 | 	if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
+            95 | 		t.Fatalf("creating test file: %v", err)
+            96 | 	}
+            97 | 	link := filepath.Join(dir, "hardlink")
+            98 | 	if err := os.Link(path, link); err != nil {
+            99 | 		t.Fatalf("creating hard link: %v", err)
+            100 | 	}
+            102 | 	fi, err := Stat(path)
+            103 | 	if err != nil {
+            104 | 		t.Fatalf("Stat(%q): %v", path, err)
+            105 | 	}
+            106 | 	if fi.Nlink != 2 {
+            107 | 		t.Errorf("Nlink = %d; expected 2 after creating one hard link", fi.Nlink)
+            108 | 	}
+            110 | 	// Both paths should share the same inode.
+            111 | 	fiLink, err := Stat(link)
+            112 | 	if err != nil {
+            113 | 		t.Fatalf("Stat(%q): %v", link, err)
+            114 | 	}
+            115 | 	if fi.Ino != fiLink.Ino {
+            116 | 		t.Errorf("Ino mismatch: original=%d, hardlink=%d; expected same", fi.Ino, fiLink.Ino)
+            117 | 	}
+            118 | 	if fi.Dev != fiLink.Dev {
+            119 | 		t.Errorf("Dev mismatch: original=%d, hardlink=%d; expected same", fi.Dev, fiLink.Dev)
+            120 | 	}
+            121 | }
+            123 | // TestStat_NonexistentPath verifies that Stat returns a non-nil error for a
+            124 | // path that does not exist (prd002-sys R2.1).
+            125 | func TestStat_NonexistentPath(t *testing.T) {
+            126 | 	_, err := Stat("/nonexistent/path/that/does/not/exist")
+            127 | 	if err == nil {
+            128 | 		t.Error("Stat on nonexistent path returned nil error; expected non-nil")
+            129 | 	}
+            130 | }
+            132 | // TestLstat_Symlink verifies that Lstat returns metadata for the symlink itself,
+            133 | // not the target (prd002-sys R2.1, AC3).
+            134 | func TestLstat_Symlink(t *testing.T) {
+            135 | 	dir := t.TempDir()
+            136 | 	target := filepath.Join(dir, "target")
+            137 | 	if err := os.WriteFile(target, []byte("target content"), 0644); err != nil {
+            138 | 		t.Fatalf("creating target file: %v", err)
+            139 | 	}
+            140 | 	link := filepath.Join(dir, "symlink")
+            141 | 	if err := os.Symlink(target, link); err != nil {
+            142 | 		t.Fatalf("creating symlink: %v", err)
+            143 | 	}
+            145 | 	fi, err := Lstat(link)
+            146 | 	if err != nil {
+            147 | 		t.Fatalf("Lstat(%q): %v", link, err)
+            148 | 	}
+            150 | 	// The mode type bits must indicate a symlink.
+            151 | 	if fi.Mode&os.ModeSymlink == 0 {
+            152 | 		t.Errorf("Mode = %v; expected ModeSymlink bit set for symlink", fi.Mode)
+            153 | 	}
+            154 | }
+            156 | // TestLstat_RegularFile verifies that Lstat on a regular file (not a symlink)
+            157 | // returns the same metadata as Stat (prd002-sys R2.1).
+            158 | func TestLstat_RegularFile(t *testing.T) {
+            159 | 	dir := t.TempDir()
+            160 | 	path := filepath.Join(dir, "regular")
+            161 | 	if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
+            162 | 		t.Fatalf("creating test file: %v", err)
+            163 | 	}
+            165 | 	statFi, err := Stat(path)
+            166 | 	if err != nil {
+            167 | 		t.Fatalf("Stat(%q): %v", path, err)
+            168 | 	}
+            169 | 	lstatFi, err := Lstat(path)
+            170 | 	if err != nil {
+            171 | 		t.Fatalf("Lstat(%q): %v", path, err)
+            172 | 	}
+            174 | 	// For a regular file, Stat and Lstat should agree on all fields.
+            175 | 	if statFi.Ino != lstatFi.Ino {
+            176 | 		t.Errorf("Ino mismatch: Stat=%d, Lstat=%d", statFi.Ino, lstatFi.Ino)
+            177 | 	}
+            178 | 	if statFi.Mode != lstatFi.Mode {
+            179 | 		t.Errorf("Mode mismatch: Stat=%v, Lstat=%v", statFi.Mode, lstatFi.Mode)
+            180 | 	}
+            181 | 	if statFi.Size != lstatFi.Size {
+            182 | 		t.Errorf("Size mismatch: Stat=%d, Lstat=%d", statFi.Size, lstatFi.Size)
+            183 | 	}
+            184 | }
+            186 | // TestStat_FollowsSymlink verifies that Stat follows a symlink and returns
+            187 | // metadata for the target file, not the symlink itself (prd002-sys R2.1).
+            188 | func TestStat_FollowsSymlink(t *testing.T) {
+            189 | 	dir := t.TempDir()
+            190 | 	target := filepath.Join(dir, "target")
+            191 | 	content := []byte("target data for stat")
+            192 | 	if err := os.WriteFile(target, content, 0644); err != nil {
+            193 | 		t.Fatalf("creating target file: %v", err)
+            194 | 	}
+            195 | 	link := filepath.Join(dir, "symlink")
+            196 | 	if err := os.Symlink(target, link); err != nil {
+            197 | 		t.Fatalf("creating symlink: %v", err)
+            198 | 	}
+            200 | 	fi, err := Stat(link)
+            201 | 	if err != nil {
+            202 | 		t.Fatalf("Stat(%q) via symlink: %v", link, err)
+            203 | 	}
+            205 | 	// Stat follows the symlink; mode should be regular file, not symlink.
+            206 | 	if fi.Mode&os.ModeSymlink != 0 {
+            207 | 		t.Error("Stat on symlink returned ModeSymlink; expected regular file mode (should follow symlink)")
+            208 | 	}
+            209 | 	if !fi.Mode.IsRegular() {
+            210 | 		t.Errorf("Mode.IsRegular() = false; expected true (Stat should follow symlink to target)")
+            211 | 	}
+            212 | 	if fi.Size != int64(len(content)) {
+            213 | 		t.Errorf("Size = %d; expected %d (target file size)", fi.Size, len(content))
+            214 | 	}
+            215 | }
+            217 | // TestLstat_NonexistentPath verifies that Lstat returns a non-nil error for a
+            218 | // path that does not exist (prd002-sys R2.1).
+            219 | func TestLstat_NonexistentPath(t *testing.T) {
+            220 | 	_, err := Lstat("/nonexistent/path/that/does/not/exist")
+            221 | 	if err == nil {
+            222 | 		t.Error("Lstat on nonexistent path returned nil error; expected non-nil")
+            223 | 	}
+            224 | }
+            226 | // TestStat_Directory verifies that Stat correctly identifies a directory
+            227 | // (prd002-sys R2.2).
+            228 | func TestStat_Directory(t *testing.T) {
+            229 | 	dir := t.TempDir()
+            231 | 	fi, err := Stat(dir)
+            232 | 	if err != nil {
+            233 | 		t.Fatalf("Stat(%q): %v", dir, err)
+            234 | 	}
+            235 | 	if !fi.Mode.IsDir() {
+            236 | 		t.Errorf("Mode.IsDir() = false for directory; expected true")
+            237 | 	}
+            238 | 	if fi.Ino == 0 {
+            239 | 		t.Error("Ino = 0 for directory; expected nonzero")
+            240 | 	}
+            241 | }
+        - file: pkg/sys/terminal.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | package sys
+            6 | import (
+            7 | 	"fmt"
+            8 | 	"os"
+            10 | 	"golang.org/x/sys/unix"
+            11 | )
+            13 | // TerminalWidth returns the current terminal column count by calling
+            14 | // ioctl(TIOCGWINSZ) on stdout. Returns an error when stdout is not a terminal
+            15 | // or when the ioctl fails (prd002-sys R1.1, R1.2).
+            16 | func TerminalWidth() (int, error) {
+            17 | 	ws, err := unix.IoctlGetWinsize(int(os.Stdout.Fd()), unix.TIOCGWINSZ)
+            18 | 	if err != nil {
+            19 | 		return 0, fmt.Errorf("querying terminal width: %w", err)
+            20 | 	}
+            21 | 	return int(ws.Col), nil
+            22 | }
+            24 | // IsTerminal returns true when the file descriptor refers to a terminal, and
+            25 | // false otherwise. Returns false for pipes, regular files, and non-terminal
+            26 | // descriptors (prd002-sys R1.3).
+            27 | func IsTerminal(fd uintptr) bool {
+            28 | 	_, err := unix.IoctlGetWinsize(int(fd), unix.TIOCGWINSZ)
+            29 | 	return err == nil
+            30 | }
+        - file: pkg/sys/terminal_test.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | // Tests for terminal operations (prd002-sys R1.1, R1.2, R1.3).
+            5 | package sys
+            7 | import (
+            8 | 	"os"
+            9 | 	"testing"
+            10 | )
+            12 | // TestTerminalWidth_PipeFd verifies that TerminalWidth returns an error when
+            13 | // stdout is not a terminal. In a test harness stdout is typically a pipe, so
+            14 | // the ioctl(TIOCGWINSZ) call should fail (prd002-sys R1.1, R1.2).
+            15 | func TestTerminalWidth_PipeFd(t *testing.T) {
+            16 | 	// In the test runner, stdout is a pipe — TerminalWidth should error.
+            17 | 	_, err := TerminalWidth()
+            18 | 	if err == nil {
+            19 | 		// If running inside a real terminal (e.g., manual `go test -v`),
+            20 | 		// skip rather than fail — the function is working correctly.
+            21 | 		t.Skip("stdout appears to be a terminal; cannot test pipe behavior")
+            22 | 	}
+            23 | }
+            25 | // TestIsTerminal_PipeFd verifies that IsTerminal returns false for a pipe file
+            26 | // descriptor (prd002-sys R1.3).
+            27 | func TestIsTerminal_PipeFd(t *testing.T) {
+            28 | 	r, w, err := os.Pipe()
+            29 | 	if err != nil {
+            30 | 		t.Fatalf("creating pipe: %v", err)
+            31 | 	}
+            32 | 	defer r.Close()
+            33 | 	defer w.Close()
+            35 | 	if IsTerminal(r.Fd()) {
+            36 | 		t.Error("IsTerminal returned true for pipe read end; expected false")
+            37 | 	}
+            38 | 	if IsTerminal(w.Fd()) {
+            39 | 		t.Error("IsTerminal returned true for pipe write end; expected false")
+            40 | 	}
+            41 | }
+            43 | // TestIsTerminal_RegularFile verifies that IsTerminal returns false for a
+            44 | // regular file descriptor (prd002-sys R1.3).
+            45 | func TestIsTerminal_RegularFile(t *testing.T) {
+            46 | 	f, err := os.CreateTemp(t.TempDir(), "isterm-*")
+            47 | 	if err != nil {
+            48 | 		t.Fatalf("creating temp file: %v", err)
+            49 | 	}
+            50 | 	defer f.Close()
+            52 | 	if IsTerminal(f.Fd()) {
+            53 | 		t.Error("IsTerminal returned true for regular file; expected false")
+            54 | 	}
+            55 | }
+            57 | // TestIsTerminal_InvalidFd verifies that IsTerminal returns false for an
+            58 | // invalid file descriptor (prd002-sys R1.3).
+            59 | func TestIsTerminal_InvalidFd(t *testing.T) {
+            60 | 	// fd 9999 is almost certainly not open.
+            61 | 	if IsTerminal(9999) {
+            62 | 		t.Error("IsTerminal returned true for invalid fd 9999; expected false")
+            63 | 	}
+            64 | }
+        - file: pkg/testutils/difftest.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | // Package testutils provides a differential testing harness for verifying Go
+            5 | // utility implementations against GNU reference binaries.
+            6 | //
+            7 | // Implements prd001-testutils R1, R2, R3, R4.
+            8 | package testutils
+            10 | import (
+            11 | 	"bytes"
+            12 | 	"context"
+            13 | 	"os"
+            14 | 	"os/exec"
+            15 | 	"strings"
+            16 | 	"testing"
+            17 | 	"time"
+            18 | )
+            20 | // defaultTimeout is the per-binary execution timeout (prd001-testutils R2.3).
+            21 | const defaultTimeout = 10 * time.Second
+            23 | // DiffTest represents a single differential test case per ARCHITECTURE.yaml.
+            24 | // Both the Go binary under test and the GNU reference binary are invoked with
+            25 | // identical Args, Stdin, and Env for each test case.
+            26 | type DiffTest struct {
+            27 | 	// Name is the subtest name used with t.Run.
+            28 | 	Name string
+            29 | 	// Args are command-line arguments passed to both binaries.
+            30 | 	Args []string
+            31 | 	// Stdin is standard input content sent to both binaries. Empty means no stdin.
+            32 | 	Stdin string
+            33 | 	// Env holds KEY=VALUE pairs merged into the inherited environment.
+            34 | 	// nil means defaults only (LC_ALL=C).
+            35 | 	Env []string
+            36 | }
+            38 | // NormalizeFunc transforms output bytes before comparison. Normalization
+            39 | // functions strip or replace non-deterministic output fields (timestamps,
+            40 | // absolute paths) so that differential comparison succeeds despite expected
+            41 | // variation.
+            42 | type NormalizeFunc = func([]byte) []byte
+            44 | // RunDiffTests executes each DiffTest as a named subtest, running both the Go
+            45 | // binary and the reference GNU binary with identical inputs. It compares stdout,
+            46 | // stderr, and exit code, reporting any divergence via t.Errorf.
+            47 | //
+            48 | // normalizers are applied in order to stdout and stderr of both binaries before
+            49 | // comparison. Pass nil for no normalization.
+            50 | //
+            51 | // LC_ALL=C is prepended to the environment for both binaries unless overridden
+            52 | // by DiffTest.Env (design decision DD6).
+            53 | func RunDiffTests(t *testing.T, goBinary, refBinary string, normalizers []NormalizeFunc, tests []DiffTest) {
+            54 | 	t.Helper()
+            56 | 	for _, tc := range tests {
+            57 | 		t.Run(tc.Name, func(t *testing.T) {
+            58 | 			t.Helper()
+            60 | 			env := buildEnv(tc.Env)
+            62 | 			refStdout, refStderr, refExit := runBinary(t, refBinary, tc.Args, tc.Stdin, env)
+            63 | 			goStdout, goStderr, goExit := runBinary(t, goBinary, tc.Args, tc.Stdin, env)
+            65 | 			for _, fn := range normalizers {
+            66 | 				refStdout = fn(refStdout)
+            67 | 				goStdout = fn(goStdout)
+            68 | 				refStderr = fn(refStderr)
+            69 | 				goStderr = fn(goStderr)
+            70 | 			}
+            72 | 			if !bytes.Equal(refStdout, goStdout) || !bytes.Equal(refStderr, goStderr) || refExit != goExit {
+            73 | 				t.Errorf("divergence for %q\n"+
+            74 | 					"  args:        %v\n"+
+            75 | 					"  stdin:       %q\n"+
+            76 | 					"  ref stdout:  %q\n"+
+            77 | 					"  go  stdout:  %q\n"+
+            78 | 					"  ref stderr:  %q\n"+
+            79 | 					"  go  stderr:  %q\n"+
+            80 | 					"  ref exit:    %d\n"+
+            81 | 					"  go  exit:    %d",
+            82 | 					tc.Name, tc.Args, tc.Stdin,
+            83 | 					refStdout, goStdout,
+            84 | 					refStderr, goStderr,
+            85 | 					refExit, goExit,
+            86 | 				)
+            87 | 			}
+            88 | 		})
+            89 | 	}
+            90 | }
+            92 | // buildEnv constructs the environment for binary execution. It starts with the
+            93 | // current process environment, sets LC_ALL=C as a default, then merges any
+            94 | // per-test overrides from DiffTest.Env.
+            95 | func buildEnv(testEnv []string) []string {
+            96 | 	env := os.Environ()
+            97 | 	env = setEnvVar(env, "LC_ALL", "C")
+            99 | 	for _, kv := range testEnv {
+            100 | 		if k, v, ok := strings.Cut(kv, "="); ok {
+            101 | 			env = setEnvVar(env, k, v)
+            102 | 		}
+            103 | 	}
+            105 | 	return env
+            106 | }
+            108 | // setEnvVar sets key=value in the environment slice, replacing an existing entry
+            109 | // for the same key or appending if not present.
+            110 | func setEnvVar(env []string, key, value string) []string {
+            111 | 	prefix := key + "="
+            112 | 	for i, e := range env {
+            113 | 		if strings.HasPrefix(e, prefix) {
+            114 | 			env[i] = prefix + value
+            115 | 			return env
+            116 | 		}
+            117 | 	}
+            119 | 	return append(env, prefix+value)
+            120 | }
+            122 | // runBinary executes a binary with the given arguments, stdin, and environment,
+            123 | // returning its stdout, stderr, and exit code.
+            124 | func runBinary(t *testing.T, binary string, args []string, stdin string, env []string) (stdout, stderr []byte, exitCode int) {
+            125 | 	t.Helper()
+            127 | 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+            128 | 	defer cancel()
+            130 | 	cmd := exec.CommandContext(ctx, binary, args...)
+            131 | 	cmd.Env = env
+            133 | 	if stdin != "" {
+            134 | 		cmd.Stdin = strings.NewReader(stdin)
+            135 | 	}
+            137 | 	var outBuf, errBuf bytes.Buffer
+            138 | 	cmd.Stdout = &outBuf
+            139 | 	cmd.Stderr = &errBuf
+            141 | 	err := cmd.Run()
+            143 | 	stdout = outBuf.Bytes()
+            144 | 	stderr = errBuf.Bytes()
+            146 | 	if ctx.Err() == context.DeadlineExceeded {
+            147 | 		t.Fatalf("timeout executing %s with args %v", binary, args)
+            148 | 	}
+            150 | 	if err != nil {
+            151 | 		if exitErr, ok := err.(*exec.ExitError); ok {
+            152 | 			exitCode = exitErr.ExitCode()
+            153 | 		} else {
+            154 | 			t.Fatalf("failed to execute %s: %v", binary, err)
+            155 | 		}
+            156 | 	}
+            158 | 	return stdout, stderr, exitCode
+            159 | }
+        - file: pkg/testutils/difftest_test.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | // Unit tests for the differential testing harness (prd001-testutils R1-R4).
+            5 | package testutils
+            7 | import (
+            8 | 	"bytes"
+            9 | 	"fmt"
+            10 | 	"os"
+            11 | 	"os/exec"
+            12 | 	"path/filepath"
+            13 | 	"strings"
+            14 | 	"testing"
+            15 | )
+            17 | // testBinPath is the default testbin binary (all ldflags defaults empty).
+            18 | // testBinAltPath has ldflags-injected defaults for divergence testing:
+            19 | //
+            20 | //	defaultStdout="alt-stdout", defaultStderr="alt-stderr", defaultExitCode="1"
+            21 | var (
+            22 | 	testBinPath    string
+            23 | 	testBinAltPath string
+            24 | )
+            26 | // expectFailEnv is the sentinel environment variable for subprocess divergence
+            27 | // tests. When set to "1", the test function enters its divergence branch
+            28 | // instead of re-executing as a subprocess.
+            29 | const expectFailEnv = "TESTUTIL_EXPECT_FAIL"
+            31 | // altLdflags injects non-empty defaults into testbin-alt so that it produces
+            32 | // different output from testbin when no flags override the defaults.
+            33 | const altLdflags = "-X main.defaultStdout=alt-stdout -X main.defaultStderr=alt-stderr -X main.defaultExitCode=1"
+            35 | func TestMain(m *testing.M) {
+            36 | 	// When running as a subprocess for divergence tests, reuse pre-built
+            37 | 	// binaries passed via environment variables to avoid rebuilding.
+            38 | 	if path := os.Getenv("TESTBIN_PATH"); path != "" {
+            39 | 		testBinPath = path
+            40 | 		testBinAltPath = os.Getenv("TESTBIN_ALT_PATH")
+            41 | 		os.Exit(m.Run())
+            42 | 	}
+            44 | 	tmpDir, err := os.MkdirTemp("", "testutils-test-*")
+            45 | 	if err != nil {
+            46 | 		fmt.Fprintf(os.Stderr, "creating temp dir: %v\n", err)
+            47 | 		os.Exit(1)
+            48 | 	}
+            50 | 	testBinPath = filepath.Join(tmpDir, "testbin")
+            51 | 	if err := buildHelper(testBinPath, ""); err != nil {
+            52 | 		fmt.Fprintf(os.Stderr, "building testbin: %v\n", err)
+            53 | 		os.RemoveAll(tmpDir) // best-effort cleanup
+            54 | 		os.Exit(1)
+            55 | 	}
+            57 | 	testBinAltPath = filepath.Join(tmpDir, "testbin-alt")
+            58 | 	if err := buildHelper(testBinAltPath, altLdflags); err != nil {
+            59 | 		fmt.Fprintf(os.Stderr, "building testbin-alt: %v\n", err)
+            60 | 		os.RemoveAll(tmpDir) // best-effort cleanup
+            61 | 		os.Exit(1)
+            62 | 	}
+            64 | 	os.Setenv("TESTBIN_PATH", testBinPath)
+            65 | 	os.Setenv("TESTBIN_ALT_PATH", testBinAltPath)
+            67 | 	code := m.Run()
+            68 | 	os.RemoveAll(tmpDir) // best-effort cleanup
+            69 | 	os.Exit(code)
+            70 | }
+            72 | // buildHelper compiles testdata/testbin with optional ldflags to outputPath.
+            73 | func buildHelper(outputPath, ldflags string) error {
+            74 | 	args := []string{"build", "-o", outputPath}
+            75 | 	if ldflags != "" {
+            76 | 		args = append(args, "-ldflags", ldflags)
+            77 | 	}
+            78 | 	args = append(args, "./testdata/testbin")
+            79 | 	cmd := exec.Command("go", args...)
+            80 | 	out, err := cmd.CombinedOutput()
+            81 | 	if err != nil {
+            82 | 		return fmt.Errorf("%s: %s", err, out)
+            83 | 	}
+            84 | 	return nil
+            85 | }
+            87 | // ---------------------------------------------------------------------------
+            88 | // R1: RunDiffTests passes when both binaries produce identical output
+            89 | //     (prd001-testutils R2)
+            90 | // ---------------------------------------------------------------------------
+            92 | func TestRunDiffTests_MatchingOutput(t *testing.T) {
+            93 | 	tests := []DiffTest{
+            94 | 		{Name: "empty-output"},
+            95 | 		{Name: "stdout-only", Args: []string{"--stdout", "hello\n"}},
+            96 | 		{Name: "stderr-only", Args: []string{"--stderr", "warning\n"}},
+            97 | 		{Name: "combined", Args: []string{"--stdout", "out\n", "--stderr", "err\n"}},
+            98 | 		{Name: "nonzero-exit", Args: []string{"--exit-code", "2"}},
+            99 | 		{Name: "with-stdin", Args: []string{"--stdout", "data\n"}, Stdin: "input"},
+            100 | 	}
+            101 | 	RunDiffTests(t, testBinPath, testBinPath, nil, tests)
+            102 | }
+            104 | // ---------------------------------------------------------------------------
+            105 | // R2: RunDiffTests detects divergence in stdout, stderr, or exit code
+            106 | //     (prd001-testutils R2, R3)
+            107 | //
+            108 | // These tests use the subprocess pattern: the test re-executes itself with
+            109 | // TESTUTIL_EXPECT_FAIL=1, enters the divergent branch, and the outer test
+            110 | // verifies the subprocess failed with a "divergence" message.
+            111 | // ---------------------------------------------------------------------------
+            113 | func TestRunDiffTests_DivergentStdout(t *testing.T) {
+            114 | 	if os.Getenv(expectFailEnv) == "1" {
+            115 | 		// Subprocess: only stdout differs (stderr and exit overridden to match).
+            116 | 		RunDiffTests(t, testBinPath, testBinAltPath, nil, []DiffTest{
+            117 | 			{Name: "div-stdout", Args: []string{"--stderr", "", "--exit-code", "0"}},
+            118 | 		})
+            119 | 		return
+            120 | 	}
+            121 | 	out := runExpectFail(t, "TestRunDiffTests_DivergentStdout")
+            122 | 	if !bytes.Contains(out, []byte("divergence")) {
+            123 | 		t.Fatalf("expected divergence message, got:\n%s", out)
+            124 | 	}
+            125 | }
+            127 | func TestRunDiffTests_DivergentStderr(t *testing.T) {
+            128 | 	if os.Getenv(expectFailEnv) == "1" {
+            129 | 		// Subprocess: only stderr differs (stdout and exit overridden to match).
+            130 | 		RunDiffTests(t, testBinPath, testBinAltPath, nil, []DiffTest{
+            131 | 			{Name: "div-stderr", Args: []string{"--stdout", "", "--exit-code", "0"}},
+            132 | 		})
+            133 | 		return
+            134 | 	}
+            135 | 	out := runExpectFail(t, "TestRunDiffTests_DivergentStderr")
+            136 | 	if !bytes.Contains(out, []byte("divergence")) {
+            137 | 		t.Fatalf("expected divergence message, got:\n%s", out)
+            138 | 	}
+            139 | }
+            141 | func TestRunDiffTests_DivergentExitCode(t *testing.T) {
+            142 | 	if os.Getenv(expectFailEnv) == "1" {
+            143 | 		// Subprocess: only exit code differs (stdout and stderr overridden to match).
+            144 | 		RunDiffTests(t, testBinPath, testBinAltPath, nil, []DiffTest{
+            145 | 			{Name: "div-exit", Args: []string{"--stdout", "", "--stderr", ""}},
+            146 | 		})
+            147 | 		return
+            148 | 	}
+            149 | 	out := runExpectFail(t, "TestRunDiffTests_DivergentExitCode")
+            150 | 	if !bytes.Contains(out, []byte("divergence")) {
+            151 | 		t.Fatalf("expected divergence message, got:\n%s", out)
+            152 | 	}
+            153 | }
+            155 | // runExpectFail re-executes the named test as a subprocess and expects it to
+            156 | // fail. It returns the combined stdout+stderr from the subprocess.
+            157 | func runExpectFail(t *testing.T, testName string) []byte {
+            158 | 	t.Helper()
+            159 | 	cmd := exec.Command(os.Args[0], "-test.run=^"+testName+"$", "-test.v")
+            160 | 	cmd.Env = append(os.Environ(), expectFailEnv+"=1")
+            161 | 	out, err := cmd.CombinedOutput()
+            162 | 	if err == nil {
+            163 | 		t.Fatalf("expected subprocess test %s to fail", testName)
+            164 | 	}
+            165 | 	return out
+            166 | }
+            168 | // ---------------------------------------------------------------------------
+            169 | // R3: buildEnv and setEnvVar (prd001-testutils R3, ARCHITECTURE DD6)
+            170 | // ---------------------------------------------------------------------------
+            172 | func TestBuildEnv(t *testing.T) {
+            173 | 	tests := []struct {
+            174 | 		name    string
+            175 | 		testEnv []string
+            176 | 		key     string
+            177 | 		want    string
+            178 | 	}{
+            179 | 		{
+            180 | 			name: "default_LC_ALL_C",
+            181 | 			key:  "LC_ALL",
+            182 | 			want: "C",
+            183 | 		},
+            184 | 		{
+            185 | 			name:    "override_LC_ALL",
+            186 | 			testEnv: []string{"LC_ALL=en_US.UTF-8"},
+            187 | 			key:     "LC_ALL",
+            188 | 			want:    "en_US.UTF-8",
+            189 | 		},
+            190 | 		{
+            191 | 			name:    "custom_variable_added",
+            192 | 			testEnv: []string{"MY_CUSTOM=hello"},
+            193 | 			key:     "MY_CUSTOM",
+            194 | 			want:    "hello",
+            195 | 		},
+            196 | 	}
+            197 | 	for _, tc := range tests {
+            198 | 		t.Run(tc.name, func(t *testing.T) {
+            199 | 			env := buildEnv(tc.testEnv)
+            200 | 			got := envLookup(env, tc.key)
+            201 | 			if got != tc.want {
+            202 | 				t.Errorf("expected %s=%s, got %s=%s", tc.key, tc.want, tc.key, got)
+            203 | 			}
+            204 | 		})
+            205 | 	}
+            206 | }
+            208 | func TestBuildEnv_LC_ALL_Preserved_With_Custom(t *testing.T) {
+            209 | 	env := buildEnv([]string{"OTHER=value"})
+            210 | 	if envLookup(env, "LC_ALL") != "C" {
+            211 | 		t.Error("LC_ALL=C must be preserved when adding unrelated variables")
+            212 | 	}
+            213 | }
+            215 | func TestSetEnvVar(t *testing.T) {
+            216 | 	tests := []struct {
+            217 | 		name    string
+            218 | 		initial []string
+            219 | 		key     string
+            220 | 		value   string
+            221 | 		want    []string
+            222 | 	}{
+            223 | 		{
+            224 | 			name:    "replace_existing",
+            225 | 			initial: []string{"FOO=old", "BAR=baz"},
+            226 | 			key:     "FOO",
+            227 | 			value:   "new",
+            228 | 			want:    []string{"FOO=new", "BAR=baz"},
+            229 | 		},
+            230 | 		{
+            231 | 			name:    "append_new",
+            232 | 			initial: []string{"FOO=bar"},
+            233 | 			key:     "NEW",
+            234 | 			value:   "val",
+            235 | 			want:    []string{"FOO=bar", "NEW=val"},
+            236 | 		},
+            237 | 		{
+            238 | 			name:    "replace_middle",
+            239 | 			initial: []string{"A=1", "B=2", "C=3"},
+            240 | 			key:     "B",
+            241 | 			value:   "updated",
+            242 | 			want:    []string{"A=1", "B=updated", "C=3"},
+            243 | 		},
+            244 | 	}
+            245 | 	for _, tc := range tests {
+            246 | 		t.Run(tc.name, func(t *testing.T) {
+            247 | 			env := make([]string, len(tc.initial))
+            248 | 			copy(env, tc.initial)
+            249 | 			got := setEnvVar(env, tc.key, tc.value)
+            250 | 			if len(got) != len(tc.want) {
+            251 | 				t.Fatalf("expected %d entries, got %d: %v", len(tc.want), len(got), got)
+            252 | 			}
+            253 | 			for i := range tc.want {
+            254 | 				if got[i] != tc.want[i] {
+            255 | 					t.Errorf("entry %d: expected %q, got %q", i, tc.want[i], got[i])
+            256 | 				}
+            257 | 			}
+            258 | 		})
+            259 | 	}
+            260 | }
+            262 | // ---------------------------------------------------------------------------
+            263 | // R4: NormalizeFunc application (prd001-testutils R4)
+            264 | // ---------------------------------------------------------------------------
+            266 | func TestRunDiffTests_NormalizerReconcilesDivergence(t *testing.T) {
+            267 | 	// testBinPath outputs "" on stdout; testBinAltPath outputs "alt-stdout".
+            268 | 	// A normalizer that strips "alt-stdout" reconciles the difference.
+            269 | 	normalizer := func(b []byte) []byte {
+            270 | 		return bytes.ReplaceAll(b, []byte("alt-stdout"), nil)
+            271 | 	}
+            272 | 	RunDiffTests(t, testBinPath, testBinAltPath, []NormalizeFunc{normalizer}, []DiffTest{
+            273 | 		{Name: "reconciled", Args: []string{"--stderr", "", "--exit-code", "0"}},
+            274 | 	})
+            275 | }
+            277 | func TestRunDiffTests_MultipleNormalizersAppliedInOrder(t *testing.T) {
+            278 | 	// First normalizer strips "alt-", second strips "stdout".
+            279 | 	// Combined: "alt-stdout" -> "stdout" -> "".
+            280 | 	first := func(b []byte) []byte {
+            281 | 		return bytes.ReplaceAll(b, []byte("alt-"), nil)
+            282 | 	}
+            283 | 	second := func(b []byte) []byte {
+            284 | 		return bytes.ReplaceAll(b, []byte("stdout"), nil)
+            285 | 	}
+            286 | 	RunDiffTests(t, testBinPath, testBinAltPath, []NormalizeFunc{first, second}, []DiffTest{
+            287 | 		{Name: "multi-normalizer", Args: []string{"--stderr", "", "--exit-code", "0"}},
+            288 | 	})
+            289 | }
+            291 | // ---------------------------------------------------------------------------
+            292 | // Helpers
+            293 | // ---------------------------------------------------------------------------
+            295 | // envLookup returns the value for key in the environment slice, or "" if absent.
+            296 | func envLookup(env []string, key string) string {
+            297 | 	prefix := key + "="
+            298 | 	for _, e := range env {
+            299 | 		if strings.HasPrefix(e, prefix) {
+            300 | 			return e[len(prefix):]
+            301 | 		}
+            302 | 	}
+            303 | 	return ""
+            304 | }
+        - file: pkg/testutils/testdata/testbin/main.go
+          lines: |-
+            1 | // Copyright (c) 2026 Petar Djukic. All rights reserved.
+            2 | // SPDX-License-Identifier: MIT
+            4 | // testbin is a configurable helper binary for unit-testing the differential
+            5 | // testing harness in pkg/testutils. Flags control stdout content, stderr
+            6 | // content, and exit code. Default values may be injected via -ldflags to
+            7 | // produce divergent binaries from a single source file.
+            8 | package main
+            10 | import (
+            11 | 	"flag"
+            12 | 	"fmt"
+            13 | 	"os"
+            14 | 	"strconv"
+            15 | )
+            17 | // Defaults overridable via -ldflags "-X main.defaultStdout=value".
+            18 | var (
+            19 | 	defaultStdout   string
+            20 | 	defaultStderr   string
+            21 | 	defaultExitCode string
+            22 | )
+            24 | func main() {
+            25 | 	defExit := 0
+            26 | 	if defaultExitCode != "" {
+            27 | 		defExit, _ = strconv.Atoi(defaultExitCode) // best-effort parse
+            28 | 	}
+            30 | 	stdoutVal := flag.String("stdout", defaultStdout, "content to write to stdout")
+            31 | 	stderrVal := flag.String("stderr", defaultStderr, "content to write to stderr")
+            32 | 	exitCodeVal := flag.Int("exit-code", defExit, "exit code to return")
+            33 | 	flag.Parse()
+            35 | 	fmt.Fprint(os.Stdout, *stdoutVal)
+            36 | 	fmt.Fprint(os.Stderr, *stderrVal)
+            37 | 	os.Exit(*exitCodeVal)
+            38 | }
+planning_constitution:
+    articles:
+        - id: P1
+          title: Release-driven priority
+          rule: |
+            Focus on the earliest incomplete release from road-map.yaml. Every issue
+            should map to a use case in the roadmap. If uncertain, assign to release
+            99.0 (unscheduled). Early preview of later use cases is allowed when they
+            share functionality with the current release.
+        - id: P2
+          title: Task sizing
+          rule: |
+            Code tasks should target the line range specified in the CONSTRAINTS
+            section of the prompt (typically 250-350 lines of production code),
+            touching no more than 5-7 files. Split larger features into multiple
+            tasks. Combine trivial changes into one task.
+
+            Always split implementation and tests into separate tasks. Decompose
+            each feature into up to three tasks in this order: (1) types and
+            interfaces, (2) implementation, (3) tests. A single task must never
+            both implement and test the same feature. If the types and interfaces
+            are small enough to fit within the implementation task's line budget,
+            combine steps 1 and 2 into one task.
+
+            Each task must be completable within the Claude timeout (typically
+            5-10 minutes). If a task would require more than 20 agent turns, it
+            is too large and must be split further. Treat timeout as a signal
+            that the task needs decomposition, not retrying.
+        - id: P3
+          title: Task limit per batch
+          rule: |
+            Create no more than 10 tasks at a time. If more work is needed, create
+            additional tasks after completing some of the current batch.
+        - id: P4
+          title: Issue structure
+          rule: |
+            Every issue description must be a YAML document with: deliverable_type
+            (documentation or code), required_reading (mandatory), files (explicit
+            paths with action: create or modify), requirements, acceptance_criteria.
+            Documentation issues also include format_rule and required_sections.
+        - id: P5
+          title: Dependency ordering
+          rule: |
+            Identify what should be built first and why. PRDs before use cases,
+            use cases before test suites, test suites before code, foundational code
+            before features, libraries before CLI.
+        - id: P6
+          title: Requirement-anchored decomposition
+          rule: |
+            Anchor each task to specific PRD requirements by ID (e.g., prd001 R1.1,
+            prd002 R2.3). Include the requirement ID(s) in the task title. Each PRD
+            requirement maps to exactly one task unless the requirement exceeds the
+            line budget, in which case split into implementation and test tasks that
+            both reference the same requirement. Do not invent task boundaries that
+            cross requirement boundaries. This makes decomposition deterministic:
+            given the same PRD and release, the same set of tasks should be proposed.
+        - id: P7
+          title: File naming conventions
+          rule: |
+            Derive file names from the module or feature name established in the
+            PRD or architecture document. Use the existing project naming pattern
+            (snake_case for Go files, kebab-case for YAML documents). When creating
+            a new package, use the name from ARCHITECTURE.yaml. Do not invent novel
+            file names. If the PRD names a component "crumb", the file is crumb.go,
+            not item.go or entity.go. Go packages must name the primary source file
+            after the primary exported type, not the package name.
+            `testutils/testutils.go` is forbidden; if the primary type is
+            `DiffTest`, the file is `difftest.go`. Test files mirror source:
+            `difftest_test.go`.
+        - id: P8
+          title: Deterministic ordering
+          rule: |
+            Propose tasks in a fixed canonical order. Within the same release:
+            1. Documentation tasks before code tasks.
+            2. Types and interfaces before implementations.
+            3. Libraries and shared packages before consumers.
+            4. Implementation before tests (when split into separate tasks).
+            When two tasks have equal priority under these rules, order by the
+            primary file path alphabetically. This ensures the same input produces
+            the same task sequence.
+        - id: P9
+          title: Requirement granularity
+          rule: |
+            Code tasks target 5-8 requirements, 5-8 acceptance criteria, and 3-5
+            design decisions. Documentation tasks target 2-4 requirements and 3-5
+            acceptance criteria. Each PRD requirement maps to exactly one task
+            requirement. Do not inflate counts by splitting a single requirement
+            into sub-bullets, and do not deflate counts by merging unrelated
+            requirements. If a task falls outside these ranges, re-examine the
+            decomposition.
+    issue_structure:
+        common_fields:
+            deliverable_type:
+                required: true
+                values: [documentation, code]
+                description: What kind of deliverable this issue produces
+            required_reading:
+                required: true
+                description: |
+                    Files the agent must read before starting. List PRDs, ARCHITECTURE
+                    sections, existing code, or upstream docs. This is mandatory for all
+                    issues.
+            files:
+                required: true
+                description: |
+                    Explicit list of files the issue will produce or change. Each entry
+                    has path (absolute from repo root), action (create or modify), and
+                    optional note (purpose).
+            requirements:
+                required: true
+                description: |
+                    What needs to be built or written. Each item is a mapping with
+                    `id` (R1, R2, ...) and `text` fields. Be specific and actionable.
+            design_decisions:
+                required: false
+                description: |
+                    Architecture, patterns, or constraints to follow. Each item is a
+                    mapping with `id` (D1, D2, ...) and `text` fields. Optional but
+                    recommended for code tasks.
+            acceptance_criteria:
+                required: true
+                description: |
+                    Checkable outcomes. Each item is a mapping with `id` (AC1, AC2, ...)
+                    and `text` fields. Must be verifiable without ambiguity.
+        documentation_issues:
+            additional_fields:
+                format_rule:
+                    required: true
+                    description: |
+                        The rule file that governs the output format (e.g., prd-format,
+                        use-case-format, test-case-format, architecture-format,
+                        vision-format, specification-format, engineering-guideline-format).
+                required_sections:
+                    required: false
+                    description: |
+                        List of sections the document must contain, per the format rule.
+                        For PRD: Problem, Goals, Requirements, Non-Goals, Acceptance Criteria.
+                        For use case: Summary, Actor/trigger, Flow, Success criteria.
+            deliverable_types:
+                - type: ARCHITECTURE
+                  location: docs/ARCHITECTURE.yaml
+                  format_rule: architecture-format
+                  when: Updating system overview, components, design decisions
+                - type: PRD
+                  location: "docs/specs/product-requirements/prd[NNN]-[feature-name].yaml"
+                  format_rule: prd-format
+                  when: New or updated product requirements
+                - type: Use case
+                  location: "docs/specs/use-cases/rel[NN].[N]-uc[NNN]-[short-name].yaml"
+                  format_rule: use-case-format
+                  when: Tracer-bullet flows, actor/trigger, demo criteria
+                - type: Test suite
+                  location: "docs/specs/test-suites/test-rel-[release-id].yaml"
+                  format_rule: test-case-format
+                  when: Release-level test coverage spec; use cases as sub-sections
+                - type: Engineering guideline
+                  location: "docs/engineering/eng[NN]-[short-name].md"
+                  format_rule: engineering-guideline-format
+                  when: Conventions and practices
+                - type: Specification
+                  location: docs/SPECIFICATIONS.md
+                  format_rule: specification-format
+                  when: Summary of PRDs, use cases, test suites, roadmap
+        yaml_quality:
+            - Use ASCII dashes (--), not Unicode em dashes or en dashes.
+            - Requirements, design decisions, and acceptance criteria are all mappings with id and text fields.
+        code_issues:
+            rules:
+                - No PRD-style Problem/Goals/Non-Goals sections in code issues
+                - "Requirements focus on implementation: interfaces, operations, tests"
+                - Design decisions reference PRDs and architecture patterns
+                - Acceptance criteria include tests passing and behavior verified
+    example_documentation_issue: |
+        deliverable_type: documentation
+        format_rule: prd-format
+
+        required_reading:
+          - docs/ARCHITECTURE.yaml (components section)
+          - docs/specs/product-requirements/prd001-cupboard-core.yaml
+
+        files:
+          - path: docs/specs/product-requirements/prd-feature-name.yaml
+            action: create
+
+        required_sections:
+          - "Problem: explain the problem and why it matters"
+          - "Goals: G1 ..., G2 ..."
+          - "Requirements: R1.1 ..., R1.2 ..."
+          - "Non-Goals: what is out of scope"
+          - "Acceptance Criteria: checkable outcomes"
+
+        acceptance_criteria:
+          - id: AC1
+            text: All required sections present
+          - id: AC2
+            text: File saved as prd-feature-name.yaml
+          - id: AC3
+            text: Requirements numbered and specific
+    example_code_issue: |
+        deliverable_type: code
+
+        required_reading:
+          - docs/specs/product-requirements/prd003-crumbs-interface.yaml
+          - pkg/types/cupboard.go
+
+        files:
+          - path: pkg/types/crumb.go
+            action: create
+            note: Crumb struct, Filter type
+          - path: internal/sqlite/crumbs.go
+            action: create
+            note: CrumbTable implementation
+          - path: internal/sqlite/crumbs_test.go
+            action: create
+            note: tests
+
+        requirements:
+          - id: R1
+            text: Implement CrumbTable interface per prd003-crumbs-interface
+          - id: R2
+            text: Add, Get, Archive, Purge, Fetch operations
+          - id: R3
+            text: Property operations (Set/Get/Clear)
+
+        design_decisions:
+          - id: D1
+            text: Use table accessor pattern from prd001-cupboard-core
+          - id: D2
+            text: Filter as map[string]any per PRD
+
+        acceptance_criteria:
+          - id: AC1
+            text: All CrumbTable operations implemented
+          - id: AC2
+            text: Tests pass for each operation
+          - id: AC3
+            text: Errors match PRD error types
+    sections:
+        - tag: articles
+          title: Core Principles
+          content: |
+            Three principles govern the planning phase: decompose work to fit within
+            one session, write specifications before code, and never create
+            implementation issues without an existing test suite for the use case.
+        - tag: issue_structure
+          title: Issue Structure
+          content: |
+            All issues share five common fields: deliverable_type, required_reading,
+            files, requirements, and acceptance_criteria. Documentation issues add
+            format_rule and required_sections. Code issues specify files to modify
+            with explicit actions and size constraints.
+        - tag: example_documentation_issue
+          title: Documentation Issue Example
+          content: |
+            A worked example shows a properly structured documentation issue for
+            writing a PRD, including required reading, output path, format rule, and
+            acceptance criteria.
+        - tag: example_code_issue
+          title: Code Issue Example
+          content: |
+            A worked example shows a properly structured code issue for implementing a
+            feature, including required reading, files to create or modify,
+            requirements with IDs, and acceptance criteria.
+issue_format_constitution:
+    schema:
+        description: |
+            Every issue description must be a valid YAML document conforming to this
+            schema. The stitch agent parses the description as YAML to extract
+            required_reading, files, requirements, and acceptance_criteria.
+        required_fields:
+            - deliverable_type
+            - required_reading
+            - files
+            - requirements
+            - acceptance_criteria
+        optional_fields:
+            - format_rule
+            - required_sections
+            - design_decisions
+    yaml_rules:
+        - rule: All strings containing colons, commas, or special YAML characters must be quoted.
+          example_bad: "- R1: Implement feature: core"
+          example_good: '- "R1: Implement feature: core"'
+        - rule: List items are YAML mappings, not bare strings, when they have sub-fields.
+          example_bad: "- Use table accessor pattern"
+          example_good: |
+            - id: D1
+              text: Use table accessor pattern
+        - rule: Use ASCII dashes (--) not Unicode em dashes or en dashes.
+          example_bad: "Flag interactions — especially combined flags"
+          example_good: "Flag interactions -- especially combined flags"
+        - rule: Requirements, design decisions, and acceptance criteria are all mappings with id and text fields.
+          example_bad: "- Use singleton pattern"
+          example_good: |
+            - id: D1
+              text: Use singleton pattern
+    field_specs:
+        deliverable_type:
+            type: string
+            values: [documentation, code]
+            required: true
+            description: What kind of deliverable this issue produces.
+        required_reading:
+            type: list of strings
+            required: true
+            description: |
+                Files the agent must read before starting. Each entry is a file path
+                with an optional parenthetical reason. This is mandatory for all issues.
+        files:
+            type: list of mappings
+            required: true
+            sub_fields:
+                path:
+                    type: string
+                    required: true
+                    description: Absolute path from repo root.
+                action:
+                    type: string
+                    required: true
+                    values: [create, modify]
+                note:
+                    type: string
+                    required: false
+                    description: Brief purpose of this file change.
+        requirements:
+            type: list of mappings
+            required: true
+            sub_fields:
+                id:
+                    type: string
+                    required: true
+                    description: "Sequential ID: R1, R2, R3, ..."
+                text:
+                    type: string
+                    required: true
+                    description: What needs to be built or written. Be specific and actionable.
+        design_decisions:
+            type: list of mappings
+            required: false
+            sub_fields:
+                id:
+                    type: string
+                    required: true
+                    description: "Sequential ID: D1, D2, D3, ..."
+                text:
+                    type: string
+                    required: true
+                    description: The decision text.
+        acceptance_criteria:
+            type: list of mappings
+            required: true
+            sub_fields:
+                id:
+                    type: string
+                    required: true
+                    description: "Sequential ID: AC1, AC2, AC3, ..."
+                text:
+                    type: string
+                    required: true
+                    description: Checkable outcome. Must be verifiable without ambiguity.
+        format_rule:
+            type: string
+            required: false
+            description: |
+                For documentation issues only. The rule file that governs the output
+                format (e.g., prd-format, use-case-format).
+        required_sections:
+            type: list of strings
+            required: false
+            description: |
+                For documentation issues only. Sections the document must contain.
+    examples:
+        code_issue: |
+            deliverable_type: code
+
+            required_reading:
+              - docs/specs/product-requirements/prd003-crumbs-interface.yaml
+              - pkg/types/cupboard.go
+
+            files:
+              - path: pkg/types/crumb.go
+                action: create
+                note: Crumb struct, Filter type
+              - path: internal/sqlite/crumbs.go
+                action: create
+                note: CrumbTable implementation
+
+            requirements:
+              - id: R1
+                text: Implement CrumbTable interface per prd003-crumbs-interface
+              - id: R2
+                text: Add, Get, Archive, Purge, Fetch operations
+              - id: R3
+                text: Property operations (Set/Get/Clear)
+
+            design_decisions:
+              - id: D1
+                text: Use table accessor pattern from prd001-cupboard-core
+              - id: D2
+                text: Filter as map[string]any per PRD
+
+            acceptance_criteria:
+              - id: AC1
+                text: All CrumbTable operations implemented
+              - id: AC2
+                text: Tests pass for each operation
+              - id: AC3
+                text: Errors match PRD error types
+        documentation_issue: |
+            deliverable_type: documentation
+            format_rule: prd-format
+
+            required_reading:
+              - docs/ARCHITECTURE.yaml (components section)
+              - docs/specs/product-requirements/prd001-cupboard-core.yaml
+
+            files:
+              - path: docs/specs/product-requirements/prd-feature-name.yaml
+                action: create
+
+            required_sections:
+              - "Problem: explain the problem and why it matters"
+              - "Goals: G1 ..., G2 ..."
+              - "Requirements: R1.1 ..., R1.2 ..."
+              - "Non-Goals: what is out of scope"
+              - "Acceptance Criteria: checkable outcomes"
+
+            requirements:
+              - id: R1
+                text: Write PRD covering all identified requirements
+              - id: R2
+                text: Include acceptance criteria for each requirement
+
+            acceptance_criteria:
+              - id: AC1
+                text: All required sections present
+              - id: AC2
+                text: File saved as prd-feature-name.yaml
+              - id: AC3
+                text: Requirements numbered and specific
+    sections:
+        - tag: schema
+          title: Issue Schema
+          content: |
+            Each issue description is a YAML document with five required fields:
+            deliverable_type, required_reading, files, requirements, and
+            acceptance_criteria. Optional fields include design_decisions and
+            format_rule.
+        - tag: yaml_rules
+          title: YAML Formatting Rules
+          content: |
+            Use multi-line block literals (|) for prose. Keys are lowercase with
+            underscores. Avoid unnecessary quoting. Each requirement and acceptance
+            criterion is a mapping with id and text fields.
+        - tag: field_specs
+          title: Field Specifications
+          content: |
+            Field specifications define the type, allowed values, whether the field is
+            required, and sub-field structure for each issue description field.
+        - tag: examples
+          title: Examples
+          content: |
+            Reference examples for documentation issues and code issues show the full
+            expected YAML structure, including required reading, output paths, format
+            rules, requirements, and acceptance criteria.
+task: |
+    Follow these steps in order. Complete each step before moving to the next. Do NOT explore the filesystem, read files, or run commands unless a step explicitly asks you to. All project information is already provided in the project_context field above.
+
+    1. **Analyze project context** — Review the project_context field above. It contains ALL project documentation: vision, architecture, specifications, roadmap, PRDs, use cases, test suites, engineering guidelines, constitutions, and existing issues. Do NOT read any files — everything you need is inline.
+
+    2. **Summarize project state** — Write a brief summary of:
+       - What problem this project solves
+       - The high-level architecture (major components and how they fit together)
+       - Current state of implementation (what is done, what is in progress)
+       - Current release: which release we are working on, which use cases remain (check the roadmap)
+
+    3. **Reason about priorities** — Determine what to build next using release priority:
+       - Focus on the earliest incomplete release in the roadmap
+       - Later use cases can be partially implemented if they share functionality with the current release
+       - Each issue should map to a use case in the roadmap; if uncertain, use release 99.0 (unscheduled)
+       - Identify dependencies: what must be built first and why
+
+    4. **Propose tasks** — For each task, write a description that follows the crumb-format YAML schema (see planning_constitution above and output_format below). Remember: the stitch agent sees ONLY the task description and the execution constitution. It does not see your analysis, the existing issues, or this conversation. The description must be self-contained.
+
+    5. **Return output** — Return the proposed tasks as a YAML list in your text output, inside a fenced code block marked ```yaml. Do NOT use any tools. Your entire response is text only.
+constraints: |-
+    - Do NOT use any tools. Do NOT explore the filesystem, read files, or run commands. All project information is in the project_context above. Your response must be text only with zero tool calls.
+    - Do NOT interact with the issue tracker directly.
+    - Do NOT duplicate existing issues. Review the issues in the project_context above before proposing.
+    - Issues with status "closed" represent COMPLETED work. Do not re-propose work that a closed issue already covers, even under a different title or framing. The completed_work field in project_context lists all finished tasks — treat every entry as work that must not be repeated.
+    - When source_code contains .go files for a package, that package already exists. Do not propose creating or reimplementing it. Trust the source code over prose descriptions in documentation (e.g., implementation_status sections in ARCHITECTURE.yaml may be stale).
+    - Components with a provided_by field in ARCHITECTURE.yaml are external infrastructure. Do NOT propose tasks that create or modify files in those components.
+    - Do NOT exceed 1 tasks. If more work is needed, create additional tasks in a future session.
+    - Do NOT create tasks larger than 250 lines of production code. Target 150-250 lines per task, touching 5-7 files. Split aggressively: a task that creates a struct and implements its methods is two tasks.
+    - Each task must contain at most 4 requirements. Split any task that would exceed this limit.
+    - Each task MUST be independently executable by an agent that has no context beyond the task description and the execution constitution.
+    - Do NOT assume the stitch agent has access to your analysis, the existing issues list, or any context from this conversation.
+    - Do NOT propose tasks that require human judgment or manual testing. Each task must have checkable acceptance criteria.
+    - Anchor every task to specific PRD requirement IDs (e.g., prd001 R1.1). Include the requirement ID in the task title. Given the same PRD and release, the same tasks should be proposed regardless of how many times this prompt is run.
+    - Order tasks canonically: documentation before code, types before implementations, libraries before consumers, implementation before tests. Break ties by primary file path alphabetically.
+    - Derive file names from PRD/architecture names, not invented names. If the architecture calls a component "crumb", the file is crumb.go.
+    - Do NOT invent design decisions not derived from the PRD or architecture. Derive struct shapes, timeout strategies, file names, and naming conventions from the PRD rather than making arbitrary choices. If the PRD does not specify a detail, omit it from design decisions rather than inventing one.
+    - When a PRD specifies a concrete design choice (e.g., "use a FileExpectation struct", "the main file is difftest.go", "timeout is configurable via context"), copy that choice verbatim into the task's design_decisions. Do not rephrase, generalize, or substitute alternatives. The PRD is the single source of truth for implementation details.
+    - Do NOT vary requirement count between equivalent runs. Each PRD requirement maps to one task requirement. Given the same input, produce the same requirement set. If two runs of this prompt against the same project state would produce different requirements, the decomposition is under-constrained -- tighten it.
+    - Do NOT make any tool calls. Return the YAML list directly in your text output.
+
+
+    Release scope: You MUST only propose tasks for use cases in releases [00.0, 01.0, 01.1, 01.2, 01.3, 02.0, 02.1, 02.2]. Do not propose tasks for any other release.
+output_format: |
+    Return a YAML list of crumb objects inside a fenced code block (```yaml). Each crumb has a sequential `index` (starting at 0) and a `dependency` field. Set `dependency` to the index of the crumb that must be completed first, or `-1` if there are no dependencies.
+
+    The `description` field must be a valid YAML document conforming to the issue_format_constitution injected above. Write it as a YAML literal block scalar. Use ASCII dashes, not Unicode em dashes. Requirements, design decisions, and acceptance criteria are all mappings with `id:` and `text:` fields (R1/R2/..., D1/D2/..., AC1/AC2/...).
+
+    Example:
+      - index: 0
+        title: Task title
+        dependency: -1
+        description: |
+          deliverable_type: code
+
+          required_reading:
+            - path/to/file.go (reason this file must be read)
+            - docs/specs/product-requirements/prd001-feature.yaml
+
+          files:
+            - path: pkg/types/example.go
+              action: create
+              note: ExampleType struct and interface
+            - path: internal/example/example.go
+              action: create
+              note: ExampleType implementation
+
+          requirements:
+            - id: R1
+              text: Implement ExampleType per prd001-feature R2
+            - id: R2
+              text: Add Get and Set operations
+
+          design_decisions:
+            - id: D1
+              text: Use table accessor pattern from prd001-cupboard-core
+            - id: D2
+              text: "Keep implementation in internal/, not pkg/"
+
+          acceptance_criteria:
+            - id: AC1
+              text: All operations implemented and tested
+            - id: AC2
+              text: Tests pass for each operation
+
+      - index: 1
+        title: Task that depends on task 0
+        dependency: 0
+        description: |
+          deliverable_type: code
+
+          required_reading:
+            - pkg/types/example.go (ExampleType contract from task 0)
+
+          files:
+            - path: internal/example/example_test.go
+              action: create
+              note: integration tests
+
+          requirements:
+            - id: R1
+              text: Test all ExampleType operations end to end
+
+          acceptance_criteria:
+            - id: AC1
+              text: All tests pass
+
+    The description must be self-contained. All five fields (deliverable_type, required_reading, files, requirements, acceptance_criteria) are required. Each requirement, design_decision, and acceptance_criteria entry is a mapping with `id` and `text` fields. Add design_decisions when the stitch agent must follow specific patterns or architecture constraints.
+
+    When a golden_example field is present in this prompt, it is the authoritative reference for style, granularity, and naming conventions. Match its requirement count range, acceptance criteria density, design decision style, and file naming pattern. Deviate from the golden example only when the PRD explicitly requires a different structure.
+
+    The orchestrator will parse the YAML from your text output and import the tasks into the issue tracker.

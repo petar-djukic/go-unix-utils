@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "87"
+task_title: 'pkg/format: size formatting and ANSI color output (rel00.0-uc002-format)'
+status: success
+started_at: "2026-03-02T14:06:26Z"
+duration: 7m25s
+duration_s: 444
+tokens:
+    input: 772723
+    output: 25327
+    cache_creation: 52624
+    cache_read: 718710
+cost_usd: 1.329844
+loc_before:
+    production: 285
+    test: 0
+loc_after:
+    production: 510
+    test: 0
+diff:
+    files: 4
+    insertions: 368
+    deletions: 1

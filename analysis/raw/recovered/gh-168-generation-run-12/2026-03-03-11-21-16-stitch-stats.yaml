@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "186"
+task_title: Implement pkg/format/ human-readable size formatting and column alignment (rel00.0-uc002-format)
+status: success
+started_at: "2026-03-03T16:21:16Z"
+duration: 4m52s
+duration_s: 292
+tokens:
+    input: 759532
+    output: 15637
+    cache_creation: 49883
+    cache_read: 709635
+cost_usd: 1.05853225
+loc_before:
+    production: 417
+    test: 304
+loc_after:
+    production: 575
+    test: 304
+diff:
+    files: 6
+    insertions: 494
+    deletions: 2

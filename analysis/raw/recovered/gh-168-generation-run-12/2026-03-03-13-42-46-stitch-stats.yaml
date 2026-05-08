@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "202"
+task_title: 'prd020-true: Write PRD for true utility (rel02.0-uc001-true)'
+status: success
+started_at: "2026-03-03T18:42:46Z"
+duration: 1m23s
+duration_s: 82
+tokens:
+    input: 417401
+    output: 4719
+    cache_creation: 33077
+    cache_read: 384314
+cost_usd: 0.51897525
+loc_before:
+    production: 2223
+    test: 2852
+loc_after:
+    production: 2223
+    test: 2852
+diff:
+    files: 4
+    insertions: 1337
+    deletions: 2

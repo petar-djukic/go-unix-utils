@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "354"
+task_title: 'Implement cmd/cut -- prd-cut R1-R4: selection modes, delimiters, file handling, exit codes'
+status: success
+started_at: "2026-03-06T18:12:54Z"
+duration: 2m35s
+duration_s: 155
+tokens:
+    input: 497072
+    output: 10760
+    cache_creation: 53006
+    cache_read: 444050
+cost_usd: 0.8223925
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 469
+    test: 0
+diff:
+    files: 5
+    insertions: 550
+    deletions: 4

@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "355"
+task_title: 'Implement cmd/paste -- prd-paste R1-R4: parallel merge, serial mode, delimiters, file handling'
+status: success
+started_at: "2026-03-06T18:16:46Z"
+duration: 4m16s
+duration_s: 255
+tokens:
+    input: 2503766
+    output: 12740
+    cache_creation: 65036
+    cache_read: 2438682
+cost_usd: 1.944556
+loc_before:
+    production: 469
+    test: 0
+loc_after:
+    production: 779
+    test: 241
+diff:
+    files: 5
+    insertions: 691
+    deletions: 4

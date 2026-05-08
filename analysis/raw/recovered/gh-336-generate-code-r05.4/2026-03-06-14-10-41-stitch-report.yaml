@@ -1,0 +1,27 @@
+task_id: "363"
+task_title: 'Task 362: Implement checksum quartet cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)'
+status: success
+branch: task/generation-gh-336-generate-code-r05.4-363
+diff:
+    files: 3
+    insertions: 479
+    deletions: 4
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+    - path: .cobbler/measure-20260306-134420.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 476
+      deletions: 0
+loc_before:
+    production: 837
+    test: 204
+loc_after:
+    production: 837
+    test: 204

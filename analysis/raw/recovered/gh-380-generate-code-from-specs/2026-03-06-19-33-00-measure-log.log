@@ -1,0 +1,74 @@
+## Project State Summary
+
+**Problem:** go-unix-utils is an experiment in specification-driven development. It derives formal specifications from GNU C source code, generates Go implementations via an AI code generation pipeline (mage-claude-orchestrator), and verifies parity against reference GNU binaries through differential testing. The goal is to stress-test the orchestrator methodology, not to ship production utilities.
+
+**Architecture:** A four-stage pipeline (extract → specify → synthesize → verify) organized around: `docs/` (specifications), `cmd/` (one Go package per utility), `pkg/` (shared libraries: sys, format, testutils), and `magefiles/` (build orchestration). Differential testing via `pkg/testutils` is the gating verification mechanism.
+
+**Current state:** 17 commands implemented across generation runs 1-17 (tee, head, seq, echo, tac, nl, fold, expand, unexpand, cut, paste, uniq, comm, md5sum, sha1sum, sha256sum, sha512sum). All releases from rel00.0 through rel05.4 show status "implemented". Code lives at generation-merged tags; the working branch holds specs only.
+
+**Release scope:** The constraint limits me to release 99.2 only. rel99.2 contains one use case: `rel99.2-uc001-ts` (ts — the moreutils timestamp-prepending utility), with status `spec_complete` (PRD, use case, and test suite exist; code generation has not run).
+
+## Priority Analysis
+
+rel99.2 is the only eligible release. It contains a single use case for `ts`. The ts utility reads stdin line by line and prepends timestamps. It was previously generated in early runs (code at generation-merged tags) but needs regeneration on the current branch. ts depends on `pkg/sys` (SIGPIPE handler) and `pkg/testutils` (differential testing), both of which are implemented.
+
+Per P2 (split implementation and tests), and the 1-task constraint, I propose the implementation task. The test task would follow in a subsequent session.
+
+```yaml
+- index: 0
+  title: "cmd/ts implementation -- prd005-ts R1-R4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd005-ts.yaml (all requirements and acceptance criteria for ts)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test cases for validation reference)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for understanding test harness contract)
+      - cmd/head/main.go (reference for how existing cmd/ packages structure main, flag parsing, and stdin reading)
+      - cmd/nl/main.go (reference for line-by-line stdin processing pattern with output formatting)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility implementation -- stdin line reading, timestamp prepending, flag handling
+
+    requirements:
+      - id: R1
+        text: "Implement line-by-line stdin reading that prepends a formatted timestamp to each line and writes to stdout. Default format is the strftime-equivalent Go time format matching GNU ts default (\"%%b %%d %%H:%%M:%%S\"). Read from stdin when no file arguments are given; support reading from named files when provided."
+      - id: R2
+        text: "Implement the -s flag for relative (elapsed) timestamps. When -s is set, timestamps show elapsed time since the program started (HH:MM:SS format) instead of wall-clock time."
+      - id: R3
+        text: "Implement the -i flag for incremental timestamps. When -i is set, timestamps show elapsed time since the previous line was output rather than since program start."
+      - id: R4
+        text: "Accept an optional format string as a positional argument. The format string uses strftime-style percent directives. Map strftime directives to Go time.Format layout strings. When no format is given, use the default format. Support %.S (seconds with fractional part) and %.s (epoch with fractional part) directives from GNU ts."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per the shared_protocols SIGPIPE handling pattern in ARCHITECTURE.yaml."
+      - id: D2
+        text: "Use bufio.Scanner for line-by-line stdin reading, consistent with other cmd/ implementations (head, nl, tac)."
+      - id: D3
+        text: "Map strftime directives to Go time.Format layout tokens in a conversion function. Handle the common strftime codes (%%Y, %%m, %%d, %%H, %%M, %%S, %%b, %%a, %%p, %%Z, %%s, etc.) and the GNU ts extensions (%.S, %.s) that include sub-second precision."
+      - id: D4
+        text: "Exit code 0 on success, 1 on error. Match GNU ts exit code behavior."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ts/main.go compiles without errors via `go build ./cmd/ts/`."
+      - id: AC2
+        text: "Running `echo hello | go run ./cmd/ts/` prepends a timestamp in the default format to the line."
+      - id: AC3
+        text: "The -s flag produces elapsed-time timestamps starting from 00:00:00."
+      - id: AC4
+        text: "The -i flag produces incremental timestamps showing time since the previous line."
+      - id: AC5
+        text: "A custom format string argument (e.g., '%%H:%%M:%%S') is respected in output."
+      - id: AC6
+        text: "The binary handles SIGPIPE gracefully via sys.InstallSIGPIPEHandler()."
+      - id: AC7
+        text: "No golangci-lint warnings on cmd/ts/main.go."
+```

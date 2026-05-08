@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "204"
+task_title: Implement cmd/true (prd020-true)
+status: success
+started_at: "2026-03-03T18:54:12Z"
+duration: 42s
+duration_s: 41
+tokens:
+    input: 247778
+    output: 2016
+    cache_creation: 23378
+    cache_read: 224393
+cost_usd: 0.31369400000000003
+loc_before:
+    production: 2300
+    test: 2852
+loc_after:
+    production: 2300
+    test: 2852
+diff:
+    files: 3
+    insertions: 1418
+    deletions: 2

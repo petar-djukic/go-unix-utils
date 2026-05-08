@@ -1,0 +1,35 @@
+task_id: "242"
+task_title: 'cmd/version: implement version reporting command (prd011-magefiles, rel00.0-uc001)'
+status: success
+branch: task/generation-gh-206-generation-run-14-242
+diff:
+    files: 5
+    insertions: 968
+    deletions: 68
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 23
+      deletions: 22
+    - path: .cobbler/measure-20260303-140350.yaml
+      status: D
+      insertions: 0
+      deletions: 45
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 901
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/version/main.go
+      status: A
+      insertions: 43
+      deletions: 0
+loc_before:
+    production: 1702
+    test: 2122
+loc_after:
+    production: 1745
+    test: 2122

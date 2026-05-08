@@ -1,0 +1,47 @@
+task_id: "282"
+task_title: Implement pkg/testutils DiffTest differential testing harness (rel00.0-uc004)
+status: success
+branch: task/generation-gh-262-codegen-282
+diff:
+    files: 8
+    insertions: 490
+    deletions: 56
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: .cobbler/measure-20260304-174737.yaml
+      status: D
+      insertions: 0
+      deletions: 53
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 223
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.mod
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.sum
+      status: M
+      insertions: 2
+      deletions: 0
+    - path: pkg/testutils/difftest.go
+      status: A
+      insertions: 135
+      deletions: 0
+    - path: pkg/testutils/difftest_test.go
+      status: A
+      insertions: 127
+      deletions: 0
+loc_before:
+    production: 284
+    test: 383
+loc_after:
+    production: 419
+    test: 510

@@ -1,0 +1,35 @@
+task_id: "347"
+task_title: 'cmd/tac: implement tac utility (prd-tac R1-R4)'
+status: success
+branch: task/generation-gh-336-generate-code-r05.0-347
+diff:
+    files: 5
+    insertions: 466
+    deletions: 4
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+    - path: .cobbler/measure-20260306-122235.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 136
+      deletions: 0
+    - path: cmd/tac/main.go
+      status: A
+      insertions: 200
+      deletions: 0
+    - path: cmd/tac/tac_test.go
+      status: A
+      insertions: 127
+      deletions: 0
+loc_before:
+    production: 183
+    test: 212
+loc_after:
+    production: 383
+    test: 339

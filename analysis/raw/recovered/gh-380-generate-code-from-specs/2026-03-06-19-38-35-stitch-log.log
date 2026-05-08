@@ -1,0 +1,20 @@
+Let me check the worktree and read reference patterns:The file already exists with a solid implementation. Let me review against the task requirements and PRD to identify gaps:
+
+1. **Missing**: Mutual exclusivity check for `-i` and `-s` (PRD R3.4)
+2. **Missing**: `-r` flag - but this is not in the task's R1-R4 scope, so I'll skip it per E3 (no scope creep)
+
+Let me update the file to add the mutual exclusivity check, then verify.
+
+Now I'll add the mutual exclusivity check for `-i` and `-s` flags (PRD R3.4) that's missing from the current implementation:Now let me verify the implementation compiles and passes vet:Go vet passes (the `unusedparams` diagnostic is from a linter, not go vet itself). Let me verify the acceptance criteria:Now let me also address the `unusedparams` warning on `elapsedMode` - while it's not from `go vet`, keeping clean code is good practice. Let me check if the parameter is truly unused:The `elapsedMode` parameter in `formatTime` is unused. Let me remove it to keep the code clean:Now update the call sites and remove the unused `elapsedMode` variable:Now rebuild and verify:Both compile and vet pass cleanly. Let me do a final verification of all acceptance criteria:All acceptance criteria verified:
+
+- **AC1** ✅ `cmd/ts/main.go` exists, compiles cleanly, produces a `ts` binary in `bin/`
+- **AC2** ✅ `printf 'line1\nline2\n' | ./bin/ts` prepends default-format timestamps (`Mar 06 HH:MM:SS`)
+- **AC3** ✅ `-s` produces elapsed timestamps, `-i` produces incremental timestamps
+- **AC4** ✅ Custom strftime format `'%Y-%m-%d %H:%M:%S'` works correctly
+- **AC5** ✅ `sys.InstallSIGPIPEHandler()` is called at the start of `main()`
+- **AC6** ✅ `go vet ./cmd/ts/` reports no issues
+
+**Summary of changes to `cmd/ts/main.go`:**
+
+1. **Added mutual exclusivity check** (PRD R3.4): When both `-i` and `-s` are passed, the program now prints a usage error to stderr and exits 1, matching the PRD requirement.
+2. **Removed unused `elapsedMode` parameter** from `formatTime()` and its corresponding variable/call-site arguments, eliminating a lint warning.

@@ -1,0 +1,111 @@
+## Project State Summary
+
+**Problem:** go-unix-utils is an experiment in specification-driven development. It derives formal specifications from GNU C source code, generates Go implementations via an AI orchestrator, and verifies parity through differential testing against Homebrew GNU reference binaries.
+
+**Architecture:** A four-stage pipeline (extract → specify → synthesize → verify) with: `cmd/` (per-utility Go binaries), `pkg/testutils` (differential test harness), `pkg/sys` (syscall abstractions), `pkg/format` (shared formatting), `magefiles/` (build orchestration), and `docs/` (specifications).
+
+**Current state:** 17 utilities implemented through generation run 17 (tee, head, seq, echo, tac, nl, fold, expand, unexpand, cut, paste, uniq, comm, md5sum, sha1sum, sha256sum, sha512sum). All releases from 00.0 through 05.4 show status "implemented" in the code_status. Specifications exist for all of these plus ls (rel04.0/04.1) and ts (rel99.2).
+
+**Current release (99.2):** The only non-implemented release with spec_complete status is rel99.2 (ts). ts is a moreutils utility that prepends timestamps to stdin lines. It has a PRD, use case, and test suite but no generated code on the working branch.
+
+## Priority Analysis
+
+Release 99.2 contains a single use case: `rel99.2-uc001-ts`. Per P2, implementation and tests must be split. With the 1-task constraint, I propose the implementation task first (P8: implementation before tests).
+
+ts depends on `pkg/sys` (SIGPIPE handling) and `pkg/testutils` (for tests), both already implemented. No blocking dependencies.
+
+```yaml
+- index: 0
+  title: "cmd/ts implementation -- rel99.2-uc001-ts"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/product-requirements/prd004-ts.yaml (all requirements for ts utility)
+      - docs/specs/use-cases/rel99.2-uc001-ts.yaml (end-to-end execution path)
+      - docs/specs/test-suites/test-rel-99.2.yaml (test cases and expected behaviors)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage pattern)
+      - cmd/nl/main.go (reference for stdin line-processing utility pattern)
+      - cmd/tac/main.go (reference for stdin-to-stdout utility with flag parsing)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: ts utility implementation -- timestamps stdin lines
+
+    requirements:
+      - id: R1
+        text: |
+          Read lines from stdin and write each line to stdout with a timestamp
+          prepended. Default format is the strftime-compatible format from the PRD
+          (typically "%b %d %H:%M:%S"). When no format argument is given, use the
+          default. When a format argument is given, use it as the strftime format
+          string. Implements prd004-ts core timestamping requirements.
+      - id: R2
+        text: |
+          Implement the -s flag for relative (elapsed) timestamps. When -s is set,
+          timestamps show elapsed time since the program started rather than wall
+          clock time. The elapsed format uses the format argument if provided, or
+          a default elapsed format from the PRD. Implements prd004-ts relative
+          timestamp requirements.
+      - id: R3
+        text: |
+          Implement the -i flag for incremental timestamps. When -i is set,
+          timestamps show the time elapsed since the previous line rather than
+          wall clock or program-start time. -i and -s may be combined (incremental
+          relative). Implements prd004-ts incremental timestamp requirements.
+      - id: R4
+        text: |
+          Handle --version and --help flags per GNU conventions. Exit 0 on
+          --version and --help. Exit 0 on normal completion. Exit nonzero on
+          errors (e.g., write failures). Call pkg/sys.InstallSIGPIPEHandler() at
+          program start per the ARCHITECTURE shared_protocols. Implements prd004-ts
+          exit code and signal requirements.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Call sys.InstallSIGPIPEHandler() at the start of main() per the
+          ARCHITECTURE shared_protocols for all cmd/ utilities that write to stdout.
+      - id: D2
+        text: |
+          Use Go time package for timestamp formatting. Go uses reference-time
+          formatting (Mon Jan 2 15:04:05 MST 2006), not strftime. Convert the
+          strftime format string from the user to Go reference-time layout, or
+          implement a strftime-to-Go converter. Check the PRD for the exact
+          conversion requirements and which strftime directives must be supported.
+      - id: D3
+        text: |
+          Use bufio.Scanner for line-by-line stdin reading, consistent with other
+          cmd/ utilities (nl, tac, fold). Flush each line to stdout immediately
+          after timestamping to avoid buffering delays in pipeline usage.
+      - id: D4
+        text: |
+          The reference binary for differential testing is "gts" or "ts" from
+          Homebrew moreutils. The stitch agent implements only cmd/ts/main.go;
+          tests are a separate task.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles with no errors via "go build ./cmd/ts/"
+      - id: AC2
+        text: |
+          Running "echo hello | go run ./cmd/ts/" prepends a timestamp to "hello"
+          and writes the result to stdout.
+      - id: AC3
+        text: |
+          The -s flag produces elapsed timestamps relative to program start instead
+          of wall clock timestamps.
+      - id: AC4
+        text: |
+          The -i flag produces incremental timestamps showing time since the
+          previous line.
+      - id: AC5
+        text: |
+          The program calls sys.InstallSIGPIPEHandler() and exits cleanly when
+          downstream closes the pipe.
+      - id: AC6
+        text: "go vet ./cmd/ts/ reports no issues."
+```

@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "239"
+task_title: 'cmd/du: differential tests for prd009-du R1.1, R1.2, R1.3, R1.5'
+status: success
+started_at: "2026-03-04T02:13:39Z"
+duration: 2m11s
+duration_s: 130
+tokens:
+    input: 636437
+    output: 5991
+    cache_creation: 50348
+    cache_read: 583206
+cost_usd: 0.771962
+loc_before:
+    production: 1475
+    test: 1830
+loc_after:
+    production: 1475
+    test: 1859
+diff:
+    files: 5
+    insertions: 854
+    deletions: 70

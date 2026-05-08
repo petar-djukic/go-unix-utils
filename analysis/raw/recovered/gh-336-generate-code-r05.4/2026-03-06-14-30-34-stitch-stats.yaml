@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "368"
+task_title: Implement checksum quartet cmd/ binaries (prd md5sum, sha1sum, sha256sum, sha512sum)
+status: success
+started_at: "2026-03-06T19:30:34Z"
+duration: 1m49s
+duration_s: 109
+tokens:
+    input: 863845
+    output: 4283
+    cache_creation: 69205
+    cache_read: 794623
+cost_usd: 0.93700275
+loc_before:
+    production: 876
+    test: 204
+loc_after:
+    production: 876
+    test: 204
+diff:
+    files: 3
+    insertions: 959
+    deletions: 4

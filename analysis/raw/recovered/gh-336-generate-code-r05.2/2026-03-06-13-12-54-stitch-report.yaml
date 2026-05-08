@@ -1,0 +1,35 @@
+task_id: "354"
+task_title: 'Implement cmd/cut -- prd-cut R1-R4: selection modes, delimiters, file handling, exit codes'
+status: success
+branch: task/generation-gh-336-generate-code-r05.2-354
+diff:
+    files: 5
+    insertions: 550
+    deletions: 4
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+    - path: .cobbler/measure-20260306-130714.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 78
+      deletions: 0
+    - path: cmd/cut/main.go
+      status: A
+      insertions: 446
+      deletions: 0
+    - path: pkg/sys/sigpipe.go
+      status: A
+      insertions: 23
+      deletions: 0
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 469
+    test: 0

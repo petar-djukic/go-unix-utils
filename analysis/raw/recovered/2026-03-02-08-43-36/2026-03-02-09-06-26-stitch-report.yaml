@@ -1,0 +1,31 @@
+task_id: "87"
+task_title: 'pkg/format: size formatting and ANSI color output (rel00.0-uc002-format)'
+status: success
+branch: task/generation-2026-03-02-08-43-36-87
+diff:
+    files: 4
+    insertions: 368
+    deletions: 1
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 142
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: pkg/format/color.go
+      status: A
+      insertions: 169
+      deletions: 0
+    - path: pkg/format/size.go
+      status: A
+      insertions: 56
+      deletions: 0
+loc_before:
+    production: 285
+    test: 0
+loc_after:
+    production: 510
+    test: 0

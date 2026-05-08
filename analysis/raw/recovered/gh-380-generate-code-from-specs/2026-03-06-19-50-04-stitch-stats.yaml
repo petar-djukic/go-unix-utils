@@ -1,0 +1,26 @@
+caller: stitch
+task_id: "396"
+task_title: 'rel99.2-uc001-ts: cmd/ts implementation'
+status: success
+started_at: "2026-03-07T00:50:04Z"
+duration: 5m16s
+duration_s: 316
+tokens:
+    input: 15
+    output: 18325
+    cache_creation: 64916
+    cache_read: 454407
+cost_usd: 1.0911285
+num_turns: 19
+duration_api_ms: 312392
+session_id: a6ca00db-90a4-4f43-889a-0ba1b6a7cbdd
+loc_before:
+    production: 429
+    test: 114
+loc_after:
+    production: 587
+    test: 157
+diff:
+    files: 6
+    insertions: 1007
+    deletions: 17

@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "340"
+task_title: 'cmd/tee implementation: rel02.1-uc001-tee core functionality'
+status: success
+started_at: "2026-03-06T16:52:32Z"
+duration: 4m18s
+duration_s: 257
+tokens:
+    input: 1385121
+    output: 13360
+    cache_creation: 55381
+    cache_read: 1329612
+cost_usd: 1.34557725
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 267
+    test: 0
+diff:
+    files: 7
+    insertions: 363
+    deletions: 8

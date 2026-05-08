@@ -1,0 +1,27 @@
+task_id: "134"
+task_title: prd009-du R1, R2, R3, R4 -- differential tests for cmd/du
+status: success
+branch: task/generation-2026-03-02-10-55-24-134
+diff:
+    files: 3
+    insertions: 1428
+    deletions: 0
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 1027
+      deletions: 0
+    - path: cmd/du/du_test.go
+      status: A
+      insertions: 401
+      deletions: 0
+    - path: du
+      status: M
+      insertions: 0
+      deletions: 0
+loc_before:
+    production: 2174
+    test: 2553
+loc_after:
+    production: 2174
+    test: 2954

@@ -1,0 +1,23 @@
+caller: stitch
+task_id: generation-2026-02-25-08-44-27-tyr
+task_title: 'pkg/sys: implement terminal width, extended file metadata, and signal handling (prd002-sys R1-R4)'
+status: success
+started_at: "2026-02-25T13:47:10Z"
+duration: 7m14s
+duration_s: 434
+tokens:
+    input: 2906543
+    output: 25459
+    cache_creation: 110545
+    cache_read: 2795972
+cost_usd: 2.731604249999999
+loc_before:
+    production: 2247
+    test: 1153
+loc_after:
+    production: 2531
+    test: 1416
+diff:
+    files: 9
+    insertions: 624
+    deletions: 0

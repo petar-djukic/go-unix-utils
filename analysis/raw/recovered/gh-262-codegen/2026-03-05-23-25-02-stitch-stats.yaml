@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "308"
+task_title: Implement ls core -- directory reading, filtering, sorting, and output (ls PRD)
+status: success
+started_at: "2026-03-06T04:25:02Z"
+duration: 10m8s
+duration_s: 608
+tokens:
+    input: 2488838
+    output: 33447
+    cache_creation: 204338
+    cache_read: 2284479
+cost_usd: 3.262523
+loc_before:
+    production: 1928
+    test: 1420
+loc_after:
+    production: 2302
+    test: 1420
+diff:
+    files: 7
+    insertions: 1421
+    deletions: 69

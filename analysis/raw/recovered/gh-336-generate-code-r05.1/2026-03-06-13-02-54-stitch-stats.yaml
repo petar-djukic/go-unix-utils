@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "352"
+task_title: 'Task: Implement cmd/unexpand (rel05.1-uc002-unexpand)'
+status: success
+started_at: "2026-03-06T18:02:54Z"
+duration: 4m13s
+duration_s: 253
+tokens:
+    input: 1924629
+    output: 16309
+    cache_creation: 76680
+    cache_read: 1847913
+cost_usd: 1.8111115000000004
+loc_before:
+    production: 375
+    test: 142
+loc_after:
+    production: 625
+    test: 287
+diff:
+    files: 5
+    insertions: 546
+    deletions: 6
