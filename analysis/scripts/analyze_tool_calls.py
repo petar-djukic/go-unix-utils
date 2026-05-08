@@ -453,14 +453,17 @@ def chart_cost_by_phase(d: dict, out_dir: Path) -> None:
     ax.bar(x, bottom, color="#4c72b0", label="attempt 1")
     ax.bar(x, top, bottom=bottom, color="#c44e52", label="attempts 2+")
     for i, (b, t) in enumerate(zip(bottom, top)):
+        total = b + t
         if b > 0:
-            ax.text(i, b / 2, f"${b:.2f}", ha="center", va="center",
-                    color="white", fontsize=9)
+            pct = b / total * 100 if total else 0.0
+            ax.text(i, b / 2, f"${b:.2f} ({pct:.1f}%)",
+                    ha="center", va="center", color="white", fontsize=9)
         if t > 0:
-            ax.text(i, b + t / 2, f"${t:.2f}", ha="center", va="center",
-                    color="white", fontsize=9)
-        ax.text(i, b + t + 0.02 * max(bottom + top, default=1),
-                f"${b + t:.2f}", ha="center", va="bottom", fontsize=10,
+            pct = t / total * 100 if total else 0.0
+            ax.text(i, b + t / 2, f"${t:.2f} ({pct:.1f}%)",
+                    ha="center", va="center", color="white", fontsize=9)
+        ax.text(i, total + 0.02 * max(bottom + top, default=1),
+                f"${total:.2f}", ha="center", va="bottom", fontsize=10,
                 color="#333")
     ax.set_xticks(list(x))
     ax.set_xticklabels(pivot.index)
