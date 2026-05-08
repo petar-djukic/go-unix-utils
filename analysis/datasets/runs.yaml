@@ -1,0 +1,476 @@
+- report_id: '01'
+  report_path: docs/reports/generation-run-01.md
+  report_title: 'GH-3 Generation Run Results: Full Codebase from Pipeline'
+  generation_branch: null
+  run_id: null
+  scaffold_version: null
+  total_cost_usd: 33.29
+  stitch_cost_usd: 24.65
+  measure_cost_usd: 8.64
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '02'
+  report_path: docs/reports/generation-run-02.md
+  report_title: 'GH-16 Generation Run 2: Results and Output Token Limit Failure'
+  generation_branch: generation-2026-02-26-20-39-40
+  run_id: 2026-02-26-20-39-40
+  scaffold_version: v0.20260226.0
+  total_cost_usd: 3.92
+  stitch_cost_usd: 0.0
+  measure_cost_usd: 1.31
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '03'
+  report_path: docs/reports/generation-run-03.md
+  report_title: 'GH-22 Generation Run 3: Iterative Measure and Stitch Timeout Analysis'
+  generation_branch: generation-run-3
+  run_id: run-3
+  scaffold_version: v0.20260226.1
+  total_cost_usd: 3.12
+  stitch_cost_usd: 1.22
+  measure_cost_usd: 1.9
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '04'
+  report_path: docs/reports/generation-run-04.md
+  report_title: 'GH-24 Generation Run 4: max_requirements_per_task Validation and
+    Measure Agent Splitting Failure'
+  generation_branch: generation-run-4
+  run_id: run-4
+  scaffold_version: v0.20260226.2
+  total_cost_usd: 6.14
+  stitch_cost_usd: 0.0
+  measure_cost_usd: 6.14
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '05'
+  report_path: docs/reports/generation-run-05.md
+  report_title: 'GH-26 Generation Run 5: Seeded Run With Context and Validation Tuning'
+  generation_branch: generation-run-5
+  run_id: run-5
+  scaffold_version: v0.20260227.3
+  total_cost_usd: null
+  stitch_cost_usd: 2.98
+  measure_cost_usd: 2.98
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '06'
+  report_path: docs/reports/generation-run-06.md
+  report_title: 'GH-29 Generation Run 6: First Clean Benchmark Attempt'
+  generation_branch: generation-2026-02-27-21-48-32
+  run_id: 2026-02-27-21-48-32
+  scaffold_version: v0.20260227.3
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: 2.29
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '07'
+  report_path: docs/reports/generation-run-07.md
+  report_title: 'GH-36 Generation Run 7: Per-Release Generation with Pipeline Bug
+    Discovery'
+  generation_branch: generation-2026-02-28-11-56-07
+  run_id: 2026-02-28-11-56-07
+  scaffold_version: v0.20260228.0
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: 1.74
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: 08
+  report_path: docs/reports/generation-run-08.md
+  report_title: 'GH-62 Generation Run 8: Scaffolded File Rewriting and Context Gap
+    Discovery'
+  generation_branch: generation-2026-03-01-22-12-28
+  run_id: 2026-03-01-22-12-28
+  scaffold_version: v0.20260301.0
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: 09
+  report_path: docs/reports/generation-run-09.md
+  report_title: 'GH-82 Generation Run 9: Complete rel00.0 Infrastructure from Clean
+    Start'
+  generation_branch: generation-2026-03-02-08-43-36
+  run_id: 2026-03-02-08-43-36
+  scaffold_version: v0.20260301.0
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '10'
+  report_path: docs/reports/generation-run-10.md
+  report_title: 'GH-96 Generation Run 10: Full rel00.0 through rel01.3 from Clean
+    Start'
+  generation_branch: generation-2026-03-02-10-55-24
+  run_id: 2026-03-02-10-55-24
+  scaffold_version: v0.20260301.0
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '11'
+  report_path: docs/reports/generation-run-11.md
+  report_title: 'GH-147 Generation Run 11: Full rel00.0 through rel01.3 with Claude
+    Service Instability'
+  generation_branch: generation-2026-03-02-17-54-58
+  run_id: 2026-03-02-17-54-58
+  scaffold_version: v0.20260302.0
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: 612
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '12'
+  report_path: docs/reports/generation-run-12.md
+  report_title: 'GH-168 Generation Run 12: Full rel00.0 through rel02.2 with Idle
+    Watchdog Fix'
+  generation_branch: generation-gh-168-generation-run-12
+  run_id: gh-168-generation-run-12
+  scaffold_version: v0.20260303.0
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '14'
+  report_path: docs/reports/generation-run-14.md
+  report_title: 'GH-206 Generation Run 14: 36 Tasks, 5,557 LOC, Measure Prompt Scaling
+    Wall'
+  generation_branch: generation-gh-206-generation-run-14
+  run_id: gh-206-generation-run-14
+  scaffold_version: v0.20260303.0
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '15'
+  report_path: docs/reports/generation-run-15.md
+  report_title: 'GH-262 Generation Run 15: 12 Tasks, 3,904 LOC, $45.85, Headers-Only
+    Measure Mode'
+  generation_branch: generation-gh-262-codegen
+  run_id: gh-262-codegen
+  scaffold_version: v0.20260304.0
+  total_cost_usd: null
+  stitch_cost_usd: 11.7
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '16'
+  report_path: docs/reports/generation-run-16.md
+  report_title: 'Generation Run 16: 1,089 LOC, $4.60 — CLI mode trial on rel02.0 trivial
+    utilities'
+  generation_branch: generation-gh-313-generate-code
+  run_id: gh-313-generate-code
+  scaffold_version: v0.20260306.3
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '17'
+  report_path: docs/reports/generation-run-17.md
+  report_title: 'Generation Run 17: 7,194 LOC, $38.93 — Full spec_complete sweep (rel02.1–rel05.4)'
+  generation_branch: generation-gh-336-generate-code
+  run_id: gh-336-generate-code
+  scaffold_version: v0.20260306.5
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '18'
+  report_path: docs/reports/generation-run-18.md
+  report_title: 'GH-380 Generation Run 18: cmd/ts via SDK Mode'
+  generation_branch: generation-gh-380-generate-code-from-specs-start
+  run_id: gh-380-generate-code-from-specs-start
+  scaffold_version: null
+  total_cost_usd: 11.16
+  stitch_cost_usd: 9.61
+  measure_cost_usd: 1.55
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '19'
+  report_path: docs/reports/generation-run-19.md
+  report_title: 'GH-399 Generation Run 19: Full Regeneration from Specifications'
+  generation_branch: generation-gh-399-generate-code-start
+  run_id: gh-399-generate-code-start
+  scaffold_version: null
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '20'
+  report_path: docs/reports/generation-run-20.md
+  report_title: 'GH-472 Generation Run 20: Full Regeneration with rel06.0 and rel06.1'
+  generation_branch: generation-gh-472-run20-start
+  run_id: gh-472-run20-start
+  scaffold_version: null
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '26'
+  report_path: docs/reports/generation-run-26.md
+  report_title: Generation Run 26
+  generation_branch: generation-gh-552-run26
+  run_id: gh-552-run26
+  scaffold_version: v0.20260309.0
+  total_cost_usd: 20.16
+  stitch_cost_usd: 15.81
+  measure_cost_usd: 4.35
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '27'
+  report_path: docs/reports/generation-run-27.md
+  report_title: Generation Run 27
+  generation_branch: generation-gh-634-run27
+  run_id: gh-634-run27
+  scaffold_version: v0.20260309.3
+  total_cost_usd: 20.56
+  stitch_cost_usd: 13.41
+  measure_cost_usd: 7.16
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '31'
+  report_path: docs/reports/generation-run-31.md
+  report_title: Generation Run 31
+  generation_branch: generation-gh-799-run31
+  run_id: gh-799-run31
+  scaffold_version: v0.20260310.0
+  total_cost_usd: 139.24
+  stitch_cost_usd: 85.27
+  measure_cost_usd: 0.34
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '32'
+  report_path: docs/reports/generation-run-32.md
+  report_title: Generation Run 32
+  generation_branch: generation-gh-1297-run32-finished
+  run_id: gh-1297-run32-finished
+  scaffold_version: v0.20260314.0
+  total_cost_usd: null
+  stitch_cost_usd: 4.44
+  measure_cost_usd: null
+  requirements_completed: 42
+  requirements_total: 867
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '33'
+  report_path: docs/reports/generation-run-33.md
+  report_title: Generation Run 33
+  generation_branch: generation-gh-1329-run33-finished
+  run_id: gh-1329-run33-finished
+  scaffold_version: v0.20260314.1
+  total_cost_usd: null
+  stitch_cost_usd: 13.46
+  measure_cost_usd: 33.13
+  requirements_completed: 83
+  requirements_total: 867
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '34'
+  report_path: docs/reports/generation-run-34.md
+  report_title: Generation Run 34
+  generation_branch: generation-gh-1400-run34-finished
+  run_id: gh-1400-run34-finished
+  scaffold_version: v0.20260315.0
+  total_cost_usd: null
+  stitch_cost_usd: 112.28
+  measure_cost_usd: null
+  requirements_completed: 710
+  requirements_total: 1091
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '35'
+  report_path: docs/reports/generation-run-35.md
+  report_title: Generation Run 35
+  generation_branch: generation-gh-2607-run35
+  run_id: gh-2607-run35
+  scaffold_version: v0.20260317.0
+  total_cost_usd: null
+  stitch_cost_usd: null
+  measure_cost_usd: null
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '36'
+  report_path: docs/reports/generation-run-36.md
+  report_title: Generation Run 36
+  generation_branch: generation-gh-2626-run36
+  run_id: gh-2626-run36
+  scaffold_version: v0.20260317.1
+  total_cost_usd: null
+  stitch_cost_usd: 0.93
+  measure_cost_usd: 0.05
+  requirements_completed: null
+  requirements_total: null
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '37'
+  report_path: docs/reports/generation-run-37.md
+  report_title: Generation Run 37
+  generation_branch: generation-gh-2626-run37
+  run_id: gh-2626-run37
+  scaffold_version: v0.20260317.2
+  total_cost_usd: null
+  stitch_cost_usd: 66.65
+  measure_cost_usd: 0.6
+  requirements_completed: 1050
+  requirements_total: 1081
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: '38'
+  report_path: docs/reports/generation-run-38.md
+  report_title: Generation Run 38
+  generation_branch: generation-gh-2626-run38
+  run_id: gh-2626-run38
+  scaffold_version: v0.20260322.1
+  total_cost_usd: null
+  stitch_cost_usd: 44.55
+  measure_cost_usd: null
+  requirements_completed: 1395
+  requirements_total: 1475
+  rate_limited_seconds: null
+  incidents: []
+  scaffold_issues_filed: []
+- report_id: 40b
+  report_path: docs/reports/generation-run-40b.md
+  report_title: Generation Run 40b Report
+  generation_branch: null
+  run_id: null
+  scaffold_version: v0.20260328.1
+  total_cost_usd: 521.0
+  stitch_cost_usd: 480.0
+  measure_cost_usd: 41.0
+  requirements_completed: 1475
+  requirements_total: 1475
+  rate_limited_seconds: null
+  incidents:
+  - Run 39 abort (pre-run)
+  - Releases config (pre-run)
+  - Cycle limit hits (mid-run)
+  - 'Task #4165 prd107-dir R2.4 failure'
+  - 'Task #4205 prd111-ptx R5.1, R5.2'
+  scaffold_issues_filed: []
+- report_id: '42'
+  report_path: docs/reports/generation-run-42.md
+  report_title: Generation Run 42 Report
+  generation_branch: null
+  run_id: null
+  scaffold_version: v0.20260406.0
+  total_cost_usd: 593.82
+  stitch_cost_usd: 536.07
+  measure_cost_usd: 57.76
+  requirements_completed: 1475
+  requirements_total: 1475
+  rate_limited_seconds: 14772
+  incidents:
+  - Weight enforcement experiment (run 41, pre-run 42)
+  - Duplicate task creation
+  - Zero-LOC safety stops
+  - Stitch timeouts (od, stty)
+  - Measure SRD reference format (cosmetic)
+  - requirements.yaml weight loss on generator:start
+  - Road-map.yaml excluded from measure context
+  scaffold_issues_filed:
+  - number: 2070
+    title: Separate weight enforcement from granularity and file-naming validation
+  - number: 2072
+    title: Split overweight measure tasks programmatically
+  - number: 2074
+    title: Revert post-measure task splitting
+  - number: 2077
+    title: Add weight to requirements.yaml and CoT weight-reasoning step
+  - number: 2078
+    title: Add validate-task-weights mage target
+  - number: 2080
+    title: Remove weight from SRDs, requirements.yaml sole authority
+  - number: 2116
+    title: Remove unused mage credentials target
+  - number: 2117
+    title: GenerateRequirementsFile loses weights when PreserveSources=false
+  - number: 2120
+    title: Measure generates short-form SRD refs, breaking stats:generator
+  - number: 2123
+    title: requirements.yaml needs complete state machine for dedup and stops
