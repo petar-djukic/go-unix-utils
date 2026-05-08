@@ -1,0 +1,19 @@
+task_id: "5010"
+task_title: '[stitch] pkg/sys: IsTerminal and terminal query operations (srd002-sys R2.2-R2.5)'
+status: success
+branch: task/generation-gh-4994-run43-5010
+diff:
+    files: 1
+    insertions: 17
+    deletions: 9
+files:
+    - path: pkg/sys/terminal.go
+      status: M
+      insertions: 17
+      deletions: 9
+loc_before:
+    production: 579
+    test: 0
+loc_after:
+    production: 587
+    test: 0

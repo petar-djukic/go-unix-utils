@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "4998"
+task_title: '[stitch] pkg/testutils: DiffTest, NormalizeFunc, RunDiffTests, BuildBinary contract stubs (srd001-testutils)'
+status: success
+started_at: "2026-04-19T15:26:39Z"
+duration: 1m8s
+duration_s: 68
+tokens:
+    input: 473138
+    output: 2251
+    cache_creation: 58184
+    cache_read: 414946
+cost_usd: 0.627438
+num_turns: 10
+rate_limit_wait_s: 7
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 85
+    test: 0
+diff:
+    files: 2
+    insertions: 86
+    deletions: 1

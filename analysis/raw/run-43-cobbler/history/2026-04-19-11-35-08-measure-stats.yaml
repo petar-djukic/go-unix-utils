@@ -1,0 +1,23 @@
+caller: measure
+task_id: "5002"
+status: success
+started_at: "2026-04-19T15:35:08Z"
+duration: 1m55s
+duration_s: 114
+tokens:
+    input: 72019
+    output: 7031
+    cache_creation: 60706
+    cache_read: 11311
+cost_usd: 0.560853
+num_turns: 2
+loc_before:
+    production: 309
+    test: 0
+loc_after:
+    production: 309
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

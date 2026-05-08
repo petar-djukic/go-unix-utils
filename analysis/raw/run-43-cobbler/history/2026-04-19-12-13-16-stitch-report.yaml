@@ -1,0 +1,23 @@
+task_id: "5009"
+task_title: '[stitch] pkg/sys: extended file metadata error handling and TerminalWidth (srd002-sys R1.5-R1.7, R2.1)'
+status: success
+branch: task/generation-gh-4994-run43-5009
+diff:
+    files: 2
+    insertions: 46
+    deletions: 8
+files:
+    - path: pkg/sys/fileinfo.go
+      status: M
+      insertions: 24
+      deletions: 2
+    - path: pkg/sys/terminal.go
+      status: M
+      insertions: 22
+      deletions: 6
+loc_before:
+    production: 541
+    test: 0
+loc_after:
+    production: 579
+    test: 0

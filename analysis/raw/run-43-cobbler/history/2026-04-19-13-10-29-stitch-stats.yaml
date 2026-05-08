@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5011"
+task_title: '[stitch] pkg/sys: OnTerminalResize and signal handling (srd002-sys R2.6, R3.1-R3.3)'
+status: success
+started_at: "2026-04-19T17:10:29Z"
+duration: 1m57s
+duration_s: 117
+tokens:
+    input: 636011
+    output: 5480
+    cache_creation: 71223
+    cache_read: 564779
+cost_usd: 0.8645782499999999
+num_turns: 14
+rate_limit_wait_s: 37
+loc_before:
+    production: 587
+    test: 0
+loc_after:
+    production: 653
+    test: 0
+diff:
+    files: 3
+    insertions: 80
+    deletions: 14

@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5006"
+task_title: '[stitch] pkg/sys: FileInfo, Stat, Lstat, TerminalWidth, IsTerminal, InstallSIGPIPEHandler, OnTerminalResize contract stubs (srd002-sys)'
+status: success
+started_at: "2026-04-19T15:43:15Z"
+duration: 45s
+duration_s: 44
+tokens:
+    input: 494620
+    output: 1855
+    cache_creation: 60442
+    cache_read: 434170
+cost_usd: 0.6412625000000001
+num_turns: 11
+loc_before:
+    production: 354
+    test: 0
+loc_after:
+    production: 442
+    test: 0
+diff:
+    files: 3
+    insertions: 88
+    deletions: 0

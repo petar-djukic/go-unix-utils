@@ -1,0 +1,13 @@
+[workspace]
+authors = ["Petar Djukic <petar.djukic@gmail.com>"]
+channels = ["conda-forge"]
+name = "analysis"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+python = ">=3.14.4,<3.15"
+pandas = ">=3.0.2,<4"
+pyyaml = ">=6.0.3,<7"

@@ -1,0 +1,19 @@
+task_id: "5004"
+task_title: '[stitch] pkg/testutils: comparison and normalization features (srd001-testutils R3.2, R3.4-R3.6)'
+status: success
+branch: task/generation-gh-4994-run43-5004
+diff:
+    files: 1
+    insertions: 5
+    deletions: 2
+files:
+    - path: pkg/testutils/difftest.go
+      status: M
+      insertions: 5
+      deletions: 2
+loc_before:
+    production: 351
+    test: 0
+loc_after:
+    production: 354
+    test: 0

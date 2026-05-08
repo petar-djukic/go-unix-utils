@@ -1,0 +1,27 @@
+task_id: "5006"
+task_title: '[stitch] pkg/sys: FileInfo, Stat, Lstat, TerminalWidth, IsTerminal, InstallSIGPIPEHandler, OnTerminalResize contract stubs (srd002-sys)'
+status: success
+branch: task/generation-gh-4994-run43-5006
+diff:
+    files: 3
+    insertions: 88
+    deletions: 0
+files:
+    - path: pkg/sys/fileinfo.go
+      status: A
+      insertions: 51
+      deletions: 0
+    - path: pkg/sys/sigpipe.go
+      status: A
+      insertions: 12
+      deletions: 0
+    - path: pkg/sys/terminal.go
+      status: A
+      insertions: 25
+      deletions: 0
+loc_before:
+    production: 354
+    test: 0
+loc_after:
+    production: 442
+    test: 0

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "4999"
+task_title: '[stitch] pkg/testutils: RunDiffTests core execution and comparison (srd001-testutils R2.1-R2.4)'
+status: success
+started_at: "2026-04-19T15:28:05Z"
+duration: 3m0s
+duration_s: 180
+tokens:
+    input: 451628
+    output: 10662
+    cache_creation: 69702
+    cache_read: 381919
+cost_usd: 0.8931819999999999
+num_turns: 10
+rate_limit_wait_s: 89
+loc_before:
+    production: 85
+    test: 0
+loc_after:
+    production: 236
+    test: 0
+diff:
+    files: 1
+    insertions: 153
+    deletions: 2

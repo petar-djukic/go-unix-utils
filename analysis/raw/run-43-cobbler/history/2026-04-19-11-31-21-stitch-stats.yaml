@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5000"
+task_title: '[stitch] pkg/testutils: Env, WorkDir, ExpectedFiles, ComposeNormalizers, TimestampNormalizer (srd001-testutils R2.5-R2.6, R3.1-R3.6)'
+status: success
+started_at: "2026-04-19T15:31:21Z"
+duration: 2m6s
+duration_s: 125
+tokens:
+    input: 377969
+    output: 6386
+    cache_creation: 69502
+    cache_read: 308461
+cost_usd: 0.748298
+num_turns: 10
+rate_limit_wait_s: 48
+loc_before:
+    production: 236
+    test: 0
+loc_after:
+    production: 290
+    test: 0
+diff:
+    files: 1
+    insertions: 57
+    deletions: 3

@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5003"
+task_title: '[stitch] pkg/testutils: DiffTest validation and error reporting (srd001-testutils R1.2-R1.4)'
+status: success
+started_at: "2026-04-19T15:37:34Z"
+duration: 1m42s
+duration_s: 101
+tokens:
+    input: 465380
+    output: 4921
+    cache_creation: 70608
+    cache_read: 394765
+cost_usd: 0.7617425
+num_turns: 16
+loc_before:
+    production: 309
+    test: 0
+loc_after:
+    production: 351
+    test: 0
+diff:
+    files: 1
+    insertions: 42
+    deletions: 0
