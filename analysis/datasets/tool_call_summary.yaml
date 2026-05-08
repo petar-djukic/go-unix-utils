@@ -1,0 +1,14 @@
+task_ids_with_transcripts: 170
+total_tool_calls: 3093
+total_bash_calls: 1248
+go_build_or_vet_calls: 315
+go_build_or_vet_failed: 7
+go_test_calls: 138
+go_test_failed: 5
+mean_tool_calls_per_task: 18.2
+median_tool_calls_per_task: 14
+p95_tool_calls_per_task: 45
+max_tool_calls_per_task: 187
+tasks_with_build_loops_2plus: 1
+tasks_with_test_loops_2plus: 0
+total_turns_recorded: 4796
