@@ -46,48 +46,86 @@ TURNS_COLUMNS = [
 ]
 
 
-def classify_bash(command: str) -> str:
-    cmd = command.lstrip()
-    if re.match(r"go\s+(build|install)\b", cmd):
+_ENV_VAR_PREFIX_RE = re.compile(r"^(?:[A-Z_][A-Z0-9_]*=\S+\s+)+")
+_PIPELINE_SPLIT_RE = re.compile(r"\|\||&&|;|\|")
+_BINARY_RUN_RE = re.compile(
+    r"^(?:\./)?(?:bin/[A-Za-z0-9_-]+|cmd/[A-Za-z0-9_-]+|go\s+run)\b"
+)
+_INSPECT_RE = re.compile(r"^(?:xxd|od|hexdump|wc|head|tail|diff)\b")
+_SETUP_RE = re.compile(r"^(?:printf|echo|cat\s*<<)\b")
+
+
+def normalize_command(cmd: str) -> str:
+    """Strip leading `# comment` lines and `VAR=val ` env prefixes."""
+    lines = cmd.split("\n")
+    while lines and lines[0].lstrip().startswith("#"):
+        lines.pop(0)
+    cmd = "\n".join(lines).strip()
+    return _ENV_VAR_PREFIX_RE.sub("", cmd)
+
+
+def pipeline_segments(cmd: str) -> list[str]:
+    """Split on |, ||, &&, ; — naive (no quote awareness, but rare in practice)."""
+    return [s.strip() for s in _PIPELINE_SPLIT_RE.split(cmd) if s.strip()]
+
+
+def _classify_segment(seg: str) -> str | None:
+    """Classify a single pipeline segment by its first verb. None = unknown."""
+    if re.match(r"go\s+(?:build|install)\b", seg):
         return "go_build"
-    if re.match(r"go\s+vet\b", cmd):
+    if re.match(r"go\s+vet\b", seg):
         return "go_vet"
-    if re.match(r"go\s+test\b", cmd):
+    if re.match(r"go\s+test\b", seg):
         return "go_test"
-    if re.match(r"go\s+mod\b", cmd):
+    if re.match(r"go\s+mod\b", seg):
         return "go_mod"
-    if re.match(r"go\s+\w+", cmd):
-        return "go_other"
-    if re.match(r"mage\b", cmd):
+    if _BINARY_RUN_RE.match(seg):
+        return "binary_run"
+    if re.match(r"golangci-lint\b", seg):
+        return "lint"
+    if re.match(r"gofmt\b", seg):
+        return "format"
+    if re.match(r"mage\b", seg):
         return "mage"
-    git_m = re.match(r"git\s+(\w+)", cmd)
+    git_m = re.match(r"git\s+(\w+)", seg)
     if git_m:
         return f"git_{git_m.group(1)}"
-    if re.match(r"mkdir\b", cmd):
-        return "mkdir"
-    if re.match(r"ls\b", cmd):
-        return "ls"
-    if re.match(r"cat\b", cmd):
-        return "cat"
-    if re.match(r"find\b", cmd):
-        return "find"
-    if re.match(r"grep\b", cmd):
-        return "grep"
-    if re.match(r"rm\b", cmd):
-        return "rm"
-    if re.match(r"cp\b", cmd):
-        return "cp"
-    if re.match(r"mv\b", cmd):
-        return "mv"
-    if re.match(r"echo\b", cmd):
-        return "echo"
-    if re.match(r"head\b", cmd):
-        return "head"
-    if re.match(r"tail\b", cmd):
-        return "tail"
-    if re.match(r"wc\b", cmd):
-        return "wc"
-    return "other"
+    if re.match(r"which\b", seg):
+        return "env_check"
+    if re.match(r"(?:pwd|cd)\b", seg):
+        return "env_inspect"
+    if re.match(r"go\s+\w+", seg):
+        return "go_other"
+    for verb in ("mkdir", "rm", "cp", "mv", "find", "grep", "cat", "head",
+                 "tail", "wc", "echo", "ls", "diff", "xxd", "od"):
+        if re.match(rf"{verb}\b", seg):
+            return verb
+    return None
+
+
+def classify_bash(command: str) -> str:
+    """Walk the pipeline; if leading segment is setup (printf/echo/cat <<)
+    and a downstream segment runs a compiled binary or inspects its output,
+    label the whole call as `binary_exercise`. Otherwise classify by the
+    first meaningful verb."""
+    cmd = normalize_command(command)
+    if not cmd:
+        return "empty"
+
+    segs = pipeline_segments(cmd)
+    if not segs:
+        return "other"
+    first = segs[0]
+
+    # printf/echo/cat-here-doc piped into a binary or inspector → exercise
+    if _SETUP_RE.match(first):
+        for seg in segs[1:]:
+            if _BINARY_RUN_RE.match(seg) or _INSPECT_RE.match(seg):
+                return "binary_exercise"
+        return "setup"
+
+    label = _classify_segment(first)
+    return label if label is not None else "other"
 
 
 def summarize_input(tool_name: str, tool_input: dict) -> str:
@@ -261,7 +299,41 @@ def find_logs(repo_root: Path) -> Iterator[tuple[str, Path]]:
             yield "gh-4994-run43", f
 
 
+def _self_check_classifier() -> None:
+    """Sanity asserts so refactor regressions show up loudly."""
+    cases = [
+        ("go build ./pkg/testutils/...", "go_build"),
+        ("go vet ./cmd/ts/...", "go_vet"),
+        ("go test ./cmd/cat/... -v", "go_test"),
+        ("printf 'a\\nb\\n' | go run ./cmd/cat", "binary_exercise"),
+        ("printf 'x' | ./bin/wc -l", "binary_exercise"),
+        ("printf 'x' | xxd", "binary_exercise"),
+        ("printf 'x'", "setup"),
+        ("# Test R3.2\nprintf 'a\\n' | ./bin/cat", "binary_exercise"),
+        ("CGO_ENABLED=0 go build ./cmd/cat", "go_build"),
+        ("./bin/du -sh ./pkg/", "binary_run"),
+        ("golangci-lint run ./pkg/...", "lint"),
+        ("gofmt -l ./", "format"),
+        ("which golangci-lint", "env_check"),
+        ("pwd", "env_inspect"),
+        ("git status", "git_status"),
+        ("mage stats:loc", "mage"),
+        ("mkdir -p /tmp/foo", "mkdir"),
+        ("ls -la", "ls"),
+    ]
+    failures = []
+    for cmd, expected in cases:
+        got = classify_bash(cmd)
+        if got != expected:
+            failures.append((cmd, expected, got))
+    if failures:
+        for cmd, exp, got in failures:
+            print(f"  CLASSIFIER FAIL: {cmd!r}  expected={exp}  got={got}", file=sys.stderr)
+        sys.exit(2)
+
+
 def main() -> int:
+    _self_check_classifier()
     repo_root = Path(__file__).resolve().parent.parent.parent
     all_tools: list[dict] = []
     all_turns: list[dict] = []
