@@ -476,6 +476,140 @@ def chart_cost_by_phase(d: dict, out_dir: Path) -> None:
     save(fig, out_dir, "cost_by_phase")
 
 
+RUN43_RUN_ID = "gh-4994-run43"
+
+CATEGORY_ORDER = [
+    "reasoning", "read_code", "write_code",
+    "build", "test", "lint",
+    "other_bash", "other_tool",
+]
+
+
+def _categorize_tool(tool_name: str, bash_command_class) -> str:
+    if tool_name == "Read":
+        return "read_code"
+    if tool_name in ("Edit", "Write", "NotebookEdit"):
+        return "write_code"
+    if tool_name == "Bash":
+        if bash_command_class == "go_build":
+            return "build"
+        if bash_command_class == "go_test":
+            return "test"
+        if bash_command_class in ("go_vet", "lint"):
+            return "lint"
+        return "other_bash"
+    return "other_tool"
+
+
+def _calibrated_run43_costs(d: dict) -> tuple[pd.DataFrame, float, int, int]:
+    """Per-task calibrated cost for run-43, broken out by category.
+
+    For each task_id in run-43:
+      1. Sum estimated per-turn cost (across all that task's sessions).
+      2. Sum recorded `cost_usd` from stitch_invocations across the task's
+         attempts.
+      3. Scale every turn's estimated cost by recorded / estimated.
+
+    Per-task scaling, rather than per-session, sidesteps the matching problem
+    when an attempt has zero recorded cost (early failure with no real work)
+    but a separate transcript covers a successful retry. Reasoning turns
+    (no tools) get the whole calibrated turn cost; tool turns split it
+    equally across the tool calls in the turn.
+
+    Returns: (rows DataFrame with columns category, cost; recorded total
+    summed across calibrated tasks; tasks_matched; tasks_total).
+    """
+    turns = d["turns"][d["turns"]["run_id"] == RUN43_RUN_ID].copy()
+    tools = d["tools"][d["tools"]["run_id"] == RUN43_RUN_ID].copy()
+    inv = d["invocations"][d["invocations"]["run_id"] == RUN43_RUN_ID].copy()
+    if turns.empty or inv.empty:
+        return pd.DataFrame(columns=["category", "cost"]), 0.0, 0, 0
+
+    turns["task_id_str"] = turns["task_id"].astype(str)
+    tools["task_id_str"] = tools["task_id"].astype(str)
+    inv["task_id_str"] = inv["task_id"].astype(str)
+    turns["est_cost"] = turns.apply(estimated_cost, axis=1)
+
+    recorded_per_task = inv.groupby("task_id_str")["cost_usd"].sum()
+    estimated_per_task = turns.groupby("task_id_str")["est_cost"].sum()
+    common = recorded_per_task.index.intersection(estimated_per_task.index)
+    scale = (recorded_per_task.loc[common] / estimated_per_task.loc[common]).fillna(0)
+    tasks_total = int(inv["task_id_str"].nunique())
+    tasks_matched = int(len(common))
+
+    turns = turns[turns["task_id_str"].isin(common)].copy()
+    turns["cal_turn_cost"] = turns["est_cost"] * turns["task_id_str"].map(scale).fillna(0)
+
+    reasoning_cost = float(turns.loc[~turns["had_tool_use"], "cal_turn_cost"].sum())
+
+    tool_turns = turns[turns["had_tool_use"]][[
+        "task_id", "session_uuid", "turn_index",
+        "cal_turn_cost", "tool_count_in_turn",
+    ]]
+    tools_cal = tools.merge(
+        tool_turns, on=["task_id", "session_uuid", "turn_index"], how="inner"
+    )
+    tools_cal["per_call"] = (
+        tools_cal["cal_turn_cost"] / tools_cal["tool_count_in_turn"].replace(0, pd.NA)
+    ).fillna(0)
+    tools_cal["category"] = tools_cal.apply(
+        lambda r: _categorize_tool(r["tool_name"], r["bash_command_class"]), axis=1
+    )
+    by_cat = tools_cal.groupby("category")["per_call"].sum()
+
+    rows = [{"category": "reasoning", "cost": reasoning_cost}]
+    for cat in CATEGORY_ORDER:
+        if cat == "reasoning":
+            continue
+        rows.append({"category": cat, "cost": float(by_cat.get(cat, 0.0))})
+    df = pd.DataFrame(rows)
+
+    recorded_total = float(recorded_per_task.loc[common].sum())
+    return df, recorded_total, tasks_matched, tasks_total
+
+
+def chart_total_cost_pie(d: dict, out_dir: Path) -> None:
+    """Pie chart of total cost decomposition for run-43 only.
+
+    Run-43 is the only run with the complete preserved history (105 history
+    files, all log+stats+prompt+report quadruplets paired). Per-session
+    calibration scales each turn's token-derived cost so the session sums
+    match the recorded `cost_usd`. Categories cover reasoning turns plus
+    every tool kind, so the slices sum to the recorded total.
+    """
+    df, recorded_total, tasks_matched, tasks_total = _calibrated_run43_costs(d)
+    if df.empty or recorded_total == 0:
+        return
+    df = df[df["cost"] > 0].sort_values("cost", ascending=False).reset_index(drop=True)
+    palette = sns.color_palette("colorblind", n_colors=len(df))
+
+    fig, ax = plt.subplots(figsize=(11, 7))
+    total = float(df["cost"].sum())
+    wedges, _ = ax.pie(
+        df["cost"], labels=None, colors=palette, startangle=90,
+        wedgeprops={"linewidth": 1, "edgecolor": "white"},
+    )
+    legend_labels = [
+        f"{c}  ${v:.2f}  ({v/total*100:.1f}%)"
+        for c, v in zip(df["category"], df["cost"])
+    ]
+    ax.legend(
+        wedges, legend_labels,
+        loc="center left", bbox_to_anchor=(1.02, 0.5),
+        fontsize=10, frameon=False, title="category  cost  share",
+        title_fontsize=10,
+    )
+    ax.set_aspect("equal")
+    titled(
+        ax,
+        f"Run-43 cost decomposition (recorded ${recorded_total:.2f})",
+        f"per-task calibration to stitch_invocations.cost_usd; "
+        f"tasks matched {tasks_matched}/{tasks_total}; "
+        f"categories sum to recorded total",
+    )
+    save(fig, out_dir, "total_cost_pie")
+
+
 def chart_tool_efficiency_scatter(d: dict, out_dir: Path) -> None:
     """For each task: total tool calls vs total task cost, colored by productivity."""
     tools = d["tools"]
@@ -598,6 +732,18 @@ def write_summary(d: dict, out_path: Path) -> dict:
         "pass_at_phase": pass_at_phase,
         "cost_by_phase": cost_by_phase,
     }
+
+    cost_df, recorded_total, tasks_matched, tasks_total = _calibrated_run43_costs(d)
+    if not cost_df.empty:
+        summary["run43_cost_decomposition"] = {
+            "recorded_total_usd": round(recorded_total, 4),
+            "tasks_matched": tasks_matched,
+            "tasks_total": tasks_total,
+            "by_category": {
+                row["category"]: round(float(row["cost"]), 4)
+                for _, row in cost_df.iterrows()
+            },
+        }
     with out_path.open("w") as f:
         yaml.safe_dump(summary, f, sort_keys=False)
     return summary
@@ -621,6 +767,7 @@ def main() -> int:
     chart_per_attempt_success_rate(d, out_dir)
     chart_first_pass_build_test_lint(d, out_dir)
     chart_cost_by_phase(d, out_dir)
+    chart_total_cost_pie(d, out_dir)
 
     summary = write_summary(d, summary_path)
     print("=== Tool-call summary ===")

@@ -56,3 +56,16 @@ cost_by_phase:
     attempt_1: 21.9743
     attempt_2_plus: 1.61
     total: 23.5843
+run43_cost_decomposition:
+  recorded_total_usd: 9.4069
+  tasks_matched: 15
+  tasks_total: 15
+  by_category:
+    reasoning: 4.8807
+    read_code: 2.9882
+    write_code: 0.6765
+    build: 0.169
+    test: 0.0397
+    lint: 0.2086
+    other_bash: 0.4441
+    other_tool: 0.0
