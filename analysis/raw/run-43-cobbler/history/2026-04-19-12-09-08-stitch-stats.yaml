@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5008"
+task_title: '[stitch] pkg/sys: FileInfo struct population and Stat/Lstat core (srd002-sys R1.1-R1.4)'
+status: success
+started_at: "2026-04-19T16:09:08Z"
+duration: 3m7s
+duration_s: 186
+tokens:
+    input: 815842
+    output: 10928
+    cache_creation: 15931
+    cache_read: 799900
+cost_usd: 0.77277375
+num_turns: 25
+rate_limit_wait_s: 59
+loc_before:
+    production: 442
+    test: 0
+loc_after:
+    production: 541
+    test: 0
+diff:
+    files: 5
+    insertions: 108
+    deletions: 5

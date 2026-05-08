@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5001"
+task_title: '[stitch] pkg/testutils: BuildBinary helper (srd001-testutils R4.1-R4.4)'
+status: success
+started_at: "2026-04-19T15:33:40Z"
+duration: 1m21s
+duration_s: 80
+tokens:
+    input: 528354
+    output: 3419
+    cache_creation: 69215
+    cache_read: 459131
+cost_usd: 0.7476742499999999
+num_turns: 11
+rate_limit_wait_s: 22
+loc_before:
+    production: 290
+    test: 0
+loc_after:
+    production: 309
+    test: 0
+diff:
+    files: 1
+    insertions: 21
+    deletions: 2

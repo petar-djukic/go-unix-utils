@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5013"
+task_title: '[stitch] pkg/sizeparse: core Parse and suffix table (srd087-sizeparse R1.1-R1.4)'
+status: success
+started_at: "2026-04-19T17:15:00Z"
+duration: 1m43s
+duration_s: 102
+tokens:
+    input: 755850
+    output: 5037
+    cache_creation: 60413
+    cache_read: 695425
+cost_usd: 0.85127875
+num_turns: 19
+rate_limit_wait_s: 8
+loc_before:
+    production: 653
+    test: 0
+loc_after:
+    production: 776
+    test: 0
+diff:
+    files: 1
+    insertions: 123
+    deletions: 0

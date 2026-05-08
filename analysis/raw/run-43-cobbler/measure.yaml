@@ -1,0 +1,742 @@
+- index: 0
+  title: 'pkg/testutils: DiffTest, NormalizeFunc, RunDiffTests, BuildBinary contract stubs (srd001-testutils)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (full SRD for testutils)
+      - docs/ARCHITECTURE.yaml (pkg/testutils component, shared_protocols section)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, NormalizeFunc type, RunDiffTests stub, ComposeNormalizers stub, TimestampNormalizer stub, BuildBinary stub
+
+    requirements:
+      - id: R1
+        text: "Define the DiffTest struct with fields: Name string, Args []string, Stdin []byte, Env []string, WorkDir string, ExitCode int, Normalize []NormalizeFunc, ExpectedFiles map[string][]byte per srd001-testutils R1.1-R1.4"
+      - id: R2
+        text: "Define NormalizeFunc as type NormalizeFunc = func([]byte) []byte per srd001-testutils R2.1"
+      - id: R3
+        text: "Declare RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest) as a stub that panics with 'not implemented' per srd001-testutils R2.2-R2.6"
+      - id: R4
+        text: "Declare ComposeNormalizers, TimestampNormalizer, and BuildBinary as stubs that panic with 'not implemented' per srd001-testutils R3.1-R3.6, R4.1-R4.4, R5.1-R5.2"
+
+    design_decisions:
+      - id: D1
+        text: "Primary source file is difftest.go, named after the primary exported type DiffTest per project file naming conventions"
+      - id: D2
+        text: "Package name is testutils under pkg/testutils/"
+      - id: D3
+        text: "All stubs panic('not implemented') so downstream code that accidentally calls them fails loudly"
+      - id: D4
+        text: "Must not import any cmd/ package or any other pkg/ package per srd001-testutils import constraints"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/testutils/difftest.go compiles with go vet ./pkg/testutils/..."
+      - id: AC2
+        text: "DiffTest struct has all fields matching the contract signature exactly"
+      - id: AC3
+        text: "NormalizeFunc type alias matches: func([]byte) []byte"
+      - id: AC4
+        text: "RunDiffTests, ComposeNormalizers, BuildBinary function signatures match the contract"
+      - id: AC5
+        text: "TimestampNormalizer is declared as var TimestampNormalizer NormalizeFunc"
+      - id: AC6
+        text: "No imports of cmd/ or other pkg/ packages"
+  dependency: -1
+- index: 1
+  title: 'pkg/testutils: RunDiffTests core execution and comparison (srd001-testutils R2.1-R2.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (R2.1-R2.4 -- execution and comparison)
+      - pkg/testutils/difftest.go (contract stubs from previous task)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing pattern)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Replace RunDiffTests stub with full implementation of binary execution and output comparison
+
+    requirements:
+      - id: R1
+        text: "Implement RunDiffTests to iterate over []DiffTest, running each as a subtest via t.Run(test.Name, ...) per srd001-testutils R2.1"
+      - id: R2
+        text: "For each test, execute both goBinary and refBinary with the same Args, Stdin, and environment. Capture stdout, stderr, and exit code from both per srd001-testutils R2.2"
+      - id: R3
+        text: "Compare stdout, stderr, and exit code between Go and reference binary. Report divergence with input, expected output, and actual output per srd001-testutils R2.3"
+      - id: R4
+        text: "Apply test.Normalize functions to stdout and stderr before comparison when Normalize is non-nil per srd001-testutils R2.4"
+
+    design_decisions:
+      - id: D1
+        text: "Use os/exec.Command to run each binary. Set Stdin from test.Stdin via cmd.Stdin"
+      - id: D2
+        text: "Extract exit code from exec.ExitError.ExitCode() when the command returns a non-nil error"
+      - id: D3
+        text: "Call t.Errorf (not t.Fatalf) on divergence so all tests in the slice run even when some fail"
+      - id: D4
+        text: "Set LC_ALL=C in the environment for every execution per the architecture shared_protocols"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "RunDiffTests executes both binaries with identical args, stdin, and env"
+      - id: AC2
+        text: "Divergence in stdout, stderr, or exit code is reported via t.Errorf with the test name, expected, and actual values"
+      - id: AC3
+        text: "Normalize functions are applied before comparison when present"
+      - id: AC4
+        text: "go vet ./pkg/testutils/... passes"
+  dependency: 0
+- index: 2
+  title: 'pkg/testutils: Env, WorkDir, ExpectedFiles, ComposeNormalizers, TimestampNormalizer (srd001-testutils R2.5-R2.6, R3.1-R3.6)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (R2.5-R2.6 environment and workdir, R3.1-R3.6 normalizers)
+      - pkg/testutils/difftest.go (RunDiffTests implementation from previous task)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Add Env and WorkDir support to RunDiffTests, implement ComposeNormalizers and TimestampNormalizer
+
+    requirements:
+      - id: R1
+        text: "When DiffTest.Env is non-nil, set the command's environment to the test's Env slice (merged with LC_ALL=C) per srd001-testutils R2.5"
+      - id: R2
+        text: "When DiffTest.WorkDir is non-empty, set the command's Dir to WorkDir per srd001-testutils R2.6"
+      - id: R3
+        text: "Implement ComposeNormalizers to chain multiple NormalizeFuncs into one, applying them in order per srd001-testutils R3.1-R3.2"
+      - id: R4
+        text: "Implement TimestampNormalizer to replace timestamp patterns in output with a fixed placeholder per srd001-testutils R3.3-R3.6"
+
+    design_decisions:
+      - id: D1
+        text: "ComposeNormalizers returns a single NormalizeFunc that applies each input function sequentially"
+      - id: D2
+        text: "TimestampNormalizer uses regexp to match common timestamp patterns (ISO 8601, Unix epoch, coreutils date formats) and replaces with a fixed string like '<TIMESTAMP>'"
+      - id: D3
+        text: "When DiffTest.ExpectedFiles is non-nil, verify that files at the specified paths contain the expected byte content after both binaries run"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "RunDiffTests passes Env to both binaries when DiffTest.Env is set"
+      - id: AC2
+        text: "RunDiffTests sets working directory when DiffTest.WorkDir is set"
+      - id: AC3
+        text: "ComposeNormalizers chains functions and returns correct output"
+      - id: AC4
+        text: "TimestampNormalizer replaces timestamp-like strings in byte slices"
+      - id: AC5
+        text: "go vet ./pkg/testutils/... passes"
+  dependency: 1
+- index: 3
+  title: 'pkg/testutils: BuildBinary helper (srd001-testutils R4.1-R4.4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (R4.1-R4.4 -- BuildBinary)
+      - pkg/testutils/difftest.go (contract stubs, DiffTest struct)
+      - docs/ARCHITECTURE.yaml (cmd/ component, differential testing pattern)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Replace BuildBinary stub with full implementation
+
+    requirements:
+      - id: R1
+        text: "Implement BuildBinary(t *testing.T, dir string) string that compiles the Go package at dir and returns the path to the built binary per srd001-testutils R4.1"
+      - id: R2
+        text: "Use t.TempDir() for the output binary location so it is automatically cleaned up per srd001-testutils R4.2"
+      - id: R3
+        text: "Call t.Fatal if go build fails, including the build output in the error message per srd001-testutils R4.3"
+      - id: R4
+        text: "The built binary name is derived from the package directory name per srd001-testutils R4.4"
+
+    design_decisions:
+      - id: D1
+        text: "Use exec.Command('go', 'build', '-o', outputPath, dir) to compile"
+      - id: D2
+        text: "Output path is filepath.Join(t.TempDir(), basename) where basename is the last element of dir"
+      - id: D3
+        text: "BuildBinary must work when called from within the Go module. It compiles cmd/ packages using relative paths like '.'"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "BuildBinary compiles a Go package and returns a valid binary path"
+      - id: AC2
+        text: "Binary is placed in t.TempDir() for automatic cleanup"
+      - id: AC3
+        text: "Build failures cause t.Fatal with the go build stderr output"
+      - id: AC4
+        text: "go vet ./pkg/testutils/... passes"
+  dependency: 0
+- index: 0
+  title: '[stitch] pkg/testutils: DiffTest validation and error reporting (srd001-testutils R1.2-R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (R1.2, R1.3, R1.4 -- the requirements to implement)
+      - pkg/testutils/ (all existing .go files -- understand current implementation state)
+      - CLAUDE.md (project rules and differential testing pattern)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Add R1.2-R1.4 functionality to existing DiffTest infrastructure
+
+    requirements:
+      - id: R1
+        text: "Implement srd001-testutils R1.2 -- see SRD for exact specification"
+      - id: R2
+        text: "Implement srd001-testutils R1.3 -- see SRD for exact specification"
+      - id: R3
+        text: "Implement srd001-testutils R1.4 -- see SRD for exact specification"
+
+    design_decisions:
+      - id: D1
+        text: "Read the SRD requirements R1.2, R1.3, R1.4 carefully and implement exactly what they specify. Do not invent behavior not in the SRD."
+      - id: D2
+        text: "The pkg/testutils package already has DiffTest, NormalizeFunc, RunDiffTests, ComposeNormalizers, TimestampNormalizer, and BuildBinary implemented. Modify existing files rather than creating new ones."
+      - id: D3
+        text: "The package must not import any cmd/ package or any other pkg/ package per the contract constraints."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd001-testutils R1.2 is fully implemented per the SRD specification"
+      - id: AC2
+        text: "srd001-testutils R1.3 is fully implemented per the SRD specification"
+      - id: AC3
+        text: "srd001-testutils R1.4 is fully implemented per the SRD specification"
+      - id: AC4
+        text: "go build ./pkg/testutils/... compiles without errors"
+      - id: AC5
+        text: "go vet ./pkg/testutils/... passes without warnings"
+  dependency: -1
+- index: 1
+  title: '[stitch] pkg/testutils: comparison and normalization features (srd001-testutils R3.2, R3.4-R3.6)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (R3.2, R3.4, R3.5, R3.6 -- the requirements to implement)
+      - pkg/testutils/ (all existing .go files -- understand current implementation including RunDiffTests, ComposeNormalizers, TimestampNormalizer)
+      - CLAUDE.md (project rules and differential testing pattern)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Add R3.2, R3.4-R3.6 functionality to existing comparison and normalization code
+
+    requirements:
+      - id: R1
+        text: "Implement srd001-testutils R3.2 -- see SRD for exact specification"
+      - id: R2
+        text: "Implement srd001-testutils R3.4 -- see SRD for exact specification"
+      - id: R3
+        text: "Implement srd001-testutils R3.5 -- see SRD for exact specification"
+      - id: R4
+        text: "Implement srd001-testutils R3.6 -- see SRD for exact specification"
+
+    design_decisions:
+      - id: D1
+        text: "Read the SRD requirements R3.2, R3.4, R3.5, R3.6 carefully and implement exactly what they specify. Do not invent behavior not in the SRD."
+      - id: D2
+        text: "RunDiffTests, ComposeNormalizers, and TimestampNormalizer already exist. R3.1 and R3.3 are already complete. Build on the existing normalization and comparison infrastructure."
+      - id: D3
+        text: "The package must not import any cmd/ package or any other pkg/ package per the contract constraints."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd001-testutils R3.2 is fully implemented per the SRD specification"
+      - id: AC2
+        text: "srd001-testutils R3.4 is fully implemented per the SRD specification"
+      - id: AC3
+        text: "srd001-testutils R3.5 is fully implemented per the SRD specification"
+      - id: AC4
+        text: "srd001-testutils R3.6 is fully implemented per the SRD specification"
+      - id: AC5
+        text: "go build ./pkg/testutils/... compiles without errors"
+      - id: AC6
+        text: "go vet ./pkg/testutils/... passes without warnings"
+  dependency: -1
+- index: 2
+  title: '[stitch] pkg/testutils: test execution helpers (srd001-testutils R5.1-R5.2)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (R5.1, R5.2 -- the requirements to implement)
+      - pkg/testutils/ (all existing .go files -- understand current implementation state)
+      - CLAUDE.md (project rules and differential testing pattern)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Add R5.1-R5.2 functionality to existing test helpers
+
+    requirements:
+      - id: R1
+        text: "Implement srd001-testutils R5.1 -- see SRD for exact specification"
+      - id: R2
+        text: "Implement srd001-testutils R5.2 -- see SRD for exact specification"
+
+    design_decisions:
+      - id: D1
+        text: "Read the SRD requirements R5.1, R5.2 carefully and implement exactly what they specify. Do not invent behavior not in the SRD."
+      - id: D2
+        text: "The pkg/testutils package already has DiffTest, RunDiffTests, BuildBinary, ComposeNormalizers, and TimestampNormalizer. Extend the existing code rather than creating new files."
+      - id: D3
+        text: "The package must not import any cmd/ package or any other pkg/ package per the contract constraints."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd001-testutils R5.1 is fully implemented per the SRD specification"
+      - id: AC2
+        text: "srd001-testutils R5.2 is fully implemented per the SRD specification"
+      - id: AC3
+        text: "go build ./pkg/testutils/... compiles without errors"
+      - id: AC4
+        text: "go vet ./pkg/testutils/... passes without warnings"
+  dependency: -1
+- index: 3
+  title: '[stitch] pkg/sys: FileInfo, Stat, Lstat, TerminalWidth, IsTerminal, InstallSIGPIPEHandler, OnTerminalResize contract stubs (srd002-sys)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd002-sys.yaml (full SRD -- understand all exported types and functions)
+      - docs/ARCHITECTURE.yaml (pkg/sys component -- responsibility and capabilities)
+      - CLAUDE.md (project rules, SIGPIPE handling pattern, build conventions)
+
+    files:
+      - path: pkg/sys/fileinfo.go
+        action: create
+        note: FileInfo struct, Stat and Lstat function stubs
+      - path: pkg/sys/terminal.go
+        action: create
+        note: TerminalWidth, IsTerminal, OnTerminalResize function stubs
+      - path: pkg/sys/sigpipe.go
+        action: create
+        note: InstallSIGPIPEHandler function stub
+
+    requirements:
+      - id: R1
+        text: "Define the FileInfo struct with fields: Mode os.FileMode, Size int64, Nlink uint64, Uid uint32, Gid uint32, Rdev uint64, Dev uint64, Ino uint64, Blocks int64, Blksize int64, ModTime time.Time, AccessTime time.Time, ChangeTime time.Time, Info os.FileInfo"
+      - id: R2
+        text: "Define Stat(path string) (*FileInfo, error) and Lstat(path string) (*FileInfo, error) as function stubs that return nil, nil"
+      - id: R3
+        text: "Define TerminalWidth() (int, error), IsTerminal(fd uintptr) bool, and OnTerminalResize(callback func(width int)) as function stubs"
+      - id: R4
+        text: "Define InstallSIGPIPEHandler() as a function stub"
+
+    design_decisions:
+      - id: D1
+        text: "This is a contract task. All functions must be compilable stubs (return zero values or nil). Do not implement real logic -- that comes in subsequent tasks."
+      - id: D2
+        text: "Use build tags or platform-specific files (_darwin.go, _linux.go) only if needed for compilation. Prefer a single file per logical group if stubs compile on all platforms."
+      - id: D3
+        text: "The package may import os, os/signal, syscall, time, and golang.org/x/sys/unix. It must not import any cmd/ package or any other pkg/ package."
+      - id: D4
+        text: "File names derive from the primary exported type: fileinfo.go for FileInfo/Stat/Lstat, terminal.go for TerminalWidth/IsTerminal/OnTerminalResize, sigpipe.go for InstallSIGPIPEHandler."
+      - id: D5
+        text: "The go.mod already includes golang.org/x/sys. Do not modify go.mod."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "FileInfo struct is defined with all fields matching the contract signature"
+      - id: AC2
+        text: "Stat and Lstat function signatures match the contract exactly"
+      - id: AC3
+        text: "TerminalWidth, IsTerminal, and OnTerminalResize function signatures match the contract exactly"
+      - id: AC4
+        text: "InstallSIGPIPEHandler function signature matches the contract exactly"
+      - id: AC5
+        text: "go build ./pkg/sys/... compiles without errors"
+      - id: AC6
+        text: "go vet ./pkg/sys/... passes without warnings"
+  dependency: -1
+- index: 0
+  title: '[stitch] pkg/sys: FileInfo struct population and Stat/Lstat core (srd002-sys R1.1-R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd002-sys.yaml (full SRD for pkg/sys)
+      - pkg/sys/ (all existing contract stub files -- read every .go file in this directory)
+      - docs/ARCHITECTURE.yaml (pkg/sys component description and design decisions)
+
+    files:
+      - path: pkg/sys/fileinfo.go
+        action: modify
+        note: Implement FileInfo struct population from os.FileInfo and syscall.Stat_t
+      - path: pkg/sys/fileinfo_darwin.go
+        action: create
+        note: Darwin-specific Stat_t field extraction (Mtimespec, Atimespec, Ctimespec, Blocks, Blksize)
+      - path: pkg/sys/fileinfo_linux.go
+        action: create
+        note: Linux-specific Stat_t field extraction (Mtim, Atim, Ctim, Blocks, Blksize)
+
+    requirements:
+      - id: R1
+        text: "Implement Stat(path string) (*FileInfo, error) -- call os.Stat, then extract platform-specific fields from the underlying syscall.Stat_t into the FileInfo struct. Return the populated FileInfo. Traces to srd002-sys R1.1."
+      - id: R2
+        text: "Implement Lstat(path string) (*FileInfo, error) -- call os.Lstat (does not follow symlinks), then extract platform-specific fields from the underlying syscall.Stat_t into the FileInfo struct. Return the populated FileInfo. Traces to srd002-sys R1.2."
+      - id: R3
+        text: "Populate all FileInfo fields from syscall.Stat_t: Mode, Size, Nlink, Uid, Gid, Rdev, Dev, Ino, Blocks, Blksize. Use golang.org/x/sys/unix.Stat_t for field access. Traces to srd002-sys R1.3."
+      - id: R4
+        text: "Populate time fields (ModTime, AccessTime, ChangeTime) from syscall.Stat_t. On Darwin, use Mtimespec/Atimespec/Ctimespec. On Linux, use Mtim/Atim/Ctim. Use build-tagged files to abstract this divergence. Traces to srd002-sys R1.4."
+
+    design_decisions:
+      - id: D1
+        text: "Use golang.org/x/sys/unix for Stat_t field access per ARCHITECTURE.yaml technology choices. Do not use syscall package directly for stat operations."
+      - id: D2
+        text: "Use Go build tags (//go:build darwin / //go:build linux) in separate files for platform-divergent field names. The platform-specific files export a helper function that the main fileinfo.go calls."
+      - id: D3
+        text: "Store the original os.FileInfo in the Info field of the FileInfo struct for callers that need the standard interface."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "Stat and Lstat return a fully populated *FileInfo for regular files, directories, and symlinks."
+      - id: AC2
+        text: "All FileInfo numeric fields (Nlink, Uid, Gid, Rdev, Dev, Ino, Blocks, Blksize) are populated from Stat_t."
+      - id: AC3
+        text: "ModTime, AccessTime, and ChangeTime are populated correctly on Darwin (Mtimespec) and Linux (Mtim)."
+      - id: AC4
+        text: "go build ./pkg/sys/... succeeds on darwin with no compilation errors."
+      - id: AC5
+        text: "go vet ./pkg/sys/... reports no issues."
+  dependency: -1
+- index: 1
+  title: '[stitch] pkg/sys: extended file metadata error handling and TerminalWidth (srd002-sys R1.5-R1.7, R2.1)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd002-sys.yaml (full SRD for pkg/sys)
+      - pkg/sys/ (all existing .go files -- read every file to understand the current implementation)
+      - docs/ARCHITECTURE.yaml (pkg/sys component description)
+
+    files:
+      - path: pkg/sys/fileinfo.go
+        action: modify
+        note: Add error handling for Stat/Lstat edge cases per R1.5-R1.7
+      - path: pkg/sys/terminal.go
+        action: modify
+        note: Implement TerminalWidth using TIOCGWINSZ ioctl
+
+    requirements:
+      - id: R1
+        text: "Handle Stat/Lstat errors gracefully -- wrap os.Stat/os.Lstat errors and return them without masking the underlying cause. Callers must be able to use os.IsNotExist and os.IsPermission on the returned error. Traces to srd002-sys R1.5."
+      - id: R2
+        text: "When the underlying FileInfo does not have a syscall.Stat_t (e.g., on unsupported platforms or virtual filesystems), populate only the fields available from os.FileInfo (Mode, Size, ModTime, Info) and leave platform-specific fields at zero values. Traces to srd002-sys R1.6."
+      - id: R3
+        text: "Lstat on a symlink must populate FileInfo with the symlink's own metadata, not the target's. Mode must reflect ModeSymlink. Traces to srd002-sys R1.7."
+      - id: R4
+        text: "Implement TerminalWidth() (int, error) using the TIOCGWINSZ ioctl via golang.org/x/sys/unix. Query fd 1 (stdout). Return the column count. Return an error if stdout is not a terminal. Traces to srd002-sys R2.1."
+
+    design_decisions:
+      - id: D1
+        text: "Use golang.org/x/sys/unix.IoctlGetWinsize for TIOCGWINSZ. Query file descriptor 1 (stdout) as the default terminal."
+      - id: D2
+        text: "Do not invent fallback terminal widths. If the ioctl fails, return 0 and the error. Callers decide the fallback."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "Stat on a nonexistent path returns an error where os.IsNotExist returns true."
+      - id: AC2
+        text: "Lstat on a symlink returns FileInfo with Mode containing os.ModeSymlink."
+      - id: AC3
+        text: "TerminalWidth returns a positive integer when stdout is a terminal."
+      - id: AC4
+        text: "TerminalWidth returns an error when stdout is not a terminal (e.g., redirected to a pipe)."
+      - id: AC5
+        text: "go build ./pkg/sys/... and go vet ./pkg/sys/... succeed with no errors."
+  dependency: 0
+- index: 2
+  title: '[stitch] pkg/sys: IsTerminal and terminal query operations (srd002-sys R2.2-R2.5)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd002-sys.yaml (full SRD for pkg/sys)
+      - pkg/sys/ (all existing .go files -- read every file to understand the current state)
+      - docs/ARCHITECTURE.yaml (pkg/sys component description)
+
+    files:
+      - path: pkg/sys/terminal.go
+        action: modify
+        note: Implement IsTerminal and additional terminal query functions
+
+    requirements:
+      - id: R1
+        text: "Implement IsTerminal(fd uintptr) bool -- return true if the given file descriptor refers to a terminal device. Use golang.org/x/sys/unix.IoctlGetTermios or equivalent to test. Traces to srd002-sys R2.2."
+      - id: R2
+        text: "IsTerminal must work for any file descriptor (0 for stdin, 1 for stdout, 2 for stderr, or other fds). Do not hardcode fd values. Traces to srd002-sys R2.3."
+      - id: R3
+        text: "IsTerminal must not panic or return an error -- it is a boolean predicate. If the ioctl fails for any reason (invalid fd, not a terminal, permission denied), return false. Traces to srd002-sys R2.4."
+      - id: R4
+        text: "TerminalWidth must use IsTerminal internally to check if stdout is a terminal before attempting the TIOCGWINSZ ioctl. If IsTerminal returns false, return 0 and a descriptive error without attempting the ioctl. Traces to srd002-sys R2.5."
+
+    design_decisions:
+      - id: D1
+        text: "Use golang.org/x/sys/unix.IoctlGetTermios with TCGETS (or equivalent) to detect terminal devices. This is the standard approach used by golang.org/x/term."
+      - id: D2
+        text: "IsTerminal is a pure predicate -- no error return, no side effects. If TerminalWidth already exists from a prior task, integrate IsTerminal as a guard check at the top of TerminalWidth."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "IsTerminal(os.Stdout.Fd()) returns true when stdout is a terminal and false when piped."
+      - id: AC2
+        text: "IsTerminal(os.Stdin.Fd()) returns true when stdin is a terminal and false when piped."
+      - id: AC3
+        text: "IsTerminal with an invalid fd (e.g., 999) returns false without panicking."
+      - id: AC4
+        text: "go build ./pkg/sys/... and go vet ./pkg/sys/... succeed with no errors."
+  dependency: -1
+- index: 3
+  title: '[stitch] pkg/sys: OnTerminalResize and signal handling (srd002-sys R2.6, R3.1-R3.3)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd002-sys.yaml (full SRD for pkg/sys)
+      - pkg/sys/ (all existing .go files -- read every file to understand the current state)
+      - docs/ARCHITECTURE.yaml (pkg/sys component, SIGPIPE shared protocol)
+
+    files:
+      - path: pkg/sys/terminal.go
+        action: modify
+        note: Implement OnTerminalResize with SIGWINCH handling
+      - path: pkg/sys/signal.go
+        action: modify
+        note: Implement InstallSIGPIPEHandler
+
+    requirements:
+      - id: R1
+        text: "Implement OnTerminalResize(callback func(width int)) -- install a SIGWINCH signal handler that calls TerminalWidth() on each signal and invokes the callback with the new width. Use os/signal.Notify to register for syscall.SIGWINCH. Traces to srd002-sys R2.6."
+      - id: R2
+        text: "Implement InstallSIGPIPEHandler() -- install a SIGPIPE signal handler that causes the process to exit with code 0 when SIGPIPE is received. This matches GNU coreutils behavior when piped to head, grep -q, or other consumers that close stdin early. Use os/signal.Notify for syscall.SIGPIPE. Traces to srd002-sys R3.1."
+      - id: R3
+        text: "OnTerminalResize must run the callback in a separate goroutine to avoid blocking the signal handler. The goroutine must loop and read from the signal channel until the process exits. Traces to srd002-sys R3.2."
+      - id: R4
+        text: "InstallSIGPIPEHandler must be safe to call multiple times. Subsequent calls are no-ops. Use sync.Once or equivalent to ensure the handler is installed exactly once. Traces to srd002-sys R3.3."
+
+    design_decisions:
+      - id: D1
+        text: "Use os/signal.Notify with a buffered channel (capacity 1) for both SIGWINCH and SIGPIPE handlers. Buffered channels prevent signal loss when the receiver is briefly busy."
+      - id: D2
+        text: "InstallSIGPIPEHandler exits with os.Exit(0) on SIGPIPE, matching GNU coreutils behavior. All cmd/ utilities call this at the start of main()."
+      - id: D3
+        text: "OnTerminalResize spawns a background goroutine. There is no mechanism to unregister -- the handler lives for the process lifetime, matching the typical use case (ls, pr)."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "InstallSIGPIPEHandler can be called multiple times without panic or duplicate handlers."
+      - id: AC2
+        text: "OnTerminalResize accepts a callback and does not block the caller."
+      - id: AC3
+        text: "OnTerminalResize invokes the callback with the current terminal width when SIGWINCH is received."
+      - id: AC4
+        text: "go build ./pkg/sys/... and go vet ./pkg/sys/... succeed with no errors."
+  dependency: 2
+- index: 0
+  title: '[stitch] pkg/sizeparse: core Parse and suffix table (srd087-sizeparse R1.1-R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd087-sizeparse.yaml (full SRD for size parsing)
+      - pkg/sys/sys.go (existing pkg/ package for style reference)
+
+    files:
+      - path: pkg/sizeparse/parse.go
+        action: create
+        note: Parse function, suffix table, ParseOptions struct, ParseWithOptions stub
+
+    requirements:
+      - id: R1
+        text: "Implement the Parse function per srd087-sizeparse R1.1: accept a string containing a non-negative integer with an optional size suffix and return the corresponding int64 byte count"
+      - id: R2
+        text: "Implement the suffix lookup table per srd087-sizeparse R1.2: support K, M, G, T, P, E suffixes for powers of 1024 (KiB=1024, MiB=1048576, etc.) and KB, MB, GB, TB, PB, EB for powers of 1000"
+      - id: R3
+        text: "Implement case-insensitive suffix matching per srd087-sizeparse R1.3: accept both uppercase and lowercase suffixes (k, m, g, etc.)"
+      - id: R4
+        text: "Implement bare integer handling per srd087-sizeparse R1.4: when no suffix is present, return the numeric value as-is (1 byte per unit)"
+
+    design_decisions:
+      - id: D1
+        text: "Export Parse with signature: func Parse(s string) (int64, error) -- per the contract in package_contracts"
+      - id: D2
+        text: "Export ParseOptions with signature: type ParseOptions struct { AllowSign bool; DefaultUnit int64 } -- per the contract"
+      - id: D3
+        text: "Export ParseWithOptions with signature: func ParseWithOptions(s string, opts ParseOptions) (int64, error) -- stub it in this task, implement in the next task"
+      - id: D4
+        text: "Package is pkg/sizeparse. Must not import any cmd/ or other pkg/ package -- stdlib only (fmt, strconv, strings)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "Parse(\"1024\") returns 1024, nil"
+      - id: AC2
+        text: "Parse(\"1K\") returns 1024, nil"
+      - id: AC3
+        text: "Parse(\"1KB\") returns 1000, nil"
+      - id: AC4
+        text: "Parse(\"1k\") returns 1024, nil (case-insensitive)"
+      - id: AC5
+        text: "go build ./pkg/sizeparse/... compiles without errors"
+      - id: AC6
+        text: "go vet ./pkg/sizeparse/... reports no issues"
+  dependency: -1
+- index: 1
+  title: '[stitch] pkg/sizeparse: ParseWithOptions and error handling (srd087-sizeparse R2.1-R2.2, R3.1-R3.2)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd087-sizeparse.yaml (full SRD for size parsing)
+      - pkg/sizeparse/parse.go (Parse function and suffix table from previous task)
+
+    files:
+      - path: pkg/sizeparse/parse.go
+        action: modify
+        note: Complete ParseWithOptions implementation, add error handling
+
+    requirements:
+      - id: R1
+        text: "Implement ParseWithOptions per srd087-sizeparse R2.1: when AllowSign is true, accept leading + or - signs on the numeric portion and return signed results"
+      - id: R2
+        text: "Implement DefaultUnit per srd087-sizeparse R2.2: when DefaultUnit is non-zero and no suffix is present, multiply the bare integer by DefaultUnit instead of treating it as bytes"
+      - id: R3
+        text: "Implement error handling per srd087-sizeparse R3.1: return a descriptive error for invalid input (empty string, non-numeric, unknown suffix)"
+      - id: R4
+        text: "Implement overflow detection per srd087-sizeparse R3.2: return an error if the computed byte count would overflow int64"
+
+    design_decisions:
+      - id: D1
+        text: "ParseWithOptions signature: func ParseWithOptions(s string, opts ParseOptions) (int64, error) -- per the contract"
+      - id: D2
+        text: "Parse delegates to ParseWithOptions with zero-value ParseOptions"
+      - id: D3
+        text: "Must not import any cmd/ or other pkg/ package"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "ParseWithOptions(\"+1K\", ParseOptions{AllowSign: true}) returns 1024, nil"
+      - id: AC2
+        text: "ParseWithOptions(\"-1K\", ParseOptions{AllowSign: true}) returns -1024, nil"
+      - id: AC3
+        text: "ParseWithOptions(\"1\", ParseOptions{DefaultUnit: 512}) returns 512, nil"
+      - id: AC4
+        text: "Parse(\"\") returns 0 and a non-nil error"
+      - id: AC5
+        text: "Parse(\"999E\") handles large values; Parse(\"99999999E\") returns overflow error"
+      - id: AC6
+        text: "go build ./pkg/sizeparse/... compiles without errors"
+      - id: AC7
+        text: "go vet ./pkg/sizeparse/... reports no issues"
+  dependency: 0
+- index: 2
+  title: '[stitch] pkg/encutil: EncoderConfig and Encode (srd088-encutil R1.1-R1.3, R2.1)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd088-encutil.yaml (full SRD for encoding utilities)
+      - pkg/sys/sys.go (existing pkg/ package for style reference)
+
+    files:
+      - path: pkg/encutil/encode.go
+        action: create
+        note: EncoderConfig, DecoderConfig structs, Encode function, OpenInput function stub
+
+    requirements:
+      - id: R1
+        text: "Implement EncoderConfig per srd088-encutil R1.1: struct with Encode func([]byte) string for the encoding function and WrapCol int for line wrapping column width"
+      - id: R2
+        text: "Implement Encode per srd088-encutil R1.2: read all input from r, encode using cfg.Encode, wrap output lines at cfg.WrapCol columns (0 means no wrapping), write to w with a trailing newline"
+      - id: R3
+        text: "Implement line wrapping per srd088-encutil R1.3: when WrapCol > 0, insert newlines into the encoded output at every WrapCol characters"
+      - id: R4
+        text: "Implement DecoderConfig struct per srd088-encutil R2.1: struct with Decode func(string) ([]byte, error) for the decoding function and IgnoreGarbage bool for skipping invalid characters"
+
+    design_decisions:
+      - id: D1
+        text: "Export EncoderConfig with signature: type EncoderConfig struct { Encode func([]byte) string; WrapCol int } -- per the contract"
+      - id: D2
+        text: "Export DecoderConfig with signature: type DecoderConfig struct { Decode func(string) ([]byte, error); IgnoreGarbage bool } -- per the contract"
+      - id: D3
+        text: "Export Encode with signature: func Encode(r io.Reader, w io.Writer, cfg EncoderConfig) error -- per the contract"
+      - id: D4
+        text: "Package is pkg/encutil. Must not import any cmd/ or other pkg/ package -- use io, os, bufio, strings only"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "Encode reads from an io.Reader, encodes via cfg.Encode, and writes wrapped output to an io.Writer"
+      - id: AC2
+        text: "When WrapCol is 76, output lines are at most 76 characters wide"
+      - id: AC3
+        text: "When WrapCol is 0, output is a single unwrapped line"
+      - id: AC4
+        text: "DecoderConfig struct is exported with Decode and IgnoreGarbage fields"
+      - id: AC5
+        text: "go build ./pkg/encutil/... compiles without errors"
+      - id: AC6
+        text: "go vet ./pkg/encutil/... reports no issues"
+  dependency: -1
+- index: 3
+  title: '[stitch] pkg/encutil: Decode and OpenInput (srd088-encutil R2.2-R2.3, R3.1-R3.2)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd088-encutil.yaml (full SRD for encoding utilities)
+      - pkg/encutil/encode.go (EncoderConfig, DecoderConfig, Encode from previous task)
+
+    files:
+      - path: pkg/encutil/encode.go
+        action: modify
+        note: Add Decode function and OpenInput function
+
+    requirements:
+      - id: R1
+        text: "Implement Decode per srd088-encutil R2.2: read encoded input from r, strip whitespace, decode using cfg.Decode, and write raw bytes to w"
+      - id: R2
+        text: "Implement IgnoreGarbage per srd088-encutil R2.3: when cfg.IgnoreGarbage is true, strip non-alphabet characters from input before decoding instead of returning an error"
+      - id: R3
+        text: "Implement OpenInput per srd088-encutil R3.1: when filename is \"-\" or empty, return os.Stdin; otherwise open the file for reading and return it"
+      - id: R4
+        text: "Implement input error handling per srd088-encutil R3.2: return a descriptive error if the file cannot be opened"
+
+    design_decisions:
+      - id: D1
+        text: "Export Decode with signature: func Decode(r io.Reader, w io.Writer, cfg DecoderConfig) error -- per the contract"
+      - id: D2
+        text: "Export OpenInput with signature: func OpenInput(filename string) (io.ReadCloser, error) -- per the contract"
+      - id: D3
+        text: "Must not import any cmd/ or other pkg/ package"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "Decode reads encoded text from r, decodes via cfg.Decode, and writes binary output to w"
+      - id: AC2
+        text: "Decode with IgnoreGarbage=true strips non-alphabet characters before decoding"
+      - id: AC3
+        text: "Decode with IgnoreGarbage=false returns an error on invalid input characters"
+      - id: AC4
+        text: "OpenInput(\"-\") returns os.Stdin"
+      - id: AC5
+        text: "OpenInput(\"nonexistent\") returns a non-nil error"
+      - id: AC6
+        text: "go build ./pkg/encutil/... compiles without errors"
+      - id: AC7
+        text: "go vet ./pkg/encutil/... reports no issues"
+  dependency: 2

@@ -1,0 +1,19 @@
+task_id: "5001"
+task_title: '[stitch] pkg/testutils: BuildBinary helper (srd001-testutils R4.1-R4.4)'
+status: success
+branch: task/generation-gh-4994-run43-5001
+diff:
+    files: 1
+    insertions: 21
+    deletions: 2
+files:
+    - path: pkg/testutils/difftest.go
+      status: M
+      insertions: 21
+      deletions: 2
+loc_before:
+    production: 290
+    test: 0
+loc_after:
+    production: 309
+    test: 0

@@ -1,0 +1,19 @@
+task_id: "5003"
+task_title: '[stitch] pkg/testutils: DiffTest validation and error reporting (srd001-testutils R1.2-R1.4)'
+status: success
+branch: task/generation-gh-4994-run43-5003
+diff:
+    files: 1
+    insertions: 42
+    deletions: 0
+files:
+    - path: pkg/testutils/difftest.go
+      status: M
+      insertions: 42
+      deletions: 0
+loc_before:
+    production: 309
+    test: 0
+loc_after:
+    production: 351
+    test: 0

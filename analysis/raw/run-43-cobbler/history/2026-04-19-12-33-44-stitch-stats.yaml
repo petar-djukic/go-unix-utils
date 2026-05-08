@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5010"
+task_title: '[stitch] pkg/sys: IsTerminal and terminal query operations (srd002-sys R2.2-R2.5)'
+status: failed
+error: 'claude failure: signal: killed'
+started_at: "2026-04-19T16:33:44Z"
+duration: 3m34s
+duration_s: 214
+tokens:
+    input: 0
+    output: 0
+    cache_creation: 0
+    cache_read: 0
+cost_usd: 0
+loc_before:
+    production: 579
+    test: 0
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

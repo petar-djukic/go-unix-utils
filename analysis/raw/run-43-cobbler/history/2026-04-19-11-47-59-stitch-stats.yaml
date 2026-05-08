@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5008"
+task_title: '[stitch] pkg/sys: FileInfo struct population and Stat/Lstat core (srd002-sys R1.1-R1.4)'
+status: failed
+error: 'claude failure: signal: killed'
+started_at: "2026-04-19T15:47:59Z"
+duration: 2m15s
+duration_s: 134
+tokens:
+    input: 0
+    output: 0
+    cache_creation: 0
+    cache_read: 0
+cost_usd: 0
+loc_before:
+    production: 442
+    test: 0
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

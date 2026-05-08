@@ -1,0 +1,35 @@
+task_id: "5008"
+task_title: '[stitch] pkg/sys: FileInfo struct population and Stat/Lstat core (srd002-sys R1.1-R1.4)'
+status: success
+branch: task/generation-gh-4994-run43-5008
+diff:
+    files: 5
+    insertions: 108
+    deletions: 5
+files:
+    - path: go.mod
+      status: M
+      insertions: 2
+      deletions: 0
+    - path: go.sum
+      status: A
+      insertions: 2
+      deletions: 0
+    - path: pkg/sys/fileinfo.go
+      status: M
+      insertions: 23
+      deletions: 5
+    - path: pkg/sys/fileinfo_darwin.go
+      status: A
+      insertions: 41
+      deletions: 0
+    - path: pkg/sys/fileinfo_linux.go
+      status: A
+      insertions: 40
+      deletions: 0
+loc_before:
+    production: 442
+    test: 0
+loc_after:
+    production: 541
+    test: 0

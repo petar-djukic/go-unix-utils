@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5010"
+task_title: '[stitch] pkg/sys: IsTerminal and terminal query operations (srd002-sys R2.2-R2.5)'
+status: success
+started_at: "2026-04-19T16:59:47Z"
+duration: 1m6s
+duration_s: 66
+tokens:
+    input: 533493
+    output: 2455
+    cache_creation: 5068
+    cache_read: 528417
+cost_usd: 0.3572985
+num_turns: 11
+loc_before:
+    production: 579
+    test: 0
+loc_after:
+    production: 587
+    test: 0
+diff:
+    files: 1
+    insertions: 17
+    deletions: 9

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5009"
+task_title: '[stitch] pkg/sys: extended file metadata error handling and TerminalWidth (srd002-sys R1.5-R1.7, R2.1)'
+status: success
+started_at: "2026-04-19T16:13:16Z"
+duration: 1m36s
+duration_s: 96
+tokens:
+    input: 543328
+    output: 4379
+    cache_creation: 69006
+    cache_read: 474314
+cost_usd: 0.7779595000000001
+num_turns: 14
+rate_limit_wait_s: 15
+loc_before:
+    production: 541
+    test: 0
+loc_after:
+    production: 579
+    test: 0
+diff:
+    files: 2
+    insertions: 46
+    deletions: 8

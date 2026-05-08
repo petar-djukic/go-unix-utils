@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5005"
+task_title: '[stitch] pkg/testutils: test execution helpers (srd001-testutils R5.1-R5.2)'
+status: success
+started_at: "2026-04-19T15:41:29Z"
+duration: 1m32s
+duration_s: 92
+tokens:
+    input: 220730
+    output: 4269
+    cache_creation: 66337
+    cache_read: 154389
+cost_usd: 0.59854575
+num_turns: 7
+loc_before:
+    production: 354
+    test: 0
+loc_after:
+    production: 354
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

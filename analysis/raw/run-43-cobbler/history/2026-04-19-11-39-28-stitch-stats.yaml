@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5004"
+task_title: '[stitch] pkg/testutils: comparison and normalization features (srd001-testutils R3.2, R3.4-R3.6)'
+status: success
+started_at: "2026-04-19T15:39:28Z"
+duration: 1m47s
+duration_s: 106
+tokens:
+    input: 472428
+    output: 4693
+    cache_creation: 71526
+    cache_read: 400895
+cost_usd: 0.7648450000000001
+num_turns: 13
+loc_before:
+    production: 351
+    test: 0
+loc_after:
+    production: 354
+    test: 0
+diff:
+    files: 1
+    insertions: 5
+    deletions: 2

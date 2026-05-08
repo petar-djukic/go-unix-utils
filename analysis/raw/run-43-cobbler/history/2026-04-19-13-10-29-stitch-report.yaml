@@ -1,0 +1,27 @@
+task_id: "5011"
+task_title: '[stitch] pkg/sys: OnTerminalResize and signal handling (srd002-sys R2.6, R3.1-R3.3)'
+status: success
+branch: task/generation-gh-4994-run43-5011
+diff:
+    files: 3
+    insertions: 80
+    deletions: 14
+files:
+    - path: pkg/sys/signal.go
+      status: A
+      insertions: 33
+      deletions: 0
+    - path: pkg/sys/sigpipe.go
+      status: D
+      insertions: 0
+      deletions: 12
+    - path: pkg/sys/terminal.go
+      status: M
+      insertions: 47
+      deletions: 2
+loc_before:
+    production: 587
+    test: 0
+loc_after:
+    production: 653
+    test: 0
