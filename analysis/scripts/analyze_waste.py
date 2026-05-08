@@ -28,8 +28,10 @@ def load(repo_root: Path) -> dict:
     runs["start_at"] = pd.to_datetime(runs["start_at"], utc=True)
     runs["end_at"] = pd.to_datetime(runs["end_at"], utc=True)
     attempts = pd.read_csv(d / "task_attempts.csv")
-    attempts["first_attempt_at"] = pd.to_datetime(attempts["first_attempt_at"], utc=True)
+    attempts["first_commit_at"] = pd.to_datetime(attempts["first_commit_at"], utc=True)
     utilities = pd.read_csv(d / "utilities.csv")
+    retries = pd.read_csv(d / "task_retries.csv")
+    retries["first_started_at"] = pd.to_datetime(retries["first_started_at"], utc=True)
     with (d / "runs.yaml").open() as f:
         run_reports = yaml.safe_load(f)
     return {
@@ -37,6 +39,7 @@ def load(repo_root: Path) -> dict:
         "runs": runs,
         "attempts": attempts,
         "utilities": utilities,
+        "retries": retries,
         "reports": run_reports,
     }
 
@@ -88,42 +91,94 @@ def chart_zero_loc_per_run(d: dict, out_dir: Path) -> None:
 
 
 def chart_retry_attempt_distribution(d: dict, out_dir: Path) -> None:
-    attempts = d["attempts"]
+    """Real retry distribution from task_retries.csv (one row per task_id with
+    transcript coverage). Coverage is limited to ~185 of 2,210 task_ids — runs
+    whose .cobbler/history/ was either preserved (run-43) or recovered from git
+    (#5020). The other ~2,025 task_ids have no log-side retry visibility.
+    """
+    retries = d["retries"]
     fig, ax = plt.subplots(figsize=(10, 6))
-    counts = attempts["attempt_count"].value_counts().sort_index()
+    counts = retries["invocation_count"].value_counts().sort_index()
     bars = ax.bar(counts.index.astype(str), counts.values, color="#4c72b0")
-    ax.set_xlabel("attempt_count")
+    ax.set_xlabel("invocation_count (real retries from *-stitch-stats.yaml)")
     ax.set_ylabel("number of task_ids (log)")
     ax.set_yscale("log")
     for bar, val in zip(bars, counts.values):
         ax.text(bar.get_x() + bar.get_width() / 2, val, f"{int(val):,}",
                 ha="center", va="bottom", fontsize=10)
-    total_wasted = attempts["wasted_cost_usd"].sum()
-    n_retried = int((attempts["attempt_count"] > 1).sum())
+    total_wasted = retries["wasted_cost_usd"].sum()
+    n_retried = int((retries["invocation_count"] > 1).sum())
     titled(
-        ax, "Distribution of attempts per task_id",
-        f"source: task_attempts.csv, N={len(attempts):,} task_ids; "
-        f"{n_retried} retried; total wasted ${total_wasted:.2f}",
+        ax, "Distribution of Claude Code invocations per task_id",
+        f"source: task_retries.csv, N={len(retries)} task_ids with transcript coverage "
+        f"(~8% of all task_ids); {n_retried} retried; log-based wasted cost ${total_wasted:.2f}",
     )
     save(fig, out_dir, "retry_attempt_distribution")
 
 
 def chart_wasted_cost_pareto(d: dict, out_dir: Path) -> None:
-    attempts = d["attempts"]
+    """Log-based wasted cost grouped by target.
+
+    task_retries.csv is keyed by task_id (string). We join with tasks.csv to
+    pick up `target` (only resolves for numeric task_ids; slug-kind tasks have
+    no commit and stay unjoined → bucketed as `<unmapped>`).
+    """
+    retries = d["retries"][d["retries"]["wasted_cost_usd"] > 0].copy()
+    tasks = d["tasks"]
+    # tasks.csv task_id is int; cast to string for join
+    tasks_targets = tasks[["task_id", "target"]].copy()
+    tasks_targets["task_id"] = tasks_targets["task_id"].astype(str)
+    tasks_targets = tasks_targets.drop_duplicates(subset=["task_id"], keep="last")
+    retries = retries.merge(tasks_targets, on="task_id", how="left")
+    retries["target"] = retries["target"].fillna("<unmapped>")
+
     per_target = (
-        attempts.groupby("final_target")["wasted_cost_usd"]
+        retries.groupby("target")["wasted_cost_usd"]
         .sum()
         .sort_values(ascending=False)
         .head(30)
     )
     fig, ax = plt.subplots(figsize=(12, 8))
-    ax.barh(per_target.index[::-1], per_target.values[::-1], color="#c44e52")
+    if len(per_target) == 0:
+        ax.text(0.5, 0.5, "(no log-based wasted cost > 0)", transform=ax.transAxes, ha="center")
+    else:
+        ax.barh(per_target.index[::-1], per_target.values[::-1], color="#c44e52")
     ax.set_xlabel("wasted cost (USD)")
+    total = float(d["retries"]["wasted_cost_usd"].sum())
     titled(
-        ax, "Wasted cost by target (top 30)",
-        f"source: task_attempts.csv groupby final_target; total wasted ${attempts['wasted_cost_usd'].sum():.2f}",
+        ax, "Log-based wasted cost by target (top 30)",
+        f"source: task_retries.csv joined to tasks.csv; total log-based wasted "
+        f"${total:.2f} across {len(d['retries'])} task_ids with transcript coverage",
     )
     save(fig, out_dir, "wasted_cost_pareto_by_utility")
+
+
+def chart_task_duration_pdf(d: dict, out_dir: Path) -> None:
+    """KDE of task durations from tasks.csv — answers "how long does Claude
+    take to finish a task" rather than "when did long durations occur"."""
+    tasks = d["tasks"]
+    durations = tasks["duration_seconds"].astype(float)
+    p50 = float(durations.quantile(0.50))
+    p95 = float(durations.quantile(0.95))
+    p99 = float(durations.quantile(0.99))
+    mean = float(durations.mean())
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.kdeplot(x=durations, ax=ax, fill=True, color="#4c72b0", bw_adjust=0.6, clip=(0, durations.max()))
+    ax.axvline(p50, color="#666", linestyle="--", alpha=0.7, label=f"p50={p50:.0f}s")
+    ax.axvline(p95, color="#dd8452", linestyle="--", alpha=0.7, label=f"p95={p95:.0f}s")
+    ax.axvline(p99, color="#c44e52", linestyle="--", alpha=0.7, label=f"p99={p99:.0f}s")
+    ax.axvline(MAX_TIME_SEC, color="#c44e52", linestyle="-", alpha=0.4, label=f"max_time_sec={MAX_TIME_SEC}")
+    ax.set_xlim(left=0, right=min(MAX_TIME_SEC * 1.05, durations.max() * 1.05))
+    ax.set_xlabel("task duration (seconds)")
+    ax.set_ylabel("density")
+    ax.legend(loc="upper right")
+    titled(
+        ax, "Distribution of task duration (time to finish a task)",
+        f"source: tasks.csv, N={len(durations):,}; mean={mean:.0f}s, p50={p50:.0f}s, "
+        f"p95={p95:.0f}s; tasks killed at {MAX_TIME_SEC}s do not appear here.",
+    )
+    save(fig, out_dir, "task_duration_pdf")
 
 
 def chart_timeout_map(d: dict, out_dir: Path) -> None:
@@ -228,20 +283,30 @@ def chart_retry_rate_by_hour(d: dict, out_dir: Path) -> None:
 def write_summary(d: dict, out_path: Path) -> dict:
     runs = d["runs"]
     attempts = d["attempts"]
+    retries = d["retries"]
     abandoned = runs[runs["end_state"] == "abandoned"]
     rate_limited_total = sum(
         (r.get("rate_limited_seconds") or 0) for r in d["reports"]
     )
+    durations = d["tasks"]["duration_seconds"].astype(float)
     summary = {
         "total_tasks": int(d["tasks"].shape[0]),
         "total_unique_task_ids": int(attempts.shape[0]),
-        "total_wasted_cost_usd": round(float(attempts["wasted_cost_usd"].sum()), 2),
+        "task_duration_p50_s": int(durations.quantile(0.50)),
+        "task_duration_p95_s": int(durations.quantile(0.95)),
+        "task_duration_p99_s": int(durations.quantile(0.99)),
+        "task_duration_max_s": int(durations.max()),
         "zero_loc_task_count": int(((d["tasks"]["loc_prod_delta"] == 0) & (d["tasks"]["loc_test_delta"] == 0)).sum()),
-        "retry_count": int((attempts["attempt_count"] > 1).sum()),
-        "max_attempts_for_a_single_task": int(attempts["attempt_count"].max()),
-        "timeout_count": int((d["tasks"]["duration_seconds"] >= MAX_TIME_SEC).sum()),
+        "git_commit_count_distribution": {int(k): int(v) for k, v in attempts["git_commit_count"].value_counts().sort_index().to_dict().items()},
+        "git_wasted_cost_proxy_usd": round(float(attempts["git_wasted_cost_proxy"].sum()), 2),
+        "log_based_retry_coverage_task_ids": int(len(retries)),
+        "log_based_invocation_count_distribution": {int(k): int(v) for k, v in retries["invocation_count"].value_counts().sort_index().to_dict().items()},
+        "log_based_retry_count_task_ids": int((retries["invocation_count"] > 1).sum()),
+        "log_based_max_invocations_for_a_single_task": int(retries["invocation_count"].max()),
+        "log_based_total_wasted_cost_usd": round(float(retries["wasted_cost_usd"].sum()), 2),
+        "near_timeout_task_count": int((d["tasks"]["duration_seconds"] >= 1200).sum()),
         "abandoned_run_count": int(len(abandoned)),
-        "abandoned_run_cost_usd": round(float(abandoned["total_cost_usd"].sum()), 2),
+        "abandoned_run_committed_cost_usd": round(float(abandoned["total_cost_usd"].sum()), 2),
         "total_rate_limited_seconds_reported": int(rate_limited_total),
         "total_rate_limited_minutes_reported": round(rate_limited_total / 60, 1),
     }
@@ -260,6 +325,7 @@ def main() -> int:
     chart_zero_loc_per_run(d, out_dir)
     chart_retry_attempt_distribution(d, out_dir)
     chart_wasted_cost_pareto(d, out_dir)
+    chart_task_duration_pdf(d, out_dir)
     chart_timeout_map(d, out_dir)
     chart_abandoned_run_cost(d, out_dir)
     chart_rate_limit_per_run(d, out_dir)

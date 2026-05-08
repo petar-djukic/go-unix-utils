@@ -1,4 +1,4 @@
-task_id,attempt_count,final_target,final_srd_id,total_cost_usd,total_duration_s,total_tokens_input,productive_attempts,zero_loc_attempts,wasted_cost_usd,first_attempt_at,last_attempt_at,span_hours
+task_id,git_commit_count,final_target,final_srd_id,total_cost_usd,total_duration_s,total_tokens_input,productive_commits,zero_loc_commits,git_wasted_cost_proxy,first_commit_at,last_commit_at,span_hours
 78,1,pkg/testutils,,0.9164,232,477642,0,1,0.9164,2026-03-02T03:20:42+00:00,2026-03-02T03:20:42+00:00,0.0
 86,1,pkg/testutils,,1.3779,409,794673,0,1,1.3779,2026-03-02T14:01:50+00:00,2026-03-02T14:01:50+00:00,0.0
 87,1,pkg/format,,1.3298,444,772723,0,1,1.3298,2026-03-02T14:13:51+00:00,2026-03-02T14:13:51+00:00,0.0
