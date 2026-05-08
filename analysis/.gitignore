@@ -1,3 +1,7 @@
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# Python bytecode
+__pycache__/
+*.pyc

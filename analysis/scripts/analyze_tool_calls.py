@@ -55,9 +55,11 @@ def load(repo_root: Path) -> dict:
     invocations["attempt_idx"] = invocations.groupby("task_id").cumcount() + 1
     invocations["productive"] = (invocations["loc_prod_delta"] > 0) | (invocations["loc_test_delta"] > 0)
     invocations["effective_success"] = (invocations["status"] == "success") & invocations["productive"]
+    outcomes_path = d / "bash_outcomes.csv"
+    outcomes = pd.read_csv(outcomes_path) if outcomes_path.exists() else pd.DataFrame()
     return {
         "tools": tools, "turns": turns, "retries": retries,
-        "tasks": tasks, "invocations": invocations,
+        "tasks": tasks, "invocations": invocations, "outcomes": outcomes,
     }
 
 
@@ -329,6 +331,148 @@ def chart_per_attempt_success_rate(d: dict, out_dir: Path) -> None:
     save(fig, out_dir, "per_attempt_success_rate")
 
 
+def _session_attempt_index(tools: pd.DataFrame) -> pd.DataFrame:
+    """Rank session_uuids per task_id by earliest timestamp.
+
+    Returns a DataFrame with columns task_id, session_uuid, session_attempt
+    where session_attempt=1 is the first stitch invocation for that task.
+    """
+    t = tools.copy()
+    t["timestamp"] = pd.to_datetime(t["timestamp"], utc=True, errors="coerce")
+    sess = t.groupby(["task_id", "session_uuid"], as_index=False)["timestamp"].min()
+    sess = sess.sort_values(["task_id", "timestamp"])
+    sess["session_attempt"] = sess.groupby("task_id").cumcount() + 1
+    return sess[["task_id", "session_uuid", "session_attempt"]]
+
+
+def chart_first_pass_build_test_lint(d: dict, out_dir: Path) -> None:
+    """First-pass success rate within each task's first stitch invocation,
+    grouped by phase (build / test / lint). For each (task, phase), we look
+    at the earliest call of that phase in attempt 1; success means the
+    output did not match a phase-specific failure pattern (see
+    extract_bash_outcomes.py for the patterns)."""
+    outcomes = d["outcomes"]
+    if outcomes.empty:
+        return
+    sess = _session_attempt_index(d["tools"])
+    o = outcomes.merge(sess, on=["task_id", "session_uuid"], how="inner")
+    a1 = o[o["session_attempt"] == 1]
+    a1 = a1.sort_values(["task_id", "phase", "turn_index", "tool_call_index"])
+    first = a1.drop_duplicates(["task_id", "phase"], keep="first")
+
+    phases = ["build", "test", "lint"]
+    rows = []
+    for phase in phases:
+        sub = first[first["phase"] == phase]
+        n = len(sub)
+        passed = int((~sub["failed"]).sum())
+        rate = passed / n * 100 if n else 0.0
+        rows.append({"phase": phase, "n": n, "passed": passed, "rate": rate})
+    df = pd.DataFrame(rows)
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    colors = {"build": "#4c72b0", "test": "#dd8452", "lint": "#55a868"}
+    bars = ax.bar(df["phase"], df["rate"], color=[colors[p] for p in df["phase"]])
+    for bar, n, rate, passed in zip(bars, df["n"], df["rate"], df["passed"]):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2, rate + 1.5,
+            f"{rate:.1f}%\nn={n} ({passed}/{n})",
+            ha="center", va="bottom", fontsize=10, color="#333",
+        )
+    ax.set_ylabel("first-call success rate (%)")
+    ax.set_ylim(0, 110)
+    ax.set_yticks(range(0, 101, 20))
+    titled(
+        ax, "First-pass success rate by phase (attempt 1 only)",
+        "source: bash_outcomes.csv; first call of each phase per task in its first stitch invocation",
+    )
+    save(fig, out_dir, "first_pass_build_test_lint")
+
+
+def chart_cost_by_phase(d: dict, out_dir: Path) -> None:
+    """Total estimated cost attributable to {build, test, lint} bash calls,
+    split into bottom = attempt-1 cost, top = attempt-2+ cost.
+
+    Cost attribution model:
+      - Per-turn cost from token counts via OPUS_RATES (input/output/cache).
+      - Each turn's cost is divided equally among the Bash tool calls in that
+        turn, so the per-call share is turn_cost / tool_count_in_turn for
+        Bash calls (most turns have a single Bash call).
+      - A bash call's share is summed into its phase bucket; non-Bash and
+        non-{build,test,lint} bash calls are dropped from this view.
+      - Attempt bucket: attempt_1 if the call's session_uuid is the earliest
+        session for that task_id, else attempt_2_plus.
+    """
+    outcomes = d["outcomes"]
+    tools = d["tools"]
+    turns = d["turns"]
+    if outcomes.empty or turns.empty:
+        return
+
+    turns = turns.copy()
+    turns["turn_cost"] = turns.apply(estimated_cost, axis=1)
+    bash_per_turn = (
+        tools[tools["tool_name"] == "Bash"]
+        .groupby(["task_id", "session_uuid", "turn_index"])
+        .size()
+        .reset_index(name="bash_in_turn")
+    )
+    cost_per_turn = turns[
+        ["task_id", "session_uuid", "turn_index", "turn_cost"]
+    ].merge(bash_per_turn, on=["task_id", "session_uuid", "turn_index"], how="left")
+    cost_per_turn["bash_in_turn"] = cost_per_turn["bash_in_turn"].fillna(0)
+    cost_per_turn = cost_per_turn[cost_per_turn["bash_in_turn"] > 0].copy()
+    cost_per_turn["per_call_cost"] = (
+        cost_per_turn["turn_cost"] / cost_per_turn["bash_in_turn"]
+    )
+
+    sess = _session_attempt_index(tools)
+    o = outcomes.merge(
+        cost_per_turn[
+            ["task_id", "session_uuid", "turn_index", "per_call_cost"]
+        ],
+        on=["task_id", "session_uuid", "turn_index"],
+        how="inner",
+    ).merge(sess, on=["task_id", "session_uuid"], how="left")
+    o["attempt_bucket"] = o["session_attempt"].apply(
+        lambda x: "attempt_1" if x == 1 else "attempt_2_plus"
+    )
+
+    pivot = o.pivot_table(
+        index="phase", columns="attempt_bucket",
+        values="per_call_cost", aggfunc="sum", fill_value=0,
+    ).reindex(["build", "test", "lint"]).fillna(0)
+    for col in ("attempt_1", "attempt_2_plus"):
+        if col not in pivot.columns:
+            pivot[col] = 0.0
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    x = range(len(pivot.index))
+    bottom = pivot["attempt_1"].values
+    top = pivot["attempt_2_plus"].values
+    ax.bar(x, bottom, color="#4c72b0", label="attempt 1")
+    ax.bar(x, top, bottom=bottom, color="#c44e52", label="attempts 2+")
+    for i, (b, t) in enumerate(zip(bottom, top)):
+        if b > 0:
+            ax.text(i, b / 2, f"${b:.2f}", ha="center", va="center",
+                    color="white", fontsize=9)
+        if t > 0:
+            ax.text(i, b + t / 2, f"${t:.2f}", ha="center", va="center",
+                    color="white", fontsize=9)
+        ax.text(i, b + t + 0.02 * max(bottom + top, default=1),
+                f"${b + t:.2f}", ha="center", va="bottom", fontsize=10,
+                color="#333")
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(pivot.index)
+    ax.set_ylabel("estimated cost (USD)")
+    ax.legend(loc="upper right")
+    titled(
+        ax, "Cost by phase, split by attempt",
+        "per-turn cost from tokens x Opus rates; turn cost split equally across Bash calls in the turn",
+    )
+    save(fig, out_dir, "cost_by_phase")
+
+
 def chart_tool_efficiency_scatter(d: dict, out_dir: Path) -> None:
     """For each task: total tool calls vs total task cost, colored by productivity."""
     tools = d["tools"]
@@ -377,6 +521,56 @@ def write_summary(d: dict, out_path: Path) -> dict:
     pak = _pass_at_k_table(inv)
     pak_strict = {f"pass_at_{int(r['k'])}_strict": round(float(r["pass_at_k_strict"]), 4) for _, r in pak.iterrows()}
     pak_status = {f"pass_at_{int(r['k'])}_status": round(float(r["pass_at_k_status"]), 4) for _, r in pak.iterrows()}
+
+    pass_at_phase = {}
+    cost_by_phase = {}
+    outcomes = d["outcomes"]
+    if not outcomes.empty:
+        sess = _session_attempt_index(tools)
+        o = outcomes.merge(sess, on=["task_id", "session_uuid"], how="inner")
+        a1 = o[o["session_attempt"] == 1].sort_values(
+            ["task_id", "phase", "turn_index", "tool_call_index"]
+        )
+        first = a1.drop_duplicates(["task_id", "phase"], keep="first")
+        for phase in ("build", "test", "lint"):
+            sub = first[first["phase"] == phase]
+            n = int(len(sub))
+            passed = int((~sub["failed"]).sum())
+            pass_at_phase[phase] = {
+                "n": n, "passed": passed,
+                "rate": round(passed / n, 4) if n else 0.0,
+            }
+
+        turns_local = turns.copy()
+        turns_local["turn_cost"] = turns_local.apply(estimated_cost, axis=1)
+        bash_per_turn = (
+            tools[tools["tool_name"] == "Bash"]
+            .groupby(["task_id", "session_uuid", "turn_index"]).size()
+            .reset_index(name="bash_in_turn")
+        )
+        cpt = turns_local[
+            ["task_id", "session_uuid", "turn_index", "turn_cost"]
+        ].merge(bash_per_turn, on=["task_id", "session_uuid", "turn_index"], how="left")
+        cpt["bash_in_turn"] = cpt["bash_in_turn"].fillna(0)
+        cpt = cpt[cpt["bash_in_turn"] > 0].copy()
+        cpt["per_call_cost"] = cpt["turn_cost"] / cpt["bash_in_turn"]
+        cb = outcomes.merge(
+            cpt[["task_id", "session_uuid", "turn_index", "per_call_cost"]],
+            on=["task_id", "session_uuid", "turn_index"], how="inner",
+        ).merge(sess, on=["task_id", "session_uuid"], how="left")
+        cb["attempt_bucket"] = cb["session_attempt"].apply(
+            lambda x: "attempt_1" if x == 1 else "attempt_2_plus"
+        )
+        for phase in ("build", "test", "lint"):
+            sub = cb[cb["phase"] == phase]
+            cost_by_phase[phase] = {
+                "attempt_1": round(float(sub.loc[sub["attempt_bucket"] == "attempt_1", "per_call_cost"].sum()), 4),
+                "attempt_2_plus": round(float(sub.loc[sub["attempt_bucket"] == "attempt_2_plus", "per_call_cost"].sum()), 4),
+            }
+            cost_by_phase[phase]["total"] = round(
+                cost_by_phase[phase]["attempt_1"] + cost_by_phase[phase]["attempt_2_plus"], 4
+            )
+
     summary = {
         "task_ids_with_transcripts": int(tools["task_id"].nunique()),
         "task_ids_with_invocations": int(inv["task_id"].nunique()),
@@ -398,6 +592,8 @@ def write_summary(d: dict, out_path: Path) -> dict:
         "tasks_with_build_loops_2plus": int(n_tasks_with_build_loops),
         "tasks_with_test_loops_2plus": int(n_tasks_with_test_loops),
         "total_turns_recorded": int(len(turns)),
+        "pass_at_phase": pass_at_phase,
+        "cost_by_phase": cost_by_phase,
     }
     with out_path.open("w") as f:
         yaml.safe_dump(summary, f, sort_keys=False)
@@ -420,6 +616,8 @@ def main() -> int:
     chart_tool_efficiency_scatter(d, out_dir)
     chart_pass_at_k(d, out_dir)
     chart_per_attempt_success_rate(d, out_dir)
+    chart_first_pass_build_test_lint(d, out_dir)
+    chart_cost_by_phase(d, out_dir)
 
     summary = write_summary(d, summary_path)
     print("=== Tool-call summary ===")

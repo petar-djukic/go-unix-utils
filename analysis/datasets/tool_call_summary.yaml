@@ -30,3 +30,29 @@ max_tool_calls_per_task: 187
 tasks_with_build_loops_2plus: 1
 tasks_with_test_loops_2plus: 0
 total_turns_recorded: 4796
+pass_at_phase:
+  build:
+    n: 125
+    passed: 123
+    rate: 0.984
+  test:
+    n: 95
+    passed: 95
+    rate: 1.0
+  lint:
+    n: 108
+    passed: 107
+    rate: 0.9907
+cost_by_phase:
+  build:
+    attempt_1: 27.8533
+    attempt_2_plus: 2.4619
+    total: 30.3152
+  test:
+    attempt_1: 16.9604
+    attempt_2_plus: 1.759
+    total: 18.7194
+  lint:
+    attempt_1: 21.9743
+    attempt_2_plus: 1.61
+    total: 23.5843
