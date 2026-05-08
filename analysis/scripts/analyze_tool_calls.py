@@ -49,7 +49,16 @@ def load(repo_root: Path) -> dict:
     turns = pd.read_csv(d / "task_turns.csv")
     retries = pd.read_csv(d / "task_retries.csv")
     tasks = pd.read_csv(d / "tasks.csv")
-    return {"tools": tools, "turns": turns, "retries": retries, "tasks": tasks}
+    invocations = pd.read_csv(d / "stitch_invocations.csv")
+    invocations["started_at"] = pd.to_datetime(invocations["started_at"], utc=True)
+    invocations = invocations.sort_values(["task_id", "started_at"])
+    invocations["attempt_idx"] = invocations.groupby("task_id").cumcount() + 1
+    invocations["productive"] = (invocations["loc_prod_delta"] > 0) | (invocations["loc_test_delta"] > 0)
+    invocations["effective_success"] = (invocations["status"] == "success") & invocations["productive"]
+    return {
+        "tools": tools, "turns": turns, "retries": retries,
+        "tasks": tasks, "invocations": invocations,
+    }
 
 
 def setup_style() -> None:
@@ -237,6 +246,89 @@ def chart_per_turn_cost_within_task(d: dict, out_dir: Path) -> None:
     save(fig, out_dir, "per_turn_cost_within_task")
 
 
+def _pass_at_k_table(invocations: pd.DataFrame) -> pd.DataFrame:
+    n = invocations["task_id"].nunique()
+    max_k = int(invocations["attempt_idx"].max())
+    rows = []
+    for k in range(1, max_k + 1):
+        sub = invocations[invocations["attempt_idx"] <= k]
+        strict = sub.groupby("task_id")["effective_success"].any().sum() / n
+        status = sub.groupby("task_id")["status"].apply(lambda s: (s == "success").any()).sum() / n
+        rows.append({"k": k, "pass_at_k_strict": strict, "pass_at_k_status": status})
+    return pd.DataFrame(rows)
+
+
+def chart_pass_at_k(d: dict, out_dir: Path) -> None:
+    """pass@k = fraction of task_ids with at least one productive success
+    in the first k orchestrator-level invocations. Two definitions:
+    - strict: status='success' AND loc_delta > 0
+    - status-only: status='success' (productive or not)
+    """
+    inv = d["invocations"]
+    df = _pass_at_k_table(inv)
+    n = inv["task_id"].nunique()
+    failure_rate = (1 - df.iloc[0]["pass_at_k_strict"]) * 100
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = df["k"].to_numpy(dtype=float)
+    width = 0.36
+    bars1 = ax.bar(x - width / 2, df["pass_at_k_strict"] * 100, width=width,
+                   label="pass@k (strict: success + productive)", color="#4c72b0")
+    bars2 = ax.bar(x + width / 2, df["pass_at_k_status"] * 100, width=width,
+                   label="pass@k (status=success only)", color="#dd8452")
+    for k_, s_, t_ in zip(df["k"], df["pass_at_k_strict"], df["pass_at_k_status"]):
+        ax.text(k_ - width / 2, s_ * 100, f"{s_*100:.1f}%", ha="center", va="bottom", fontsize=9)
+        ax.text(k_ + width / 2, t_ * 100, f"{t_*100:.1f}%", ha="center", va="bottom", fontsize=9)
+    ax.set_xticks(df["k"])
+    ax.set_xlabel("k (orchestrator invocations allowed)")
+    ax.set_ylabel("pass@k (%)")
+    ax.set_ylim(0, 105)
+    ax.legend(loc="lower right")
+    titled(
+        ax, "pass@k — fraction of task_ids solved within k orchestrator invocations",
+        f"source: stitch_invocations.csv, N={n} task_ids with transcript coverage; "
+        f"failure-to-one-shot (strict) = {failure_rate:.1f}%",
+    )
+    save(fig, out_dir, "pass_at_k")
+
+
+def chart_per_attempt_success_rate(d: dict, out_dir: Path) -> None:
+    """P(success+productive | reached attempt K). Drops fast — once Claude
+    fails attempt 1, attempt 2 only succeeds 36% of the time, and lower
+    after that."""
+    inv = d["invocations"]
+    rows = []
+    for k, group in inv.groupby("attempt_idx"):
+        n = len(group)
+        strict = group["effective_success"].sum()
+        status = (group["status"] == "success").sum()
+        rows.append({
+            "k": int(k), "reached": n,
+            "strict_rate": strict / n if n else 0,
+            "status_rate": status / n if n else 0,
+        })
+    df = pd.DataFrame(rows)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(df["k"], df["strict_rate"] * 100, marker="o", color="#4c72b0",
+            label="P(success+productive | reached attempt K)")
+    ax.plot(df["k"], df["status_rate"] * 100, marker="s", color="#dd8452",
+            label="P(status=success | reached attempt K)")
+    for k_, s_, t_, n_ in zip(df["k"], df["strict_rate"], df["status_rate"], df["reached"]):
+        ax.annotate(f"n={n_}", (k_, max(s_, t_) * 100), textcoords="offset points",
+                    xytext=(0, 8), ha="center", fontsize=8, color="#555")
+    ax.set_xticks(df["k"])
+    ax.set_xlabel("attempt index K")
+    ax.set_ylabel("success rate at this attempt (%)")
+    ax.set_ylim(0, 105)
+    ax.legend(loc="lower left")
+    titled(
+        ax, "Conditional success rate at attempt K",
+        f"source: stitch_invocations.csv; n=number of invocations that reached this attempt index",
+    )
+    save(fig, out_dir, "per_attempt_success_rate")
+
+
 def chart_tool_efficiency_scatter(d: dict, out_dir: Path) -> None:
     """For each task: total tool calls vs total task cost, colored by productivity."""
     tools = d["tools"]
@@ -281,8 +373,18 @@ def write_summary(d: dict, out_path: Path) -> dict:
     n_tasks_with_build_loops = (builds_failed.groupby("task_id").size() >= 2).sum()
     n_tasks_with_test_loops = (tests_failed.groupby("task_id").size() >= 2).sum()
 
+    inv = d["invocations"]
+    pak = _pass_at_k_table(inv)
+    pak_strict = {f"pass_at_{int(r['k'])}_strict": round(float(r["pass_at_k_strict"]), 4) for _, r in pak.iterrows()}
+    pak_status = {f"pass_at_{int(r['k'])}_status": round(float(r["pass_at_k_status"]), 4) for _, r in pak.iterrows()}
     summary = {
         "task_ids_with_transcripts": int(tools["task_id"].nunique()),
+        "task_ids_with_invocations": int(inv["task_id"].nunique()),
+        "max_observed_attempts": int(inv["attempt_idx"].max()),
+        "failure_to_one_shot_rate_strict": round(float(1 - pak.iloc[0]["pass_at_k_strict"]), 4),
+        "failure_to_one_shot_rate_status": round(float(1 - pak.iloc[0]["pass_at_k_status"]), 4),
+        **pak_strict,
+        **pak_status,
         "total_tool_calls": int(len(tools)),
         "total_bash_calls": int(len(bash)),
         "go_build_or_vet_calls": int(len(builds)),
@@ -316,6 +418,8 @@ def main() -> int:
     chart_edit_write_churn_per_file(d, out_dir)
     chart_per_turn_cost_within_task(d, out_dir)
     chart_tool_efficiency_scatter(d, out_dir)
+    chart_pass_at_k(d, out_dir)
+    chart_per_attempt_success_rate(d, out_dir)
 
     summary = write_summary(d, summary_path)
     print("=== Tool-call summary ===")
