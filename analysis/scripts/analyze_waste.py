@@ -153,6 +153,33 @@ def chart_wasted_cost_pareto(d: dict, out_dir: Path) -> None:
     save(fig, out_dir, "wasted_cost_pareto_by_utility")
 
 
+def chart_task_cost_pdf(d: dict, out_dir: Path) -> None:
+    """KDE of per-task cost from tasks.csv — companion to task_duration_pdf."""
+    tasks = d["tasks"]
+    costs = tasks["cost_usd"].astype(float)
+    p50 = float(costs.quantile(0.50))
+    p95 = float(costs.quantile(0.95))
+    p99 = float(costs.quantile(0.99))
+    mean = float(costs.mean())
+    x_max = float(costs.quantile(0.999)) * 1.05
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.kdeplot(x=costs, ax=ax, fill=True, color="#dd8452", bw_adjust=0.6, clip=(0, costs.max()))
+    ax.axvline(p50, color="#666", linestyle="--", alpha=0.7, label=f"p50=${p50:.2f}")
+    ax.axvline(p95, color="#dd8452", linestyle="--", alpha=0.7, label=f"p95=${p95:.2f}")
+    ax.axvline(p99, color="#c44e52", linestyle="--", alpha=0.7, label=f"p99=${p99:.2f}")
+    ax.set_xlim(left=0, right=x_max)
+    ax.set_xlabel("task cost (USD)")
+    ax.set_ylabel("density")
+    ax.legend(loc="upper right")
+    titled(
+        ax, "Distribution of task cost",
+        f"source: tasks.csv, N={len(costs):,}; mean=${mean:.2f}, p50=${p50:.2f}, "
+        f"p95=${p95:.2f}; max=${costs.max():.2f}.",
+    )
+    save(fig, out_dir, "task_cost_pdf")
+
+
 def chart_task_duration_pdf(d: dict, out_dir: Path) -> None:
     """KDE of task durations from tasks.csv — answers "how long does Claude
     take to finish a task" rather than "when did long durations occur"."""
@@ -289,6 +316,7 @@ def write_summary(d: dict, out_path: Path) -> dict:
         (r.get("rate_limited_seconds") or 0) for r in d["reports"]
     )
     durations = d["tasks"]["duration_seconds"].astype(float)
+    costs = d["tasks"]["cost_usd"].astype(float)
     summary = {
         "total_tasks": int(d["tasks"].shape[0]),
         "total_unique_task_ids": int(attempts.shape[0]),
@@ -296,6 +324,11 @@ def write_summary(d: dict, out_path: Path) -> dict:
         "task_duration_p95_s": int(durations.quantile(0.95)),
         "task_duration_p99_s": int(durations.quantile(0.99)),
         "task_duration_max_s": int(durations.max()),
+        "task_cost_p50_usd": round(float(costs.quantile(0.50)), 4),
+        "task_cost_p95_usd": round(float(costs.quantile(0.95)), 4),
+        "task_cost_p99_usd": round(float(costs.quantile(0.99)), 4),
+        "task_cost_max_usd": round(float(costs.max()), 4),
+        "task_cost_mean_usd": round(float(costs.mean()), 4),
         "zero_loc_task_count": int(((d["tasks"]["loc_prod_delta"] == 0) & (d["tasks"]["loc_test_delta"] == 0)).sum()),
         "git_commit_count_distribution": {int(k): int(v) for k, v in attempts["git_commit_count"].value_counts().sort_index().to_dict().items()},
         "git_wasted_cost_proxy_usd": round(float(attempts["git_wasted_cost_proxy"].sum()), 2),
@@ -325,6 +358,7 @@ def main() -> int:
     chart_zero_loc_per_run(d, out_dir)
     chart_retry_attempt_distribution(d, out_dir)
     chart_wasted_cost_pareto(d, out_dir)
+    chart_task_cost_pdf(d, out_dir)
     chart_task_duration_pdf(d, out_dir)
     chart_timeout_map(d, out_dir)
     chart_abandoned_run_cost(d, out_dir)

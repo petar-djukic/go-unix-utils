@@ -4,6 +4,11 @@ task_duration_p50_s: 142
 task_duration_p95_s: 654
 task_duration_p99_s: 969
 task_duration_max_s: 1469
+task_cost_p50_usd: 0.9645
+task_cost_p95_usd: 2.4406
+task_cost_p99_usd: 3.4315
+task_cost_max_usd: 5.4986
+task_cost_mean_usd: 1.16
 zero_loc_task_count: 120
 git_commit_count_distribution:
   1: 2116
