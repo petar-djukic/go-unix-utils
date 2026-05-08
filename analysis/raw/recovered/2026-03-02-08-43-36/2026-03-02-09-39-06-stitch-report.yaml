@@ -1,0 +1,31 @@
+task_id: "91"
+task_title: 'prd001-testutils R2-R5: Unit tests for differential testing harness'
+status: success
+branch: task/generation-2026-03-02-08-43-36-91
+diff:
+    files: 4
+    insertions: 789
+    deletions: 1
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 336
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: pkg/testutils/difftest_test.go
+      status: A
+      insertions: 144
+      deletions: 0
+    - path: pkg/testutils/runner_test.go
+      status: A
+      insertions: 308
+      deletions: 0
+loc_before:
+    production: 810
+    test: 0
+loc_after:
+    production: 810
+    test: 452

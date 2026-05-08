@@ -1,0 +1,35 @@
+task_id: "341"
+task_title: 'rel02.1-uc001-tee: differential tests for cmd/tee'
+status: success
+branch: task/generation-gh-336-generate-code-341
+diff:
+    files: 5
+    insertions: 436
+    deletions: 8
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 6
+      deletions: 6
+    - path: .cobbler/measure-20260306-105631.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 162
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/tee/tee_test.go
+      status: A
+      insertions: 267
+      deletions: 0
+loc_before:
+    production: 267
+    test: 0
+loc_after:
+    production: 267
+    test: 267

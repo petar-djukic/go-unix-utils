@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "99"
+task_title: Implement pkg/sys/ file metadata and terminal size (prd002-sys R1, R2)
+status: success
+started_at: "2026-03-02T16:12:46Z"
+duration: 3m12s
+duration_s: 192
+tokens:
+    input: 625924
+    output: 11446
+    cache_creation: 36930
+    cache_read: 588980
+cost_usd: 0.8120135000000002
+loc_before:
+    production: 318
+    test: 0
+loc_after:
+    production: 461
+    test: 0
+diff:
+    files: 5
+    insertions: 248
+    deletions: 0

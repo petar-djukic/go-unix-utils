@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "91"
+task_title: 'prd001-testutils R2-R5: Unit tests for differential testing harness'
+status: success
+started_at: "2026-03-02T14:39:06Z"
+duration: 5m21s
+duration_s: 321
+tokens:
+    input: 423545
+    output: 6647
+    cache_creation: 36090
+    cache_read: 387445
+cost_usd: 0.587692
+loc_before:
+    production: 810
+    test: 0
+loc_after:
+    production: 810
+    test: 452
+diff:
+    files: 4
+    insertions: 789
+    deletions: 1

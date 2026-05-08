@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "189"
+task_title: cmd/wc differential tests (prd005-wc R1, R2, R3, R4)
+status: success
+started_at: "2026-03-03T16:51:37Z"
+duration: 2m7s
+duration_s: 126
+tokens:
+    input: 666734
+    output: 4579
+    cache_creation: 42459
+    cache_read: 624262
+cost_usd: 0.6935437500000001
+loc_before:
+    production: 985
+    test: 666
+loc_after:
+    production: 985
+    test: 932
+diff:
+    files: 4
+    insertions: 791
+    deletions: 2

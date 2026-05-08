@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "196"
+task_title: Implement differential tests for cmd/sponge (prd007-sponge R1-R5)
+status: success
+started_at: "2026-03-03T18:08:17Z"
+duration: 2m23s
+duration_s: 142
+tokens:
+    input: 703175
+    output: 8952
+    cache_creation: 50642
+    cache_read: 652521
+cost_usd: 0.868615
+loc_before:
+    production: 2153
+    test: 1766
+loc_after:
+    production: 2153
+    test: 2059
+diff:
+    files: 4
+    insertions: 1220
+    deletions: 2

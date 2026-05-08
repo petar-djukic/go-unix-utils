@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "123"
+task_title: pkg/sys/ terminal detection and stat abstraction -- rel00.0-uc003-sys
+status: success
+started_at: "2026-03-02T19:00:02Z"
+duration: 5m38s
+duration_s: 337
+tokens:
+    input: 1065534
+    output: 19922
+    cache_creation: 55157
+    cache_read: 1010359
+cost_usd: 1.3515597499999996
+loc_before:
+    production: 287
+    test: 0
+loc_after:
+    production: 468
+    test: 0
+diff:
+    files: 7
+    insertions: 535
+    deletions: 0

@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "297"
+task_title: Write differential tests for cmd/cat (rel01.1-uc001-cat)
+status: success
+started_at: "2026-03-05T22:55:14Z"
+duration: 7m6s
+duration_s: 425
+tokens:
+    input: 621754
+    output: 26002
+    cache_creation: 65696
+    cache_read: 556048
+cost_usd: 1.3409389999999997
+loc_before:
+    production: 957
+    test: 687
+loc_after:
+    production: 957
+    test: 1037
+diff:
+    files: 7
+    insertions: 964
+    deletions: 61

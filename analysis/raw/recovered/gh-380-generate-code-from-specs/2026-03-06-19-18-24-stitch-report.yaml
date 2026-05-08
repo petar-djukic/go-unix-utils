@@ -1,0 +1,35 @@
+task_id: "389"
+task_title: 'cmd/ts implementation (prd004-ts R1-R4): stdin timestamp prefixing with format, elapsed, and incremental modes'
+status: success
+branch: task/generation-gh-380-generate-code-from-specs-389
+diff:
+    files: 5
+    insertions: 329
+    deletions: 15
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 5
+      deletions: 5
+    - path: .cobbler/measure-20260306-145245.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 299
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/ts/main.go
+      status: M
+      insertions: 24
+      deletions: 8
+loc_before:
+    production: 595
+    test: 168
+loc_after:
+    production: 611
+    test: 168

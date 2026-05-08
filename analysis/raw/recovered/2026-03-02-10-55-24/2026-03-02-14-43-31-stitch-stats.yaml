@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "130"
+task_title: Implement pkg/testutils DiffTest struct and differential test runner
+status: success
+started_at: "2026-03-02T19:43:31Z"
+duration: 2m58s
+duration_s: 177
+tokens:
+    input: 307119
+    output: 7011
+    cache_creation: 53834
+    cache_read: 253159
+cost_usd: 0.6405209999999999
+loc_before:
+    production: 821
+    test: 0
+loc_after:
+    production: 821
+    test: 0
+diff:
+    files: 1
+    insertions: 824
+    deletions: 0

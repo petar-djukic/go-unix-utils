@@ -1,0 +1,47 @@
+task_id: "387"
+task_title: 'cmd/ts: implement ts utility (prd-ts core requirements)'
+status: success
+branch: task/generation-gh-380-generate-code-from-specs-387
+diff:
+    files: 8
+    insertions: 867
+    deletions: 7
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 5
+      deletions: 5
+    - path: .cobbler/measure-20260306-145245.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 98
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/ts/main.go
+      status: A
+      insertions: 416
+      deletions: 0
+    - path: cmd/ts/ts_test.go
+      status: A
+      insertions: 168
+      deletions: 0
+    - path: pkg/sys/sigpipe.go
+      status: A
+      insertions: 24
+      deletions: 0
+    - path: pkg/testutils/difftest.go
+      status: A
+      insertions: 155
+      deletions: 0
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 595
+    test: 168

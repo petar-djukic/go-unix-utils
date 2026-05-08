@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "94"
+task_title: prd002-sys R1, R2 -- Unit tests for pkg/sys terminal and stat
+status: success
+started_at: "2026-03-02T15:06:12Z"
+duration: 3m58s
+duration_s: 237
+tokens:
+    input: 423250
+    output: 13708
+    cache_creation: 41133
+    cache_read: 382108
+cost_usd: 0.79191925
+loc_before:
+    production: 864
+    test: 1170
+loc_after:
+    production: 864
+    test: 1464
+diff:
+    files: 4
+    insertions: 772
+    deletions: 1

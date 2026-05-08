@@ -1,0 +1,35 @@
+task_id: "249"
+task_title: Test prd001-testutils R4.2, R4.3, R4.4 normalization functions
+status: success
+branch: task/generation-gh-206-generation-run-14-249
+diff:
+    files: 5
+    insertions: 1410
+    deletions: 68
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 23
+      deletions: 22
+    - path: .cobbler/measure-20260303-140350.yaml
+      status: D
+      insertions: 0
+      deletions: 45
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 1252
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: pkg/testutils/normalize_test.go
+      status: A
+      insertions: 134
+      deletions: 0
+loc_before:
+    production: 2086
+    test: 2543
+loc_after:
+    production: 2086
+    test: 2677

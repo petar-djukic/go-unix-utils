@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "299"
+task_title: Implement cmd/sponge main.go and differential tests (rel01.2-uc001)
+status: success
+started_at: "2026-03-06T03:23:42Z"
+duration: 10m26s
+duration_s: 625
+tokens:
+    input: 1787517
+    output: 38344
+    cache_creation: 159992
+    cache_read: 1627507
+cost_usd: 2.7761445000000005
+loc_before:
+    production: 957
+    test: 1037
+loc_after:
+    production: 1153
+    test: 1420
+diff:
+    files: 8
+    insertions: 1314
+    deletions: 62

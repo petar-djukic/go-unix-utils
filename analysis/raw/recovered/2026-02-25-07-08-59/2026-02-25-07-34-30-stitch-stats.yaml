@@ -1,0 +1,23 @@
+caller: stitch
+task_id: generation-2026-02-25-07-08-59-rt3
+task_title: 'cmd/ts implementation: prd004-ts R1-R8 timestamp stdin lines'
+status: success
+started_at: "2026-02-25T12:34:30Z"
+duration: 12m10s
+duration_s: 730
+tokens:
+    input: 2694523
+    output: 46522
+    cache_creation: 94858
+    cache_read: 2599636
+cost_usd: 3.0658745000000005
+loc_before:
+    production: 318
+    test: 0
+loc_after:
+    production: 864
+    test: 0
+diff:
+    files: 5
+    insertions: 722
+    deletions: 3

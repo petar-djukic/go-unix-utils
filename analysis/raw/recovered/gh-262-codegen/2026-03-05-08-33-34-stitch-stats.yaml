@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "287"
+task_title: Implement pkg/testutils DiffTest differential testing harness (rel00.0-uc004)
+status: success
+started_at: "2026-03-05T13:33:34Z"
+duration: 2m0s
+duration_s: 120
+tokens:
+    input: 368894
+    output: 6854
+    cache_creation: 48475
+    cache_read: 320412
+cost_usd: 0.6362587499999999
+loc_before:
+    production: 419
+    test: 510
+loc_after:
+    production: 419
+    test: 510
+diff:
+    files: 6
+    insertions: 326
+    deletions: 58

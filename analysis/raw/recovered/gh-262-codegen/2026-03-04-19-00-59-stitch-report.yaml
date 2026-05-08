@@ -1,0 +1,51 @@
+task_id: "280"
+task_title: Implement pkg/format shared formatting library [rel00.0-uc002-format]
+status: success
+branch: task/generation-gh-262-codegen-280
+diff:
+    files: 9
+    insertions: 716
+    deletions: 54
+files:
+    - path: .cobbler/measure-20260304-174737.yaml
+      status: D
+      insertions: 0
+      deletions: 53
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 48
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: pkg/format/color.go
+      status: A
+      insertions: 121
+      deletions: 0
+    - path: pkg/format/color_test.go
+      status: A
+      insertions: 140
+      deletions: 0
+    - path: pkg/format/columns.go
+      status: A
+      insertions: 103
+      deletions: 0
+    - path: pkg/format/columns_test.go
+      status: A
+      insertions: 182
+      deletions: 0
+    - path: pkg/format/size.go
+      status: A
+      insertions: 60
+      deletions: 0
+    - path: pkg/format/size_test.go
+      status: A
+      insertions: 61
+      deletions: 0
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 284
+    test: 383

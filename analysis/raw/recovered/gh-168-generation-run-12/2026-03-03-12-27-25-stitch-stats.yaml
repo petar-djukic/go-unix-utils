@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "193"
+task_title: Implement pkg/format ANSI color output per prd003-format R2
+status: success
+started_at: "2026-03-03T17:27:25Z"
+duration: 1m53s
+duration_s: 113
+tokens:
+    input: 1009108
+    output: 3871
+    cache_creation: 69904
+    cache_read: 939191
+cost_usd: 1.0048995
+loc_before:
+    production: 1261
+    test: 1766
+loc_after:
+    production: 1393
+    test: 1766
+diff:
+    files: 5
+    insertions: 852
+    deletions: 5

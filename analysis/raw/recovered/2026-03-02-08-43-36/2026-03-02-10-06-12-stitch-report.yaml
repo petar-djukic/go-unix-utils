@@ -1,0 +1,31 @@
+task_id: "94"
+task_title: prd002-sys R1, R2 -- Unit tests for pkg/sys terminal and stat
+status: success
+branch: task/generation-2026-03-02-08-43-36-94
+diff:
+    files: 4
+    insertions: 772
+    deletions: 1
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 477
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: pkg/sys/stat_test.go
+      status: A
+      insertions: 202
+      deletions: 0
+    - path: pkg/sys/terminal_test.go
+      status: A
+      insertions: 92
+      deletions: 0
+loc_before:
+    production: 864
+    test: 1170
+loc_after:
+    production: 864
+    test: 1464

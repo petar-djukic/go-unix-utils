@@ -1,0 +1,27 @@
+task_id: "103"
+task_title: prd002-sys R1, R2 -- unit tests for pkg/sys terminal and file metadata
+status: success
+branch: task/generation-2026-03-02-10-55-24-103
+diff:
+    files: 3
+    insertions: 517
+    deletions: 0
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 326
+      deletions: 0
+    - path: pkg/sys/fileinfo_test.go
+      status: A
+      insertions: 159
+      deletions: 0
+    - path: pkg/sys/terminal_test.go
+      status: A
+      insertions: 32
+      deletions: 0
+loc_before:
+    production: 876
+    test: 1074
+loc_after:
+    production: 876
+    test: 1265

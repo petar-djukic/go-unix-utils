@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "119"
+task_title: pkg/format implementation -- size formatting, ANSI color, column alignment (rel00.0-uc002-format)
+status: success
+started_at: "2026-03-02T18:31:32Z"
+duration: 7m42s
+duration_s: 461
+tokens:
+    input: 545747
+    output: 27045
+    cache_creation: 56747
+    cache_read: 488990
+cost_usd: 1.27680575
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 287
+    test: 0
+diff:
+    files: 4
+    insertions: 424
+    deletions: 0

@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "229"
+task_title: 'prd003-format R2.1-R2.4: FileTypeColor and color detection unit tests'
+status: success
+started_at: "2026-03-04T00:17:55Z"
+duration: 2m15s
+duration_s: 134
+tokens:
+    input: 470577
+    output: 4530
+    cache_creation: 36025
+    cache_read: 434541
+cost_usd: 0.55757675
+loc_before:
+    production: 704
+    test: 247
+loc_after:
+    production: 704
+    test: 474
+diff:
+    files: 5
+    insertions: 495
+    deletions: 68

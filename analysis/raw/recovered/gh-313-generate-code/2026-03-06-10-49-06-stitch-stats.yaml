@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "332"
+task_title: Implement cmd/yes -- prd yes R1-R2
+status: success
+started_at: "2026-03-06T15:49:06Z"
+duration: 1m51s
+duration_s: 110
+tokens:
+    input: 877212
+    output: 5051
+    cache_creation: 53044
+    cache_read: 824145
+cost_usd: 0.8699875000000001
+loc_before:
+    production: 247
+    test: 140
+loc_after:
+    production: 316
+    test: 263
+diff:
+    files: 5
+    insertions: 554
+    deletions: 32

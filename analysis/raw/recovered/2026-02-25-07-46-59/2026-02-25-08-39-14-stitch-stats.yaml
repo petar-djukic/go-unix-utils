@@ -1,0 +1,23 @@
+caller: stitch
+task_id: generation-2026-02-25-07-46-59-m0c
+task_title: cmd/sponge differential tests -- prd007-sponge R6, prd001-testutils R5
+status: success
+started_at: "2026-02-25T13:39:14Z"
+duration: 3m47s
+duration_s: 226
+tokens:
+    input: 2015426
+    output: 14316
+    cache_creation: 132629
+    cache_read: 1882782
+cost_usd: 2.1325992499999997
+loc_before:
+    production: 2247
+    test: 710
+loc_after:
+    production: 2247
+    test: 1153
+diff:
+    files: 3
+    insertions: 1084
+    deletions: 0

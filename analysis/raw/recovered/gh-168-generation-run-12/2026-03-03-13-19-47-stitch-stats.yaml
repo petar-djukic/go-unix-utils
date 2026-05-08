@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "198"
+task_title: Add unit tests for pkg/format color output (prd003-format R2.1, R2.2, R2.3, R2.4, R2.6, R2.7)
+status: success
+started_at: "2026-03-03T18:19:47Z"
+duration: 48s
+duration_s: 47
+tokens:
+    input: 246681
+    output: 2668
+    cache_creation: 37890
+    cache_read: 208785
+cost_usd: 0.413068
+loc_before:
+    production: 2153
+    test: 2480
+loc_after:
+    production: 2153
+    test: 2697
+diff:
+    files: 4
+    insertions: 1285
+    deletions: 2

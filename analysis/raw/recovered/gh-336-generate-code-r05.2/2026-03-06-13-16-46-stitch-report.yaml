@@ -1,0 +1,35 @@
+task_id: "355"
+task_title: 'Implement cmd/paste -- prd-paste R1-R4: parallel merge, serial mode, delimiters, file handling'
+status: success
+branch: task/generation-gh-336-generate-code-r05.2-355
+diff:
+    files: 5
+    insertions: 691
+    deletions: 4
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+    - path: .cobbler/measure-20260306-130714.yaml
+      status: D
+      insertions: 0
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 137
+      deletions: 0
+    - path: cmd/paste/main.go
+      status: A
+      insertions: 310
+      deletions: 0
+    - path: cmd/paste/paste_test.go
+      status: A
+      insertions: 241
+      deletions: 0
+loc_before:
+    production: 469
+    test: 0
+loc_after:
+    production: 779
+    test: 241

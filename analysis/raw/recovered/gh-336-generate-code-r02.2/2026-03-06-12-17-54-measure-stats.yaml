@@ -1,0 +1,21 @@
+caller: measure
+status: success
+started_at: "2026-03-06T17:17:54Z"
+duration: 49s
+duration_s: 49
+tokens:
+    input: 27567
+    output: 2338
+    cache_creation: 27565
+    cache_read: 0
+cost_usd: 0.23074125
+loc_before:
+    production: 376
+    test: 178
+loc_after:
+    production: 376
+    test: 178
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

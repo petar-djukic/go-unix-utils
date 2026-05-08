@@ -1,0 +1,23 @@
+caller: stitch
+task_id: generation-2026-02-25-07-08-59-0ya
+task_title: Implement pkg/testutils differential testing harness (prd001 R1-R5)
+status: success
+started_at: "2026-02-25T12:28:01Z"
+duration: 2m24s
+duration_s: 143
+tokens:
+    input: 1469397
+    output: 7331
+    cache_creation: 7533
+    cache_read: 1461847
+cost_usd: 0.9638487499999997
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 318
+    test: 0
+diff:
+    files: 5
+    insertions: 378
+    deletions: 2

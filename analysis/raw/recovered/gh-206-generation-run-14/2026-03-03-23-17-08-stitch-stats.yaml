@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "253"
+task_title: prd006-cat R4.5, R4.6, R4.7, R4.8 -- differential tests for flag aliases -A, -e, -t, and -u
+status: success
+started_at: "2026-03-04T04:17:08Z"
+duration: 1m44s
+duration_s: 104
+tokens:
+    input: 888800
+    output: 6002
+    cache_creation: 53938
+    cache_read: 834847
+cost_usd: 0.9056660000000001
+loc_before:
+    production: 2086
+    test: 2815
+loc_after:
+    production: 2086
+    test: 2915
+diff:
+    files: 5
+    insertions: 1482
+    deletions: 70

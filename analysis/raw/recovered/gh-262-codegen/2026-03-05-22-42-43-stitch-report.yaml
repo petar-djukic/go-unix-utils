@@ -1,0 +1,43 @@
+task_id: "304"
+task_title: cmd/du implementation -- rel01.3-uc001-du core disk usage traversal and reporting
+status: success
+branch: task/generation-gh-262-codegen-304
+diff:
+    files: 7
+    insertions: 1150
+    deletions: 64
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 9
+      deletions: 9
+    - path: .cobbler/measure-20260304-174737.yaml
+      status: D
+      insertions: 0
+      deletions: 53
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 825
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/du/main.go
+      status: A
+      insertions: 312
+      deletions: 0
+    - path: magefiles/go.mod
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.sum
+      status: M
+      insertions: 2
+      deletions: 0
+loc_before:
+    production: 1153
+    test: 1420
+loc_after:
+    production: 1465
+    test: 1420

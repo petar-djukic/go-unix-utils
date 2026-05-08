@@ -1,0 +1,23 @@
+caller: stitch
+task_id: generation-2026-02-28-11-56-07-5w2
+task_title: 'rel00.0-uc003 sys: Unit tests for prd002-sys R1 (terminal), R2 (metadata), R3 (SIGPIPE), R4 (SIGWINCH)'
+status: success
+started_at: "2026-02-28T17:35:56Z"
+duration: 1m46s
+duration_s: 105
+tokens:
+    input: 606137
+    output: 6307
+    cache_creation: 38527
+    cache_read: 567597
+cost_usd: 0.6836352500000001
+loc_before:
+    production: 892
+    test: 726
+loc_after:
+    production: 892
+    test: 1054
+diff:
+    files: 26
+    insertions: 2157
+    deletions: 0

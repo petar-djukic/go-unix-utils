@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "242"
+task_title: 'cmd/version: implement version reporting command (prd011-magefiles, rel00.0-uc001)'
+status: success
+started_at: "2026-03-04T02:38:52Z"
+duration: 1m38s
+duration_s: 98
+tokens:
+    input: 422465
+    output: 4597
+    cache_creation: 38748
+    cache_read: 383588
+cost_usd: 0.5530259999999999
+loc_before:
+    production: 1702
+    test: 2122
+loc_after:
+    production: 1745
+    test: 2122
+diff:
+    files: 5
+    insertions: 968
+    deletions: 68

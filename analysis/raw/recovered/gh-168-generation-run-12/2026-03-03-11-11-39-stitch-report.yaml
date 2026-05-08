@@ -1,0 +1,59 @@
+task_id: "185"
+task_title: 'pkg/sys: implement file metadata, signals, and terminal size (rel00.0-uc003-sys)'
+status: success
+branch: task/generation-gh-168-generation-run-12-185
+diff:
+    files: 11
+    insertions: 471
+    deletions: 2
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 53
+      deletions: 1
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 193
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: go.mod
+      status: M
+      insertions: 2
+      deletions: 0
+    - path: go.sum
+      status: A
+      insertions: 2
+      deletions: 0
+    - path: pkg/sys/doc.go
+      status: A
+      insertions: 11
+      deletions: 0
+    - path: pkg/sys/signal.go
+      status: A
+      insertions: 63
+      deletions: 0
+    - path: pkg/sys/stat.go
+      status: A
+      insertions: 64
+      deletions: 0
+    - path: pkg/sys/stat_darwin.go
+      status: A
+      insertions: 26
+      deletions: 0
+    - path: pkg/sys/stat_linux.go
+      status: A
+      insertions: 26
+      deletions: 0
+    - path: pkg/sys/terminal.go
+      status: A
+      insertions: 30
+      deletions: 0
+loc_before:
+    production: 197
+    test: 304
+loc_after:
+    production: 417
+    test: 304

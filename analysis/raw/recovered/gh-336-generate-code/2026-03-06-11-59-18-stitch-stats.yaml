@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "341"
+task_title: 'rel02.1-uc001-tee: differential tests for cmd/tee'
+status: success
+started_at: "2026-03-06T16:59:18Z"
+duration: 3m14s
+duration_s: 194
+tokens:
+    input: 834095
+    output: 10274
+    cache_creation: 57369
+    cache_read: 776705
+cost_usd: 1.0038637499999998
+loc_before:
+    production: 267
+    test: 0
+loc_after:
+    production: 267
+    test: 267
+diff:
+    files: 5
+    insertions: 436
+    deletions: 8

@@ -1,0 +1,43 @@
+task_id: "306"
+task_title: Implement cmd/wc core counting (-l, -w, -c) -- rel03.0-uc001-wc
+status: success
+branch: task/generation-gh-262-codegen-306
+diff:
+    files: 7
+    insertions: 1404
+    deletions: 67
+files:
+    - path: .cobbler/analysis.yaml
+      status: M
+      insertions: 12
+      deletions: 12
+    - path: .cobbler/measure-20260304-174737.yaml
+      status: D
+      insertions: 0
+      deletions: 53
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 925
+      deletions: 0
+    - path: .secrets/claude.json
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: cmd/wc/main.go
+      status: A
+      insertions: 463
+      deletions: 0
+    - path: magefiles/go.mod
+      status: M
+      insertions: 1
+      deletions: 1
+    - path: magefiles/go.sum
+      status: M
+      insertions: 2
+      deletions: 0
+loc_before:
+    production: 1465
+    test: 1420
+loc_after:
+    production: 1928
+    test: 1420

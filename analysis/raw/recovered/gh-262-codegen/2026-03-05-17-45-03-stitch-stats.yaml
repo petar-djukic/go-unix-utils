@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "295"
+task_title: Implement pkg/sys syscall abstractions (rel00.0-uc003) [retry]
+status: success
+started_at: "2026-03-05T22:45:03Z"
+duration: 6m10s
+duration_s: 369
+tokens:
+    input: 1767145
+    output: 22789
+    cache_creation: 71456
+    cache_read: 1695666
+cost_usd: 1.8672670000000002
+loc_before:
+    production: 725
+    test: 510
+loc_after:
+    production: 957
+    test: 687
+diff:
+    files: 12
+    insertions: 979
+    deletions: 60

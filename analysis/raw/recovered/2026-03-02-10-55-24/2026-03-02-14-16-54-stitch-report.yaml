@@ -1,0 +1,27 @@
+task_id: "126"
+task_title: 'cmd/du: Implement core directory traversal and disk usage reporting (prd008-du R1, R2, R3, R5)'
+status: success
+branch: task/generation-2026-03-02-10-55-24-126
+diff:
+    files: 3
+    insertions: 1089
+    deletions: 0
+files:
+    - path: .cobbler/measure.yaml
+      status: M
+      insertions: 861
+      deletions: 0
+    - path: cmd/du/main.go
+      status: A
+      insertions: 228
+      deletions: 0
+    - path: du
+      status: A
+      insertions: 0
+      deletions: 0
+loc_before:
+    production: 1940
+    test: 2553
+loc_after:
+    production: 2168
+    test: 2553

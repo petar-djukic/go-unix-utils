@@ -1,0 +1,23 @@
+caller: stitch
+task_id: "372"
+task_title: Differential tests for cmd/md5sum, cmd/sha1sum, cmd/sha256sum, cmd/sha512sum (rel05.4)
+status: success
+started_at: "2026-03-06T19:42:55Z"
+duration: 1m11s
+duration_s: 71
+tokens:
+    input: 508389
+    output: 2476
+    cache_creation: 61267
+    cache_read: 447110
+cost_usd: 0.66843375
+loc_before:
+    production: 876
+    test: 204
+loc_after:
+    production: 876
+    test: 204
+diff:
+    files: 3
+    insertions: 1346
+    deletions: 4
