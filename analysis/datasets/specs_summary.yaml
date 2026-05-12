@@ -1,0 +1,86 @@
+n_stitch_tasks_with_reqs: 2009
+n_per_req_rows: 7680
+req_count_to_cost:
+  slope: 0.028018365208159757
+  intercept: 1.0481786237935968
+  r2: 0.0031141368374473233
+  n: 2009
+text_length_to_cost:
+  slope: 0.0001139017571135384
+  intercept: 1.0898889414782877
+  r2: 0.004034592437203277
+  n: 1995
+weight_to_cost:
+  slope: 0.025169210942203847
+  intercept: 1.1956908338350352
+  r2: 0.043097316503937666
+  n: 444
+weight_to_duration:
+  slope: 7.324954846478092
+  intercept: 221.99518362432195
+  r2: 0.03614518483823381
+  n: 444
+per_srd_difficulty:
+  hardest_srds:
+  - srd_id: srd082
+    mean_cost_usd: 2.3962
+  - srd_id: srd105
+    mean_cost_usd: 2.2395
+  - srd_id: srd107
+    mean_cost_usd: 2.167
+  - srd_id: srd071
+    mean_cost_usd: 2.126
+  - srd_id: srd110
+    mean_cost_usd: 2.0327
+  - srd_id: srd070
+    mean_cost_usd: 1.994
+  - srd_id: srd072
+    mean_cost_usd: 1.983
+  - srd_id: srd008
+    mean_cost_usd: 1.8734
+  - srd_id: srd111
+    mean_cost_usd: 1.8528
+  - srd_id: srd068
+    mean_cost_usd: 1.8451
+code_block_effect:
+  mean_cost_with_code_block: 0.2147
+  mean_cost_without_code_block: 0.3015
+  ratio_with_over_without: 0.712
+  n_with: 81
+  n_without: 7473
+per_release_difficulty:
+  n_tasks_with_release: 1982
+  median_cost_by_release:
+    rel00.0: 0.7132
+    rel01.1: 0.8409
+    rel01.2: 0.983
+    rel01.3: 1.0718
+    rel02.0: 0.6593
+    rel02.1: 0.8639
+    rel02.2: 0.9836
+    rel03.0: 1.3288
+    rel03.1: 0.6667
+    rel04.0: 1.6955
+    rel04.1: 0.9059
+    rel05.0: 0.9027
+    rel05.1: 0.9938
+    rel05.2: 0.8997
+    rel05.3: 1.0943
+    rel05.4: 0.8864
+    rel06.0: 1.1313
+    rel06.1: 0.7659
+    rel07.0: 1.148
+    rel07.1: 1.4022
+    rel08.0: 1.0918
+    rel08.1: 1.6227
+    rel09.0: 0.9361
+    rel09.1: 1.0416
+    rel10.0: 1.1799
+    rel10.1: 1.3389
+    rel11.0: 0.8987
+    rel11.1: 0.9607
+    rel12.0: 1.0829
+    rel12.1: 1.3865
+    rel13.0: 1.5842
+    rel14.0: 1.0201
+    rel15.0: 1.4012
