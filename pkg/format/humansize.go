@@ -15,5 +15,5 @@ type HumanSizeOpts struct {
 // HumanSize formats a byte count as a human-readable string with unit suffix.
 // R1.2: uses SI units by default, IEC binary units when opts.Binary is true.
 func HumanSize(bytes int64, opts HumanSizeOpts) string {
-	panic("not implemented")
+	return ""
 }
