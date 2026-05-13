@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5090"
+task_title: '[stitch] srd003-format R2.5-R2.7: color state reset and extended file types'
+status: success
+started_at: "2026-05-13T23:14:04Z"
+duration: 1m47s
+duration_s: 107
+tokens:
+    input: 1298826
+    output: 3993
+    cache_creation: 153286
+    cache_read: 1145531
+cost_usd: 1.767273
+num_turns: 14
+rate_limit_wait_s: 10
+loc_before:
+    production: 810
+    test: 0
+loc_after:
+    production: 827
+    test: 0
+diff:
+    files: 2
+    insertions: 103
+    deletions: 0

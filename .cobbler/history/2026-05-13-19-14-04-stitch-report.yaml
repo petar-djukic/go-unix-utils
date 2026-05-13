@@ -1,0 +1,23 @@
+task_id: "5090"
+task_title: '[stitch] srd003-format R2.5-R2.7: color state reset and extended file types'
+status: success
+branch: task/generation-run44-5090
+diff:
+    files: 2
+    insertions: 103
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-13-19-13-54-stitch-orchestrator.log
+      status: M
+      insertions: 87
+      deletions: 0
+    - path: pkg/format/color.go
+      status: M
+      insertions: 17
+      deletions: 0
+loc_before:
+    production: 810
+    test: 0
+loc_after:
+    production: 827
+    test: 0
