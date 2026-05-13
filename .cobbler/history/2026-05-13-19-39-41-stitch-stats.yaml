@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5094"
+task_title: '[stitch] pkg/encutil contract (srd088-encutil)'
+status: success
+started_at: "2026-05-13T23:39:41Z"
+duration: 41s
+duration_s: 40
+tokens:
+    input: 817262
+    output: 1429
+    cache_creation: 152459
+    cache_read: 664797
+cost_usd: 1.46398025
+num_turns: 9
+rate_limit_wait_s: 3
+loc_before:
+    production: 898
+    test: 0
+loc_after:
+    production: 950
+    test: 0
+diff:
+    files: 3
+    insertions: 129
+    deletions: 0
