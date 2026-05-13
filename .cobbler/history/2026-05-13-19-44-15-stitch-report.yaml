@@ -1,0 +1,23 @@
+task_id: "5097"
+task_title: '[stitch] pkg/encutil decoding and input handling (srd088-encutil R2.2, R2.3, R3.1, R3.2)'
+status: success
+branch: task/generation-run44-5097
+diff:
+    files: 2
+    insertions: 150
+    deletions: 8
+files:
+    - path: .cobbler/history/2026-05-13-19-44-08-stitch-orchestrator.log
+      status: M
+      insertions: 86
+      deletions: 0
+    - path: pkg/encutil/decode.go
+      status: M
+      insertions: 65
+      deletions: 8
+loc_before:
+    production: 962
+    test: 0
+loc_after:
+    production: 1019
+    test: 0
