@@ -32,13 +32,21 @@ type FileInfo struct {
 }
 
 // Stat returns extended file metadata for path, following symbolic links.
-// R2.1: equivalent to os.Stat but populates FileInfo from syscall.Stat_t.
+// R2.1: calls os.Stat and populates FileInfo from syscall.Stat_t.
 func Stat(path string) (*FileInfo, error) {
-	return nil, nil
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return fileInfoFromOS(info)
 }
 
 // Lstat returns extended file metadata for path without following symbolic links.
-// R2.1: equivalent to os.Lstat but populates FileInfo from syscall.Stat_t.
+// R2.1: calls os.Lstat and populates FileInfo from syscall.Stat_t.
 func Lstat(path string) (*FileInfo, error) {
-	return nil, nil
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	return fileInfoFromOS(info)
 }
