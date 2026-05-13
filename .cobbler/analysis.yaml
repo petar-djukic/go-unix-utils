@@ -4,7 +4,7 @@ code_status:
         - version: "00.0"
           name: Batch 0 — foundational infrastructure
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel00.0-uc001-magefiles
               specstatus: spec_complete
@@ -17,8 +17,8 @@ code_status:
               testdir: ""
               testfiles: 0
             - id: rel00.0-uc003-sys
-              specstatus: spec_complete
-              codestatus: not started
+              specstatus: implemented
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel00.0-uc004-testutils
