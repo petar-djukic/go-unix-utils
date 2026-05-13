@@ -16,7 +16,21 @@ import (
 type NormalizeFunc = func([]byte) []byte
 
 // DiffTest defines a single differential test case.
-// R1.1: fields match the package contract.
+//
+// R1.1: Name identifies the subtest (used with t.Run). Args holds command-line
+// arguments passed to both binaries.
+//
+// R1.2: Stdin nil means both binaries receive EOF immediately. An empty non-nil
+// slice ([]byte{}) also produces no bytes but represents an open stdin that is
+// immediately closed. ExitCode defaults to 0 when left as the zero value.
+//
+// R1.3: Env nil means both binaries inherit the test process environment with
+// LC_ALL=C applied as a default override. When non-nil, KEY=VALUE pairs are
+// merged into the inherited environment: matching keys are overridden, new keys
+// are added.
+//
+// R1.4: Normalize holds a slice of NormalizeFunc applied in order to stdout and
+// stderr of both binaries before comparison. Nil or empty means no normalization.
 type DiffTest struct {
 	Name          string
 	Args          []string
