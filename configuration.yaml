@@ -54,7 +54,7 @@ generation:
 cobbler:
     dir: .cobbler/
     max_stitch_issues_per_cycle: 1
-    max_measure_issues: 1
+    max_measure_issues: 4
     measure_prompt: docs/prompts/measure.yaml
     stitch_prompt: docs/prompts/stitch.yaml
     planning_constitution: docs/constitutions/planning.yaml
@@ -73,5 +73,6 @@ cobbler:
     stitch_exclude_tests: true
     mode: cli
 claude:
+    model: claude-opus-4-6
     silence_agent: true
     max_time_sec: 1500
