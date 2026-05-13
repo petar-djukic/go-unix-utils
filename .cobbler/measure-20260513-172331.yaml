@@ -1,0 +1,186 @@
+- index: 0
+  title: "srd002-sys -- pkg/sys (contract)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd002-sys.yaml (full SRD for pkg/sys)
+      - CLAUDE.md (SIGPIPE handling pattern and project conventions)
+
+    files:
+      - path: pkg/sys/fileinfo.go
+        action: create
+        note: FileInfo struct and Stat/Lstat function stubs
+      - path: pkg/sys/terminal.go
+        action: create
+        note: TerminalWidth and IsTerminal function stubs
+      - path: pkg/sys/signal.go
+        action: create
+        note: InstallSIGPIPEHandler and OnTerminalResize function stubs
+
+    requirements:
+      - id: R1
+        text: "Define FileInfo struct with fields: Mode os.FileMode, Size int64, Nlink uint64, Uid uint32, Gid uint32, Rdev uint64, Dev uint64, Ino uint64, Blocks int64, Blksize int64, ModTime time.Time, AccessTime time.Time, ChangeTime time.Time, Info os.FileInfo"
+      - id: R2
+        text: "Define file metadata function signatures as stubs: Stat(path string) (*FileInfo, error), Lstat(path string) (*FileInfo, error)"
+      - id: R3
+        text: "Define terminal function signatures as stubs: TerminalWidth() (int, error), IsTerminal(fd uintptr) bool"
+      - id: R4
+        text: "Define signal function signatures as stubs: InstallSIGPIPEHandler(), OnTerminalResize(callback func(width int))"
+
+    design_decisions:
+      - id: D1
+        text: "Split exports across three files by domain: fileinfo.go (struct and stat functions), terminal.go (terminal queries), signal.go (signal handlers)"
+      - id: D2
+        text: "Package must not import any cmd/ package or any other pkg/ package"
+      - id: D3
+        text: "Stub functions must compile on Darwin -- use placeholder return values (nil, zero, etc.) so go build passes"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/sys/ compiles: go build ./pkg/sys/..."
+      - id: AC2
+        text: "All exported types and functions match the signatures specified in R1-R4"
+      - id: AC3
+        text: "go vet ./pkg/sys/... passes with no errors"
+      - id: AC4
+        text: "No imports of cmd/ or other pkg/ packages"
+
+- index: 1
+  title: "srd001-testutils -- pkg/testutils (contract)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (full SRD for pkg/testutils)
+      - CLAUDE.md (differential testing pattern and BuildBinary usage)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: All exported types and function signatures as compilable Go stubs
+
+    requirements:
+      - id: R1
+        text: "Define DiffTest struct with fields: Name string, Args []string, Stdin []byte, Env []string, WorkDir string, ExitCode int, Normalize []NormalizeFunc, ExpectedFiles map[string][]byte"
+      - id: R2
+        text: "Define NormalizeFunc type alias: type NormalizeFunc = func([]byte) []byte"
+      - id: R3
+        text: "Define function signatures as stubs: RunDiffTests(t *testing.T, goBinary string, refBinary string, tests []DiffTest), ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc, BuildBinary(t *testing.T, dir string) string"
+      - id: R4
+        text: "Define TimestampNormalizer as a package-level var of type NormalizeFunc with a placeholder implementation"
+
+    design_decisions:
+      - id: D1
+        text: "Primary source file is difftest.go, named after the primary exported type DiffTest"
+      - id: D2
+        text: "Package must not import any cmd/ package or any other pkg/ package"
+      - id: D3
+        text: "Stub functions must compile -- use t.Fatal('not implemented') or return zero values so go build passes"
+      - id: D4
+        text: "BuildBinary compiles a cmd/ package from within the Go module and returns the path to the built binary -- include it in the contract per the differential testing shared protocol in CLAUDE.md"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "pkg/testutils/difftest.go exists and compiles: go build ./pkg/testutils/..."
+      - id: AC2
+        text: "All exported types and functions match the signatures specified in R1-R4"
+      - id: AC3
+        text: "go vet ./pkg/testutils/... passes with no errors"
+      - id: AC4
+        text: "No imports of cmd/ or other pkg/ packages"
+
+- index: 2
+  title: "srd002-sys R1.1-R1.4 -- FileInfo struct and Stat/Lstat implementation"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd002-sys.yaml (requirements R1.1 through R1.4)
+      - pkg/sys/fileinfo.go (contract stubs from prior task)
+      - CLAUDE.md (project conventions)
+
+    files:
+      - path: pkg/sys/fileinfo.go
+        action: modify
+        note: Replace Stat/Lstat stubs with real implementations that populate FileInfo from os.FileInfo and syscall.Stat_t
+      - path: pkg/sys/stat_darwin.go
+        action: create
+        note: Darwin-specific Stat_t field extraction (st_mtimespec vs st_mtim, st_blocks)
+
+    requirements:
+      - id: R1
+        text: "Implement srd002-sys R1.1: FileInfo struct populated from os.FileInfo and the underlying syscall.Stat_t, extracting all metadata fields (Nlink, Uid, Gid, Rdev, Dev, Ino, Blocks, Blksize, AccessTime, ChangeTime)"
+      - id: R2
+        text: "Implement srd002-sys R1.2: Stat function that calls os.Stat, extracts the underlying syscall.Stat_t, and returns a fully populated *FileInfo"
+      - id: R3
+        text: "Implement srd002-sys R1.3: Lstat function that calls os.Lstat, extracts the underlying syscall.Stat_t, and returns a fully populated *FileInfo without following symlinks"
+      - id: R4
+        text: "Implement srd002-sys R1.4: platform-specific Stat_t field mapping for Darwin -- handle st_mtimespec/st_atimespec/st_ctimespec (Darwin) vs st_mtim/st_atim/st_ctim (Linux) naming divergence and st_blocks unit differences"
+
+    design_decisions:
+      - id: D1
+        text: "Use golang.org/x/sys/unix for extended syscall coverage -- run go get golang.org/x/sys if not already in go.mod"
+      - id: D2
+        text: "Isolate Darwin-specific Stat_t field access in stat_darwin.go with a build tag"
+      - id: D3
+        text: "Preserve all exported type signatures from the contract file -- do not change the public API"
+      - id: D4
+        text: "Package must not import any cmd/ package or any other pkg/ package"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/sys/... compiles successfully on Darwin"
+      - id: AC2
+        text: "go vet ./pkg/sys/... passes with no errors"
+      - id: AC3
+        text: "Stat and Lstat return fully populated FileInfo structs including Nlink, Uid, Gid, Blocks, and time fields"
+      - id: AC4
+        text: "All exported symbols from the contract are preserved unchanged"
+
+- index: 3
+  title: "srd001-testutils R1.1-R1.4 -- DiffTest struct and test configuration"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (requirements R1.1 through R1.4)
+      - pkg/testutils/difftest.go (contract stubs from prior task)
+      - CLAUDE.md (differential testing pattern and BuildBinary usage)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Replace stub implementations for R1.1-R1.4 with real code covering DiffTest configuration and test setup
+
+    requirements:
+      - id: R1
+        text: "Implement srd001-testutils R1.1: DiffTest struct with all fields fully functional -- Name identifies the test, Args holds command-line arguments, Stdin provides input bytes, Env sets environment variables, WorkDir sets the working directory"
+      - id: R2
+        text: "Implement srd001-testutils R1.2: test case configuration defaults -- ExitCode defaults to 0, empty Stdin means no stdin, empty Env inherits the test process environment"
+      - id: R3
+        text: "Implement srd001-testutils R1.3: stdin provisioning -- when DiffTest.Stdin is non-nil, pipe it to the command's stdin; when nil, connect to /dev/null"
+      - id: R4
+        text: "Implement srd001-testutils R1.4: environment variable setup -- merge DiffTest.Env with the test process environment, always prepend LC_ALL=C to ensure consistent locale behavior per the differential testing shared protocol"
+
+    design_decisions:
+      - id: D1
+        text: "Preserve all exported type signatures from the contract file -- do not change the public API"
+      - id: D2
+        text: "Package must not import any cmd/ package or any other pkg/ package"
+      - id: D3
+        text: "Leave RunDiffTests, ComposeNormalizers, BuildBinary, and TimestampNormalizer as stubs -- they will be implemented in subsequent tasks covering R2-R5 groups"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/testutils/... compiles successfully"
+      - id: AC2
+        text: "go vet ./pkg/testutils/... passes with no errors"
+      - id: AC3
+        text: "DiffTest struct fields match srd001-testutils R1.1-R1.4 specification"
+      - id: AC4
+        text: "All exported symbols from the contract are preserved unchanged"
