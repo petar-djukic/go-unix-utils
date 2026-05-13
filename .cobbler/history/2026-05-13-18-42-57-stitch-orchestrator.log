@@ -128,3 +128,13 @@ import (
 [2026-05-13T18:47:56-04:00] [generation-run44] [stitch +5m0s] closeStitchTask: closing #5081 "[stitch] srd087-sizeparse R1.1-R1.4: core size string parsing"
 [2026-05-13T18:47:58-04:00] [generation-run44] [stitch +5m1s] commentCobblerIssue: posted comment on #5081
 [2026-05-13T18:47:58-04:00] [generation-run44] [stitch +5m1s] updateRequirementsFile: marked 4 R-items as complete for issue #5081
+[2026-05-13T18:48:00-04:00] [generation-run44] [stitch +5m4s] closeCobblerIssue: closed #5081
+[2026-05-13T18:48:02-04:00] [generation-run44] [stitch +5m6s] closeStitchTask: #5081 closed
+[2026-05-13T18:48:03-04:00] [generation-run44] [stitch +5m6s] sweepCompletedTasks: all R-items for #5081 already complete, closing
+[2026-05-13T18:48:04-04:00] [generation-run44] [stitch +5m7s] commentCobblerIssue: posted comment on #5081
+[2026-05-13T18:48:06-04:00] [generation-run44] [stitch +5m9s] closeCobblerIssue: closed #5081
+[2026-05-13T18:48:08-04:00] [generation-run44] [stitch +5m11s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-13T18:48:08-04:00] [generation-run44] [stitch +5m11s] doOneTask: task 5081 finished in 5m4s
+[2026-05-13T18:48:08-04:00] [generation-run44] [stitch +5m11s] task 5081 completed in 5m4s
+[2026-05-13T18:48:08-04:00] [generation-run44] [stitch +5m11s] reached per-cycle limit (1), pausing for measure
+[2026-05-13T18:48:08-04:00] [generation-run44] [stitch +5m11s] completed 1 task(s) in 5m11s
