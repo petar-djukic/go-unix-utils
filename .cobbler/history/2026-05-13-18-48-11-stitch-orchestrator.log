@@ -118,3 +118,13 @@
 [2026-05-13T18:50:08-04:00] [generation-run44] [stitch +1m56s] closeStitchTask: closing #5082 "[stitch] srd087-sizeparse R2.1-R2.2, R3.1-R3.2: options and error handling"
 [2026-05-13T18:50:09-04:00] [generation-run44] [stitch +1m58s] commentCobblerIssue: posted comment on #5082
 [2026-05-13T18:50:09-04:00] [generation-run44] [stitch +1m58s] updateRequirementsFile: marked 4 R-items as complete for issue #5082
+[2026-05-13T18:50:11-04:00] [generation-run44] [stitch +2m0s] closeCobblerIssue: closed #5082
+[2026-05-13T18:50:13-04:00] [generation-run44] [stitch +2m2s] closeStitchTask: #5082 closed
+[2026-05-13T18:50:13-04:00] [generation-run44] [stitch +2m2s] sweepCompletedTasks: all R-items for #5082 already complete, closing
+[2026-05-13T18:50:14-04:00] [generation-run44] [stitch +2m3s] commentCobblerIssue: posted comment on #5082
+[2026-05-13T18:50:16-04:00] [generation-run44] [stitch +2m4s] closeCobblerIssue: closed #5082
+[2026-05-13T18:50:16-04:00] [generation-run44] [stitch +2m5s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-13T18:50:16-04:00] [generation-run44] [stitch +2m5s] doOneTask: task 5082 finished in 1m58s
+[2026-05-13T18:50:16-04:00] [generation-run44] [stitch +2m5s] task 5082 completed in 1m58s
+[2026-05-13T18:50:16-04:00] [generation-run44] [stitch +2m5s] reached per-cycle limit (1), pausing for measure
+[2026-05-13T18:50:16-04:00] [generation-run44] [stitch +2m5s] completed 1 task(s) in 2m5s
