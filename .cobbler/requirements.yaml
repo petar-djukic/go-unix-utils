@@ -108,16 +108,20 @@ requirements:
             issue: 5069
             weight: 1
         R2.2:
-            status: in_progress
+            status: complete
+            issue: 5071
             weight: 1
         R2.3:
-            status: in_progress
+            status: complete
+            issue: 5071
             weight: 1
         R2.4:
-            status: in_progress
+            status: complete
+            issue: 5071
             weight: 1
         R2.5:
-            status: in_progress
+            status: complete
+            issue: 5071
             weight: 1
         R2.6:
             status: ready
