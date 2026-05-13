@@ -27,7 +27,19 @@ var (
 	colorOverride *bool
 )
 
+func colorDisabled() bool {
+	colorMu.RLock()
+	override := colorOverride
+	colorMu.RUnlock()
+	return override != nil && !*override
+}
+
+// FileTypeColor returns the ANSI escape sequence for a file's type.
+// R2.1, R2.4, R2.6: returns empty string when color is explicitly disabled via SetColorEnabled(false).
 func FileTypeColor(mode os.FileMode) string {
+	if colorDisabled() {
+		return ""
+	}
 	switch {
 	case mode&os.ModeDir != 0:
 		return ansiDir
@@ -48,7 +60,12 @@ func FileTypeColor(mode os.FileMode) string {
 	}
 }
 
+// Reset returns the ANSI reset sequence.
+// R2.2, R2.6: returns empty string when color is explicitly disabled via SetColorEnabled(false).
 func Reset() string {
+	if colorDisabled() {
+		return ""
+	}
 	return ansiReset
 }
 
