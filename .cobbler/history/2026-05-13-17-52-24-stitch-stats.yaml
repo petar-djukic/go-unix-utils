@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5069"
+task_title: '[stitch] srd002-sys R1.5-R1.7, R2.1 -- Extended file metadata and TerminalWidth'
+status: success
+started_at: "2026-05-13T21:52:24Z"
+duration: 5m6s
+duration_s: 305
+tokens:
+    input: 671477
+    output: 12106
+    cache_creation: 168201
+    cache_read: 503263
+cost_usd: 1.9649275000000004
+num_turns: 22
+rate_limit_wait_s: 4
+loc_before:
+    production: 206
+    test: 0
+loc_after:
+    production: 220
+    test: 0
+diff:
+    files: 4
+    insertions: 134
+    deletions: 13
