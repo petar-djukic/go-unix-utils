@@ -106,3 +106,9 @@
 [2026-05-13T19:01:06-04:00] [generation-run44] [stitch +1m13s] doOneTask: closing task 5085
 [2026-05-13T19:01:06-04:00] [generation-run44] [stitch +1m13s] closeStitchTask: closing #5085 "[stitch] srd086-hashutil (contract)"
 [2026-05-13T19:01:07-04:00] [generation-run44] [stitch +1m14s] commentCobblerIssue: posted comment on #5085
+[2026-05-13T19:01:10-04:00] [generation-run44] [stitch +1m16s] closeCobblerIssue: closed #5085
+[2026-05-13T19:01:12-04:00] [generation-run44] [stitch +1m19s] closeStitchTask: #5085 closed
+[2026-05-13T19:01:13-04:00] [generation-run44] [stitch +1m19s] doOneTask: task 5085 finished in 1m12s
+[2026-05-13T19:01:13-04:00] [generation-run44] [stitch +1m19s] task 5085 completed in 1m12s
+[2026-05-13T19:01:13-04:00] [generation-run44] [stitch +1m19s] reached per-cycle limit (1), pausing for measure
+[2026-05-13T19:01:13-04:00] [generation-run44] [stitch +1m19s] completed 1 task(s) in 1m19s
