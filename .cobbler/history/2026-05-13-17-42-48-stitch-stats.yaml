@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5066"
+task_title: '[stitch] srd002-sys R1.1-R1.4 -- FileInfo struct and Stat/Lstat implementation'
+status: success
+started_at: "2026-05-13T21:42:48Z"
+duration: 2m24s
+duration_s: 144
+tokens:
+    input: 1456534
+    output: 7757
+    cache_creation: 154049
+    cache_read: 1302475
+cost_usd: 1.9418997499999995
+num_turns: 20
+rate_limit_wait_s: 3
+loc_before:
+    production: 141
+    test: 0
+loc_after:
+    production: 192
+    test: 0
+diff:
+    files: 5
+    insertions: 161
+    deletions: 4
