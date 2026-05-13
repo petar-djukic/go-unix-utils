@@ -128,16 +128,20 @@ requirements:
             issue: 5071
             weight: 1
         R2.6:
-            status: in_progress
+            status: complete
+            issue: 5075
             weight: 1
         R3.1:
-            status: in_progress
+            status: complete
+            issue: 5075
             weight: 1
         R3.2:
-            status: in_progress
+            status: complete
+            issue: 5075
             weight: 1
         R3.3:
-            status: in_progress
+            status: complete
+            issue: 5075
             weight: 1
     srd003-format:
         R1.1:
