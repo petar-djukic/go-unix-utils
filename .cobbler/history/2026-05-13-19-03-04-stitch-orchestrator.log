@@ -139,3 +139,13 @@ import (
 [2026-05-13T19:05:13-04:00] [generation-run44] [stitch +2m10s] closeStitchTask: closing #5087 "[stitch] srd003-format R1.1-R1.4: human-readable size formatting"
 [2026-05-13T19:05:14-04:00] [generation-run44] [stitch +2m10s] commentCobblerIssue: posted comment on #5087
 [2026-05-13T19:05:14-04:00] [generation-run44] [stitch +2m10s] updateRequirementsFile: marked 4 R-items as complete for issue #5087
+[2026-05-13T19:05:16-04:00] [generation-run44] [stitch +2m13s] closeCobblerIssue: closed #5087
+[2026-05-13T19:05:19-04:00] [generation-run44] [stitch +2m15s] closeStitchTask: #5087 closed
+[2026-05-13T19:05:19-04:00] [generation-run44] [stitch +2m16s] sweepCompletedTasks: all R-items for #5087 already complete, closing
+[2026-05-13T19:05:20-04:00] [generation-run44] [stitch +2m16s] commentCobblerIssue: posted comment on #5087
+[2026-05-13T19:05:21-04:00] [generation-run44] [stitch +2m18s] closeCobblerIssue: closed #5087
+[2026-05-13T19:05:22-04:00] [generation-run44] [stitch +2m18s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-13T19:05:22-04:00] [generation-run44] [stitch +2m18s] doOneTask: task 5087 finished in 2m12s
+[2026-05-13T19:05:22-04:00] [generation-run44] [stitch +2m18s] task 5087 completed in 2m12s
+[2026-05-13T19:05:22-04:00] [generation-run44] [stitch +2m18s] reached per-cycle limit (1), pausing for measure
+[2026-05-13T19:05:22-04:00] [generation-run44] [stitch +2m18s] completed 1 task(s) in 2m18s
