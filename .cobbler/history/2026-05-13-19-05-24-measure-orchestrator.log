@@ -130,3 +130,23 @@
 [2026-05-13T19:10:43-04:00] [generation-run44] [measure +5m20s] transitionRequirements: marked 3 R-items as proposed
 [2026-05-13T19:10:43-04:00] [generation-run44] [measure +5m20s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-13T19:10:43-04:00] [generation-run44] [measure +5m20s] transitionRequirements: marked 2 R-items as proposed
+[2026-05-13T19:10:44-04:00] [generation-run44] [measure +5m20s] importIssues: creating task 0: srd003-format R2.1-R2.4: ANSI color file type mapping (dep=-1)
+[2026-05-13T19:10:45-04:00] [generation-run44] [measure +5m21s] createCobblerIssue: created #5089 "[measure] srd003-format R2.1-R2.4: ANSI color file type mapping" gen=generation-run44 index=0 dep=-1
+[2026-05-13T19:10:45-04:00] [generation-run44] [measure +5m21s] importIssues: creating task 1: srd003-format R2.5-R2.7: color state reset and extended file types (dep=0)
+[2026-05-13T19:10:46-04:00] [generation-run44] [measure +5m22s] createCobblerIssue: created #5090 "[measure] srd003-format R2.5-R2.7: color state reset and extended file types" gen=generation-run44 index=1 dep=0
+[2026-05-13T19:10:46-04:00] [generation-run44] [measure +5m22s] importIssues: creating task 2: srd003-format R3.1-R3.4: string padding and column layout (dep=-1)
+[2026-05-13T19:10:47-04:00] [generation-run44] [measure +5m23s] createCobblerIssue: created #5091 "[measure] srd003-format R3.1-R3.4: string padding and column layout" gen=generation-run44 index=2 dep=-1
+[2026-05-13T19:10:47-04:00] [generation-run44] [measure +5m23s] importIssues: creating task 3: srd003-format R3.5-R3.6: column alignment edge cases (dep=2)
+[2026-05-13T19:10:48-04:00] [generation-run44] [measure +5m25s] createCobblerIssue: created #5092 "[measure] srd003-format R3.5-R3.6: column alignment edge cases" gen=generation-run44 index=3 dep=2
+[2026-05-13T19:10:49-04:00] [generation-run44] [measure +5m25s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-13T19:10:50-04:00] [generation-run44] [measure +5m26s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-13T19:10:55-04:00] [generation-run44] [measure +5m31s] importIssues: 4 of 4 issue(s) imported
+[2026-05-13T19:10:55-04:00] [generation-run44] [measure +5m31s] appendMeasureLog: 24 total issues in .cobbler/measure.yaml
+[2026-05-13T19:10:55-04:00] [generation-run44] [measure +5m31s] iteration 1 imported 4 issue(s)
+[2026-05-13T19:10:59-04:00] [generation-run44] [measure +5m35s] linkSubIssue: linked #5089 as sub-issue of #5088
+[2026-05-13T19:11:00-04:00] [generation-run44] [measure +5m36s] linkSubIssue: linked #5090 as sub-issue of #5088
+[2026-05-13T19:11:01-04:00] [generation-run44] [measure +5m37s] linkSubIssue: linked #5091 as sub-issue of #5088
+[2026-05-13T19:11:02-04:00] [generation-run44] [measure +5m38s] linkSubIssue: linked #5092 as sub-issue of #5088
+[2026-05-13T19:11:04-04:00] [generation-run44] [measure +5m40s] closeMeasuringPlaceholder: closed #5088
+[2026-05-13T19:11:04-04:00] [generation-run44] [measure +5m40s] finalizeMeasurePlaceholder: finalized #5088 with 4 child issue(s)
+[2026-05-13T19:11:04-04:00] [generation-run44] [measure +5m40s] completed 1 iteration(s), 4 issue(s) created in 5m40s

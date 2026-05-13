@@ -891,3 +891,168 @@
       - id: AC4
         text: "Function signature matches the contract: func HumanSize(bytes int64, opts HumanSizeOpts) string"
   dependency: 0
+- index: 0
+  title: 'srd003-format R2.1-R2.4: ANSI color file type mapping'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd003-format.yaml (requirements R2.1 through R2.4)
+      - pkg/format/ (existing implementation from R1.x -- understand package structure and naming)
+      - pkg/sys/ (IsTerminal used for auto-detecting color support)
+
+    files:
+      - path: pkg/format/color.go
+        action: create
+        note: FileTypeColor, Reset, ColorEnabled, SetColorEnabled functions
+
+    requirements:
+      - id: R1
+        text: "Implement srd003-format R2.1 -- FileTypeColor maps an os.FileMode to the appropriate ANSI color escape sequence for the file type (directory, symlink, executable, regular file, etc.)"
+      - id: R2
+        text: "Implement srd003-format R2.2 -- Reset returns the ANSI reset escape sequence that terminates any active color output"
+      - id: R3
+        text: "Implement srd003-format R2.3 -- ColorEnabled accepts an io.Writer and returns whether color output is active, auto-detecting terminal status via pkg/sys.IsTerminal when no manual override is set"
+      - id: R4
+        text: "Implement srd003-format R2.4 -- SetColorEnabled forces color on or off regardless of terminal detection"
+
+    design_decisions:
+      - id: D1
+        text: "Signature: func FileTypeColor(mode os.FileMode) string -- per the srd003-format contract"
+      - id: D2
+        text: "Signature: func Reset() string -- per the srd003-format contract"
+      - id: D3
+        text: "Signature: func ColorEnabled(w io.Writer) bool -- per the srd003-format contract"
+      - id: D4
+        text: "Signature: func SetColorEnabled(enabled bool) -- per the srd003-format contract"
+      - id: D5
+        text: "Import pkg/sys for IsTerminal. Do not import any cmd/ package."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/format/... passes without warnings"
+      - id: AC3
+        text: "FileTypeColor returns distinct ANSI codes for directories, symlinks, executables, and regular files"
+      - id: AC4
+        text: "ColorEnabled returns true when writer is a terminal and no manual override is set"
+      - id: AC5
+        text: "SetColorEnabled(false) causes ColorEnabled to return false regardless of terminal status"
+  dependency: -1
+- index: 1
+  title: 'srd003-format R2.5-R2.7: color state reset and extended file types'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd003-format.yaml (requirements R2.5 through R2.7)
+      - pkg/format/color.go (color functions from R2.1-R2.4)
+
+    files:
+      - path: pkg/format/color.go
+        action: modify
+        note: ResetColorEnabled and remaining R2 color requirements
+
+    requirements:
+      - id: R1
+        text: "Implement srd003-format R2.5 -- ResetColorEnabled restores auto-detection of color support, clearing any manual override previously set by SetColorEnabled"
+      - id: R2
+        text: "Implement srd003-format R2.6 per the SRD specification"
+      - id: R3
+        text: "Implement srd003-format R2.7 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Signature: func ResetColorEnabled() -- per the srd003-format contract"
+      - id: D2
+        text: "Color state uses a package-level variable with three states: auto-detect, forced-on, forced-off. ResetColorEnabled returns to auto-detect."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/format/... passes without warnings"
+      - id: AC3
+        text: "After SetColorEnabled(true) followed by ResetColorEnabled(), ColorEnabled returns to auto-detect behavior based on terminal status"
+      - id: AC4
+        text: "All R2.5 through R2.7 requirements from the SRD are satisfied"
+  dependency: 0
+- index: 2
+  title: 'srd003-format R3.1-R3.4: string padding and column layout'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd003-format.yaml (requirements R3.1 through R3.4)
+      - pkg/format/ (existing implementation -- understand package structure)
+
+    files:
+      - path: pkg/format/columns.go
+        action: create
+        note: PadRight, PadLeft, Columns layout functions
+
+    requirements:
+      - id: R1
+        text: "Implement srd003-format R3.1 -- PadRight pads a string with trailing spaces to reach the specified width, returning the original string unchanged if it is already at or beyond the target width"
+      - id: R2
+        text: "Implement srd003-format R3.2 -- PadLeft pads a string with leading spaces to reach the specified width, returning the original string unchanged if it is already at or beyond the target width"
+      - id: R3
+        text: "Implement srd003-format R3.3 -- Columns arranges a flat list of string entries into a multi-column grid layout that fits within the given terminal width"
+      - id: R4
+        text: "Implement srd003-format R3.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Signature: func PadRight(s string, width int) string -- per the srd003-format contract"
+      - id: D2
+        text: "Signature: func PadLeft(s string, width int) string -- per the srd003-format contract"
+      - id: D3
+        text: "Signature: func Columns(entries []string, termWidth int) [][]string -- per the srd003-format contract. Returns rows of columns."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/format/... passes without warnings"
+      - id: AC3
+        text: "PadRight and PadLeft produce correctly padded strings and do not truncate strings wider than the target"
+      - id: AC4
+        text: "Columns distributes entries across columns so that total row width does not exceed termWidth"
+      - id: AC5
+        text: "Columns returns a single column when entries are too wide for multi-column layout"
+  dependency: -1
+- index: 3
+  title: 'srd003-format R3.5-R3.6: column alignment edge cases'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd003-format.yaml (requirements R3.5 through R3.6)
+      - pkg/format/columns.go (PadRight, PadLeft, Columns from R3.1-R3.4)
+
+    files:
+      - path: pkg/format/columns.go
+        action: modify
+        note: Remaining R3 column alignment requirements
+
+    requirements:
+      - id: R1
+        text: "Implement srd003-format R3.5 per the SRD specification"
+      - id: R2
+        text: "Implement srd003-format R3.6 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Extend existing Columns and padding functions without changing their exported signatures"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/format/... passes without warnings"
+      - id: AC3
+        text: "All R3.5 and R3.6 requirements from the SRD are satisfied"
+      - id: AC4
+        text: "Existing R3.1-R3.4 behavior is preserved -- no regressions in padding or column layout"
+  dependency: 2
