@@ -1,0 +1,190 @@
+- index: 0
+  title: "[stitch] srd002-sys R1.5-R1.7, R2.1 -- Extended file metadata and TerminalWidth"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd002-sys.yaml (requirements R1.5, R1.6, R1.7, R2.1)
+      - pkg/sys/ (existing implementation -- FileInfo struct, Stat, Lstat created by prior task for R1.1-R1.4)
+      - docs/ARCHITECTURE.yaml (pkg/sys component -- terminal size queries via TIOCGWINSZ ioctl)
+
+    files:
+      - path: pkg/sys/fileinfo.go
+        action: modify
+        note: Extend FileInfo-related functionality per R1.5-R1.7
+      - path: pkg/sys/terminal.go
+        action: create
+        note: TerminalWidth function per R2.1
+
+    requirements:
+      - id: R1
+        text: "Implement srd002-sys R1.5 as specified in the SRD -- extend file metadata handling"
+      - id: R2
+        text: "Implement srd002-sys R1.6 as specified in the SRD -- extend file metadata handling"
+      - id: R3
+        text: "Implement srd002-sys R1.7 as specified in the SRD -- extend file metadata handling"
+      - id: R4
+        text: "Implement srd002-sys R2.1 as specified in the SRD -- TerminalWidth() (int, error) using TIOCGWINSZ ioctl"
+
+    design_decisions:
+      - id: D1
+        text: "Use golang.org/x/sys/unix for platform-specific syscall access (TIOCGWINSZ, Stat_t field mapping)"
+      - id: D2
+        text: "pkg/sys must not import any cmd/ package or any other pkg/ package"
+      - id: D3
+        text: "Follow signatures from the SRD exactly -- TerminalWidth returns (int, error)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/sys/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/sys/... passes"
+      - id: AC3
+        text: "TerminalWidth function exists with signature func TerminalWidth() (int, error)"
+      - id: AC4
+        text: "R1.5, R1.6, R1.7, and R2.1 acceptance criteria from the SRD are satisfied"
+
+- index: 1
+  title: "[stitch] srd001-testutils R2.1-R2.4 -- RunDiffTests binary execution and output comparison"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (requirements R2.1, R2.2, R2.3, R2.4)
+      - pkg/testutils/ (existing implementation -- DiffTest struct, NormalizeFunc type created by prior task for R1.1-R1.4)
+      - docs/ARCHITECTURE.yaml (pkg/testutils component -- differential testing harness)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Add RunDiffTests function that executes Go and reference binaries, compares stdout, stderr, and exit code
+
+    requirements:
+      - id: R1
+        text: "Implement srd001-testutils R2.1 as specified in the SRD -- RunDiffTests core execution logic"
+      - id: R2
+        text: "Implement srd001-testutils R2.2 as specified in the SRD -- binary invocation with args, stdin, env, workdir from DiffTest"
+      - id: R3
+        text: "Implement srd001-testutils R2.3 as specified in the SRD -- stdout and stderr capture and comparison"
+      - id: R4
+        text: "Implement srd001-testutils R2.4 as specified in the SRD -- exit code comparison and error reporting"
+
+    design_decisions:
+      - id: D1
+        text: "RunDiffTests signature: func RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest)"
+      - id: D2
+        text: "Use os/exec.Command to invoke both binaries with identical arguments, stdin, and environment"
+      - id: D3
+        text: "Run each DiffTest as a t.Run subtest using the test Name field"
+      - id: D4
+        text: "pkg/testutils must not import any cmd/ or other pkg/ package"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/testutils/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/testutils/... passes"
+      - id: AC3
+        text: "RunDiffTests function exists with the correct signature"
+      - id: AC4
+        text: "R2.1, R2.2, R2.3, and R2.4 acceptance criteria from the SRD are satisfied"
+      - id: AC5
+        text: "Each DiffTest runs as a named subtest via t.Run"
+
+- index: 2
+  title: "[stitch] srd002-sys R2.2-R2.5 -- IsTerminal, InstallSIGPIPEHandler, and signal handling"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd002-sys.yaml (requirements R2.2, R2.3, R2.4, R2.5)
+      - pkg/sys/ (existing implementation -- FileInfo, Stat, Lstat, TerminalWidth from prior tasks)
+      - docs/ARCHITECTURE.yaml (pkg/sys component -- signal handling for SIGPIPE, SIGHUP, SIGWINCH)
+
+    files:
+      - path: pkg/sys/terminal.go
+        action: modify
+        note: Add IsTerminal function per R2.2
+      - path: pkg/sys/sigpipe.go
+        action: create
+        note: InstallSIGPIPEHandler and related signal handling per R2.3-R2.5
+
+    requirements:
+      - id: R1
+        text: "Implement srd002-sys R2.2 as specified in the SRD -- IsTerminal(fd uintptr) bool"
+      - id: R2
+        text: "Implement srd002-sys R2.3 as specified in the SRD -- InstallSIGPIPEHandler()"
+      - id: R3
+        text: "Implement srd002-sys R2.4 as specified in the SRD -- signal handling infrastructure"
+      - id: R4
+        text: "Implement srd002-sys R2.5 as specified in the SRD -- signal handling extensions"
+
+    design_decisions:
+      - id: D1
+        text: "Use golang.org/x/sys/unix for terminal detection and signal constants"
+      - id: D2
+        text: "InstallSIGPIPEHandler sets SIGPIPE to default disposition so writes to closed pipes exit cleanly, matching GNU coreutils behavior"
+      - id: D3
+        text: "pkg/sys must not import any cmd/ package or any other pkg/ package"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/sys/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/sys/... passes"
+      - id: AC3
+        text: "IsTerminal exists with signature func IsTerminal(fd uintptr) bool"
+      - id: AC4
+        text: "InstallSIGPIPEHandler exists with signature func InstallSIGPIPEHandler()"
+      - id: AC5
+        text: "R2.2, R2.3, R2.4, and R2.5 acceptance criteria from the SRD are satisfied"
+
+- index: 3
+  title: "[stitch] srd001-testutils R2.5-R2.6, R3.1-R3.2 -- Output normalization and ComposeNormalizers"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (requirements R2.5, R2.6, R3.1, R3.2)
+      - pkg/testutils/ (existing implementation -- DiffTest struct, NormalizeFunc, RunDiffTests from prior tasks)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Add normalization support to RunDiffTests per R2.5-R2.6, implement ComposeNormalizers per R3.1-R3.2
+
+    requirements:
+      - id: R1
+        text: "Implement srd001-testutils R2.5 as specified in the SRD -- apply Normalize functions from DiffTest before comparison"
+      - id: R2
+        text: "Implement srd001-testutils R2.6 as specified in the SRD -- additional RunDiffTests comparison features"
+      - id: R3
+        text: "Implement srd001-testutils R3.1 as specified in the SRD -- ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc"
+      - id: R4
+        text: "Implement srd001-testutils R3.2 as specified in the SRD -- normalizer composition and chaining"
+
+    design_decisions:
+      - id: D1
+        text: "ComposeNormalizers signature: func ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc"
+      - id: D2
+        text: "NormalizeFunc is type NormalizeFunc = func([]byte) []byte -- a type alias, not a named type"
+      - id: D3
+        text: "RunDiffTests applies DiffTest.Normalize functions to both Go and reference binary output before byte comparison"
+      - id: D4
+        text: "pkg/testutils must not import any cmd/ or other pkg/ package"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/testutils/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/testutils/... passes"
+      - id: AC3
+        text: "ComposeNormalizers function exists with the correct signature"
+      - id: AC4
+        text: "RunDiffTests applies normalizers from each DiffTest before comparing outputs"
+      - id: AC5
+        text: "R2.5, R2.6, R3.1, and R3.2 acceptance criteria from the SRD are satisfied"
