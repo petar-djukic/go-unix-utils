@@ -3,16 +3,22 @@
 
 package sys
 
-// InstallSIGPIPEHandler installs a handler that exits the process with code 0
-// when a SIGPIPE signal is received.
-// R1.5: matches GNU coreutils behavior for piped output.
-// R1.6: safe to call multiple times.
+import (
+	"os"
+	"os/signal"
+	"syscall"
+)
+
 func InstallSIGPIPEHandler() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGPIPE)
+	go func() {
+		<-c
+		os.Exit(0)
+	}()
 }
 
 // OnTerminalResize registers a callback invoked with the new terminal width
 // when a SIGWINCH signal is received.
-// R3.1: calls TerminalWidth() and skips the callback if it returns an error.
-// R3.2: supports multiple registered callbacks, called in registration order.
 func OnTerminalResize(callback func(width int)) {
 }
