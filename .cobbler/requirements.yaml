@@ -3866,16 +3866,16 @@ requirements:
             issue: 5096
             weight: 1
         R2.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R2.3:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.2:
-            status: proposed
+            status: in_progress
             weight: 1
     srd089-chmod:
         R1.1:
