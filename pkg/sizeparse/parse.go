@@ -10,6 +10,8 @@ import (
 	"strconv"
 )
 
+const maxInt64 = 1<<63 - 1
+
 // ParseOptions configures size string parsing behavior.
 type ParseOptions struct {
 	AllowSign   bool
@@ -68,6 +70,10 @@ func ParseWithOptions(s string, opts ParseOptions) (int64, error) {
 	multiplier, err := resolveMultiplier(suffix, opts.DefaultUnit)
 	if err != nil {
 		return 0, fmt.Errorf("invalid size %q: %w", s, err)
+	}
+	// R3.1: detect multiplication overflow.
+	if multiplier > 1 && n > maxInt64/multiplier {
+		return 0, fmt.Errorf("invalid size %q: value overflows int64", s)
 	}
 	// R1.4: preserve sign in returned value.
 	result := n * multiplier
