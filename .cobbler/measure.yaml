@@ -1,6 +1,5 @@
 - index: 0
-  title: "srd002-sys -- pkg/sys (contract)"
-  dependency: -1
+  title: srd002-sys -- pkg/sys (contract)
   description: |
     deliverable_type: code
 
@@ -46,10 +45,9 @@
         text: "go vet ./pkg/sys/... passes with no errors"
       - id: AC4
         text: "No imports of cmd/ or other pkg/ packages"
-
-- index: 1
-  title: "srd001-testutils -- pkg/testutils (contract)"
   dependency: -1
+- index: 1
+  title: srd001-testutils -- pkg/testutils (contract)
   description: |
     deliverable_type: code
 
@@ -91,10 +89,9 @@
         text: "go vet ./pkg/testutils/... passes with no errors"
       - id: AC4
         text: "No imports of cmd/ or other pkg/ packages"
-
+  dependency: -1
 - index: 2
-  title: "srd002-sys R1.1-R1.4 -- FileInfo struct and Stat/Lstat implementation"
-  dependency: 0
+  title: srd002-sys R1.1-R1.4 -- FileInfo struct and Stat/Lstat implementation
   description: |
     deliverable_type: code
 
@@ -140,11 +137,10 @@
         text: "Stat and Lstat return fully populated FileInfo structs including Nlink, Uid, Gid, Blocks, and time fields"
       - id: AC4
         text: "All exported symbols from the contract are preserved unchanged"
-
+  dependency: 0
 - index: 3
-  title: "srd001-testutils R1.1-R1.4 -- DiffTest struct and test configuration"
-  dependency: 1
-  description: |
+  title: srd001-testutils R1.1-R1.4 -- DiffTest struct and test configuration
+  description: |-
     deliverable_type: code
 
     required_reading:
@@ -184,3 +180,4 @@
         text: "DiffTest struct fields match srd001-testutils R1.1-R1.4 specification"
       - id: AC4
         text: "All exported symbols from the contract are preserved unchanged"
+  dependency: 1
