@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5084"
+task_title: '[stitch] srd003-format (contract)'
+status: success
+started_at: "2026-05-13T22:58:30Z"
+duration: 1m17s
+duration_s: 76
+tokens:
+    input: 1111731
+    output: 3040
+    cache_creation: 148309
+    cache_read: 963414
+cost_usd: 1.62053425
+num_turns: 16
+rate_limit_wait_s: 27
+loc_before:
+    production: 652
+    test: 0
+loc_after:
+    production: 656
+    test: 0
+diff:
+    files: 3
+    insertions: 111
+    deletions: 19
