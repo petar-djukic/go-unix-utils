@@ -1,0 +1,30 @@
+total_issues: 4888
+total_prs: 159
+task_issues: 4230
+problem_reports: 1
+task_issue_close_reasons:
+  closed_via_pr: 0
+  closed_no_pr: 4227
+  open: 3
+problem_report_per_run:
+  total_problem_reports: 1
+  by_run:
+    run34: 1
+pr_cycle_time:
+  n_merged_prs: 159
+  median_cycle_time_hours: 0.0019
+  p95_cycle_time_hours: 0.019
+pr_size:
+  n_prs_with_size: 155
+  median_pr_size_loc: 318.0
+  p95_pr_size_loc: 52589.7
+abandoned_vs_completed:
+  completed_tasks: 1326
+  abandoned_tasks: 0
+  completed_median_cost: 0.9718
+  abandoned_median_cost: .nan
+pr_cycle_over_time:
+  n_prs_plotted: 159
+pr_volume_per_run:
+  n_prs_matched_to_run: 17
+  n_runs_with_prs: 7
