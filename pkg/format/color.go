@@ -6,32 +6,76 @@ package format
 import (
 	"io"
 	"os"
+	"sync"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-// FileTypeColor returns the ANSI escape sequence for the given file mode.
-// R2.1: maps file types (directory, symlink, executable, etc.) to color codes.
+const (
+	ansiReset    = "\033[0m"
+	ansiDir      = "\033[01;34m"
+	ansiSymlink  = "\033[01;36m"
+	ansiExec     = "\033[01;32m"
+	ansiFifo     = "\033[40;33m"
+	ansiSocket   = "\033[01;35m"
+	ansiBlockDev = "\033[01;33m"
+	ansiCharDev  = "\033[01;33m"
+)
+
+var (
+	colorMu       sync.RWMutex
+	colorOverride *bool
+)
+
 func FileTypeColor(mode os.FileMode) string {
-	return ""
+	switch {
+	case mode&os.ModeDir != 0:
+		return ansiDir
+	case mode&os.ModeSymlink != 0:
+		return ansiSymlink
+	case mode&os.ModeNamedPipe != 0:
+		return ansiFifo
+	case mode&os.ModeSocket != 0:
+		return ansiSocket
+	case mode&os.ModeDevice != 0 && mode&os.ModeCharDevice != 0:
+		return ansiCharDev
+	case mode&os.ModeDevice != 0:
+		return ansiBlockDev
+	case mode&0o111 != 0:
+		return ansiExec
+	default:
+		return ""
+	}
 }
 
-// Reset returns the ANSI reset escape sequence.
-// R2.2: resets terminal color to default after colored output.
 func Reset() string {
-	return ""
+	return ansiReset
 }
 
-// ColorEnabled reports whether color output is enabled for the given writer.
-// R2.3: checks whether w is connected to a terminal via pkg/sys.
 func ColorEnabled(w io.Writer) bool {
+	colorMu.RLock()
+	override := colorOverride
+	colorMu.RUnlock()
+	if override != nil {
+		return *override
+	}
+	type fder interface {
+		Fd() uintptr
+	}
+	if f, ok := w.(fder); ok {
+		return sys.IsTerminal(f.Fd())
+	}
 	return false
 }
 
-// SetColorEnabled forces color output on or off regardless of terminal detection.
-// R2.4: overrides the automatic terminal detection.
 func SetColorEnabled(enabled bool) {
+	colorMu.Lock()
+	colorOverride = &enabled
+	colorMu.Unlock()
 }
 
-// ResetColorEnabled clears the forced color override set by SetColorEnabled.
-// R2.5: returns to automatic terminal detection behavior.
 func ResetColorEnabled() {
+	colorMu.Lock()
+	colorOverride = nil
+	colorMu.Unlock()
 }
