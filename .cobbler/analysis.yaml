@@ -37,8 +37,8 @@ code_status:
               testdir: ""
               testfiles: 0
             - id: rel00.0-uc007-encutil
-              specstatus: spec_complete
-              codestatus: not started
+              specstatus: implemented
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "01.1"

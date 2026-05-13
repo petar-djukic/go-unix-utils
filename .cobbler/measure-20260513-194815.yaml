@@ -1,0 +1,163 @@
+- index: 0
+  title: "[stitch] cmd/version core implementation (srd059-version R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd059-version.yaml (version command requirements)
+      - pkg/sys/sigpipe.go (SIGPIPE handler pattern used by all cmd/ utilities)
+
+    files:
+      - path: cmd/version/main.go
+        action: create
+        note: Version command binary implementation
+
+    requirements:
+      - id: R1
+        text: Implement srd059-version R1.1 -- version string output to stdout
+      - id: R2
+        text: Implement srd059-version R1.2 -- exit code behavior
+      - id: R3
+        text: Implement srd059-version R1.3 -- flag parsing and handling
+      - id: R4
+        text: Implement srd059-version R1.4 -- output format
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at start of main per project SIGPIPE protocol
+      - id: D2
+        text: Build with go build -o bin/version ./cmd/version/ per CLAUDE.md convention
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/version ./cmd/version/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/version/ passes with no warnings
+      - id: AC3
+        text: Binary outputs version information to stdout and exits 0
+      - id: AC4
+        text: All behavior matches srd059-version R1.1 through R1.4
+
+- index: 1
+  title: "[stitch] cmd/cat basic concatenation (srd006-cat R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd006-cat.yaml (cat command requirements, focus on R1.1-R1.4)
+      - pkg/sys/sigpipe.go (SIGPIPE handler pattern used by all cmd/ utilities)
+
+    files:
+      - path: cmd/cat/main.go
+        action: create
+        note: cat command implementation -- basic file concatenation and stdin handling
+
+    requirements:
+      - id: R1
+        text: Implement srd006-cat R1.1 -- read named file(s) and write contents to stdout
+      - id: R2
+        text: Implement srd006-cat R1.2 -- read from stdin when no files given or when filename is "-"
+      - id: R3
+        text: Implement srd006-cat R1.3 -- concatenate multiple files in argument order
+      - id: R4
+        text: Implement srd006-cat R1.4 -- exit status on success
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at start of main per project SIGPIPE protocol
+      - id: D2
+        text: Build with go build -o bin/cat ./cmd/cat/ per CLAUDE.md convention
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/cat ./cmd/cat/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/cat/ passes with no warnings
+      - id: AC3
+        text: bin/cat reads named files and writes their contents to stdout in argument order
+      - id: AC4
+        text: bin/cat reads from stdin when invoked with no arguments or with "-" as filename
+
+- index: 2
+  title: "[stitch] cmd/cat error handling and line numbering (srd006-cat R1.5, R2.1, R2.2, R2.3)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd006-cat.yaml (cat command requirements, focus on R1.5, R2.1-R2.3)
+      - cmd/cat/main.go (existing basic concatenation implementation)
+
+    files:
+      - path: cmd/cat/main.go
+        action: modify
+        note: Add error handling, -n, -b, and -s flags
+
+    requirements:
+      - id: R1
+        text: Implement srd006-cat R1.5 -- error handling with stderr messages and non-zero exit on failure
+      - id: R2
+        text: Implement srd006-cat R2.1 -- -n flag to number all output lines
+      - id: R3
+        text: Implement srd006-cat R2.2 -- -b flag to number non-blank output lines
+      - id: R4
+        text: Implement srd006-cat R2.3 -- -s flag to squeeze consecutive blank lines
+
+    design_decisions:
+      - id: D1
+        text: Error messages go to stderr per srd006-cat requirements
+      - id: D2
+        text: Follow exact line numbering format specified in srd006-cat R2.1 and R2.2
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/cat ./cmd/cat/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/cat/ passes with no warnings
+      - id: AC3
+        text: bin/cat -n numbers all output lines sequentially starting from 1
+      - id: AC4
+        text: bin/cat prints error to stderr and returns non-zero exit when a named file does not exist
+
+- index: 3
+  title: "[stitch] cmd/cat display flags (srd006-cat R2.4, R3.1, R3.2, R3.3)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd006-cat.yaml (cat command requirements, focus on R2.4, R3.1-R3.3)
+      - cmd/cat/main.go (existing implementation with basic concat and line numbering)
+
+    files:
+      - path: cmd/cat/main.go
+        action: modify
+        note: Add -E, -T, -v flags and combined flag shorthands
+
+    requirements:
+      - id: R1
+        text: Implement srd006-cat R2.4 -- -E flag to display $ at end of each line
+      - id: R2
+        text: Implement srd006-cat R3.1 -- -T flag to display TAB characters as ^I
+      - id: R3
+        text: Implement srd006-cat R3.2 -- -v flag to show non-printing characters using ^ and M- notation
+      - id: R4
+        text: Implement srd006-cat R3.3 -- combined flag shorthands (-A, -e, -t) per SRD definitions
+
+    design_decisions:
+      - id: D1
+        text: Follow exact non-printing character notation specified in srd006-cat R3.2
+      - id: D2
+        text: Shorthand flag equivalences as defined in srd006-cat R3.3
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/cat ./cmd/cat/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/cat/ passes with no warnings
+      - id: AC3
+        text: bin/cat -E appends $ to the end of each output line
+      - id: AC4
+        text: bin/cat -v displays non-printing characters using the notation specified in the SRD
