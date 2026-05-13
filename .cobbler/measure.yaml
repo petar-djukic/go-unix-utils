@@ -1056,3 +1056,184 @@
       - id: AC4
         text: "Existing R3.1-R3.4 behavior is preserved -- no regressions in padding or column layout"
   dependency: 2
+- index: 0
+  title: pkg/encutil contract (srd088-encutil)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd088-encutil.yaml (encoding utility library SRD -- defines all requirements, types, and function signatures)
+      - docs/ARCHITECTURE.yaml (pkg/ component descriptions, import constraints, and design decisions)
+
+    files:
+      - path: pkg/encutil/encode.go
+        action: create
+        note: "EncoderConfig type and Encode function stub"
+      - path: pkg/encutil/decode.go
+        action: create
+        note: "DecoderConfig type, Decode and OpenInput function stubs"
+
+    requirements:
+      - id: R1
+        text: "Define EncoderConfig struct with fields: Encode func([]byte) string, WrapCol int"
+      - id: R2
+        text: "Define Encode function signature: func(r io.Reader, w io.Writer, cfg EncoderConfig) error -- panic stub body"
+      - id: R3
+        text: "Define DecoderConfig struct with fields: Decode func(string) ([]byte, error), IgnoreGarbage bool"
+      - id: R4
+        text: "Define Decode function signature: func(r io.Reader, w io.Writer, cfg DecoderConfig) error -- panic stub body"
+      - id: R5
+        text: "Define OpenInput function signature: func(filename string) (io.ReadCloser, error) -- panic stub body"
+
+    design_decisions:
+      - id: D1
+        text: "All function bodies are panic(\"not implemented\") stubs -- implementation follows in separate tasks"
+      - id: D2
+        text: "Import constraints per ARCHITECTURE: must not import any cmd/ package or any other pkg/ package"
+      - id: D3
+        text: "Split into encode.go (EncoderConfig, Encode) and decode.go (DecoderConfig, Decode, OpenInput) following Go convention of one file per logical concern"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/encutil/... succeeds with no errors"
+      - id: AC2
+        text: "go vet ./pkg/encutil/... reports no issues"
+      - id: AC3
+        text: "All five exported symbols (EncoderConfig, DecoderConfig, Encode, Decode, OpenInput) are present with correct signatures"
+      - id: AC4
+        text: "No imports of cmd/ or other pkg/ packages"
+  dependency: -1
+- index: 1
+  title: pkg/hashutil contract (srd086-hashutil)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd086-hashutil.yaml (hash utility library SRD -- defines all requirements, types, and function signatures)
+      - docs/ARCHITECTURE.yaml (pkg/ component descriptions, import constraints, and design decisions)
+
+    files:
+      - path: pkg/hashutil/hashconfig.go
+        action: create
+        note: "HashConfig, CheckOptions types and FormatGNU, FormatBSDTag, ComputeDigest, ParseChecksumLine, VerifyChecksums, DigestFiles function stubs"
+
+    requirements:
+      - id: R1
+        text: "Define HashConfig struct with fields: Algorithm string, NewHash func() hash.Hash, DigestLen int"
+      - id: R2
+        text: "Define CheckOptions struct with fields: Warn bool, Quiet bool, Status bool"
+      - id: R3
+        text: "Define FormatGNU signature: func(digest, filename string, binary bool) string -- panic stub"
+      - id: R4
+        text: "Define FormatBSDTag signature: func(algorithm, filename, digest string) string -- panic stub"
+      - id: R5
+        text: "Define ComputeDigest signature: func(r io.Reader, cfg HashConfig) (string, error) -- panic stub"
+      - id: R6
+        text: "Define ParseChecksumLine signature: func(line string, cfg HashConfig) (filename, expectedDigest string, binary bool, err error) -- panic stub"
+      - id: R7
+        text: "Define VerifyChecksums signature: func(checksumFile string, cfg HashConfig, opts CheckOptions, stdout, stderr io.Writer) (bool, error) -- panic stub"
+      - id: R8
+        text: "Define DigestFiles signature: func(files []string, cfg HashConfig, binary, tag bool, stdout, stderr io.Writer) int -- panic stub"
+
+    design_decisions:
+      - id: D1
+        text: "All function bodies are panic(\"not implemented\") stubs -- implementation follows in separate tasks"
+      - id: D2
+        text: "Import constraints per ARCHITECTURE: must not import any cmd/ package or any other pkg/ package"
+      - id: D3
+        text: "Primary file named hashconfig.go after the primary exported type HashConfig (pkg/hashutil/hashutil.go is forbidden per P7)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/hashutil/... succeeds with no errors"
+      - id: AC2
+        text: "go vet ./pkg/hashutil/... reports no issues"
+      - id: AC3
+        text: "All eight exported symbols (HashConfig, CheckOptions, FormatGNU, FormatBSDTag, ComputeDigest, ParseChecksumLine, VerifyChecksums, DigestFiles) present with correct signatures"
+      - id: AC4
+        text: "No imports of cmd/ or other pkg/ packages"
+  dependency: -1
+- index: 2
+  title: pkg/encutil encoding implementation (srd088-encutil R1.1, R1.2, R1.3, R2.1)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd088-encutil.yaml (read requirements R1.1, R1.2, R1.3, R2.1 for exact specification and acceptance criteria)
+      - pkg/encutil/encode.go (contract stubs from task 0 -- replace Encode panic stub with implementation)
+      - pkg/encutil/decode.go (contract stubs from task 0 -- reference DecoderConfig type)
+
+    files:
+      - path: pkg/encutil/encode.go
+        action: modify
+        note: "Replace Encode panic stub with full implementation including line wrapping at WrapCol"
+
+    requirements:
+      - id: R1
+        text: "Implement srd088-encutil R1.1 per SRD -- EncoderConfig usage in the encoding pipeline"
+      - id: R2
+        text: "Implement srd088-encutil R1.2 per SRD -- Encode reads all input from io.Reader, applies cfg.Encode to produce encoded output"
+      - id: R3
+        text: "Implement srd088-encutil R1.3 per SRD -- line wrapping splits encoded output into lines of cfg.WrapCol characters"
+      - id: R4
+        text: "Implement srd088-encutil R2.1 per SRD -- DecoderConfig type fully defined with Decode function field and IgnoreGarbage flag"
+
+    design_decisions:
+      - id: D1
+        text: "Import constraints per ARCHITECTURE: must not import any cmd/ package or any other pkg/ package"
+      - id: D2
+        text: "Follow the exact type signatures defined in the srd088-encutil contract"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/encutil/... succeeds"
+      - id: AC2
+        text: "go vet ./pkg/encutil/... reports no issues"
+      - id: AC3
+        text: "Encode function reads from io.Reader, applies cfg.Encode, wraps output at cfg.WrapCol columns, writes to io.Writer"
+      - id: AC4
+        text: "All SRD acceptance criteria for R1.1, R1.2, R1.3, R2.1 are satisfied"
+  dependency: 0
+- index: 3
+  title: pkg/encutil decoding and input handling (srd088-encutil R2.2, R2.3, R3.1, R3.2)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd088-encutil.yaml (read requirements R2.2, R2.3, R3.1, R3.2 for exact specification and acceptance criteria)
+      - pkg/encutil/decode.go (contract stubs from task 0 -- replace Decode and OpenInput panic stubs with implementations)
+      - pkg/encutil/encode.go (reference for consistent style and patterns from task 2)
+
+    files:
+      - path: pkg/encutil/decode.go
+        action: modify
+        note: "Replace Decode and OpenInput panic stubs with full implementations"
+
+    requirements:
+      - id: R1
+        text: "Implement srd088-encutil R2.2 per SRD -- Decode reads encoded input, strips whitespace, decodes via cfg.Decode, writes to io.Writer"
+      - id: R2
+        text: "Implement srd088-encutil R2.3 per SRD -- IgnoreGarbage handling during decode (skip non-alphabet characters when true, error when false)"
+      - id: R3
+        text: "Implement srd088-encutil R3.1 per SRD -- OpenInput returns os.Stdin for \"-\" filename, opens and returns named file otherwise"
+      - id: R4
+        text: "Implement srd088-encutil R3.2 per SRD -- error handling and propagation for IO and decode errors"
+
+    design_decisions:
+      - id: D1
+        text: "Import constraints per ARCHITECTURE: must not import any cmd/ package or any other pkg/ package"
+      - id: D2
+        text: "Follow the exact type signatures defined in the srd088-encutil contract"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/encutil/... succeeds"
+      - id: AC2
+        text: "go vet ./pkg/encutil/... reports no issues"
+      - id: AC3
+        text: "Decode function reads from io.Reader, handles garbage per IgnoreGarbage flag, decodes via cfg.Decode, writes to io.Writer"
+      - id: AC4
+        text: "OpenInput returns os.Stdin when filename is \"-\" and opens the named file otherwise"
+      - id: AC5
+        text: "All SRD acceptance criteria for R2.2, R2.3, R3.1, R3.2 are satisfied"
+  dependency: 0
