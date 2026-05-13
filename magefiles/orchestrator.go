@@ -28,6 +28,9 @@ type Prompt mg.Namespace
 // Stats groups the stats targets (LOC, tokens).
 type Stats mg.Namespace
 
+// Validate groups validation targets for agent tool use.
+type Validate mg.Namespace
+
 // Tests: run directly with go test:
 //   go test -tags=usecase -v -count=1 -timeout 1800s ./tests/rel01.0/...          # all
 //   go test -tags=usecase -v ./tests/rel01.0/uc001/                               # one UC
@@ -80,9 +83,6 @@ func Install() error { return newOrch().Builder.Install() }
 
 // Clean removes build artifacts.
 func Clean() error { return newOrch().Builder.Clean() }
-
-// Credentials extracts Claude credentials from the macOS Keychain.
-func Credentials() error { return newOrch().Builder.ExtractCredentials() }
 
 // Analyze performs cross-artifact consistency checks (SRDs, use cases, test suites, roadmap).
 func Analyze() error { return newOrch().Analyzer.Analyze() }
@@ -154,4 +154,10 @@ func (Prompt) Measure() error { return newOrch().DumpMeasurePrompt() }
 
 // Stitch prints the assembled stitch prompt to stdout.
 func (Prompt) Stitch() error { return newOrch().DumpStitchPrompt() }
+
+// --- Validate targets ---
+
+// Weights validates a proposed task's weight budget against MaxWeightPerTask.
+// Pass a string like 'srd005-wc R2.5, R2.6, R3.1, R3.2'.
+func (Validate) Weights(input string) error { return newOrch().ValidateTaskWeights(input) }
 
