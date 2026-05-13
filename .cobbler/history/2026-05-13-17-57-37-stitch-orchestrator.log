@@ -135,3 +135,13 @@
 [2026-05-13T18:04:23-04:00] [generation-run44] [stitch +6m46s] closeStitchTask: closing #5070 "[stitch] srd001-testutils R2.1-R2.4 -- RunDiffTests binary execution and output comparison"
 [2026-05-13T18:04:24-04:00] [generation-run44] [stitch +6m47s] commentCobblerIssue: posted comment on #5070
 [2026-05-13T18:04:24-04:00] [generation-run44] [stitch +6m47s] updateRequirementsFile: marked 4 R-items as complete for issue #5070
+[2026-05-13T18:04:27-04:00] [generation-run44] [stitch +6m50s] closeCobblerIssue: closed #5070
+[2026-05-13T18:04:29-04:00] [generation-run44] [stitch +6m52s] closeStitchTask: #5070 closed
+[2026-05-13T18:04:29-04:00] [generation-run44] [stitch +6m52s] sweepCompletedTasks: all R-items for #5070 already complete, closing
+[2026-05-13T18:04:30-04:00] [generation-run44] [stitch +6m53s] commentCobblerIssue: posted comment on #5070
+[2026-05-13T18:04:31-04:00] [generation-run44] [stitch +6m54s] closeCobblerIssue: closed #5070
+[2026-05-13T18:04:33-04:00] [generation-run44] [stitch +6m56s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-13T18:04:33-04:00] [generation-run44] [stitch +6m56s] doOneTask: task 5070 finished in 6m47s
+[2026-05-13T18:04:33-04:00] [generation-run44] [stitch +6m56s] task 5070 completed in 6m47s
+[2026-05-13T18:04:33-04:00] [generation-run44] [stitch +6m56s] reached per-cycle limit (1), pausing for measure
+[2026-05-13T18:04:33-04:00] [generation-run44] [stitch +6m56s] completed 1 task(s) in 6m56s
