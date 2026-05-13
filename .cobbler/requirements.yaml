@@ -1,0 +1,4540 @@
+requirements:
+    srd001-testutils:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R2.5:
+            status: ready
+            weight: 1
+        R2.6:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R3.5:
+            status: ready
+            weight: 1
+        R3.6:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R5.2:
+            status: ready
+            weight: 1
+    srd002-sys:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R1.6:
+            status: ready
+            weight: 1
+        R1.7:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R2.5:
+            status: ready
+            weight: 1
+        R2.6:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd003-format:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R2.5:
+            status: ready
+            weight: 1
+        R2.6:
+            status: ready
+            weight: 1
+        R2.7:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R3.5:
+            status: ready
+            weight: 1
+        R3.6:
+            status: ready
+            weight: 1
+    srd004-ts:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R1.6:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R5.2:
+            status: ready
+            weight: 1
+        R5.3:
+            status: ready
+            weight: 1
+        R6.1:
+            status: ready
+            weight: 1
+        R6.2:
+            status: ready
+            weight: 1
+        R7.1:
+            status: ready
+            weight: 1
+        R7.2:
+            status: ready
+            weight: 1
+        R7.3:
+            status: ready
+            weight: 1
+        R8.1:
+            status: ready
+            weight: 1
+        R8.2:
+            status: ready
+            weight: 1
+        R9.1:
+            status: ready
+            weight: 1
+        R9.2:
+            status: ready
+            weight: 1
+        R10.1:
+            status: ready
+            weight: 1
+        R10.2:
+            status: ready
+            weight: 1
+        R10.3:
+            status: ready
+            weight: 1
+    srd005-wc:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R2.5:
+            status: ready
+            weight: 1
+        R2.6:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R5.2:
+            status: ready
+            weight: 1
+        R6.1:
+            status: ready
+            weight: 1
+        R6.2:
+            status: ready
+            weight: 1
+        R6.3:
+            status: ready
+            weight: 1
+    srd006-cat:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+        R4.5:
+            status: ready
+            weight: 1
+        R4.6:
+            status: ready
+            weight: 1
+        R4.7:
+            status: ready
+            weight: 1
+        R4.8:
+            status: ready
+            weight: 1
+        R4.9:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R5.2:
+            status: ready
+            weight: 1
+        R5.3:
+            status: ready
+            weight: 1
+        R5.4:
+            status: ready
+            weight: 1
+    srd007-sponge:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R2.5:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R5.2:
+            status: ready
+            weight: 1
+        R5.3:
+            status: ready
+            weight: 1
+        R5.4:
+            status: ready
+            weight: 1
+        R6.1:
+            status: ready
+            weight: 1
+        R6.2:
+            status: ready
+            weight: 1
+    srd008-ls:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R1.6:
+            status: ready
+            weight: 1
+        R1.7:
+            status: ready
+            weight: 1
+        R1.8:
+            status: ready
+            weight: 1
+        R1.9:
+            status: ready
+            weight: 1
+        R1.10:
+            status: ready
+            weight: 1
+        R1.11:
+            status: ready
+            weight: 1
+        R1.12:
+            status: ready
+            weight: 1
+        R1.13:
+            status: ready
+            weight: 1
+        R1.14:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R2.5:
+            status: ready
+            weight: 1
+        R2.6:
+            status: ready
+            weight: 1
+        R2.7:
+            status: ready
+            weight: 1
+        R2.8:
+            status: ready
+            weight: 1
+        R2.9:
+            status: ready
+            weight: 1
+        R2.10:
+            status: ready
+            weight: 1
+        R2.11:
+            status: ready
+            weight: 1
+        R2.12:
+            status: ready
+            weight: 1
+        R2.13:
+            status: ready
+            weight: 1
+        R2.14:
+            status: ready
+            weight: 1
+        R2.15:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R3.5:
+            status: ready
+            weight: 1
+        R3.6:
+            status: ready
+            weight: 1
+        R3.7:
+            status: ready
+            weight: 1
+        R3.8:
+            status: ready
+            weight: 1
+        R3.9:
+            status: ready
+            weight: 1
+        R3.10:
+            status: ready
+            weight: 1
+        R3.11:
+            status: ready
+            weight: 1
+        R3.12:
+            status: ready
+            weight: 1
+        R3.13:
+            status: ready
+            weight: 1
+        R3.14:
+            status: ready
+            weight: 1
+        R3.15:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+        R4.5:
+            status: ready
+            weight: 1
+        R4.6:
+            status: ready
+            weight: 1
+        R4.7:
+            status: ready
+            weight: 1
+        R4.8:
+            status: ready
+            weight: 1
+        R4.9:
+            status: ready
+            weight: 1
+    srd009-du:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R2.5:
+            status: ready
+            weight: 1
+        R2.6:
+            status: ready
+            weight: 1
+        R2.7:
+            status: ready
+            weight: 1
+        R2.8:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+    srd011-magefiles:
+        R1.1:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+    srd012-yes:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd013-true:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd014-false:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd015-basename:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd016-dirname:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd017-tee:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd018-head:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R3.5:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd019-seq:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd020-echo:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd021-tac:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd022-nl:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd023-fold:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd024-expand:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd025-unexpand:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd026-cut:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd027-paste:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd028-uniq:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd029-comm:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd030-md5sum:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd031-sha1sum:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd032-sha256sum:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd033-sha512sum:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd034-mkdir:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd035-rmdir:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd036-mktemp:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R3.5:
+            status: ready
+            weight: 1
+        R3.6:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd037-ln:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R3.5:
+            status: ready
+            weight: 1
+        R3.6:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd038-unlink:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd039-env:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd040-printenv:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd041-id:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd042-whoami:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd043-groups:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd044-uname:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R1.6:
+            status: ready
+            weight: 1
+        R1.7:
+            status: ready
+            weight: 1
+        R1.8:
+            status: ready
+            weight: 1
+        R1.9:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd045-arch:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd046-nproc:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd047-hostname:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd048-hostid:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd049-realpath:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd050-readlink:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R1.6:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd051-pwd:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd052-tty:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd053-logname:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd053-sort:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R1.6:
+            status: ready
+            weight: 1
+        R1.7:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd054-tr:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd055-tail:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd056-cp:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd057-mv:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd058-rm:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd059-version:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+    srd060-date:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd061-sleep:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd062-touch:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd063-timeout:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd064-shuf:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd065-factor:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd066-expr:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd067-split:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd068-csplit:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd069-join:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd070-fmt:
+        R1.1:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R6.1:
+            status: ready
+            weight: 1
+        R7.1:
+            status: ready
+            weight: 1
+        R8.1:
+            status: ready
+            weight: 1
+        R9.1:
+            status: ready
+            weight: 1
+        R10.1:
+            status: ready
+            weight: 1
+        R11.1:
+            status: ready
+            weight: 1
+        R12.1:
+            status: ready
+            weight: 1
+        R13.1:
+            status: ready
+            weight: 1
+        R13.2:
+            status: ready
+            weight: 1
+        R13.3:
+            status: ready
+            weight: 1
+        R13.4:
+            status: ready
+            weight: 1
+    srd071-numfmt:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd072-od:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd073-printf:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R4.4:
+            status: ready
+            weight: 1
+    srd074-sha224sum:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd075-sha384sum:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd076-b2sum:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd077-cksum:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd078-sum:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd079-base32:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd080-base64:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd081-basenc:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+    srd082-stat:
+        R1.1:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R6.1:
+            status: ready
+            weight: 1
+        R7.1:
+            status: ready
+            weight: 1
+        R7.2:
+            status: ready
+            weight: 1
+        R7.3:
+            status: ready
+            weight: 1
+    srd083-truncate:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd084-link:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd085-sync:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd086-hashutil:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+    srd087-sizeparse:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+    srd088-encutil:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+    srd089-chmod:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd090-chgrp:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd091-chown:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd092-mkfifo:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd093-mknod:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd094-nice:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd095-nohup:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd096-users:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd097-who:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd098-pinky:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd099-shred:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd100-chroot:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd101-install:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+    srd102-tsort:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd103-pathchk:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd104-test:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+    srd105-stty:
+        R1.1:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R6.1:
+            status: ready
+            weight: 1
+        R6.2:
+            status: ready
+            weight: 1
+        R7.1:
+            status: ready
+            weight: 1
+        R7.2:
+            status: ready
+            weight: 1
+        R7.3:
+            status: ready
+            weight: 1
+    srd106-df:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R3.5:
+            status: ready
+            weight: 1
+        R3.6:
+            status: ready
+            weight: 1
+        R3.7:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+    srd107-dir:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+    srd108-vdir:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R1.5:
+            status: ready
+            weight: 1
+        R1.6:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+    srd109-dircolors:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R2.4:
+            status: ready
+            weight: 1
+        R2.5:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R3.2:
+            status: ready
+            weight: 1
+        R3.3:
+            status: ready
+            weight: 1
+        R3.4:
+            status: ready
+            weight: 1
+        R3.5:
+            status: ready
+            weight: 1
+    srd110-pr:
+        R1.1:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R4.3:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R5.2:
+            status: ready
+            weight: 1
+    srd111-ptx:
+        R1.1:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+        R3.1:
+            status: ready
+            weight: 1
+        R4.1:
+            status: ready
+            weight: 1
+        R4.2:
+            status: ready
+            weight: 1
+        R5.1:
+            status: ready
+            weight: 1
+        R5.2:
+            status: ready
+            weight: 1
+    srd112-chronic:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+        R2.3:
+            status: ready
+            weight: 1
+    srd113-pee:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
+    srd114-vidir:
+        R1.1:
+            status: ready
+            weight: 1
+        R1.2:
+            status: ready
+            weight: 1
+        R1.3:
+            status: ready
+            weight: 1
+        R1.4:
+            status: ready
+            weight: 1
+        R2.1:
+            status: ready
+            weight: 1
+        R2.2:
+            status: ready
+            weight: 1
