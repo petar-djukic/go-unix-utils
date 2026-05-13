@@ -541,3 +541,180 @@
       - id: AC4
         text: Existing functionality from previously implemented requirements is preserved -- no regressions
   dependency: 2
+- index: 0
+  title: 'srd003-format: pkg/format (contract)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd003-format.yaml (full SRD for output formatting)
+      - docs/ARCHITECTURE.yaml (pkg/format component description and dependencies)
+      - pkg/sys/ (format depends on sys for terminal detection via IsTerminal)
+
+    files:
+      - path: pkg/format/humansize.go
+        action: create
+        note: "HumanSizeOpts struct and HumanSize function stub"
+      - path: pkg/format/color.go
+        action: create
+        note: "FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled stubs"
+      - path: pkg/format/columns.go
+        action: create
+        note: "PadRight, PadLeft, Columns function stubs"
+
+    requirements:
+      - id: R1
+        text: "Define HumanSizeOpts struct with Binary bool field, and stub HumanSize function: func HumanSize(bytes int64, opts HumanSizeOpts) string"
+      - id: R2
+        text: "Define color function stubs: func FileTypeColor(mode os.FileMode) string, func Reset() string, func ColorEnabled(w io.Writer) bool, func SetColorEnabled(enabled bool), func ResetColorEnabled()"
+      - id: R3
+        text: "Define alignment function stubs: func PadRight(s string, width int) string, func PadLeft(s string, width int) string, func Columns(entries []string, termWidth int) [][]string"
+
+    design_decisions:
+      - id: D1
+        text: "Package name is format. Source files are humansize.go, color.go, columns.go -- not format.go (P7 naming convention)"
+      - id: D2
+        text: "Stub implementations return zero values: HumanSize returns empty string, ColorEnabled returns false, PadRight/PadLeft return s unchanged, Columns returns nil"
+      - id: D3
+        text: "Import github.com/petar-djukic/go-unix-utils/pkg/sys for terminal detection in ColorEnabled. Import io and os as needed by function signatures"
+      - id: D4
+        text: "Must not import any cmd/ package"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/... succeeds with no errors"
+      - id: AC2
+        text: "go vet ./pkg/format/... reports no issues"
+      - id: AC3
+        text: "All 10 exported symbols present: HumanSizeOpts (struct), HumanSize, FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled, PadRight, PadLeft, Columns (functions)"
+      - id: AC4
+        text: "No imports of cmd/ packages or pkg/ packages other than pkg/sys"
+  dependency: -1
+- index: 1
+  title: 'srd087-sizeparse: pkg/sizeparse (contract)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd087-sizeparse.yaml (full SRD for size string parsing)
+      - docs/ARCHITECTURE.yaml (pkg/ component structure)
+
+    files:
+      - path: pkg/sizeparse/parse.go
+        action: create
+        note: "ParseOptions struct, Parse, and ParseWithOptions function stubs"
+
+    requirements:
+      - id: R1
+        text: "Define ParseOptions struct: type ParseOptions struct { AllowSign bool; DefaultUnit int64 }"
+      - id: R2
+        text: "Define Parse function stub: func Parse(s string) (int64, error) -- returns (0, nil)"
+      - id: R3
+        text: "Define ParseWithOptions function stub: func ParseWithOptions(s string, opts ParseOptions) (int64, error) -- returns (0, nil)"
+
+    design_decisions:
+      - id: D1
+        text: "Package name is sizeparse, file is parse.go (not sizeparse.go per P7 naming convention)"
+      - id: D2
+        text: "Stub implementations return zero values: (0, nil) for both Parse and ParseWithOptions"
+      - id: D3
+        text: "Imports limited to fmt, strconv, strings -- must not import any cmd/ package or any other pkg/ package"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/sizeparse/... succeeds with no errors"
+      - id: AC2
+        text: "go vet ./pkg/sizeparse/... reports no issues"
+      - id: AC3
+        text: "All 3 exported symbols present: ParseOptions (struct), Parse (func), ParseWithOptions (func)"
+      - id: AC4
+        text: "No imports of cmd/ packages or other pkg/ packages"
+  dependency: -1
+- index: 2
+  title: 'srd087-sizeparse R1.1-R1.4: core size string parsing'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd087-sizeparse.yaml (full SRD, focus on requirements R1.1 through R1.4)
+      - pkg/sizeparse/parse.go (contract stubs from previous task)
+
+    files:
+      - path: pkg/sizeparse/parse.go
+        action: modify
+        note: "Replace stub bodies of Parse and ParseWithOptions with working implementations for R1.1-R1.4"
+
+    requirements:
+      - id: R1
+        text: "Implement srd087-sizeparse R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd087-sizeparse R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd087-sizeparse R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd087-sizeparse R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Parse delegates to ParseWithOptions with zero-value ParseOptions"
+      - id: D2
+        text: "Suffix matching uses a table mapping suffix strings to byte multipliers, checked longest-match-first to avoid ambiguity between e.g. 'K' and 'KB'"
+      - id: D3
+        text: "Imports limited to fmt, strconv, strings per contract import constraints -- no cmd/ or other pkg/ imports"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/sizeparse/... succeeds with no errors"
+      - id: AC2
+        text: "go vet ./pkg/sizeparse/... reports no issues"
+      - id: AC3
+        text: "Parse and ParseWithOptions are no longer stubs -- they contain working parsing logic"
+      - id: AC4
+        text: "All behaviors specified by srd087-sizeparse R1.1 through R1.4 are implemented"
+      - id: AC5
+        text: "ParseOptions struct and all exported function signatures remain unchanged from the contract"
+  dependency: 1
+- index: 3
+  title: 'srd087-sizeparse R2.1-R2.2, R3.1-R3.2: options and error handling'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd087-sizeparse.yaml (full SRD, focus on requirements R2.1, R2.2, R3.1, R3.2)
+      - pkg/sizeparse/parse.go (implementation from previous task with R1.1-R1.4 complete)
+
+    files:
+      - path: pkg/sizeparse/parse.go
+        action: modify
+        note: "Add ParseWithOptions option handling (R2.x) and error reporting (R3.x)"
+
+    requirements:
+      - id: R1
+        text: "Implement srd087-sizeparse R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd087-sizeparse R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd087-sizeparse R3.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd087-sizeparse R3.2 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Error messages include the invalid input string for debuggability"
+      - id: D2
+        text: "ParseOptions.DefaultUnit multiplier applies only when the input has no suffix"
+      - id: D3
+        text: "Imports remain limited to fmt, strconv, strings per contract import constraints"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/sizeparse/... succeeds with no errors"
+      - id: AC2
+        text: "go vet ./pkg/sizeparse/... reports no issues"
+      - id: AC3
+        text: "All behaviors specified by srd087-sizeparse R2.1, R2.2, R3.1, R3.2 are implemented"
+      - id: AC4
+        text: "ParseOptions fields AllowSign and DefaultUnit affect parsing behavior as specified"
+      - id: AC5
+        text: "Invalid inputs produce descriptive errors rather than panics or zero values"
+  dependency: 2

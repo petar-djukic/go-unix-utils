@@ -126,3 +126,24 @@
 [2026-05-13T18:38:08-04:00] [generation-run44] [measure +9m16s] validateMeasureOutput: [3] "srd087-sizeparse R2.1-R2.2, R3.1-R3.2: options and error handling": requirement count 4 outside P9 range 5-8
 [2026-05-13T18:38:08-04:00] [generation-run44] [measure +9m17s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-13T18:38:08-04:00] [generation-run44] [measure +9m17s] transitionRequirements: marked 4 R-items as proposed
+[2026-05-13T18:38:09-04:00] [generation-run44] [measure +9m17s] importIssues: creating task 0: srd003-format: pkg/format (contract) (dep=-1)
+[2026-05-13T18:38:10-04:00] [generation-run44] [measure +9m18s] createCobblerIssue: created #5079 "[measure] srd003-format: pkg/format (contract)" gen=generation-run44 index=0 dep=-1
+[2026-05-13T18:38:10-04:00] [generation-run44] [measure +9m18s] importIssues: creating task 1: srd087-sizeparse: pkg/sizeparse (contract) (dep=-1)
+[2026-05-13T18:38:11-04:00] [generation-run44] [measure +9m19s] createCobblerIssue: created #5080 "[measure] srd087-sizeparse: pkg/sizeparse (contract)" gen=generation-run44 index=1 dep=-1
+[2026-05-13T18:38:11-04:00] [generation-run44] [measure +9m19s] importIssues: creating task 2: srd087-sizeparse R1.1-R1.4: core size string parsing (dep=1)
+[2026-05-13T18:38:12-04:00] [generation-run44] [measure +9m21s] createCobblerIssue: created #5081 "[measure] srd087-sizeparse R1.1-R1.4: core size string parsing" gen=generation-run44 index=2 dep=1
+[2026-05-13T18:38:12-04:00] [generation-run44] [measure +9m21s] importIssues: creating task 3: srd087-sizeparse R2.1-R2.2, R3.1-R3.2: options and error handling (dep=2)
+[2026-05-13T18:38:13-04:00] [generation-run44] [measure +9m22s] createCobblerIssue: created #5082 "[measure] srd087-sizeparse R2.1-R2.2, R3.1-R3.2: options and error handling" gen=generation-run44 index=3 dep=2
+[2026-05-13T18:38:13-04:00] [generation-run44] [measure +9m22s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-13T18:38:15-04:00] [generation-run44] [measure +9m23s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-13T18:38:16-04:00] [generation-run44] [measure +9m25s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-13T18:38:21-04:00] [generation-run44] [measure +9m29s] importIssues: 4 of 4 issue(s) imported
+[2026-05-13T18:38:21-04:00] [generation-run44] [measure +9m29s] appendMeasureLog: 16 total issues in .cobbler/measure.yaml
+[2026-05-13T18:38:21-04:00] [generation-run44] [measure +9m29s] iteration 1 imported 4 issue(s)
+[2026-05-13T18:38:24-04:00] [generation-run44] [measure +9m33s] linkSubIssue: linked #5079 as sub-issue of #5078
+[2026-05-13T18:38:25-04:00] [generation-run44] [measure +9m34s] linkSubIssue: linked #5080 as sub-issue of #5078
+[2026-05-13T18:38:26-04:00] [generation-run44] [measure +9m35s] linkSubIssue: linked #5081 as sub-issue of #5078
+[2026-05-13T18:38:27-04:00] [generation-run44] [measure +9m36s] linkSubIssue: linked #5082 as sub-issue of #5078
+[2026-05-13T18:38:29-04:00] [generation-run44] [measure +9m37s] closeMeasuringPlaceholder: closed #5078
+[2026-05-13T18:38:29-04:00] [generation-run44] [measure +9m37s] finalizeMeasurePlaceholder: finalized #5078 with 4 child issue(s)
+[2026-05-13T18:38:29-04:00] [generation-run44] [measure +9m37s] completed 1 iteration(s), 4 issue(s) created in 9m37s
