@@ -18,7 +18,32 @@ type EncoderConfig struct {
 
 // Encode reads all input from r, encodes it using cfg, and writes the wrapped
 // output to w.
-// R2.1: reads input, applies cfg.Encode, wraps at cfg.WrapCol, writes to w.
+// R1.2: reads input, applies cfg.Encode.
+// R1.3: wraps at cfg.WrapCol; 0 means single-line output with trailing newline.
 func Encode(r io.Reader, w io.Writer, cfg EncoderConfig) error {
-	panic("not implemented")
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	encoded := cfg.Encode(data)
+	if cfg.WrapCol <= 0 {
+		_, err = io.WriteString(w, encoded+"\n")
+		return err
+	}
+	return writeWrapped(w, encoded, cfg.WrapCol)
+}
+
+func writeWrapped(w io.Writer, s string, col int) error {
+	for len(s) > col {
+		if _, err := io.WriteString(w, s[:col]+"\n"); err != nil {
+			return err
+		}
+		s = s[col:]
+	}
+	if len(s) > 0 {
+		if _, err := io.WriteString(w, s+"\n"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
