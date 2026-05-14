@@ -54,3 +54,10 @@ func TestVersionUnknownFlag(t *testing.T) {
 		t.Fatalf("expected exit code 2, got %d", exitErr.ExitCode())
 	}
 }
+
+// R1.5: verify the Version variable is exported and has the expected default.
+func TestVersionExported(t *testing.T) {
+	if Version != "dev" {
+		t.Fatalf("expected exported Version to be \"dev\", got %q", Version)
+	}
+}
