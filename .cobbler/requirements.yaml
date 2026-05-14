@@ -1029,16 +1029,20 @@ requirements:
             issue: 5145
             weight: 1
         R1.4:
-            status: in_progress
+            status: complete
+            issue: 5146
             weight: 1
         R1.5:
-            status: in_progress
+            status: complete
+            issue: 5146
             weight: 1
         R2.1:
-            status: in_progress
+            status: complete
+            issue: 5146
             weight: 1
         R2.2:
-            status: in_progress
+            status: complete
+            issue: 5146
             weight: 1
         R3.1:
             status: proposed

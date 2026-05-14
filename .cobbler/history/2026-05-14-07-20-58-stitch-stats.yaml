@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5146"
+task_title: '[stitch] cmd/dirname: operand handling and flags (srd016-dirname R1.4-R1.5, R2.1-R2.2)'
+status: success
+started_at: "2026-05-14T11:20:58Z"
+duration: 2m31s
+duration_s: 151
+tokens:
+    input: 380932
+    output: 3770
+    cache_creation: 168949
+    cache_read: 211976
+cost_usd: 1.5936905000000001
+num_turns: 11
+rate_limit_wait_s: 2
+loc_before:
+    production: 2283
+    test: 1498
+loc_after:
+    production: 2283
+    test: 1526
+diff:
+    files: 2
+    insertions: 111
+    deletions: 0
