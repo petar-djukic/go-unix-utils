@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5170"
+task_title: '[stitch] cmd/seq: basic sequence generation and argument forms (srd019-seq R1.1-R1.4)'
+status: success
+started_at: "2026-05-14T13:13:41Z"
+duration: 8m22s
+duration_s: 502
+tokens:
+    input: 510702
+    output: 27580
+    cache_creation: 196466
+    cache_read: 314225
+cost_usd: 2.407542
+num_turns: 22
+rate_limit_wait_s: 2
+loc_before:
+    production: 3041
+    test: 2501
+loc_after:
+    production: 3325
+    test: 2501
+diff:
+    files: 2
+    insertions: 397
+    deletions: 0
