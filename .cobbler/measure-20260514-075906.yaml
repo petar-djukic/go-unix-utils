@@ -1,0 +1,204 @@
+- index: 0
+  title: "[stitch] cmd/du: summarize total and exit status (srd009-du R4.1, R4.2, R5.1)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd009-du.yaml (requirements R4.1, R4.2, R5.1)
+      - cmd/du/main.go (existing implementation to extend)
+      - cmd/du/du_test.go (existing differential tests to extend)
+      - pkg/sys/ (filesystem metadata abstractions used by du)
+      - pkg/format/ (human-readable size formatting used by du)
+      - pkg/testutils/ (differential testing harness)
+
+    files:
+      - path: cmd/du/main.go
+        action: modify
+        note: Add implementations for R4.1, R4.2, R5.1
+      - path: cmd/du/du_test.go
+        action: modify
+        note: Add differential test cases for R4.1, R4.2, R5.1
+
+    requirements:
+      - id: R1
+        text: "Implement srd009-du requirement R4.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd009-du requirement R4.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd009-du requirement R5.1 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/du implementation -- do not rewrite existing code"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for differential testing against gdu reference binary"
+      - id: D3
+        text: "Set LC_ALL=C in all new differential test cases"
+      - id: D4
+        text: "Use exec.LookPath(\"gdu\") and t.Skip if gdu is not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/du/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/du/ -count=1 passes all existing and new tests"
+      - id: AC3
+        text: "go vet ./cmd/du/ reports no issues"
+      - id: AC4
+        text: "New differential test cases exercise R4.1, R4.2, and R5.1 behavior"
+
+- index: 1
+  title: "[stitch] cmd/tee: core stdin copy, file output, and creation mode (srd017-tee R1.1-R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd017-tee.yaml (requirements R1.1 through R1.4)
+      - pkg/testutils/ (differential testing harness -- DiffTest, RunDiffTests, BuildBinary)
+      - pkg/sys/ (InstallSIGPIPEHandler for SIGPIPE handling)
+
+    files:
+      - path: cmd/tee/main.go
+        action: create
+        note: "tee implementation: stdin-to-stdout copy and file output for R1.1-R1.4"
+      - path: cmd/tee/tee_test.go
+        action: create
+        note: Differential tests against gtee for R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd017-tee requirement R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd017-tee requirement R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd017-tee requirement R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd017-tee requirement R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for differential testing against gtee"
+      - id: D3
+        text: "Reference binary is gtee from Homebrew GNU coreutils"
+      - id: D4
+        text: "Use exec.LookPath(\"gtee\") and t.Skip if gtee is not found"
+      - id: D5
+        text: "Set LC_ALL=C in all differential test cases"
+      - id: D6
+        text: "Build the Go binary with testutils.BuildBinary(t, \".\")"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/tee/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/tee/ -count=1 passes all tests"
+      - id: AC3
+        text: "go vet ./cmd/tee/ reports no issues"
+      - id: AC4
+        text: "Differential test cases exercise R1.1, R1.2, R1.3, and R1.4 behavior"
+      - id: AC5
+        text: "main() calls sys.InstallSIGPIPEHandler() before any I/O"
+
+- index: 2
+  title: "[stitch] cmd/tee: multi-file output, append mode, and SIGINT suppression (srd017-tee R1.5, R2.1-R2.3)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd017-tee.yaml (requirements R1.5, R2.1 through R2.3)
+      - cmd/tee/main.go (existing implementation to extend)
+      - cmd/tee/tee_test.go (existing differential tests to extend)
+      - pkg/testutils/ (differential testing harness)
+
+    files:
+      - path: cmd/tee/main.go
+        action: modify
+        note: "Add multi-file, append mode, and SIGINT suppression for R1.5, R2.1-R2.3"
+      - path: cmd/tee/tee_test.go
+        action: modify
+        note: Add differential test cases for R1.5, R2.1-R2.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd017-tee requirement R1.5 as specified in the SRD"
+      - id: R2
+        text: "Implement srd017-tee requirement R2.1 as specified in the SRD"
+      - id: R3
+        text: "Implement srd017-tee requirement R2.2 as specified in the SRD"
+      - id: R4
+        text: "Implement srd017-tee requirement R2.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/tee implementation -- do not rewrite existing code"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for differential testing against gtee"
+      - id: D3
+        text: "Set LC_ALL=C in all new differential test cases"
+      - id: D4
+        text: "Use exec.LookPath(\"gtee\") and t.Skip if gtee is not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/tee/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/tee/ -count=1 passes all existing and new tests"
+      - id: AC3
+        text: "go vet ./cmd/tee/ reports no issues"
+      - id: AC4
+        text: "New differential test cases exercise R1.5, R2.1, R2.2, and R2.3 behavior"
+
+- index: 3
+  title: "[stitch] cmd/tee: error reporting, write failure handling, and exit status (srd017-tee R3.1-R3.4)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd017-tee.yaml (requirements R3.1 through R3.4)
+      - cmd/tee/main.go (existing implementation to extend)
+      - cmd/tee/tee_test.go (existing differential tests to extend)
+      - pkg/testutils/ (differential testing harness)
+
+    files:
+      - path: cmd/tee/main.go
+        action: modify
+        note: "Add error reporting, write failure handling, and exit status for R3.1-R3.4"
+      - path: cmd/tee/tee_test.go
+        action: modify
+        note: Add differential test cases for R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd017-tee requirement R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd017-tee requirement R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd017-tee requirement R3.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd017-tee requirement R3.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/tee implementation -- do not rewrite existing code"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for differential testing against gtee"
+      - id: D3
+        text: "Set LC_ALL=C in all new differential test cases"
+      - id: D4
+        text: "Use exec.LookPath(\"gtee\") and t.Skip if gtee is not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/tee/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/tee/ -count=1 passes all existing and new tests"
+      - id: AC3
+        text: "go vet ./cmd/tee/ reports no issues"
+      - id: AC4
+        text: "New differential test cases exercise R3.1, R3.2, R3.3, and R3.4 behavior"
