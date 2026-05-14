@@ -294,6 +294,9 @@ func printSequence(opts options, first, incr, last float64, rawArgs []string) {
 	format := opts.format
 	if format == "" {
 		format = defaultFormat(rawArgs)
+		if opts.equalWidth {
+			format = equalWidthFormat(format, first, last)
+		}
 	}
 	started := false
 	for i := 0; ; i++ {
@@ -310,6 +313,20 @@ func printSequence(opts options, first, incr, last float64, rawArgs []string) {
 	if started {
 		fmt.Fprintln(w)
 	}
+}
+
+func equalWidthFormat(defFmt string, first, last float64) string {
+	w1 := len(fmt.Sprintf(defFmt, first))
+	w2 := len(fmt.Sprintf(defFmt, last))
+	maxW := max(w1, w2)
+	prec := 0
+	if dot := strings.IndexByte(defFmt, '.'); dot >= 0 {
+		prec, _ = strconv.Atoi(defFmt[dot+1 : len(defFmt)-1])
+	}
+	if prec == 0 {
+		return "%0" + strconv.Itoa(maxW) + ".0f"
+	}
+	return "%0" + strconv.Itoa(maxW) + "." + strconv.Itoa(prec) + "f"
 }
 
 func inRange(val, incr, last float64) bool {
