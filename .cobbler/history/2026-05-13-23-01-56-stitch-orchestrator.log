@@ -276,3 +276,13 @@
 [2026-05-13T23:07:52-04:00] [generation-run44] [stitch +5m56s] closeStitchTask: closing #5132 "[stitch] cmd/sponge: differential tests (srd007-sponge R3.3, R4.1-R4.3)"
 [2026-05-13T23:07:53-04:00] [generation-run44] [stitch +5m57s] commentCobblerIssue: posted comment on #5132
 [2026-05-13T23:07:53-04:00] [generation-run44] [stitch +5m57s] updateRequirementsFile: marked 4 R-items as complete for issue #5132
+[2026-05-13T23:07:55-04:00] [generation-run44] [stitch +5m59s] closeCobblerIssue: closed #5132
+[2026-05-13T23:07:57-04:00] [generation-run44] [stitch +6m1s] closeStitchTask: #5132 closed
+[2026-05-13T23:07:57-04:00] [generation-run44] [stitch +6m1s] sweepCompletedTasks: all R-items for #5132 already complete, closing
+[2026-05-13T23:07:58-04:00] [generation-run44] [stitch +6m2s] commentCobblerIssue: posted comment on #5132
+[2026-05-13T23:07:59-04:00] [generation-run44] [stitch +6m3s] closeCobblerIssue: closed #5132
+[2026-05-13T23:08:00-04:00] [generation-run44] [stitch +6m4s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-13T23:08:00-04:00] [generation-run44] [stitch +6m4s] doOneTask: task 5132 finished in 5m58s
+[2026-05-13T23:08:00-04:00] [generation-run44] [stitch +6m4s] task 5132 completed in 5m58s
+[2026-05-13T23:08:00-04:00] [generation-run44] [stitch +6m4s] reached per-cycle limit (1), pausing for measure
+[2026-05-13T23:08:00-04:00] [generation-run44] [stitch +6m4s] completed 1 task(s) in 6m4s
