@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5207"
+task_title: '[stitch] cmd/ls: remaining core and extended column layout (srd008-ls R1.13-R1.14, R2.1-R2.2)'
+status: success
+started_at: "2026-05-14T21:23:12Z"
+duration: 6m10s
+duration_s: 370
+tokens:
+    input: 1616215
+    output: 12744
+    cache_creation: 193504
+    cache_read: 1422667
+cost_usd: 2.6204277499999993
+num_turns: 72
+rate_limit_wait_s: 9
+loc_before:
+    production: 4783
+    test: 3817
+loc_after:
+    production: 4884
+    test: 3817
+diff:
+    files: 2
+    insertions: 328
+    deletions: 9
