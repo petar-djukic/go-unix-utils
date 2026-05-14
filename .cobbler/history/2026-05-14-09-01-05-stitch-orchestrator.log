@@ -135,3 +135,13 @@
 [2026-05-14T09:06:16-04:00] [generation-run44] [stitch +5m12s] closeStitchTask: closing #5167 "[stitch] cmd/head: remaining multi-file and error handling (srd018-head R3.5, R4.1-R4.3)"
 [2026-05-14T09:06:17-04:00] [generation-run44] [stitch +5m13s] commentCobblerIssue: posted comment on #5167
 [2026-05-14T09:06:18-04:00] [generation-run44] [stitch +5m13s] updateRequirementsFile: marked 4 R-items as complete for issue #5167
+[2026-05-14T09:06:21-04:00] [generation-run44] [stitch +5m16s] closeCobblerIssue: closed #5167
+[2026-05-14T09:06:23-04:00] [generation-run44] [stitch +5m19s] closeStitchTask: #5167 closed
+[2026-05-14T09:06:24-04:00] [generation-run44] [stitch +5m20s] sweepCompletedTasks: all R-items for #5167 already complete, closing
+[2026-05-14T09:06:25-04:00] [generation-run44] [stitch +5m20s] commentCobblerIssue: posted comment on #5167
+[2026-05-14T09:06:27-04:00] [generation-run44] [stitch +5m22s] closeCobblerIssue: closed #5167
+[2026-05-14T09:06:28-04:00] [generation-run44] [stitch +5m24s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T09:06:28-04:00] [generation-run44] [stitch +5m24s] doOneTask: task 5167 finished in 5m14s
+[2026-05-14T09:06:28-04:00] [generation-run44] [stitch +5m24s] task 5167 completed in 5m14s
+[2026-05-14T09:06:28-04:00] [generation-run44] [stitch +5m24s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T09:06:28-04:00] [generation-run44] [stitch +5m24s] completed 1 task(s) in 5m24s
