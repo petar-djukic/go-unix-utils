@@ -3440,3 +3440,168 @@
       - id: AC4
         text: "New differential test cases exercise R3.1, R3.2, R3.3, and R3.4 behavior"
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/tee: version/help and output-error handling (srd017-tee R4.1-R4.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd017-tee.yaml (requirements R4.1, R4.2, R4.3)
+      - cmd/tee/main.go (existing implementation -- R1.1 through R3.4 are already implemented)
+      - CLAUDE.md (project conventions and SIGPIPE protocol)
+
+    files:
+      - path: cmd/tee/main.go
+        action: modify
+        note: Add R4.1-R4.3 functionality to existing tee implementation
+
+    requirements:
+      - id: R1
+        text: "Implement srd017-tee requirement R4.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd017-tee requirement R4.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd017-tee requirement R4.3 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Modify the existing cmd/tee/main.go -- do not rewrite or replace the file. Requirements R1.1 through R3.4 are already implemented."
+      - id: D2
+        text: "Preserve the existing sys.InstallSIGPIPEHandler() call at the start of main per the SIGPIPE shared protocol."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/tee/main.go compiles with no errors: go build -o bin/tee ./cmd/tee/"
+      - id: AC2
+        text: "go vet ./cmd/tee/ reports no issues"
+      - id: AC3
+        text: "All R4.1-R4.3 behaviors described in srd017-tee.yaml are implemented"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/tee: differential tests for srd017-tee R4.1-R4.3'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd017-tee.yaml (acceptance criteria for R4.1-R4.3)
+      - docs/specs/test-suites/test-rel-02.1.yaml (test cases for tee)
+      - cmd/tee/tee_test.go (existing test file -- tests for R1.1 through R3.4 are already present)
+      - cmd/tee/main.go (implementation being tested)
+      - pkg/testutils/ (DiffTest struct and RunDiffTests pattern)
+
+    files:
+      - path: cmd/tee/tee_test.go
+        action: modify
+        note: Add differential test cases for R4.1-R4.3
+
+    requirements:
+      - id: R1
+        text: "Add differential test cases covering srd017-tee R4.1 acceptance criteria"
+      - id: R2
+        text: "Add differential test cases covering srd017-tee R4.2 acceptance criteria"
+      - id: R3
+        text: "Add differential test cases covering srd017-tee R4.3 acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Add DiffTest entries to the existing tests slice in TestDiff. Do not remove or replace existing tests for R1.1-R3.4."
+      - id: D2
+        text: "Reference binary is gtee via exec.LookPath. Skip if not found."
+      - id: D3
+        text: "Set LC_ALL=C in the Env field of each DiffTest per the project differential testing protocol."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/tee/ -count=1 passes (or skips gracefully if gtee is not in PATH)"
+      - id: AC2
+        text: "New test cases cover all R4.1-R4.3 acceptance criteria from the SRD"
+      - id: AC3
+        text: "No existing tests for R1.1-R3.4 are removed or broken"
+  dependency: 0
+- index: 2
+  title: '[stitch] cmd/head: basic line output and defaults (srd018-head R1.1-R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd018-head.yaml (requirements R1.1, R1.2, R1.3, R1.4)
+      - CLAUDE.md (project conventions, SIGPIPE protocol, build conventions)
+      - cmd/basename/main.go (reference for simple cmd/ package structure)
+      - pkg/sys/ (InstallSIGPIPEHandler function)
+
+    files:
+      - path: cmd/head/main.go
+        action: create
+        note: head utility implementation covering R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd018-head requirement R1.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd018-head requirement R1.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd018-head requirement R1.3 per the SRD specification"
+      - id: R4
+        text: "Implement srd018-head requirement R1.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol."
+      - id: D2
+        text: "Build output uses -o bin/head per CLAUDE.md convention. The bin/ directory is git-ignored."
+      - id: D3
+        text: "This is the first task for cmd/head. Future tasks will add R1.5 through R4.4. Structure the code so additional flags and modes can be added incrementally without rewriting."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/head ./cmd/head/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/head/ reports no issues"
+      - id: AC3
+        text: "All R1.1-R1.4 behaviors described in srd018-head.yaml are implemented"
+      - id: AC4
+        text: "The binary runs and produces output consistent with srd018-head R1.1-R1.4 acceptance criteria"
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/head: differential tests for srd018-head R1.1-R1.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd018-head.yaml (acceptance criteria for R1.1-R1.4)
+      - docs/specs/test-suites/test-rel-02.2.yaml (test cases for head)
+      - cmd/head/main.go (implementation being tested)
+      - cmd/tee/tee_test.go (reference for differential test file structure)
+      - pkg/testutils/ (DiffTest struct, RunDiffTests, BuildBinary pattern)
+
+    files:
+      - path: cmd/head/head_test.go
+        action: create
+        note: Differential tests for head R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: "Create head_test.go with TestDiff function, BuildBinary, LookPath for ghead, t.Skip fallback, and differential test cases for srd018-head R1.1"
+      - id: R2
+        text: "Add differential test cases covering srd018-head R1.2 acceptance criteria"
+      - id: R3
+        text: "Add differential test cases covering srd018-head R1.3 acceptance criteria"
+      - id: R4
+        text: "Add differential test cases covering srd018-head R1.4 acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Use testutils.BuildBinary(t, \".\") and testutils.RunDiffTests(t, goBin, refBin, tests) per the shared differential testing protocol."
+      - id: D2
+        text: "Reference binary is ghead via exec.LookPath. Call t.Skip if ghead is not found in PATH."
+      - id: D3
+        text: "Set LC_ALL=C in the Env field of each DiffTest per the project locale constraint (all differential tests run under LC_ALL=C)."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/head/ -count=1 passes (or skips gracefully if ghead is not in PATH)"
+      - id: AC2
+        text: "Test cases cover all R1.1-R1.4 acceptance criteria from the SRD"
+      - id: AC3
+        text: "Test file follows the project differential testing pattern: TestDiff with BuildBinary, LookPath, t.Skip, and RunDiffTests"
+  dependency: 2
