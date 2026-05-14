@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd044-uname R1.1-R1.4.
+// Implements srd044-uname R1.1-R1.8.
 package main
 
 import (
@@ -19,6 +19,10 @@ Print certain system information.  With no OPTION, same as -s.
   -s                print the kernel name
   -n                print the network node hostname
   -r                print the kernel release
+  -v                print the kernel version
+  -m                print the machine hardware name
+  -p                print the processor type or "unknown"
+  -i                print the hardware platform or "unknown"
       --help     display this help and exit
       --version  output version information and exit
 `
@@ -35,6 +39,10 @@ var fields = []fieldEntry{
 	{'s', func(u *unix.Utsname) string { return utsToString(u.Sysname[:]) }},
 	{'n', func(u *unix.Utsname) string { return utsToString(u.Nodename[:]) }},
 	{'r', func(u *unix.Utsname) string { return utsToString(u.Release[:]) }},
+	{'v', func(u *unix.Utsname) string { return utsToString(u.Version[:]) }},
+	{'m', func(u *unix.Utsname) string { return utsToString(u.Machine[:]) }},
+	{'p', func(_ *unix.Utsname) string { return "unknown" }},
+	{'i', func(_ *unix.Utsname) string { return "unknown" }},
 }
 
 var flagIndex map[byte]int
