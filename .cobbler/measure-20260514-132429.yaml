@@ -1,0 +1,167 @@
+- index: 0
+  title: "[stitch] cmd/hostname: differential tests (srd047-hostname R3.1-R3.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd047-hostname.yaml (R3.1-R3.3 requirements for differential testing)
+      - docs/specs/test-suites/test-rel-03.1.yaml (test suite expectations for release 03.1)
+      - cmd/hostname/main.go (existing hostname implementation to test against)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests harness)
+
+    files:
+      - path: cmd/hostname/hostname_test.go
+        action: create
+        note: Differential tests comparing Go hostname binary against ghostname
+
+    requirements:
+      - id: R1
+        text: "Implement srd047-hostname R3.1: create TestDiff function with testutils.BuildBinary(t, \".\") to compile the Go binary and exec.LookPath(\"ghostname\") to locate the GNU reference binary, calling t.Skip if ghostname is not found in PATH"
+      - id: R2
+        text: "Implement srd047-hostname R3.2: add differential test cases for default invocation (no flags), comparing stdout and exit code between Go binary and ghostname reference"
+      - id: R3
+        text: "Implement srd047-hostname R3.3: add differential test cases for --help and --version flags, and error cases such as unexpected arguments, comparing behavior against ghostname"
+
+    design_decisions:
+      - id: D1
+        text: "Use the standard differential testing pattern: testutils.BuildBinary(t, \".\") for the Go binary, exec.LookPath(\"ghostname\") for the reference, t.Skip on missing reference"
+      - id: D2
+        text: "Set LC_ALL=C in the Env field of each DiffTest for deterministic locale-independent comparison"
+      - id: D3
+        text: "Follow the existing cmd/ test file pattern -- single TestDiff function with a []testutils.DiffTest slice passed to testutils.RunDiffTests"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/hostname/hostname_test.go exists with a TestDiff function"
+      - id: AC2
+        text: "go test ./cmd/hostname/... -count=1 passes (or skips gracefully if ghostname is not in PATH)"
+      - id: AC3
+        text: "go vet ./cmd/hostname/... reports no issues"
+
+- index: 1
+  title: "[stitch] cmd/uname: core flags implementation (srd044-uname R1.1-R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd044-uname.yaml (R1.1-R1.4 requirements for core uname flags)
+      - docs/specs/use-cases/rel03.1-uc001-uname.yaml (use case for uname utility)
+      - pkg/sys/sys.go (InstallSIGPIPEHandler and system call abstractions)
+      - CLAUDE.md (project conventions for cmd/ packages)
+
+    files:
+      - path: cmd/uname/main.go
+        action: create
+        note: Core uname implementation with initial flag set per R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd044-uname R1.1: create cmd/uname/main.go with package main, call sys.InstallSIGPIPEHandler() at start of main, implement default behavior (print kernel name to stdout with trailing newline when no flags given)"
+      - id: R2
+        text: "Implement srd044-uname R1.2: implement the -s / --kernel-name flag to print the kernel name as specified in the SRD"
+      - id: R3
+        text: "Implement srd044-uname R1.3: implement the -n / --nodename flag to print the network node hostname as specified in the SRD"
+      - id: R4
+        text: "Implement srd044-uname R1.4: implement the -r / --kernel-release flag to print the kernel release string as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Use syscall.Uname to obtain the Utsname struct containing system identity fields -- convert fixed-size int8/byte arrays to Go strings by scanning for the null terminator"
+      - id: D2
+        text: "Use flag or manual argument parsing as specified in the SRD -- support both short (-s) and long (--kernel-name) flag forms"
+      - id: D3
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the project SIGPIPE convention"
+      - id: D4
+        text: "Structure the code so additional flags (R1.5-R1.9) can be added by extending the same flag-to-field mapping without restructuring"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/uname/main.go exists and compiles: go build -o bin/uname ./cmd/uname/"
+      - id: AC2
+        text: "Running bin/uname with no flags prints the kernel name followed by a newline"
+      - id: AC3
+        text: "Flags -s, -n, -r produce the corresponding system field output"
+      - id: AC4
+        text: "go vet ./cmd/uname/... reports no issues"
+
+- index: 2
+  title: "[stitch] cmd/uname: extended flags (srd044-uname R1.5-R1.8)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd044-uname.yaml (R1.5-R1.8 requirements for extended uname flags)
+      - cmd/uname/main.go (existing implementation from prior task with R1.1-R1.4 flags)
+
+    files:
+      - path: cmd/uname/main.go
+        action: modify
+        note: Add extended flag set per R1.5-R1.8
+
+    requirements:
+      - id: R1
+        text: "Implement srd044-uname R1.5: implement the -v / --kernel-version flag to print the kernel version string as specified in the SRD"
+      - id: R2
+        text: "Implement srd044-uname R1.6: implement the -m / --machine flag to print the machine hardware name as specified in the SRD"
+      - id: R3
+        text: "Implement srd044-uname R1.7: implement the -p / --processor flag to print the processor type as specified in the SRD (may report \"unknown\" on some platforms)"
+      - id: R4
+        text: "Implement srd044-uname R1.8: implement the -i / --hardware-platform flag to print the hardware platform as specified in the SRD (may report \"unknown\" on some platforms)"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the same flag-to-field mapping pattern established in R1.1-R1.4 -- add new flags to the existing parsing and output logic"
+      - id: D2
+        text: "For -p and -i, match GNU behavior: return \"unknown\" when the platform does not provide processor or hardware-platform information, as specified in the SRD"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/uname/main.go compiles: go build -o bin/uname ./cmd/uname/"
+      - id: AC2
+        text: "Flags -v, -m, -p, -i produce the corresponding system field output"
+      - id: AC3
+        text: "All previously implemented flags (-s, -n, -r) continue to work"
+      - id: AC4
+        text: "go vet ./cmd/uname/... reports no issues"
+
+- index: 3
+  title: "[stitch] cmd/uname: all-fields flag and version output (srd044-uname R1.9, R2.1-R2.2)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd044-uname.yaml (R1.9, R2.1-R2.2 requirements for -a flag and version/help)
+      - cmd/uname/main.go (existing implementation with R1.1-R1.8 flags)
+
+    files:
+      - path: cmd/uname/main.go
+        action: modify
+        note: Add -a/--all combined output and --version/--help per R1.9, R2.1-R2.2
+
+    requirements:
+      - id: R1
+        text: "Implement srd044-uname R1.9: implement the -a / --all flag to print all system information fields in the order specified by the SRD, separated by single spaces"
+      - id: R2
+        text: "Implement srd044-uname R2.1: implement --version flag to print version information to stdout and exit 0 as specified in the SRD"
+      - id: R3
+        text: "Implement srd044-uname R2.2: implement --help flag to print usage information to stdout and exit 0 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "The -a flag prints all fields in the GNU-defined order: kernel-name nodename kernel-release kernel-version machine processor hardware-platform operating-system, separated by spaces, as specified in the SRD"
+      - id: D2
+        text: "When -a is combined with individual flags, -a takes precedence and prints all fields per GNU behavior"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/uname/main.go compiles: go build -o bin/uname ./cmd/uname/"
+      - id: AC2
+        text: "bin/uname -a prints all system information fields space-separated on one line"
+      - id: AC3
+        text: "bin/uname --version prints version info and exits 0; bin/uname --help prints usage and exits 0"
+      - id: AC4
+        text: "go vet ./cmd/uname/... reports no issues"
