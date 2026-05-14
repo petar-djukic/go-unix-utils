@@ -146,3 +146,13 @@
 [2026-05-14T09:22:01-04:00] [generation-run44] [stitch +8m29s] closeStitchTask: closing #5170 "[stitch] cmd/seq: basic sequence generation and argument forms (srd019-seq R1.1-R1.4)"
 [2026-05-14T09:22:02-04:00] [generation-run44] [stitch +8m30s] commentCobblerIssue: posted comment on #5170
 [2026-05-14T09:22:02-04:00] [generation-run44] [stitch +8m30s] updateRequirementsFile: marked 4 R-items as complete for issue #5170
+[2026-05-14T09:22:05-04:00] [generation-run44] [stitch +8m33s] closeCobblerIssue: closed #5170
+[2026-05-14T09:22:08-04:00] [generation-run44] [stitch +8m35s] closeStitchTask: #5170 closed
+[2026-05-14T09:22:08-04:00] [generation-run44] [stitch +8m36s] sweepCompletedTasks: all R-items for #5170 already complete, closing
+[2026-05-14T09:22:10-04:00] [generation-run44] [stitch +8m37s] commentCobblerIssue: posted comment on #5170
+[2026-05-14T09:22:11-04:00] [generation-run44] [stitch +8m39s] closeCobblerIssue: closed #5170
+[2026-05-14T09:22:13-04:00] [generation-run44] [stitch +8m41s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T09:22:13-04:00] [generation-run44] [stitch +8m41s] doOneTask: task 5170 finished in 8m34s
+[2026-05-14T09:22:13-04:00] [generation-run44] [stitch +8m41s] task 5170 completed in 8m34s
+[2026-05-14T09:22:13-04:00] [generation-run44] [stitch +8m41s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T09:22:13-04:00] [generation-run44] [stitch +8m41s] completed 1 task(s) in 8m41s
