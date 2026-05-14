@@ -1,0 +1,199 @@
+- index: 0
+  title: "[stitch] cmd/ls: extended features implementation (srd008-ls R2.11-R2.14)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd008-ls.yaml (ls SRD -- read requirements R2.11, R2.12, R2.13, R2.14)
+      - cmd/ls/main.go (existing ls implementation to extend)
+      - pkg/sys/ (file metadata API used by ls)
+      - pkg/format/ (output formatting API used by ls)
+
+    files:
+      - path: cmd/ls/main.go
+        action: modify
+        note: Add implementation for R2.11-R2.14 features
+
+    requirements:
+      - id: R1
+        text: Implement srd008-ls requirement R2.11 per the specification
+      - id: R2
+        text: Implement srd008-ls requirement R2.12 per the specification
+      - id: R3
+        text: Implement srd008-ls requirement R2.13 per the specification
+      - id: R4
+        text: Implement srd008-ls requirement R2.14 per the specification
+
+    design_decisions:
+      - id: D1
+        text: Follow the existing code structure in cmd/ls/main.go for flag parsing and output formatting
+      - id: D2
+        text: Use pkg/sys.Stat and pkg/sys.Lstat for file metadata per srd008-ls dependency on srd002-sys
+      - id: D3
+        text: Use pkg/format for output formatting per srd008-ls dependency on srd003-format
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/ls ./cmd/ls/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/ls/ reports no issues
+      - id: AC3
+        text: srd008-ls R2.11 behavior is implemented and matches the SRD specification
+      - id: AC4
+        text: srd008-ls R2.12 behavior is implemented and matches the SRD specification
+      - id: AC5
+        text: srd008-ls R2.13 behavior is implemented and matches the SRD specification
+      - id: AC6
+        text: srd008-ls R2.14 behavior is implemented and matches the SRD specification
+
+- index: 1
+  title: "[stitch] cmd/ls: extended features tests (srd008-ls R2.11-R2.14)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd008-ls.yaml (ls SRD -- read requirements R2.11, R2.12, R2.13, R2.14 for test cases)
+      - cmd/ls/ls_test.go (existing test file to extend)
+      - cmd/ls/main.go (implementation being tested)
+      - pkg/testutils/ (differential testing framework -- read for DiffTest struct and RunDiffTests API)
+
+    files:
+      - path: cmd/ls/ls_test.go
+        action: modify
+        note: Add differential tests for R2.11-R2.14
+
+    requirements:
+      - id: R1
+        text: Write differential tests for srd008-ls R2.11 covering all acceptance criteria in the SRD
+      - id: R2
+        text: Write differential tests for srd008-ls R2.12 covering all acceptance criteria in the SRD
+      - id: R3
+        text: Write differential tests for srd008-ls R2.13 covering all acceptance criteria in the SRD
+      - id: R4
+        text: Write differential tests for srd008-ls R2.14 covering all acceptance criteria in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Use testutils.RunDiffTests to compare Go binary output against the gls reference binary
+      - id: D2
+        text: Use testutils.BuildBinary(t, ".") to compile the ls binary under test
+      - id: D3
+        text: Set LC_ALL=C in test environment via the Env field on DiffTest structs
+      - id: D4
+        text: Skip tests if gls is not in PATH via exec.LookPath and t.Skip
+
+    acceptance_criteria:
+      - id: AC1
+        text: go test ./cmd/ls/ -count=1 passes (or skips gracefully if gls is not installed)
+      - id: AC2
+        text: Each R2.11 acceptance criterion from the SRD has at least one differential test case
+      - id: AC3
+        text: Each R2.12 acceptance criterion from the SRD has at least one differential test case
+      - id: AC4
+        text: Each R2.13 acceptance criterion from the SRD has at least one differential test case
+      - id: AC5
+        text: Each R2.14 acceptance criterion from the SRD has at least one differential test case
+      - id: AC6
+        text: Tests skip gracefully when gls reference binary is not in PATH
+
+- index: 2
+  title: "[stitch] cmd/ls: features implementation (srd008-ls R2.15, R3.1-R3.3)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd008-ls.yaml (ls SRD -- read requirements R2.15, R3.1, R3.2, R3.3)
+      - cmd/ls/main.go (existing ls implementation to extend)
+      - pkg/sys/ (file metadata API used by ls)
+      - pkg/format/ (output formatting API used by ls)
+
+    files:
+      - path: cmd/ls/main.go
+        action: modify
+        note: Add implementation for R2.15 and R3.1-R3.3 features
+
+    requirements:
+      - id: R1
+        text: Implement srd008-ls requirement R2.15 per the specification
+      - id: R2
+        text: Implement srd008-ls requirement R3.1 per the specification
+      - id: R3
+        text: Implement srd008-ls requirement R3.2 per the specification
+      - id: R4
+        text: Implement srd008-ls requirement R3.3 per the specification
+
+    design_decisions:
+      - id: D1
+        text: Follow the existing code structure in cmd/ls/main.go for flag parsing and output formatting
+      - id: D2
+        text: Use pkg/sys.Stat and pkg/sys.Lstat for file metadata per srd008-ls dependency on srd002-sys
+      - id: D3
+        text: Use pkg/format for output formatting per srd008-ls dependency on srd003-format
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/ls ./cmd/ls/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/ls/ reports no issues
+      - id: AC3
+        text: srd008-ls R2.15 behavior is implemented and matches the SRD specification
+      - id: AC4
+        text: srd008-ls R3.1 behavior is implemented and matches the SRD specification
+      - id: AC5
+        text: srd008-ls R3.2 behavior is implemented and matches the SRD specification
+      - id: AC6
+        text: srd008-ls R3.3 behavior is implemented and matches the SRD specification
+
+- index: 3
+  title: "[stitch] cmd/ls: features tests (srd008-ls R2.15, R3.1-R3.3)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd008-ls.yaml (ls SRD -- read requirements R2.15, R3.1, R3.2, R3.3 for test cases)
+      - cmd/ls/ls_test.go (existing test file to extend)
+      - cmd/ls/main.go (implementation being tested)
+      - pkg/testutils/ (differential testing framework -- read for DiffTest struct and RunDiffTests API)
+
+    files:
+      - path: cmd/ls/ls_test.go
+        action: modify
+        note: Add differential tests for R2.15 and R3.1-R3.3
+
+    requirements:
+      - id: R1
+        text: Write differential tests for srd008-ls R2.15 covering all acceptance criteria in the SRD
+      - id: R2
+        text: Write differential tests for srd008-ls R3.1 covering all acceptance criteria in the SRD
+      - id: R3
+        text: Write differential tests for srd008-ls R3.2 covering all acceptance criteria in the SRD
+      - id: R4
+        text: Write differential tests for srd008-ls R3.3 covering all acceptance criteria in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Use testutils.RunDiffTests to compare Go binary output against the gls reference binary
+      - id: D2
+        text: Use testutils.BuildBinary(t, ".") to compile the ls binary under test
+      - id: D3
+        text: Set LC_ALL=C in test environment via the Env field on DiffTest structs
+      - id: D4
+        text: Skip tests if gls is not in PATH via exec.LookPath and t.Skip
+
+    acceptance_criteria:
+      - id: AC1
+        text: go test ./cmd/ls/ -count=1 passes (or skips gracefully if gls is not installed)
+      - id: AC2
+        text: Each R2.15 acceptance criterion from the SRD has at least one differential test case
+      - id: AC3
+        text: Each R3.1 acceptance criterion from the SRD has at least one differential test case
+      - id: AC4
+        text: Each R3.2 acceptance criterion from the SRD has at least one differential test case
+      - id: AC5
+        text: Each R3.3 acceptance criterion from the SRD has at least one differential test case
+      - id: AC6
+        text: Tests skip gracefully when gls reference binary is not in PATH
