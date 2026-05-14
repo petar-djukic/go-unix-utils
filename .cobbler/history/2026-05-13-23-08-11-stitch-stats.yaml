@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5133"
+task_title: '[stitch] cmd/sponge: extended tests (srd007-sponge R5.1-R5.4)'
+status: success
+started_at: "2026-05-14T03:08:11Z"
+duration: 6m44s
+duration_s: 403
+tokens:
+    input: 635946
+    output: 19041
+    cache_creation: 191254
+    cache_read: 444677
+cost_usd: 2.2685794
+num_turns: 30
+rate_limit_wait_s: 2
+loc_before:
+    production: 1899
+    test: 877
+loc_after:
+    production: 1905
+    test: 1005
+diff:
+    files: 3
+    insertions: 266
+    deletions: 1
