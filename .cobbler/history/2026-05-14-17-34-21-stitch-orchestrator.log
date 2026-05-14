@@ -302,3 +302,9 @@ with open('.cobbler/history/2026-05-14-17-29-35-measure...
 [2026-05-14T17:42:12-04:00] [generation-run44] [stitch +7m51s] doOneTask: closing task 5209
 [2026-05-14T17:42:12-04:00] [generation-run44] [stitch +7m51s] closeStitchTask: closing #5209 "[stitch] generation-run44 #5209"
 [2026-05-14T17:42:13-04:00] [generation-run44] [stitch +7m53s] commentCobblerIssue: posted comment on #5209
+[2026-05-14T17:42:15-04:00] [generation-run44] [stitch +7m55s] closeCobblerIssue: closed #5209
+[2026-05-14T17:42:16-04:00] [generation-run44] [stitch +7m55s] closeStitchTask: #5209 closed
+[2026-05-14T17:42:16-04:00] [generation-run44] [stitch +7m56s] doOneTask: task 5209 finished in 7m48s
+[2026-05-14T17:42:16-04:00] [generation-run44] [stitch +7m56s] task 5209 completed in 7m48s
+[2026-05-14T17:42:16-04:00] [generation-run44] [stitch +7m56s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T17:42:16-04:00] [generation-run44] [stitch +7m56s] completed 1 task(s) in 7m56s
