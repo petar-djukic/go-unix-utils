@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5166"
+task_title: '[stitch] cmd/head: multi-file headers and quiet/verbose control (srd018-head R3.1-R3.4)'
+status: success
+started_at: "2026-05-14T12:57:12Z"
+duration: 3m44s
+duration_s: 224
+tokens:
+    input: 802368
+    output: 7876
+    cache_creation: 185552
+    cache_read: 616794
+cost_usd: 2.00419625
+num_turns: 40
+rate_limit_wait_s: 2
+loc_before:
+    production: 3005
+    test: 2333
+loc_after:
+    production: 3037
+    test: 2439
+diff:
+    files: 3
+    insertions: 286
+    deletions: 3
