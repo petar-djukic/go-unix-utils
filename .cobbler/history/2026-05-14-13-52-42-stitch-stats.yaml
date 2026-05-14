@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5200"
+task_title: '[stitch] cmd/uname: error handling and validation (srd044-uname R3.1-R3.2)'
+status: success
+started_at: "2026-05-14T17:52:42Z"
+duration: 2m20s
+duration_s: 139
+tokens:
+    input: 307754
+    output: 1923
+    cache_creation: 174034
+    cache_read: 133711
+cost_usd: 1.6165502499999997
+num_turns: 23
+rate_limit_wait_s: 3
+loc_before:
+    production: 4318
+    test: 3560
+loc_after:
+    production: 4318
+    test: 3624
+diff:
+    files: 2
+    insertions: 193
+    deletions: 0
