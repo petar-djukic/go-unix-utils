@@ -452,16 +452,20 @@ requirements:
             issue: 5110
             weight: 1
         R4.5:
-            status: in_progress
+            status: uncertain
+            issue: 5111
             weight: 1
         R4.6:
-            status: in_progress
+            status: uncertain
+            issue: 5111
             weight: 1
         R4.7:
-            status: in_progress
+            status: uncertain
+            issue: 5111
             weight: 1
         R4.8:
-            status: in_progress
+            status: uncertain
+            issue: 5111
             weight: 1
         R4.9:
             status: proposed
