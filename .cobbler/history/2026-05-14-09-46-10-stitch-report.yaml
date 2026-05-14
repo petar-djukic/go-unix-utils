@@ -1,0 +1,27 @@
+task_id: "5175"
+task_title: '[stitch] cmd/seq: remaining edge case (srd019-seq R4.4)'
+status: success
+branch: task/generation-run44-5175
+diff:
+    files: 3
+    insertions: 263
+    deletions: 2
+files:
+    - path: .cobbler/history/2026-05-14-09-46-02-stitch-orchestrator.log
+      status: M
+      insertions: 232
+      deletions: 0
+    - path: cmd/seq/main.go
+      status: M
+      insertions: 8
+      deletions: 2
+    - path: cmd/seq/seq_test.go
+      status: M
+      insertions: 24
+      deletions: 0
+loc_before:
+    production: 3410
+    test: 2641
+loc_after:
+    production: 3416
+    test: 2665

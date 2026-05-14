@@ -1283,7 +1283,8 @@ requirements:
             issue: 5173
             weight: 1
         R4.4:
-            status: in_progress
+            status: complete
+            issue: 5175
             weight: 1
     srd020-echo:
         R1.1:
