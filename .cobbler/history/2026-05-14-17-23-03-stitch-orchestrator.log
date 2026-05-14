@@ -251,3 +251,13 @@
 [2026-05-14T17:29:20-04:00] [generation-run44] [stitch +6m17s] closeStitchTask: closing #5207 "[stitch] cmd/ls: remaining core and extended column layout (srd008-ls R1.13-R1.14, R2.1-R2.2)"
 [2026-05-14T17:29:21-04:00] [generation-run44] [stitch +6m17s] commentCobblerIssue: posted comment on #5207
 [2026-05-14T17:29:21-04:00] [generation-run44] [stitch +6m17s] updateRequirementsFile: marked 4 R-items as complete for issue #5207
+[2026-05-14T17:29:23-04:00] [generation-run44] [stitch +6m20s] closeCobblerIssue: closed #5207
+[2026-05-14T17:29:25-04:00] [generation-run44] [stitch +6m22s] closeStitchTask: #5207 closed
+[2026-05-14T17:29:26-04:00] [generation-run44] [stitch +6m22s] sweepCompletedTasks: all R-items for #5208 already complete, closing
+[2026-05-14T17:29:27-04:00] [generation-run44] [stitch +6m23s] commentCobblerIssue: posted comment on #5208
+[2026-05-14T17:29:29-04:00] [generation-run44] [stitch +6m25s] closeCobblerIssue: closed #5208
+[2026-05-14T17:29:31-04:00] [generation-run44] [stitch +6m27s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T17:29:31-04:00] [generation-run44] [stitch +6m27s] doOneTask: task 5207 finished in 6m21s
+[2026-05-14T17:29:31-04:00] [generation-run44] [stitch +6m27s] task 5207 completed in 6m21s
+[2026-05-14T17:29:31-04:00] [generation-run44] [stitch +6m27s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T17:29:31-04:00] [generation-run44] [stitch +6m27s] completed 1 task(s) in 6m27s
