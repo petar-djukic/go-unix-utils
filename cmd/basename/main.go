@@ -11,6 +11,28 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+const helpText = `Usage: basename NAME [SUFFIX]
+  or:  basename OPTION... NAME...
+Print NAME with any leading directory components removed.
+If specified, also remove a trailing SUFFIX.
+
+Mandatory arguments to long options are mandatory for short options too.
+  -a, --multiple       support multiple arguments and treat each as a NAME
+  -s, --suffix=SUFFIX  remove a trailing SUFFIX; implies -a
+  -z, --zero           end each output line with NUL, not newline
+      --help     display this help and exit
+      --version  output version information and exit
+
+Examples:
+  basename /usr/bin/sort          -> "sort"
+  basename include/stdio.h .h     -> "stdio"
+  basename -s .h include/stdio.h  -> "stdio"
+  basename -a any/str1 any/str2   -> "str1" followed by "str2"
+`
+
+const versionText = `basename (go-unix-utils) dev
+`
+
 type options struct {
 	multiple bool
 	suffix   string
@@ -86,6 +108,14 @@ func parseArgs(args []string) (options, []string, error) {
 
 func parseLongFlag(flag string, remaining []string, opts *options) (int, error) {
 	switch {
+	case flag == "--help":
+		fmt.Fprint(os.Stdout, helpText)
+		os.Exit(0)
+		return 0, nil
+	case flag == "--version":
+		fmt.Fprint(os.Stdout, versionText)
+		os.Exit(0)
+		return 0, nil
 	case flag == "--multiple":
 		opts.multiple = true
 		return 1, nil
