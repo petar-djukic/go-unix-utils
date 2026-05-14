@@ -1,0 +1,23 @@
+task_id: "5152"
+task_title: '[stitch] cmd/du: depth limit, filesystem boundary, symlinks, and exclusion (srd009-du R2.4-R2.7)'
+status: success
+branch: task/generation-run44-5152
+diff:
+    files: 2
+    insertions: 130
+    deletions: 19
+files:
+    - path: .cobbler/history/2026-05-14-07-47-41-stitch-orchestrator.log
+      status: M
+      insertions: 88
+      deletions: 0
+    - path: cmd/du/main.go
+      status: M
+      insertions: 43
+      deletions: 19
+loc_before:
+    production: 2466
+    test: 1544
+loc_after:
+    production: 2490
+    test: 1544
