@@ -11,28 +11,138 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+type options struct {
+	multiple bool
+	suffix   string
+	zero     bool
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	args := os.Args[1:]
-	if len(args) < 1 || len(args) > 2 {
-		fmt.Fprintf(os.Stderr, "basename: missing operand\n")
+	opts, names, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "basename: %s\n", err)
 		os.Exit(1)
 	}
 
-	name := args[0]
-	suffix := ""
-	if len(args) == 2 {
-		suffix = args[1]
+	terminator := "\n"
+	if opts.zero {
+		terminator = "\x00"
 	}
 
-	result := basename(name, suffix)
-	fmt.Println(result)
+	for _, name := range names {
+		result := basename(name, opts.suffix)
+		fmt.Fprint(os.Stdout, result+terminator)
+	}
 }
 
-func basename(name, suffix string) string {
-	name = strings.TrimRight(name, "/")
+func parseArgs(args []string) (options, []string, error) {
+	var opts options
+	var names []string
 
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--" {
+			names = append(names, args[i+1:]...)
+			break
+		}
+		if strings.HasPrefix(arg, "--") {
+			n, err := parseLongFlag(arg, args[i:], &opts)
+			if err != nil {
+				return opts, nil, err
+			}
+			i += n
+			continue
+		}
+		if len(arg) > 1 && arg[0] == '-' {
+			n, err := parseShortFlags(arg[1:], args[i+1:], &opts)
+			if err != nil {
+				return opts, nil, err
+			}
+			i += 1 + n
+			continue
+		}
+		names = append(names, arg)
+		i++
+	}
+
+	if len(names) == 0 {
+		return opts, nil, fmt.Errorf("missing operand")
+	}
+	if !opts.multiple && len(names) > 2 {
+		return opts, nil, fmt.Errorf("extra operand '%s'", names[2])
+	}
+	// R1.2: single-argument mode treats second positional arg as suffix
+	if !opts.multiple && len(names) == 2 {
+		opts.suffix = names[1]
+		names = names[:1]
+	}
+
+	return opts, names, nil
+}
+
+func parseLongFlag(flag string, remaining []string, opts *options) (int, error) {
+	switch {
+	case flag == "--multiple":
+		opts.multiple = true
+		return 1, nil
+	case flag == "--zero":
+		opts.zero = true
+		return 1, nil
+	case flag == "--suffix":
+		if len(remaining) < 2 {
+			return 0, fmt.Errorf("option '--suffix' requires an argument")
+		}
+		opts.suffix = remaining[1]
+		opts.multiple = true
+		return 2, nil
+	case strings.HasPrefix(flag, "--suffix="):
+		opts.suffix = flag[len("--suffix="):]
+		opts.multiple = true
+		return 1, nil
+	default:
+		return 0, fmt.Errorf("unrecognized option '%s'", flag)
+	}
+}
+
+func parseShortFlags(flags string, remaining []string, opts *options) (int, error) {
+	consumed := 0
+	for j := 0; j < len(flags); j++ {
+		switch flags[j] {
+		case 'a':
+			opts.multiple = true
+		case 'z':
+			opts.zero = true
+		case 's':
+			opts.multiple = true
+			if rest := flags[j+1:]; rest != "" {
+				opts.suffix = rest
+			} else if len(remaining) > consumed {
+				opts.suffix = remaining[consumed]
+				consumed++
+			} else {
+				return 0, fmt.Errorf("option requires an argument -- 's'")
+			}
+			return consumed, nil
+		default:
+			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
+		}
+	}
+	return consumed, nil
+}
+
+// R1.5: empty string produces empty output
+// R1.4: all-slash input produces "/"
+// R1.1: strip directory prefix
+// R1.2: remove literal suffix match
+func basename(name, suffix string) string {
+	if name == "" {
+		return ""
+	}
+
+	name = strings.TrimRight(name, "/")
 	if name == "" {
 		return "/"
 	}
