@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/du implements recursive directory disk usage reporting.
-// Implements srd009-du R1.1-R1.5, R2.2-R2.7, R3.1-R3.3, R4.1-R4.2, R5.1.
+// Implements srd009-du R1.1-R1.5, R2.1-R2.8, R3.1-R3.3, R4.1-R4.2, R5.1.
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/format"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -26,6 +27,10 @@ type options struct {
 	maxDepth      int
 	megaBlocks    bool
 	oneFileSystem bool
+	apparentSize  bool
+	humanReadable bool
+	siUnits       bool
+	nullTerm      bool
 }
 
 func main() {
@@ -67,6 +72,11 @@ func parseFlags() options {
 	flag.BoolVar(&opts.megaBlocks, "m", false, "use 1048576-byte blocks")
 	flag.BoolVar(&opts.oneFileSystem, "x", false, "skip directories on different file systems")
 	flag.BoolVar(&opts.oneFileSystem, "one-file-system", false, "skip directories on different file systems")
+	flag.BoolVar(&opts.apparentSize, "apparent-size", false, "print apparent sizes rather than disk usage")
+	flag.BoolVar(&opts.humanReadable, "h", false, "print sizes in human readable format")
+	flag.BoolVar(&opts.siUnits, "si", false, "like -h, but use powers of 1000 not 1024")
+	flag.BoolVar(&opts.nullTerm, "0", false, "end each output line with NUL, not newline")
+	flag.BoolVar(&opts.nullTerm, "null", false, "end each output line with NUL, not newline")
 	flag.Parse()
 	return opts
 }
@@ -81,7 +91,7 @@ func processArg(path string, seen map[inodeKey]bool, opts *options) (int64, erro
 	rootDev := fi.Dev
 
 	if !fi.Mode.IsDir() {
-		size := fileSize(fi, seen)
+		size := fileSize(fi, seen, opts)
 		printEntry(size, path, opts)
 		return size, nil
 	}
@@ -93,7 +103,7 @@ func walkDir(path string, fi *sys.FileInfo, seen map[inodeKey]bool, opts *option
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "du: %v\n", err)
-		size := blockSize(fi)
+		size := sizeContrib(fi, opts)
 		if shouldPrint(depth, true, opts) {
 			printEntry(size, path, opts)
 		}
@@ -101,7 +111,7 @@ func walkDir(path string, fi *sys.FileInfo, seen map[inodeKey]bool, opts *option
 	}
 
 	total, firstErr := accumChildren(path, entries, seen, opts, depth, rootDev)
-	total += blockSize(fi)
+	total += sizeContrib(fi, opts)
 	if shouldPrint(depth, true, opts) {
 		printEntry(total, path, opts)
 	}
@@ -139,7 +149,7 @@ func childSize(path string, seen map[inodeKey]bool, opts *options, depth int, ro
 		return walkDir(path, fi, seen, opts, depth, rootDev)
 	}
 
-	size := fileSize(fi, seen)
+	size := fileSize(fi, seen, opts)
 	if shouldPrint(depth, false, opts) {
 		printEntry(size, path, opts)
 	}
@@ -159,20 +169,29 @@ func shouldPrint(depth int, isDir bool, opts *options) bool {
 	return opts.allFiles
 }
 
-func fileSize(fi *sys.FileInfo, seen map[inodeKey]bool) int64 {
+func fileSize(fi *sys.FileInfo, seen map[inodeKey]bool, opts *options) int64 {
 	key := inodeKey{Dev: fi.Dev, Ino: fi.Ino}
 	if seen[key] {
 		return 0
 	}
 	seen[key] = true
-	return blockSize(fi)
+	return sizeContrib(fi, opts)
 }
 
-func blockSize(fi *sys.FileInfo) int64 {
+func sizeContrib(fi *sys.FileInfo, opts *options) int64 {
+	if opts.apparentSize {
+		return fi.Size
+	}
 	return fi.Blocks
 }
 
 func displaySize(raw int64, opts *options) int64 {
+	if opts.apparentSize {
+		if opts.megaBlocks {
+			return (raw + 1048575) / 1048576
+		}
+		return (raw + 1023) / 1024
+	}
 	if opts.megaBlocks {
 		return (raw + 2047) / 2048
 	}
@@ -180,5 +199,19 @@ func displaySize(raw int64, opts *options) int64 {
 }
 
 func printEntry(size int64, path string, opts *options) {
-	fmt.Fprintf(os.Stdout, "%d\t%s\n", displaySize(size, opts), path)
+	var sizeStr string
+	if opts.humanReadable || opts.siUnits {
+		bytes := size
+		if !opts.apparentSize {
+			bytes = size * 512
+		}
+		sizeStr = format.HumanSize(bytes, format.HumanSizeOpts{Binary: !opts.siUnits})
+	} else {
+		sizeStr = fmt.Sprintf("%d", displaySize(size, opts))
+	}
+	terminator := "\n"
+	if opts.nullTerm {
+		terminator = "\x00"
+	}
+	fmt.Fprintf(os.Stdout, "%s\t%s%s", sizeStr, path, terminator)
 }
