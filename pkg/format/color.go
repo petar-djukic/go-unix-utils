@@ -69,6 +69,8 @@ func Reset() string {
 	return ansiReset
 }
 
+// ColorEnabled reports whether color output is enabled for the given writer.
+// R2.3: when no override is set, detects whether the writer is a terminal.
 func ColorEnabled(w io.Writer) bool {
 	colorMu.RLock()
 	override := colorOverride
@@ -85,12 +87,16 @@ func ColorEnabled(w io.Writer) bool {
 	return false
 }
 
+// SetColorEnabled forces color output on or off regardless of terminal detection.
+// R2.5: overrides the terminal check used by ColorEnabled and FileTypeColor.
 func SetColorEnabled(enabled bool) {
 	colorMu.Lock()
 	colorOverride = &enabled
 	colorMu.Unlock()
 }
 
+// ResetColorEnabled clears any color override, restoring terminal-based detection.
+// R2.5: undoes a prior SetColorEnabled call.
 func ResetColorEnabled() {
 	colorMu.Lock()
 	colorOverride = nil

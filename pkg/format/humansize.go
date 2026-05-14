@@ -6,7 +6,10 @@
 // Implements srd003-format.
 package format
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // HumanSizeOpts configures human-readable size formatting.
 // R3.1: Binary selects 1024-based (K, M, G) vs 1000-based (kB, MB, GB) units.
@@ -40,11 +43,10 @@ func HumanSize(bytes int64, opts HumanSizeOpts) string {
 
 	val := float64(bytes)
 	for i, suffix := range suffixes {
-		next := val / base
-		if next < 1 || i == len(suffixes)-1 {
+		if val < base || i == len(suffixes)-1 {
 			return formatValue(val, suffix)
 		}
-		val = next
+		val /= base
 	}
 	return formatValue(val, suffixes[len(suffixes)-1])
 }
@@ -53,5 +55,9 @@ func formatValue(val float64, suffix string) string {
 	if suffix == "" {
 		return fmt.Sprintf("%d", int64(val))
 	}
-	return fmt.Sprintf("%.1f%s", val, suffix)
+	rounded := math.Round(val*10) / 10
+	if rounded < 10 {
+		return fmt.Sprintf("%.1f%s", val, suffix)
+	}
+	return fmt.Sprintf("%d%s", int64(math.Round(val)), suffix)
 }
