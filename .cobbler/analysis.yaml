@@ -129,11 +129,11 @@ code_status:
         - version: "03.0"
           name: Batch 3 — wc specification and differential test
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: all implemented
           usecases:
             - id: rel03.0-uc001-wc
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "03.1"
