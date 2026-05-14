@@ -505,16 +505,16 @@ requirements:
             issue: 5116
             weight: 1
         R1.5:
-            status: in_progress
+            status: ready
             weight: 1
         R2.1:
-            status: in_progress
+            status: ready
             weight: 1
         R2.2:
-            status: in_progress
+            status: ready
             weight: 1
         R2.3:
-            status: in_progress
+            status: ready
             weight: 1
         R2.4:
             status: ready
