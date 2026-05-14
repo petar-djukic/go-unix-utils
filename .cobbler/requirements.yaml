@@ -2412,16 +2412,20 @@ requirements:
             weight: 1
     srd047-hostname:
         R1.1:
-            status: in_progress
+            status: complete
+            issue: 5187
             weight: 1
         R1.2:
-            status: in_progress
+            status: complete
+            issue: 5187
             weight: 1
         R2.1:
-            status: in_progress
+            status: complete
+            issue: 5187
             weight: 1
         R2.2:
-            status: in_progress
+            status: complete
+            issue: 5187
             weight: 1
         R3.1:
             status: ready
