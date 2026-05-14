@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.11.
+// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.15.
 package main
 
 import (
@@ -37,6 +37,8 @@ func TestDiff(t *testing.T) {
 	humanSizeDir := setupHumanSizeDir(t)
 	classifyDir := setupClassifyDir(t)
 	recursiveDir := setupRecursiveDir(t)
+	recursiveSymlinkDir := setupRecursiveSymlinkDir(t)
+	recursiveTimeSortDir := setupRecursiveTimeSortDir(t)
 
 	tests := []testutils.DiffTest{
 		{
@@ -162,6 +164,22 @@ func TestDiff(t *testing.T) {
 			Name: "recursive-all",
 			Args: []string{"-1Ra", recursiveDir},
 		},
+		{
+			Name: "recursive-columns",
+			Args: []string{"-CR", recursiveDir},
+		},
+		{
+			Name: "recursive-no-follow-symlink",
+			Args: []string{"-1R", recursiveSymlinkDir},
+		},
+		{
+			Name: "recursive-time-sort",
+			Args: []string{"-1Rt", recursiveTimeSortDir},
+		},
+		{
+			Name: "recursive-almost-all",
+			Args: []string{"-1RA", recursiveDir},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -272,6 +290,52 @@ func setupRecursiveDir(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(nested, "file3"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func setupRecursiveSymlinkDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "file1"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(dir, "realdir")
+	if err := os.Mkdir(real, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "file2"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("realdir", filepath.Join(dir, "linkdir")); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func setupRecursiveTimeSortDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	base := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+	for i, name := range []string{"alpha", "beta"} {
+		sub := filepath.Join(dir, name)
+		if err := os.Mkdir(sub, 0755); err != nil {
+			t.Fatal(err)
+		}
+		mt := base.Add(time.Duration(i) * time.Hour)
+		if err := os.Chtimes(sub, mt, mt); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(sub, "child"), nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file1"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	ft := base.Add(2 * time.Hour)
+	if err := os.Chtimes(filepath.Join(dir, "file1"), ft, ft); err != nil {
 		t.Fatal(err)
 	}
 	return dir
