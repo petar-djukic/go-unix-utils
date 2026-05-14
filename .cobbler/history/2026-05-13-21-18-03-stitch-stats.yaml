@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5115"
+task_title: '[stitch] cmd/sponge srd007-sponge (contract)'
+status: success
+started_at: "2026-05-14T01:18:03Z"
+duration: 2m40s
+duration_s: 159
+tokens:
+    input: 385485
+    output: 3586
+    cache_creation: 172124
+    cache_read: 213349
+cost_usd: 1.5854100000000002
+num_turns: 17
+rate_limit_wait_s: 12
+loc_before:
+    production: 1397
+    test: 190
+loc_after:
+    production: 1441
+    test: 190
+diff:
+    files: 2
+    insertions: 140
+    deletions: 0
