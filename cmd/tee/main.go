@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -17,7 +18,10 @@ import (
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	appendMode, files := parseFlags(os.Args[1:])
+	appendMode, ignoreInterrupts, files := parseFlags(os.Args[1:])
+	if ignoreInterrupts {
+		signal.Ignore(os.Interrupt)
+	}
 	writers, closers, exitCode := openOutputs(files, appendMode)
 	defer closeAll(closers)
 
@@ -32,8 +36,9 @@ func main() {
 	}
 }
 
-func parseFlags(args []string) (bool, []string) {
+func parseFlags(args []string) (bool, bool, []string) {
 	appendMode := false
+	ignoreInterrupts := false
 	var files []string
 	endOfFlags := false
 	for _, arg := range args {
@@ -45,19 +50,27 @@ func parseFlags(args []string) (bool, []string) {
 			endOfFlags = true
 			continue
 		}
+		if arg == "--append" {
+			appendMode = true
+			continue
+		}
+		if arg == "--ignore-interrupts" {
+			ignoreInterrupts = true
+			continue
+		}
 		for _, c := range arg[1:] {
 			switch c {
 			case 'a':
 				appendMode = true
 			case 'i':
-				// R2.2: accepted, full implementation in future task
+				ignoreInterrupts = true
 			default:
 				fmt.Fprintf(os.Stderr, "tee: invalid option -- '%c'\n", c)
 				os.Exit(1)
 			}
 		}
 	}
-	return appendMode, files
+	return appendMode, ignoreInterrupts, files
 }
 
 // R1.1, R1.4: build writers for stdout and each named file.

@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,6 +76,71 @@ func TestDiffAppendMode(t *testing.T) {
 	}
 	runAppendTest(t, goBin, "go_append")
 	runAppendTest(t, refBin, "ref_append")
+}
+
+func TestDiffAppendLongFlag(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skip("reference binary gtee not found")
+	}
+	runAppendTestLong(t, goBin, "go_append_long")
+	runAppendTestLong(t, refBin, "ref_append_long")
+}
+
+func TestDiffCombinedFlags(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skip("reference binary gtee not found")
+	}
+	input := []byte("combined\n")
+	tests := []testutils.DiffTest{
+		{Name: "combined_ai", Args: []string{"-ai"}, Stdin: input},
+		{Name: "combined_ia", Args: []string{"-ia"}, Stdin: input},
+		{Name: "separate_a_i", Args: []string{"-a", "-i"}, Stdin: input},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffIgnoreInterrupts(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skip("reference binary gtee not found")
+	}
+	input := []byte("interrupt test\n")
+	tests := []testutils.DiffTest{
+		{Name: "ignore_interrupts_short", Args: []string{"-i"}, Stdin: input},
+		{Name: "ignore_interrupts_long", Args: []string{"--ignore-interrupts"}, Stdin: input},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffWriteOrder(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skip("reference binary gtee not found")
+	}
+	var ordered []byte
+	for i := range 100 {
+		ordered = fmt.Appendf(ordered, "line %03d\n", i)
+	}
+	tests := []testutils.DiffTest{
+		{Name: "write_order", Stdin: ordered},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffMultiFileAppend(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skip("reference binary gtee not found")
+	}
+	runMultiFileAppendTest(t, goBin, "go_multi_append")
+	runMultiFileAppendTest(t, refBin, "ref_multi_append")
 }
 
 func TestFileCreation(t *testing.T) {
@@ -184,6 +250,56 @@ func runAppendTest(t *testing.T, binary, label string) {
 	want := "existing\nappended\n"
 	if string(got) != want {
 		t.Fatalf("%s: file content\n  got:  %q\n  want: %q", label, got, want)
+	}
+}
+
+func runAppendTestLong(t *testing.T, binary, label string) {
+	t.Helper()
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "append_long.txt")
+	os.WriteFile(outFile, []byte("existing\n"), 0o644)
+	cmd := exec.Command(binary, "--append", outFile)
+	cmd.Stdin = bytes.NewReader([]byte("appended\n"))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("%s: unexpected error: %v", label, err)
+	}
+	got, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("%s: read file: %v", label, err)
+	}
+	want := "existing\nappended\n"
+	if string(got) != want {
+		t.Fatalf("%s: file content\n  got:  %q\n  want: %q", label, got, want)
+	}
+}
+
+func runMultiFileAppendTest(t *testing.T, binary, label string) {
+	t.Helper()
+	dir := t.TempDir()
+	fileA := filepath.Join(dir, "a.txt")
+	fileB := filepath.Join(dir, "b.txt")
+	os.WriteFile(fileA, []byte("old_a\n"), 0o644)
+	os.WriteFile(fileB, []byte("old_b\n"), 0o644)
+	cmd := exec.Command(binary, "-a", fileA, fileB)
+	cmd.Stdin = bytes.NewReader([]byte("new\n"))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("%s: unexpected error: %v", label, err)
+	}
+	gotA, err := os.ReadFile(fileA)
+	if err != nil {
+		t.Fatalf("%s: read a.txt: %v", label, err)
+	}
+	gotB, err := os.ReadFile(fileB)
+	if err != nil {
+		t.Fatalf("%s: read b.txt: %v", label, err)
+	}
+	wantA := "old_a\nnew\n"
+	wantB := "old_b\nnew\n"
+	if string(gotA) != wantA {
+		t.Fatalf("%s: a.txt\n  got:  %q\n  want: %q", label, gotA, wantA)
+	}
+	if string(gotB) != wantB {
+		t.Fatalf("%s: b.txt\n  got:  %q\n  want: %q", label, gotB, wantB)
 	}
 }
 
