@@ -113,3 +113,13 @@
 [2026-05-14T07:47:27-04:00] [generation-run44] [stitch +4m0s] closeStitchTask: closing #5151 "[stitch] cmd/du: summarize, all-files, and total modes (srd009-du R1.5, R2.1-R2.3)"
 [2026-05-14T07:47:28-04:00] [generation-run44] [stitch +4m1s] commentCobblerIssue: posted comment on #5151
 [2026-05-14T07:47:28-04:00] [generation-run44] [stitch +4m1s] updateRequirementsFile: marked 4 R-items as complete for issue #5151
+[2026-05-14T07:47:30-04:00] [generation-run44] [stitch +4m4s] closeCobblerIssue: closed #5151
+[2026-05-14T07:47:33-04:00] [generation-run44] [stitch +4m6s] closeStitchTask: #5151 closed
+[2026-05-14T07:47:34-04:00] [generation-run44] [stitch +4m7s] sweepCompletedTasks: all R-items for #5151 already complete, closing
+[2026-05-14T07:47:34-04:00] [generation-run44] [stitch +4m8s] commentCobblerIssue: posted comment on #5151
+[2026-05-14T07:47:36-04:00] [generation-run44] [stitch +4m9s] closeCobblerIssue: closed #5151
+[2026-05-14T07:47:38-04:00] [generation-run44] [stitch +4m11s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T07:47:38-04:00] [generation-run44] [stitch +4m11s] doOneTask: task 5151 finished in 4m5s
+[2026-05-14T07:47:38-04:00] [generation-run44] [stitch +4m11s] task 5151 completed in 4m5s
+[2026-05-14T07:47:38-04:00] [generation-run44] [stitch +4m11s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T07:47:38-04:00] [generation-run44] [stitch +4m11s] completed 1 task(s) in 4m11s
