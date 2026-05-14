@@ -135,3 +135,22 @@
 [2026-05-14T08:52:35-04:00] [generation-run44] [measure +4m17s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-14T08:52:35-04:00] [generation-run44] [measure +4m17s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-14T08:52:35-04:00] [generation-run44] [measure +4m17s] transitionRequirements: marked 1 R-items as proposed
+[2026-05-14T08:52:35-04:00] [generation-run44] [measure +4m17s] importIssues: creating task 0: [stitch] cmd/head: byte-count mode and remaining core behavior (srd018-head R1.5, R2.1-R2.3) (dep=-1)
+[2026-05-14T08:52:36-04:00] [generation-run44] [measure +4m19s] createCobblerIssue: created #5165 "[measure] cmd/head: byte-count mode and remaining core behavior (srd018-head R1.5, R2.1-R2.3)" gen=generation-run44 index=0 dep=-1
+[2026-05-14T08:52:36-04:00] [generation-run44] [measure +4m19s] importIssues: creating task 1: [stitch] cmd/head: multi-file headers and quiet/verbose control (srd018-head R3.1-R3.4) (dep=0)
+[2026-05-14T08:52:37-04:00] [generation-run44] [measure +4m20s] createCobblerIssue: created #5166 "[measure] cmd/head: multi-file headers and quiet/verbose control (srd018-head R3.1-R3.4)" gen=generation-run44 index=1 dep=0
+[2026-05-14T08:52:37-04:00] [generation-run44] [measure +4m20s] importIssues: creating task 2: [stitch] cmd/head: remaining multi-file and error handling (srd018-head R3.5, R4.1-R4.3) (dep=1)
+[2026-05-14T08:52:38-04:00] [generation-run44] [measure +4m21s] createCobblerIssue: created #5167 "[measure] cmd/head: remaining multi-file and error handling (srd018-head R3.5, R4.1-R4.3)" gen=generation-run44 index=2 dep=1
+[2026-05-14T08:52:38-04:00] [generation-run44] [measure +4m21s] importIssues: creating task 3: [stitch] cmd/head: final edge cases (srd018-head R4.4) (dep=2)
+[2026-05-14T08:52:40-04:00] [generation-run44] [measure +4m22s] createCobblerIssue: created #5168 "[measure] cmd/head: final edge cases (srd018-head R4.4)" gen=generation-run44 index=3 dep=2
+[2026-05-14T08:52:40-04:00] [generation-run44] [measure +4m23s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-14T08:52:44-04:00] [generation-run44] [measure +4m26s] importIssues: 4 of 4 issue(s) imported
+[2026-05-14T08:52:44-04:00] [generation-run44] [measure +4m26s] appendMeasureLog: 84 total issues in .cobbler/measure.yaml
+[2026-05-14T08:52:44-04:00] [generation-run44] [measure +4m26s] iteration 1 imported 4 issue(s)
+[2026-05-14T08:52:47-04:00] [generation-run44] [measure +4m30s] linkSubIssue: linked #5165 as sub-issue of #5164
+[2026-05-14T08:52:49-04:00] [generation-run44] [measure +4m31s] linkSubIssue: linked #5166 as sub-issue of #5164
+[2026-05-14T08:52:50-04:00] [generation-run44] [measure +4m32s] linkSubIssue: linked #5167 as sub-issue of #5164
+[2026-05-14T08:52:51-04:00] [generation-run44] [measure +4m34s] linkSubIssue: linked #5168 as sub-issue of #5164
+[2026-05-14T08:52:53-04:00] [generation-run44] [measure +4m35s] closeMeasuringPlaceholder: closed #5164
+[2026-05-14T08:52:53-04:00] [generation-run44] [measure +4m35s] finalizeMeasurePlaceholder: finalized #5164 with 4 child issue(s)
+[2026-05-14T08:52:53-04:00] [generation-run44] [measure +4m35s] completed 1 iteration(s), 4 issue(s) created in 4m35s
