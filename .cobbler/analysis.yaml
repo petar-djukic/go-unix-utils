@@ -158,7 +158,7 @@ code_status:
               testfiles: 0
             - id: rel03.1-uc004-hostname
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel03.1-uc005-hostid
