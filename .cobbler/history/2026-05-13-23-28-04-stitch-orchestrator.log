@@ -120,3 +120,13 @@
 [2026-05-13T23:30:07-04:00] [generation-run44] [stitch +2m3s] closeStitchTask: closing #5136 "[stitch] cmd/basename: core path stripping (srd015-basename R1.1-R1.4)"
 [2026-05-13T23:30:07-04:00] [generation-run44] [stitch +2m4s] commentCobblerIssue: posted comment on #5136
 [2026-05-13T23:30:07-04:00] [generation-run44] [stitch +2m4s] updateRequirementsFile: marked 4 R-items as complete for issue #5136
+[2026-05-13T23:30:10-04:00] [generation-run44] [stitch +2m6s] closeCobblerIssue: closed #5136
+[2026-05-13T23:30:12-04:00] [generation-run44] [stitch +2m8s] closeStitchTask: #5136 closed
+[2026-05-13T23:30:12-04:00] [generation-run44] [stitch +2m9s] sweepCompletedTasks: all R-items for #5136 already complete, closing
+[2026-05-13T23:30:13-04:00] [generation-run44] [stitch +2m9s] commentCobblerIssue: posted comment on #5136
+[2026-05-13T23:30:14-04:00] [generation-run44] [stitch +2m11s] closeCobblerIssue: closed #5136
+[2026-05-13T23:30:16-04:00] [generation-run44] [stitch +2m12s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-13T23:30:16-04:00] [generation-run44] [stitch +2m12s] doOneTask: task 5136 finished in 2m7s
+[2026-05-13T23:30:16-04:00] [generation-run44] [stitch +2m12s] task 5136 completed in 2m7s
+[2026-05-13T23:30:16-04:00] [generation-run44] [stitch +2m12s] reached per-cycle limit (1), pausing for measure
+[2026-05-13T23:30:16-04:00] [generation-run44] [stitch +2m12s] completed 1 task(s) in 2m12s
