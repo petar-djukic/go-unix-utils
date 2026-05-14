@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.2.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.6.
 package main
 
 import (
@@ -27,9 +27,12 @@ Sort entries alphabetically if no flags given.
   -a             do not ignore entries starting with .
   -A             do not list implied . and ..
   -C             list entries by columns
+  -d             list directories themselves, not their contents
+  -l             use a long listing format
+  -S             sort by file size, largest first
+  -t             sort by modification time, newest first
   -x             list entries by lines instead of by columns
   -1             list one file per line
-  -l             use a long listing format
       --help     display this help and exit
       --version  output version information and exit
 `
@@ -44,6 +47,9 @@ type options struct {
 	horizontalSort bool
 	showAll        bool
 	showAlmostAll  bool
+	dirAsEntry     bool
+	sortByTime     bool
+	sortBySize     bool
 }
 
 func main() {
@@ -113,6 +119,14 @@ func parseShortFlags(flags string, opts *options) {
 		case 'A':
 			opts.showAlmostAll = true
 			opts.showAll = false
+		case 'd':
+			opts.dirAsEntry = true
+		case 't':
+			opts.sortByTime = true
+			opts.sortBySize = false
+		case 'S':
+			opts.sortBySize = true
+			opts.sortByTime = false
 		default:
 			fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
 			fmt.Fprintln(os.Stderr, "Try 'ls --help' for more information.")
@@ -123,10 +137,10 @@ func parseShortFlags(flags string, opts *options) {
 
 func run(paths []string, opts options) int {
 	exitCode := 0
-	files, dirs := classifyPaths(paths, &exitCode)
+	files, dirs := classifyPaths(paths, &exitCode, opts.dirAsEntry)
 	needSep := false
 	if len(files) > 0 {
-		sort.Strings(files)
+		sortEntries(files, "", opts)
 		if opts.longFormat {
 			exitCode = maxCode(exitCode, writeLongFiles(files))
 		} else {
@@ -135,6 +149,7 @@ func run(paths []string, opts options) int {
 		needSep = true
 	}
 	showHeader := len(dirs) > 1 || len(files) > 0
+	sortEntries(dirs, "", opts)
 	for _, dir := range dirs {
 		if needSep {
 			fmt.Fprintln(os.Stdout)
@@ -148,7 +163,7 @@ func run(paths []string, opts options) int {
 	return exitCode
 }
 
-func classifyPaths(paths []string, exitCode *int) ([]string, []string) {
+func classifyPaths(paths []string, exitCode *int, dirAsEntry bool) ([]string, []string) {
 	var files, dirs []string
 	for _, p := range paths {
 		info, err := os.Lstat(p)
@@ -157,7 +172,7 @@ func classifyPaths(paths []string, exitCode *int) ([]string, []string) {
 			*exitCode = 2
 			continue
 		}
-		if info.IsDir() {
+		if info.IsDir() && !dirAsEntry {
 			dirs = append(dirs, p)
 		} else {
 			files = append(files, p)
@@ -202,8 +217,47 @@ func readNames(path string, opts options) ([]string, error) {
 		}
 		names = append(names, e.Name())
 	}
-	sort.Strings(names)
+	sortEntries(names, path, opts)
 	return names, nil
+}
+
+func sortEntries(names []string, basePath string, opts options) {
+	if !opts.sortByTime && !opts.sortBySize {
+		sort.Strings(names)
+		return
+	}
+	type entry struct {
+		name    string
+		modTime time.Time
+		size    int64
+	}
+	entries := make([]entry, len(names))
+	for i, name := range names {
+		entries[i].name = name
+		p := name
+		if basePath != "" {
+			p = filepath.Join(basePath, name)
+		}
+		if fi, err := sys.Lstat(p); err == nil {
+			entries[i].modTime = fi.ModTime
+			entries[i].size = fi.Size
+		}
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if opts.sortByTime {
+			if !entries[i].modTime.Equal(entries[j].modTime) {
+				return entries[i].modTime.After(entries[j].modTime)
+			}
+			return entries[i].name < entries[j].name
+		}
+		if entries[i].size != entries[j].size {
+			return entries[i].size > entries[j].size
+		}
+		return entries[i].name < entries[j].name
+	})
+	for i, e := range entries {
+		names[i] = e.name
+	}
 }
 
 func writeEntries(names []string, opts options) {
