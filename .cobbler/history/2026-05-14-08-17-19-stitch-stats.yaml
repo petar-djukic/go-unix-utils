@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5158"
+task_title: '[stitch] cmd/tee: error reporting, write failure handling, and exit status (srd017-tee R3.1-R3.4)'
+status: success
+started_at: "2026-05-14T12:17:19Z"
+duration: 9m42s
+duration_s: 582
+tokens:
+    input: 1102986
+    output: 26622
+    cache_creation: 204102
+    cache_read: 898862
+cost_usd: 2.7943279500000004
+num_turns: 43
+rate_limit_wait_s: 8
+loc_before:
+    production: 2649
+    test: 1989
+loc_after:
+    production: 2676
+    test: 2120
+diff:
+    files: 3
+    insertions: 336
+    deletions: 19
