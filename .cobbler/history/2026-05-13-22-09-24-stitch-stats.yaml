@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5121"
+task_title: '[stitch] pkg/testutils: differential testing tests (srd001-testutils)'
+status: success
+started_at: "2026-05-14T02:09:24Z"
+duration: 8m55s
+duration_s: 534
+tokens:
+    input: 425517
+    output: 25544
+    cache_creation: 176855
+    cache_read: 248650
+cost_usd: 2.368443
+num_turns: 17
+rate_limit_wait_s: 365
+loc_before:
+    production: 1551
+    test: 190
+loc_after:
+    production: 1551
+    test: 383
+diff:
+    files: 2
+    insertions: 288
+    deletions: 0

@@ -1,0 +1,23 @@
+task_id: "5121"
+task_title: '[stitch] pkg/testutils: differential testing tests (srd001-testutils)'
+status: success
+branch: task/generation-run44-5121
+diff:
+    files: 2
+    insertions: 288
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-13-22-09-15-stitch-orchestrator.log
+      status: M
+      insertions: 96
+      deletions: 0
+    - path: pkg/testutils/difftest_test.go
+      status: A
+      insertions: 193
+      deletions: 0
+loc_before:
+    production: 1551
+    test: 190
+loc_after:
+    production: 1551
+    test: 383
