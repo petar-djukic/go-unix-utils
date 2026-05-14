@@ -138,3 +138,13 @@
 [2026-05-13T22:31:16-04:00] [generation-run44] [stitch +1m2s] closeStitchTask: closing #5125 "[stitch] cmd/true: implement true utility (srd013-true R1.1-R1.3, R2.1-R2.3)"
 [2026-05-13T22:31:17-04:00] [generation-run44] [stitch +1m3s] commentCobblerIssue: posted comment on #5125
 [2026-05-13T22:31:17-04:00] [generation-run44] [stitch +1m3s] updateRequirementsFile: marked 6 R-items as complete for issue #5125
+[2026-05-13T22:31:20-04:00] [generation-run44] [stitch +1m5s] closeCobblerIssue: closed #5125
+[2026-05-13T22:31:21-04:00] [generation-run44] [stitch +1m7s] closeStitchTask: #5125 closed
+[2026-05-13T22:31:22-04:00] [generation-run44] [stitch +1m8s] sweepCompletedTasks: all R-items for #5125 already complete, closing
+[2026-05-13T22:31:23-04:00] [generation-run44] [stitch +1m8s] commentCobblerIssue: posted comment on #5125
+[2026-05-13T22:31:24-04:00] [generation-run44] [stitch +1m10s] closeCobblerIssue: closed #5125
+[2026-05-13T22:31:26-04:00] [generation-run44] [stitch +1m11s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-13T22:31:26-04:00] [generation-run44] [stitch +1m11s] doOneTask: task 5125 finished in 1m4s
+[2026-05-13T22:31:26-04:00] [generation-run44] [stitch +1m11s] task 5125 completed in 1m4s
+[2026-05-13T22:31:26-04:00] [generation-run44] [stitch +1m11s] reached per-cycle limit (1), pausing for measure
+[2026-05-13T22:31:26-04:00] [generation-run44] [stitch +1m11s] completed 1 task(s) in 1m11s
