@@ -27,8 +27,8 @@ code_status:
               testdir: ""
               testfiles: 0
             - id: rel00.0-uc005-hashutil
-              specstatus: spec_complete
-              codestatus: not started
+              specstatus: implemented
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel00.0-uc006-sizeparse
