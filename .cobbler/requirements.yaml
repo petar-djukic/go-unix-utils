@@ -2688,16 +2688,20 @@ requirements:
             weight: 1
     srd053-logname:
         R1.1:
-            status: in_progress
+            status: complete
+            issue: 5227
             weight: 1
         R1.2:
-            status: in_progress
+            status: complete
+            issue: 5227
             weight: 1
         R2.1:
-            status: in_progress
+            status: complete
+            issue: 5227
             weight: 1
         R2.2:
-            status: in_progress
+            status: complete
+            issue: 5227
             weight: 1
         R2.3:
             status: proposed
