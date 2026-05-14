@@ -134,3 +134,24 @@
 [2026-05-14T08:03:40-04:00] [generation-run44] [measure +4m37s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-14T08:03:40-04:00] [generation-run44] [measure +4m37s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-14T08:03:40-04:00] [generation-run44] [measure +4m37s] transitionRequirements: marked 4 R-items as proposed
+[2026-05-14T08:03:40-04:00] [generation-run44] [measure +4m37s] importIssues: creating task 0: [stitch] cmd/du: summarize total and exit status (srd009-du R4.1, R4.2, R5.1) (dep=-1)
+[2026-05-14T08:03:42-04:00] [generation-run44] [measure +4m39s] createCobblerIssue: created #5155 "[measure] cmd/du: summarize total and exit status (srd009-du R4.1, R4.2, R5.1)" gen=generation-run44 index=0 dep=-1
+[2026-05-14T08:03:42-04:00] [generation-run44] [measure +4m39s] importIssues: creating task 1: [stitch] cmd/tee: core stdin copy, file output, and creation mode (srd017-tee R1.1-R1.4) (dep=-1)
+[2026-05-14T08:03:44-04:00] [generation-run44] [measure +4m41s] createCobblerIssue: created #5156 "[measure] cmd/tee: core stdin copy, file output, and creation mode (srd017-tee R1.1-R1.4)" gen=generation-run44 index=1 dep=-1
+[2026-05-14T08:03:44-04:00] [generation-run44] [measure +4m41s] importIssues: creating task 2: [stitch] cmd/tee: multi-file output, append mode, and SIGINT suppression (srd017-tee R1.5, R2.1-R2.3) (dep=1)
+[2026-05-14T08:03:45-04:00] [generation-run44] [measure +4m42s] createCobblerIssue: created #5157 "[measure] cmd/tee: multi-file output, append mode, and SIGINT suppression (srd017-tee R1.5, R2.1-R2.3)" gen=generation-run44 index=2 dep=1
+[2026-05-14T08:03:45-04:00] [generation-run44] [measure +4m42s] importIssues: creating task 3: [stitch] cmd/tee: error reporting, write failure handling, and exit status (srd017-tee R3.1-R3.4) (dep=2)
+[2026-05-14T08:03:46-04:00] [generation-run44] [measure +4m43s] createCobblerIssue: created #5158 "[measure] cmd/tee: error reporting, write failure handling, and exit status (srd017-tee R3.1-R3.4)" gen=generation-run44 index=3 dep=2
+[2026-05-14T08:03:47-04:00] [generation-run44] [measure +4m44s] waitForIssuesVisible: 1/4 visible, retrying...
+[2026-05-14T08:03:48-04:00] [generation-run44] [measure +4m45s] waitForIssuesVisible: 1/4 visible, retrying...
+[2026-05-14T08:03:49-04:00] [generation-run44] [measure +4m46s] waitForIssuesVisible: 1/4 visible, retrying...
+[2026-05-14T08:03:54-04:00] [generation-run44] [measure +4m51s] importIssues: 4 of 4 issue(s) imported
+[2026-05-14T08:03:54-04:00] [generation-run44] [measure +4m51s] appendMeasureLog: 76 total issues in .cobbler/measure.yaml
+[2026-05-14T08:03:54-04:00] [generation-run44] [measure +4m51s] iteration 1 imported 4 issue(s)
+[2026-05-14T08:03:57-04:00] [generation-run44] [measure +4m54s] linkSubIssue: linked #5155 as sub-issue of #5154
+[2026-05-14T08:03:58-04:00] [generation-run44] [measure +4m55s] linkSubIssue: linked #5156 as sub-issue of #5154
+[2026-05-14T08:03:59-04:00] [generation-run44] [measure +4m56s] linkSubIssue: linked #5157 as sub-issue of #5154
+[2026-05-14T08:04:00-04:00] [generation-run44] [measure +4m57s] linkSubIssue: linked #5158 as sub-issue of #5154
+[2026-05-14T08:04:02-04:00] [generation-run44] [measure +4m59s] closeMeasuringPlaceholder: closed #5154
+[2026-05-14T08:04:02-04:00] [generation-run44] [measure +4m59s] finalizeMeasurePlaceholder: finalized #5154 with 4 child issue(s)
+[2026-05-14T08:04:02-04:00] [generation-run44] [measure +4m59s] completed 1 iteration(s), 4 issue(s) created in 4m59s
