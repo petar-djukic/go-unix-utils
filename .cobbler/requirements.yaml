@@ -808,7 +808,8 @@ requirements:
             issue: 5225
             weight: 1
         R4.9:
-            status: in_progress
+            status: complete
+            issue: 5226
             weight: 1
     srd009-du:
         R1.1:
