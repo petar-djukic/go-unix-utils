@@ -1,0 +1,23 @@
+task_id: "5192"
+task_title: '[stitch] cmd/hostid: differential tests (srd048-hostid R3.1-R3.3)'
+status: success
+branch: task/generation-run44-5192
+diff:
+    files: 2
+    insertions: 167
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-14-13-19-01-stitch-orchestrator.log
+      status: M
+      insertions: 134
+      deletions: 0
+    - path: cmd/hostid/hostid_test.go
+      status: A
+      insertions: 34
+      deletions: 0
+loc_before:
+    production: 4156
+    test: 3418
+loc_after:
+    production: 4156
+    test: 3452
