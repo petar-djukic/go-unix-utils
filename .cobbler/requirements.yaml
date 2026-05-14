@@ -696,16 +696,20 @@ requirements:
             issue: 5212
             weight: 1
         R2.11:
-            status: in_progress
+            status: complete
+            issue: 5215
             weight: 1
         R2.12:
-            status: in_progress
+            status: complete
+            issue: 5215
             weight: 1
         R2.13:
-            status: in_progress
+            status: complete
+            issue: 5215
             weight: 1
         R2.14:
-            status: in_progress
+            status: complete
+            issue: 5215
             weight: 1
         R2.15:
             status: proposed

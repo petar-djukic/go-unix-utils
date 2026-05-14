@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5215"
+task_title: '[stitch] cmd/ls: extended features implementation (srd008-ls R2.11-R2.14)'
+status: success
+started_at: "2026-05-14T21:58:53Z"
+duration: 7m40s
+duration_s: 459
+tokens:
+    input: 545076
+    output: 27693
+    cache_creation: 204311
+    cache_read: 340753
+cost_usd: 2.5316855
+num_turns: 22
+rate_limit_wait_s: 4
+loc_before:
+    production: 5074
+    test: 3878
+loc_after:
+    production: 5163
+    test: 3878
+diff:
+    files: 2
+    insertions: 217
+    deletions: 24
