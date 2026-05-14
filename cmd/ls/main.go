@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.7.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15.
 package main
 
 import (
@@ -28,10 +28,12 @@ Sort entries alphabetically if no flags given.
   -A             do not list implied . and ..
   -C             list entries by columns
   -d             list directories themselves, not their contents
+  -F             append indicator (one of */=>@|) to entries
   -h             with -l and/or -s, print human readable sizes
   -i             print the index number of each file
   -l             use a long listing format
   -n             like -l, but list numeric user and group IDs
+  -R             list subdirectories recursively
   -r             reverse order while sorting
   -s             print the allocated size of each file, in blocks
   -S             sort by file size, largest first
@@ -66,6 +68,8 @@ type options struct {
 	showBlocks    bool
 	numericIds    bool
 	humanReadable bool
+	classify      bool
+	recursive     bool
 	colorMode     string
 }
 
@@ -142,6 +146,8 @@ func parseShortFlags(flags string, opts *options) {
 			opts.showAll = false
 		case 'd':
 			opts.dirAsEntry = true
+		case 'F':
+			opts.classify = true
 		case 'h':
 			opts.humanReadable = true
 		case 'i':
@@ -152,6 +158,8 @@ func parseShortFlags(flags string, opts *options) {
 			opts.singleColumn = false
 			opts.forceColumns = false
 			opts.horizontalSort = false
+		case 'R':
+			opts.recursive = true
 		case 'r':
 			opts.reverseSort = true
 		case 's':
@@ -225,7 +233,7 @@ func run(paths []string, opts options) int {
 		}
 		needSep = true
 	}
-	showHeader := len(dirs) > 1 || len(files) > 0
+	showHeader := len(dirs) > 1 || len(files) > 0 || opts.recursive
 	sortEntries(dirs, "", opts)
 	for _, dir := range dirs {
 		if needSep {
@@ -272,15 +280,38 @@ func listDir(path string, opts options) int {
 			path, sysError(err))
 		return 2
 	}
+	code := 0
 	if opts.longFormat {
-		return writeLongDir(path, names, opts)
+		code = writeLongDir(path, names, opts)
+	} else {
+		if opts.showBlocks {
+			writeTotalLine(path, names, opts)
+		}
+		display := buildDisplayNames(names, path, opts)
+		writeEntries(display, opts)
 	}
-	if opts.showBlocks {
-		writeTotalLine(path, names, opts)
+	if opts.recursive {
+		code = maxCode(code, recurseSubdirs(path, names, opts))
 	}
-	display := buildDisplayNames(names, path, opts)
-	writeEntries(display, opts)
-	return 0
+	return code
+}
+
+func recurseSubdirs(path string, names []string, opts options) int {
+	code := 0
+	for _, name := range names {
+		if name == "." || name == ".." {
+			continue
+		}
+		full := filepath.Join(path, name)
+		fi, err := os.Lstat(full)
+		if err != nil || !fi.IsDir() {
+			continue
+		}
+		fmt.Fprintln(os.Stdout)
+		fmt.Fprintf(os.Stdout, "%s:\n", full)
+		code = maxCode(code, listDir(full, opts))
+	}
+	return code
 }
 
 func readNames(path string, opts options) ([]string, error) {
@@ -392,7 +423,7 @@ func statDisplayEntries(names []string, basePath string, opts options) ([]entryI
 func buildDisplayNames(names []string, basePath string, opts options) []string {
 	needPrefix := opts.showInode || opts.showBlocks
 	needColor := format.FileTypeColor(os.ModeDir) != ""
-	if !needPrefix && !needColor {
+	if !needPrefix && !needColor && !opts.classify {
 		return names
 	}
 	infos, inodeW, blocksW := statDisplayEntries(names, basePath, opts)
@@ -408,18 +439,39 @@ func buildDisplayNames(names []string, basePath string, opts options) []string {
 			b.WriteString(format.PadLeft(bstr, blocksW))
 			b.WriteByte(' ')
 		}
-		b.WriteString(colorEntry(name, infos[i].mode))
+		b.WriteString(colorEntry(name, infos[i].mode, opts.classify))
 		result[i] = b.String()
 	}
 	return result
 }
 
-func colorEntry(name string, mode os.FileMode) string {
+func colorEntry(name string, mode os.FileMode, classify bool) string {
+	indicator := ""
+	if classify {
+		indicator = classifyIndicator(mode)
+	}
 	c := format.FileTypeColor(mode)
 	if c == "" {
-		return name
+		return name + indicator
 	}
-	return c + name + format.Reset()
+	return c + name + format.Reset() + indicator
+}
+
+func classifyIndicator(mode os.FileMode) string {
+	switch {
+	case mode&os.ModeDir != 0:
+		return "/"
+	case mode&os.ModeSymlink != 0:
+		return "@"
+	case mode&os.ModeNamedPipe != 0:
+		return "|"
+	case mode&os.ModeSocket != 0:
+		return "="
+	case mode.IsRegular() && mode&0111 != 0:
+		return "*"
+	default:
+		return ""
+	}
 }
 
 func writeEntries(names []string, opts options) {
@@ -698,7 +750,8 @@ func formatLongLine(e longEntry, w longWidths, opts options) string {
 	}
 	nlink := strconv.FormatUint(e.info.Nlink, 10)
 	size := formatSize(e.info.Size, opts.humanReadable)
-	name := colorEntry(e.name, e.info.Mode)
+	classifyName := opts.classify && e.info.Mode&os.ModeSymlink == 0
+	name := colorEntry(e.name, e.info.Mode, classifyName)
 	if e.info.Mode&os.ModeSymlink != 0 {
 		if target, err := os.Readlink(e.path); err == nil {
 			name += " -> " + target

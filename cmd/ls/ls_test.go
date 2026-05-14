@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.7.
+// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.11.
 package main
 
 import (
@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"syscall"
 	"testing"
 	"time"
 
@@ -34,6 +35,8 @@ func TestDiff(t *testing.T) {
 	timeSortDir := setupTimeSortDir(t)
 	sizeSortDir := setupSizeSortDir(t)
 	humanSizeDir := setupHumanSizeDir(t)
+	classifyDir := setupClassifyDir(t)
+	recursiveDir := setupRecursiveDir(t)
 
 	tests := []testutils.DiffTest{
 		{
@@ -135,6 +138,30 @@ func TestDiff(t *testing.T) {
 			Name: "human-readable-no-long",
 			Args: []string{"-1h", basicDir},
 		},
+		{
+			Name: "classify-flag",
+			Args: []string{"-1F", classifyDir},
+		},
+		{
+			Name: "classify-long",
+			Args: []string{"-lF", classifyDir},
+		},
+		{
+			Name: "classify-columns",
+			Args: []string{"-CF", classifyDir},
+		},
+		{
+			Name: "recursive-flag",
+			Args: []string{"-1R", recursiveDir},
+		},
+		{
+			Name: "recursive-long",
+			Args: []string{"-lR", recursiveDir},
+		},
+		{
+			Name: "recursive-all",
+			Args: []string{"-1Ra", recursiveDir},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -199,6 +226,53 @@ func setupSizeSortDir(t *testing.T) string {
 		if err := os.WriteFile(p, make([]byte, f.size), 0644); err != nil {
 			t.Fatal(err)
 		}
+	}
+	return dir
+}
+
+func setupClassifyDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "regular"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "executable"), nil, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("regular", filepath.Join(dir, "symlink")); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(dir, "pipe"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func setupRecursiveDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "file1"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(dir, "subdir")
+	if err := os.Mkdir(sub, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "file2"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, ".hidden"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(sub, "nested")
+	if err := os.Mkdir(nested, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "file3"), nil, 0644); err != nil {
+		t.Fatal(err)
 	}
 	return dir
 }
