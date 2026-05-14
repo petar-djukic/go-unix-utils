@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5117"
+task_title: '[stitch] cmd/sponge (srd007-sponge R1.5, R2.1, R2.2, R2.3)'
+status: failed
+error: 'claude failure: exit status 1'
+started_at: "2026-05-14T01:25:40Z"
+duration: 5s
+duration_s: 4
+tokens:
+    input: 0
+    output: 0
+    cache_creation: 0
+    cache_read: 0
+cost_usd: 0
+rate_limit_wait_s: 1
+loc_before:
+    production: 1527
+    test: 190
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0
