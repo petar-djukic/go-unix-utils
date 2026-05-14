@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5201"
+task_title: '[stitch] cmd/uname: help, version, and diagnostics (srd044-uname R4.1-R4.3)'
+status: success
+started_at: "2026-05-14T17:55:24Z"
+duration: 5m3s
+duration_s: 302
+tokens:
+    input: 625205
+    output: 9997
+    cache_creation: 183995
+    cache_read: 441192
+cost_usd: 1.95872375
+num_turns: 32
+rate_limit_wait_s: 3
+loc_before:
+    production: 4318
+    test: 3624
+loc_after:
+    production: 4330
+    test: 3714
+diff:
+    files: 3
+    insertions: 234
+    deletions: 6
