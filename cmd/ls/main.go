@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.15, R4.1-R4.8.
 package main
 
 import (
@@ -73,13 +73,25 @@ type options struct {
 	colorMode     string
 }
 
+var termWidth int
+
 func main() {
 	sys.InstallSIGPIPEHandler()
+	termWidth = queryTermWidth()
+	sys.OnTerminalResize(func(w int) { termWidth = w })
 	opts, paths := parseArgs(os.Args[1:])
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
 	os.Exit(run(paths, opts))
+}
+
+func queryTermWidth() int {
+	w, err := sys.TerminalWidth()
+	if err != nil {
+		return 80
+	}
+	return w
 }
 
 func parseArgs(args []string) (options, []string) {
@@ -493,11 +505,7 @@ func writeEntries(names []string, opts options) {
 
 func writeColumnsWidth(names []string, width int) {
 	if width <= 0 {
-		w, err := sys.TerminalWidth()
-		if err != nil {
-			w = 80
-		}
-		width = w
+		width = termWidth
 	}
 	grid := format.Columns(names, width)
 	widths := gridColumnWidths(grid)
@@ -508,11 +516,7 @@ func writeColumnsWidth(names []string, width int) {
 
 func writeHorizontalColumns(names []string, width int) {
 	if width <= 0 {
-		w, err := sys.TerminalWidth()
-		if err != nil {
-			w = 80
-		}
-		width = w
+		width = termWidth
 	}
 	numCols := findHorizontalMaxCols(names, width)
 	rows := (len(names) + numCols - 1) / numCols
