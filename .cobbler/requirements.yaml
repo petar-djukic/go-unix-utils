@@ -385,16 +385,20 @@ requirements:
             issue: 5181
             weight: 1
         R4.4:
-            status: in_progress
+            status: complete
+            issue: 5182
             weight: 1
         R5.1:
-            status: in_progress
+            status: complete
+            issue: 5182
             weight: 1
         R5.2:
-            status: in_progress
+            status: complete
+            issue: 5182
             weight: 1
         R6.1:
-            status: in_progress
+            status: complete
+            issue: 5182
             weight: 1
         R6.2:
             status: proposed
