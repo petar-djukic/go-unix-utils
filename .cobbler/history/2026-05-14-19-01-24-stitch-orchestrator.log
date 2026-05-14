@@ -148,3 +148,13 @@
 [2026-05-14T19:05:13-04:00] [generation-run44] [stitch +3m49s] closeStitchTask: closing #5225 "[stitch] cmd/ls: features implementation (srd008-ls R4.5-R4.8)"
 [2026-05-14T19:05:14-04:00] [generation-run44] [stitch +3m51s] commentCobblerIssue: posted comment on #5225
 [2026-05-14T19:05:14-04:00] [generation-run44] [stitch +3m51s] updateRequirementsFile: marked 4 R-items as complete for issue #5225
+[2026-05-14T19:05:17-04:00] [generation-run44] [stitch +3m53s] closeCobblerIssue: closed #5225
+[2026-05-14T19:05:19-04:00] [generation-run44] [stitch +3m55s] closeStitchTask: #5225 closed
+[2026-05-14T19:05:19-04:00] [generation-run44] [stitch +3m55s] sweepCompletedTasks: all R-items for #5225 already complete, closing
+[2026-05-14T19:05:20-04:00] [generation-run44] [stitch +3m56s] commentCobblerIssue: posted comment on #5225
+[2026-05-14T19:05:21-04:00] [generation-run44] [stitch +3m58s] closeCobblerIssue: closed #5225
+[2026-05-14T19:05:23-04:00] [generation-run44] [stitch +3m59s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T19:05:23-04:00] [generation-run44] [stitch +3m59s] doOneTask: task 5225 finished in 3m54s
+[2026-05-14T19:05:23-04:00] [generation-run44] [stitch +3m59s] task 5225 completed in 3m54s
+[2026-05-14T19:05:23-04:00] [generation-run44] [stitch +3m59s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T19:05:23-04:00] [generation-run44] [stitch +3m59s] completed 1 task(s) in 3m59s
