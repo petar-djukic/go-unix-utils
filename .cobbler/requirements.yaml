@@ -321,40 +321,40 @@ requirements:
             weight: 1
     srd005-wc:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R1.2:
-            status: ready
+            status: proposed
             weight: 1
         R1.3:
-            status: ready
+            status: proposed
             weight: 1
         R1.4:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R2.4:
-            status: ready
+            status: proposed
             weight: 1
         R2.5:
-            status: ready
+            status: proposed
             weight: 1
         R2.6:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
             status: ready
@@ -1283,7 +1283,7 @@ requirements:
             issue: 5173
             weight: 1
         R4.4:
-            status: ready
+            status: proposed
             weight: 1
     srd020-echo:
         R1.1:

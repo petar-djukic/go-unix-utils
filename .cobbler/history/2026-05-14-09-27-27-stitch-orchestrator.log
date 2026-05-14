@@ -222,3 +222,13 @@
 [2026-05-14T09:35:41-04:00] [generation-run44] [stitch +8m14s] closeStitchTask: closing #5173 "[stitch] cmd/seq: edge cases and error handling (srd019-seq R3.4, R4.1-R4.3)"
 [2026-05-14T09:35:42-04:00] [generation-run44] [stitch +8m16s] commentCobblerIssue: posted comment on #5173
 [2026-05-14T09:35:42-04:00] [generation-run44] [stitch +8m16s] updateRequirementsFile: marked 4 R-items as complete for issue #5173
+[2026-05-14T09:35:45-04:00] [generation-run44] [stitch +8m19s] closeCobblerIssue: closed #5173
+[2026-05-14T09:35:48-04:00] [generation-run44] [stitch +8m21s] closeStitchTask: #5173 closed
+[2026-05-14T09:35:48-04:00] [generation-run44] [stitch +8m22s] sweepCompletedTasks: all R-items for #5173 already complete, closing
+[2026-05-14T09:35:49-04:00] [generation-run44] [stitch +8m23s] commentCobblerIssue: posted comment on #5173
+[2026-05-14T09:35:51-04:00] [generation-run44] [stitch +8m24s] closeCobblerIssue: closed #5173
+[2026-05-14T09:35:51-04:00] [generation-run44] [stitch +8m24s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T09:35:51-04:00] [generation-run44] [stitch +8m24s] doOneTask: task 5173 finished in 8m18s
+[2026-05-14T09:35:51-04:00] [generation-run44] [stitch +8m24s] task 5173 completed in 8m18s
+[2026-05-14T09:35:51-04:00] [generation-run44] [stitch +8m24s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T09:35:51-04:00] [generation-run44] [stitch +8m24s] completed 1 task(s) in 8m24s
