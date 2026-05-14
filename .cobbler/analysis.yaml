@@ -114,11 +114,11 @@ code_status:
         - version: "02.2"
           name: Batch 2.2 — head and seq specification and differential test
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel02.2-uc001-head
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel02.2-uc002-seq
