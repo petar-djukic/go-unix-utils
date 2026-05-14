@@ -64,7 +64,7 @@ func run(opts options, files []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	width := 1
-	if opts.totalMode != "only" {
+	if opts.totalMode != "only" && opts.files0From != "-" {
 		width = computeWidth(files, countColumns(opts))
 	}
 	results, names, hadError := processFiles(files, stderr)

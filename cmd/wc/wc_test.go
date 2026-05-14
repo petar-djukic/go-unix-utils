@@ -291,6 +291,9 @@ func TestDiffFiles(t *testing.T) {
 	writeFixture(t, dir, "longer.txt", "hello world\nthis is a longer file with more content\n")
 	writeFixture(t, dir, "empty.txt", "")
 	writeFixture(t, dir, "binary.dat", "\x00\x01\xff\xfe\x0a")
+	writeFixture(t, dir, "filelist_two.txt", "short.txt\x00longer.txt\x00")
+	writeFixture(t, dir, "filelist_one.txt", "short.txt\x00")
+	writeFixture(t, dir, "filelist_three.txt", "short.txt\x00longer.txt\x00empty.txt\x00")
 
 	tests := []testutils.DiffTest{
 		{
@@ -478,6 +481,170 @@ func TestDiffFiles(t *testing.T) {
 			Args:    []string{"-L", "binary.dat"},
 			Env:     defaultEnv,
 			WorkDir: dir,
+		},
+		{
+			Name:    "r4_4_files0_from_single",
+			Args:    []string{"--files0-from=filelist_one.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_4_files0_from_multi",
+			Args:    []string{"--files0-from=filelist_two.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_4_files0_from_three",
+			Args:    []string{"--files0-from=filelist_three.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_4_files0_from_flag_l",
+			Args:    []string{"--files0-from=filelist_two.txt", "-l"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_4_files0_from_flag_w",
+			Args:    []string{"--files0-from=filelist_two.txt", "-w"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_4_files0_from_flags_lwc",
+			Args:    []string{"--files0-from=filelist_two.txt", "-l", "-w", "-c"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r5_2_m_equals_c_ascii_file",
+			Args:    []string{"-m", "short.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r5_2_c_ascii_file",
+			Args:    []string{"-c", "short.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r5_2_m_equals_c_longer_file",
+			Args:    []string{"-m", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r5_2_c_longer_file",
+			Args:    []string{"-c", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r5_2_m_equals_c_binary_file",
+			Args:    []string{"-m", "binary.dat"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r5_2_c_binary_file",
+			Args:    []string{"-c", "binary.dat"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffFiles0Stdin(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skip("reference binary gwc not found")
+	}
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "alpha.txt", "hello\n")
+	writeFixture(t, dir, "beta.txt", "world foo\nbar\n")
+
+	tests := []testutils.DiffTest{
+		{
+			Name:    "r4_4_files0_from_stdin_single",
+			Args:    []string{"--files0-from=-"},
+			Stdin:   []byte("alpha.txt\x00"),
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_4_files0_from_stdin_multi",
+			Args:    []string{"--files0-from=-"},
+			Stdin:   []byte("alpha.txt\x00beta.txt\x00"),
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_4_files0_from_stdin_flag_l",
+			Args:    []string{"--files0-from=-", "-l"},
+			Stdin:   []byte("alpha.txt\x00beta.txt\x00"),
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_4_files0_from_stdin_flags_lwc",
+			Args:    []string{"--files0-from=-", "-l", "-w", "-c"},
+			Stdin:   []byte("alpha.txt\x00beta.txt\x00"),
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffR52(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skip("reference binary gwc not found")
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:  "r5_2_m_stdin_ascii",
+			Args:  []string{"-m"},
+			Stdin: []byte("hello world\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "r5_2_c_stdin_ascii",
+			Args:  []string{"-c"},
+			Stdin: []byte("hello world\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "r5_2_m_stdin_binary",
+			Args:  []string{"-m"},
+			Stdin: []byte{0xc0, 0xc1, 0x61, 0x62, 0x0a},
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "r5_2_c_stdin_binary",
+			Args:  []string{"-c"},
+			Stdin: []byte{0xc0, 0xc1, 0x61, 0x62, 0x0a},
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "r5_2_m_stdin_empty",
+			Args:  []string{"-m"},
+			Stdin: []byte(""),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "r5_2_c_stdin_empty",
+			Args:  []string{"-c"},
+			Stdin: []byte(""),
+			Env:   defaultEnv,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
