@@ -728,16 +728,20 @@ requirements:
             issue: 5217
             weight: 1
         R3.4:
-            status: in_progress
+            status: complete
+            issue: 5220
             weight: 1
         R3.5:
-            status: in_progress
+            status: complete
+            issue: 5220
             weight: 1
         R3.6:
-            status: in_progress
+            status: complete
+            issue: 5220
             weight: 1
         R3.7:
-            status: in_progress
+            status: complete
+            issue: 5220
             weight: 1
         R3.8:
             status: proposed
