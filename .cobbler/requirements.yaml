@@ -484,7 +484,7 @@ requirements:
             issue: 5112
             weight: 1
         R5.4:
-            status: proposed
+            status: in_progress
             weight: 1
     srd007-sponge:
         R1.1:
