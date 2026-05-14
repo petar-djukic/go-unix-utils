@@ -792,19 +792,19 @@ requirements:
             issue: 5223
             weight: 1
         R4.5:
-            status: ready
+            status: proposed
             weight: 1
         R4.6:
-            status: ready
+            status: proposed
             weight: 1
         R4.7:
-            status: ready
+            status: proposed
             weight: 1
         R4.8:
-            status: ready
+            status: proposed
             weight: 1
         R4.9:
-            status: ready
+            status: proposed
             weight: 1
     srd009-du:
         R1.1:
@@ -2683,28 +2683,28 @@ requirements:
             weight: 1
     srd053-logname:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R1.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
     srd053-sort:
         R1.1:
