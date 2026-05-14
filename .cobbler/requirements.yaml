@@ -616,16 +616,20 @@ requirements:
             issue: 5202
             weight: 1
         R1.5:
-            status: in_progress
+            status: complete
+            issue: 5203
             weight: 1
         R1.6:
-            status: in_progress
+            status: complete
+            issue: 5203
             weight: 1
         R1.7:
-            status: in_progress
+            status: complete
+            issue: 5203
             weight: 1
         R1.8:
-            status: in_progress
+            status: complete
+            issue: 5203
             weight: 1
         R1.9:
             status: ready
