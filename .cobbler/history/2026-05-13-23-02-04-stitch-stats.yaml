@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5132"
+task_title: '[stitch] cmd/sponge: differential tests (srd007-sponge R3.3, R4.1-R4.3)'
+status: success
+started_at: "2026-05-14T03:02:04Z"
+duration: 5m50s
+duration_s: 349
+tokens:
+    input: 563663
+    output: 10240
+    cache_creation: 183364
+    cache_read: 380285
+cost_usd: 2.1134092
+num_turns: 57
+rate_limit_wait_s: 4
+loc_before:
+    production: 1899
+    test: 727
+loc_after:
+    production: 1899
+    test: 877
+diff:
+    files: 2
+    insertions: 393
+    deletions: 0
