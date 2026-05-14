@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5162"
+task_title: '[stitch] cmd/head: basic line output and defaults (srd018-head R1.1-R1.4)'
+status: success
+started_at: "2026-05-14T12:42:09Z"
+duration: 5m55s
+duration_s: 354
+tokens:
+    input: 810049
+    output: 17694
+    cache_creation: 189014
+    cache_read: 621015
+cost_usd: 2.2970450000000007
+num_turns: 51
+rate_limit_wait_s: 3
+loc_before:
+    production: 2676
+    test: 2206
+loc_after:
+    production: 2924
+    test: 2206
+diff:
+    files: 2
+    insertions: 442
+    deletions: 0
