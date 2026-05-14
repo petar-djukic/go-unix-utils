@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -137,6 +138,25 @@ func parseLongFlag(flag string, remaining []string, opts *options) (int, error) 
 		opts.count = count
 		opts.mode = modeLines
 		return 1, nil
+	case flag == "--bytes":
+		if len(remaining) < 2 {
+			return 0, fmt.Errorf("option '--bytes' requires an argument")
+		}
+		count, err := parseByteCount(remaining[1])
+		if err != nil {
+			return 0, err
+		}
+		opts.count = count
+		opts.mode = modeBytes
+		return 2, nil
+	case strings.HasPrefix(flag, "--bytes="):
+		count, err := parseByteCount(flag[len("--bytes="):])
+		if err != nil {
+			return 0, err
+		}
+		opts.count = count
+		opts.mode = modeBytes
+		return 1, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
@@ -163,6 +183,23 @@ func parseShortFlags(flags string, remaining []string, opts *options) (int, erro
 			opts.count = count
 			opts.mode = modeLines
 			return consumed, nil
+		case 'c':
+			var val string
+			if rest := flags[j+1:]; rest != "" {
+				val = rest
+			} else if len(remaining) > consumed {
+				val = remaining[consumed]
+				consumed++
+			} else {
+				return 0, fmt.Errorf("option requires an argument -- 'c'")
+			}
+			count, err := parseByteCount(val)
+			if err != nil {
+				return 0, err
+			}
+			opts.count = count
+			opts.mode = modeBytes
+			return consumed, nil
 		default:
 			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
@@ -178,6 +215,14 @@ func parseLineCount(s string) (int64, error) {
 	return n, nil
 }
 
+func parseByteCount(s string) (int64, error) {
+	n, err := sizeparse.ParseWithOptions(s, sizeparse.ParseOptions{AllowSign: true})
+	if err != nil {
+		return 0, fmt.Errorf("invalid number of bytes: '%s'", s)
+	}
+	return n, nil
+}
+
 func processFile(opts options, name string) error {
 	r, closer, err := openInput(name)
 	if err != nil {
@@ -186,7 +231,12 @@ func processFile(opts options, name string) error {
 	if closer != nil {
 		defer closer.Close()
 	}
-	return headLines(r, os.Stdout, opts.count)
+	switch opts.mode {
+	case modeBytes:
+		return headBytes(r, os.Stdout, opts.count)
+	default:
+		return headLines(r, os.Stdout, opts.count)
+	}
 }
 
 func openInput(name string) (io.Reader, io.Closer, error) {
@@ -245,4 +295,35 @@ func headLinesFromEnd(r io.Reader, w io.Writer, n int64) error {
 		}
 	}
 	return nil
+}
+
+func headBytes(r io.Reader, w io.Writer, count int64) error {
+	if count == 0 {
+		return nil
+	}
+	if count < 0 {
+		return headBytesFromEnd(r, w, -count)
+	}
+	return headBytesFromStart(r, w, count)
+}
+
+func headBytesFromStart(r io.Reader, w io.Writer, n int64) error {
+	_, err := io.CopyN(w, r, n)
+	if err == io.EOF {
+		return nil
+	}
+	return err
+}
+
+func headBytesFromEnd(r io.Reader, w io.Writer, n int64) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	end := int64(len(data)) - n
+	if end <= 0 {
+		return nil
+	}
+	_, err = w.Write(data[:end])
+	return err
 }
