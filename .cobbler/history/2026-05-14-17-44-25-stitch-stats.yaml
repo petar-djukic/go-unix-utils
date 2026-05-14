@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5211"
+task_title: '[stitch] cmd/ls: extended features tests (srd008-ls R2.3-R2.6)'
+status: success
+started_at: "2026-05-14T21:44:25Z"
+duration: 2m50s
+duration_s: 169
+tokens:
+    input: 421449
+    output: 5298
+    cache_creation: 181112
+    cache_read: 240325
+cost_usd: 1.7681252500000002
+num_turns: 19
+rate_limit_wait_s: 2
+loc_before:
+    production: 4938
+    test: 3817
+loc_after:
+    production: 4938
+    test: 3878
+diff:
+    files: 2
+    insertions: 163
+    deletions: 1
