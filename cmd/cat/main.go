@@ -119,25 +119,28 @@ func catFile(name string, lineNum int, prevBlank bool) (int, bool, error) {
 	return catTransform(r, lineNum, prevBlank)
 }
 
+// R4.9: squeeze → transform (-v/-T) → end marker (-E) → number (-n/-b).
+// R5.3: always flush to detect stdout write errors.
 func catTransform(r io.Reader, lineNum int, prevBlank bool) (int, bool, error) {
 	br := bufio.NewReader(r)
 	w := bufio.NewWriter(os.Stdout)
+	var readErr error
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
 			lineNum, prevBlank = writeLine(w, line, lineNum, prevBlank)
 		}
 		if err != nil {
-			if err == io.EOF {
-				break
+			if err != io.EOF {
+				readErr = err
 			}
-			return lineNum, prevBlank, err
+			break
 		}
 	}
 	if ferr := w.Flush(); ferr != nil {
 		return lineNum, prevBlank, ferr
 	}
-	return lineNum, prevBlank, nil
+	return lineNum, prevBlank, readErr
 }
 
 // R2.1, R2.2, R2.3, R3.1, R4.9: squeeze, then transform, then number.
