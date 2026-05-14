@@ -401,10 +401,10 @@ requirements:
             issue: 5182
             weight: 1
         R6.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R6.3:
-            status: proposed
+            status: in_progress
             weight: 1
     srd006-cat:
         R1.1:
