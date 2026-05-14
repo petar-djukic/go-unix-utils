@@ -133,3 +133,13 @@
 [2026-05-14T00:00:14-04:00] [generation-run44] [stitch +9m5s] closeStitchTask: closing #5141 "[stitch] cmd/yes: core repeated output and SIGPIPE (srd012-yes R1.1-R1.4)"
 [2026-05-14T00:00:15-04:00] [generation-run44] [stitch +9m6s] commentCobblerIssue: posted comment on #5141
 [2026-05-14T00:00:15-04:00] [generation-run44] [stitch +9m6s] updateRequirementsFile: marked 4 R-items as complete for issue #5141
+[2026-05-14T00:00:18-04:00] [generation-run44] [stitch +9m9s] closeCobblerIssue: closed #5141
+[2026-05-14T00:00:19-04:00] [generation-run44] [stitch +9m11s] closeStitchTask: #5141 closed
+[2026-05-14T00:00:20-04:00] [generation-run44] [stitch +9m11s] sweepCompletedTasks: all R-items for #5141 already complete, closing
+[2026-05-14T00:00:21-04:00] [generation-run44] [stitch +9m12s] commentCobblerIssue: posted comment on #5141
+[2026-05-14T00:00:22-04:00] [generation-run44] [stitch +9m14s] closeCobblerIssue: closed #5141
+[2026-05-14T00:00:24-04:00] [generation-run44] [stitch +9m15s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T00:00:24-04:00] [generation-run44] [stitch +9m15s] doOneTask: task 5141 finished in 9m10s
+[2026-05-14T00:00:24-04:00] [generation-run44] [stitch +9m15s] task 5141 completed in 9m10s
+[2026-05-14T00:00:24-04:00] [generation-run44] [stitch +9m15s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T00:00:24-04:00] [generation-run44] [stitch +9m15s] completed 1 task(s) in 9m15s
