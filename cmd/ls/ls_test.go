@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.4.
+// Implements srd008-ls R1.1-R1.8.
 package main
 
 import (
@@ -54,6 +54,36 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "unknown-long-option",
 			Args:      []string{"--badopt"},
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		{
+			Name: "single-column-flag",
+			Args: []string{"-1", basicDir},
+		},
+		{
+			Name: "long-format",
+			Args: []string{"-l", basicDir},
+		},
+		{
+			Name: "long-format-file",
+			Args: []string{"-l", filepath.Join(basicDir, "apple")},
+		},
+		{
+			Name: "long-format-empty",
+			Args: []string{"-l"},
+		},
+		{
+			Name: "combined-one-long",
+			Args: []string{"-1l", basicDir},
+		},
+		{
+			Name: "combined-long-one",
+			Args: []string{"-l1", basicDir},
+		},
+		{
+			Name:      "unknown-short-option",
+			Args:      []string{"-z"},
 			ExitCode:  2,
 			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
 		},
