@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5160"
+task_title: '[stitch] cmd/tee: version/help and output-error handling (srd017-tee R4.1-R4.3)'
+status: success
+started_at: "2026-05-14T12:33:47Z"
+duration: 8m0s
+duration_s: 479
+tokens:
+    input: 971626
+    output: 21398
+    cache_creation: 201413
+    cache_read: 770194
+cost_usd: 2.5806382499999994
+num_turns: 40
+rate_limit_wait_s: 8
+loc_before:
+    production: 2676
+    test: 2120
+loc_after:
+    production: 2676
+    test: 2206
+diff:
+    files: 2
+    insertions: 241
+    deletions: 0
