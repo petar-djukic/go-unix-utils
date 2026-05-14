@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5228"
+task_title: '[stitch] cmd/logname: features implementation (srd053-logname R2.3-R3.3)'
+status: success
+started_at: "2026-05-14T23:13:14Z"
+duration: 1m31s
+duration_s: 90
+tokens:
+    input: 296347
+    output: 1477
+    cache_creation: 173442
+    cache_read: 122896
+cost_usd: 1.51566375
+num_turns: 15
+rate_limit_wait_s: 1
+loc_before:
+    production: 5378
+    test: 4232
+loc_after:
+    production: 5378
+    test: 4232
+diff:
+    files: 2
+    insertions: 94
+    deletions: 3
