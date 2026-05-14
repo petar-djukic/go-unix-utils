@@ -132,3 +132,9 @@
 [2026-05-14T13:17:22-04:00] [generation-run44] [stitch +2m21s] closeStitchTask: closing #5190 "[stitch] cmd/nproc: error handling and edge cases (srd046-nproc R2.1-R2.3)"
 [2026-05-14T13:17:23-04:00] [generation-run44] [stitch +2m22s] commentCobblerIssue: posted comment on #5190
 [2026-05-14T13:17:23-04:00] [generation-run44] [stitch +2m22s] updateRequirementsFile: marked 3 R-items as uncertain for issue #5190
+[2026-05-14T13:17:26-04:00] [generation-run44] [stitch +2m25s] closeCobblerIssue: closed #5190
+[2026-05-14T13:17:29-04:00] [generation-run44] [stitch +2m28s] closeStitchTask: #5190 closed
+[2026-05-14T13:17:30-04:00] [generation-run44] [stitch +2m28s] doOneTask: task 5190 finished in 2m20s
+[2026-05-14T13:17:30-04:00] [generation-run44] [stitch +2m28s] task 5190 completed in 2m20s
+[2026-05-14T13:17:30-04:00] [generation-run44] [stitch +2m28s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T13:17:30-04:00] [generation-run44] [stitch +2m28s] completed 1 task(s) in 2m28s
