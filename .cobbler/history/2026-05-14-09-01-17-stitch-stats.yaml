@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5167"
+task_title: '[stitch] cmd/head: remaining multi-file and error handling (srd018-head R3.5, R4.1-R4.3)'
+status: success
+started_at: "2026-05-14T13:01:17Z"
+duration: 5m2s
+duration_s: 301
+tokens:
+    input: 449244
+    output: 13258
+    cache_creation: 185754
+    cache_read: 263479
+cost_usd: 1.9794209999999999
+num_turns: 20
+rate_limit_wait_s: 3
+loc_before:
+    production: 3037
+    test: 2439
+loc_after:
+    production: 3041
+    test: 2463
+diff:
+    files: 3
+    insertions: 143
+    deletions: 13

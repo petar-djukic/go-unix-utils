@@ -1,0 +1,27 @@
+task_id: "5167"
+task_title: '[stitch] cmd/head: remaining multi-file and error handling (srd018-head R3.5, R4.1-R4.3)'
+status: success
+branch: task/generation-run44-5167
+diff:
+    files: 3
+    insertions: 143
+    deletions: 13
+files:
+    - path: .cobbler/history/2026-05-14-09-01-05-stitch-orchestrator.log
+      status: M
+      insertions: 103
+      deletions: 0
+    - path: cmd/head/head_test.go
+      status: M
+      insertions: 24
+      deletions: 0
+    - path: cmd/head/main.go
+      status: M
+      insertions: 17
+      deletions: 13
+loc_before:
+    production: 3037
+    test: 2439
+loc_after:
+    production: 3041
+    test: 2463
