@@ -129,3 +129,9 @@
 [2026-05-13T22:27:52-04:00] [generation-run44] [stitch +4m32s] doOneTask: closing task 5123
 [2026-05-13T22:27:52-04:00] [generation-run44] [stitch +4m32s] closeStitchTask: closing #5123 "[stitch] pkg/format: formatting tests (srd003-format)"
 [2026-05-13T22:27:53-04:00] [generation-run44] [stitch +4m32s] commentCobblerIssue: posted comment on #5123
+[2026-05-13T22:27:55-04:00] [generation-run44] [stitch +4m35s] closeCobblerIssue: closed #5123
+[2026-05-13T22:27:57-04:00] [generation-run44] [stitch +4m37s] closeStitchTask: #5123 closed
+[2026-05-13T22:27:58-04:00] [generation-run44] [stitch +4m37s] doOneTask: task 5123 finished in 4m30s
+[2026-05-13T22:27:58-04:00] [generation-run44] [stitch +4m37s] task 5123 completed in 4m30s
+[2026-05-13T22:27:58-04:00] [generation-run44] [stitch +4m37s] reached per-cycle limit (1), pausing for measure
+[2026-05-13T22:27:58-04:00] [generation-run44] [stitch +4m37s] completed 1 task(s) in 4m37s
