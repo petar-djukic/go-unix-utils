@@ -468,16 +468,20 @@ requirements:
             issue: 5111
             weight: 1
         R4.9:
-            status: in_progress
+            status: complete
+            issue: 5112
             weight: 1
         R5.1:
-            status: in_progress
+            status: complete
+            issue: 5112
             weight: 1
         R5.2:
-            status: in_progress
+            status: complete
+            issue: 5112
             weight: 1
         R5.3:
-            status: in_progress
+            status: complete
+            issue: 5112
             weight: 1
         R5.4:
             status: ready
