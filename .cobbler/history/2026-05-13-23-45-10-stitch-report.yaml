@@ -1,0 +1,27 @@
+task_id: "5140"
+task_title: '[stitch] cmd/basename: version, help, and error diagnostics (srd015-basename R4.1-R4.3)'
+status: success
+branch: task/generation-run44-5140
+diff:
+    files: 3
+    insertions: 413
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-13-23-45-01-stitch-orchestrator.log
+      status: M
+      insertions: 253
+      deletions: 0
+    - path: cmd/basename/basename_test.go
+      status: A
+      insertions: 131
+      deletions: 0
+    - path: cmd/basename/main.go
+      status: M
+      insertions: 30
+      deletions: 0
+loc_before:
+    production: 2065
+    test: 1165
+loc_after:
+    production: 2095
+    test: 1296

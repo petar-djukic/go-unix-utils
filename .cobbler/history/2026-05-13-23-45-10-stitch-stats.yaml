@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5140"
+task_title: '[stitch] cmd/basename: version, help, and error diagnostics (srd015-basename R4.1-R4.3)'
+status: success
+started_at: "2026-05-14T03:45:10Z"
+duration: 5m53s
+duration_s: 352
+tokens:
+    input: 1201551
+    output: 11556
+    cache_creation: 190802
+    cache_read: 1010724
+cost_usd: 2.436902250000001
+num_turns: 70
+rate_limit_wait_s: 2
+loc_before:
+    production: 2065
+    test: 1165
+loc_after:
+    production: 2095
+    test: 1296
+diff:
+    files: 3
+    insertions: 413
+    deletions: 0
