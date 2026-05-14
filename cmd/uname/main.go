@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd044-uname R1.1-R1.8.
+// Implements srd044-uname R1.1-R1.9, R2.1-R2.2.
 package main
 
 import (
@@ -16,6 +16,7 @@ import (
 const helpText = `Usage: uname [OPTION]...
 Print certain system information.  With no OPTION, same as -s.
 
+  -a                print all information
   -s                print the kernel name
   -n                print the network node hostname
   -r                print the kernel release
@@ -23,6 +24,7 @@ Print certain system information.  With no OPTION, same as -s.
   -m                print the machine hardware name
   -p                print the processor type or "unknown"
   -i                print the hardware platform or "unknown"
+  -o                print the operating system
       --help     display this help and exit
       --version  output version information and exit
 `
@@ -43,6 +45,13 @@ var fields = []fieldEntry{
 	{'m', func(u *unix.Utsname) string { return utsToString(u.Machine[:]) }},
 	{'p', func(_ *unix.Utsname) string { return "unknown" }},
 	{'i', func(_ *unix.Utsname) string { return "unknown" }},
+	{'o', func(u *unix.Utsname) string {
+		sysname := utsToString(u.Sysname[:])
+		if sysname == "Linux" {
+			return "GNU/Linux"
+		}
+		return sysname
+	}},
 }
 
 var flagIndex map[byte]int
@@ -63,8 +72,9 @@ func utsToString(b []byte) string {
 	return string(b)
 }
 
-func parseFlags(args []string) ([]bool, []string) {
+func parseFlags(args []string) ([]bool, bool, []string) {
 	selected := make([]bool, len(fields))
+	var allFlag bool
 	for len(args) > 0 {
 		a := args[0]
 		switch {
@@ -75,13 +85,20 @@ func parseFlags(args []string) ([]bool, []string) {
 			fmt.Fprint(os.Stdout, versionText)
 			os.Exit(0)
 		case a == "--":
-			return selected, args[1:]
+			return selected, allFlag, args[1:]
 		case strings.HasPrefix(a, "--"):
 			fmt.Fprintf(os.Stderr, "uname: unrecognized option '%s'\n", a)
 			fmt.Fprintln(os.Stderr, "Try 'uname --help' for more information.")
 			os.Exit(1)
 		case strings.HasPrefix(a, "-") && len(a) > 1:
 			for i := 1; i < len(a); i++ {
+				if a[i] == 'a' {
+					for j := range selected {
+						selected[j] = true
+					}
+					allFlag = true
+					continue
+				}
 				idx, ok := flagIndex[a[i]]
 				if !ok {
 					fmt.Fprintf(os.Stderr, "uname: invalid option -- '%c'\n", a[i])
@@ -91,14 +108,14 @@ func parseFlags(args []string) ([]bool, []string) {
 				selected[idx] = true
 			}
 		default:
-			return selected, args
+			return selected, allFlag, args
 		}
 		args = args[1:]
 	}
-	return selected, args
+	return selected, allFlag, args
 }
 
-func formatOutput(u *unix.Utsname, selected []bool) string {
+func formatOutput(u *unix.Utsname, selected []bool, allFlag bool) string {
 	hasSelection := false
 	for _, s := range selected {
 		if s {
@@ -112,7 +129,11 @@ func formatOutput(u *unix.Utsname, selected []bool) string {
 	var parts []string
 	for i, f := range fields {
 		if selected[i] {
-			parts = append(parts, f.get(u))
+			val := f.get(u)
+			if allFlag && val == "unknown" {
+				continue
+			}
+			parts = append(parts, val)
 		}
 	}
 	return strings.Join(parts, " ")
@@ -121,7 +142,7 @@ func formatOutput(u *unix.Utsname, selected []bool) string {
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	selected, args := parseFlags(os.Args[1:])
+	selected, allFlag, args := parseFlags(os.Args[1:])
 
 	if len(args) > 0 {
 		fmt.Fprintf(os.Stderr, "uname: extra operand '%s'\n", args[0])
@@ -135,7 +156,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if _, err := fmt.Fprintln(os.Stdout, formatOutput(&u, selected)); err != nil {
+	if _, err := fmt.Fprintln(os.Stdout, formatOutput(&u, selected, allFlag)); err != nil {
 		os.Exit(1)
 	}
 }
