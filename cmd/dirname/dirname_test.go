@@ -49,12 +49,40 @@ func TestDiff(t *testing.T) {
 			Args: []string{".."},
 		},
 		{
+			Name: "nested_path",
+			Args: []string{"a/b/c"},
+		},
+		{
+			Name: "all_slashes",
+			Args: []string{"///"},
+		},
+		{
 			Name: "multiple_args",
 			Args: []string{"dir1/file", "dir2/file"},
 		},
 		{
+			Name: "multiple_args_mixed",
+			Args: []string{"/usr/bin/sort", "stdio.h", "/", "a/b/c"},
+		},
+		{
 			Name: "nul_delimited",
 			Args: []string{"-z", "/usr/bin/sort"},
+		},
+		{
+			Name: "nul_delimited_multiple",
+			Args: []string{"-z", "/usr/bin/sort", "stdio.h"},
+		},
+		{
+			Name: "nul_delimited_long_flag",
+			Args: []string{"--zero", "/usr/bin/sort"},
+		},
+		{
+			Name: "end_of_options_with_help",
+			Args: []string{"--", "--help"},
+		},
+		{
+			Name: "end_of_options_with_dash_z",
+			Args: []string{"--", "-z"},
 		},
 		{
 			Name:      "no_args_error",
