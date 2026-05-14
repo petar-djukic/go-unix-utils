@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5120"
+task_title: '[stitch] pkg/testutils: implement DiffTest, RunDiffTests, and normalizers (srd001-testutils)'
+status: success
+started_at: "2026-05-14T02:02:14Z"
+duration: 6m54s
+duration_s: 414
+tokens:
+    input: 332218
+    output: 18923
+    cache_creation: 175484
+    cache_read: 156724
+cost_usd: 2.0958992499999995
+num_turns: 17
+rate_limit_wait_s: 261
+loc_before:
+    production: 1527
+    test: 190
+loc_after:
+    production: 1551
+    test: 190
+diff:
+    files: 3
+    insertions: 131
+    deletions: 14
