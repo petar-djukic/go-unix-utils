@@ -32,7 +32,13 @@ func main() {
 	os.Exit(run())
 }
 
-func run() int {
+func run() (exitCode int) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "sponge: %v\n", r)
+			exitCode = 1
+		}
+	}()
 	installCleanupHandler()
 	defer cleanupCurrentTempFile()
 
