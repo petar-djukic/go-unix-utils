@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.12.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.2.
 package main
 
 import (
@@ -24,7 +24,10 @@ const helpText = `Usage: ls [OPTION]... [FILE]...
 List information about the FILEs (the current directory by default).
 Sort entries alphabetically if no flags given.
 
+  -a             do not ignore entries starting with .
+  -A             do not list implied . and ..
   -C             list entries by columns
+  -x             list entries by lines instead of by columns
   -1             list one file per line
   -l             use a long listing format
       --help     display this help and exit
@@ -35,9 +38,12 @@ const versionText = `ls (go-unix-utils) dev
 `
 
 type options struct {
-	singleColumn bool
-	longFormat   bool
-	forceColumns bool
+	singleColumn   bool
+	longFormat     bool
+	forceColumns   bool
+	horizontalSort bool
+	showAll        bool
+	showAlmostAll  bool
 }
 
 func main() {
@@ -82,6 +88,7 @@ func parseShortFlags(flags string, opts *options) {
 		switch ch {
 		case '1':
 			opts.forceColumns = false
+			opts.horizontalSort = false
 			if !opts.longFormat {
 				opts.singleColumn = true
 			}
@@ -89,10 +96,23 @@ func parseShortFlags(flags string, opts *options) {
 			opts.longFormat = true
 			opts.singleColumn = false
 			opts.forceColumns = false
+			opts.horizontalSort = false
 		case 'C':
 			opts.forceColumns = true
+			opts.horizontalSort = false
 			opts.longFormat = false
 			opts.singleColumn = false
+		case 'x':
+			opts.forceColumns = true
+			opts.horizontalSort = true
+			opts.longFormat = false
+			opts.singleColumn = false
+		case 'a':
+			opts.showAll = true
+			opts.showAlmostAll = false
+		case 'A':
+			opts.showAlmostAll = true
+			opts.showAll = false
 		default:
 			fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
 			fmt.Fprintln(os.Stderr, "Try 'ls --help' for more information.")
@@ -154,7 +174,7 @@ func maxCode(a, b int) int {
 }
 
 func listDir(path string, opts options) int {
-	names, err := readNames(path)
+	names, err := readNames(path, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ls: cannot open directory '%s': %s\n",
 			path, sysError(err))
@@ -167,16 +187,20 @@ func listDir(path string, opts options) int {
 	return 0
 }
 
-func readNames(path string) ([]string, error) {
+func readNames(path string, opts options) ([]string, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}
 	names := make([]string, 0, len(entries))
+	if opts.showAll {
+		names = append(names, ".", "..")
+	}
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), ".") {
-			names = append(names, e.Name())
+		if strings.HasPrefix(e.Name(), ".") && !opts.showAll && !opts.showAlmostAll {
+			continue
 		}
+		names = append(names, e.Name())
 	}
 	sort.Strings(names)
 	return names, nil
@@ -187,7 +211,11 @@ func writeEntries(names []string, opts options) {
 		return
 	}
 	if opts.forceColumns {
-		writeColumnsWidth(names, 0)
+		if opts.horizontalSort {
+			writeHorizontalColumns(names, 0)
+		} else {
+			writeColumnsWidth(names, 0)
+		}
 	} else if opts.singleColumn || !sys.IsTerminal(os.Stdout.Fd()) {
 		writeLines(names)
 	} else {
@@ -208,6 +236,79 @@ func writeColumnsWidth(names []string, width int) {
 	for _, row := range grid {
 		writeGridRow(row, widths)
 	}
+}
+
+func writeHorizontalColumns(names []string, width int) {
+	if width <= 0 {
+		w, err := sys.TerminalWidth()
+		if err != nil {
+			w = 80
+		}
+		width = w
+	}
+	numCols := findHorizontalMaxCols(names, width)
+	rows := (len(names) + numCols - 1) / numCols
+	colWidths := make([]int, numCols)
+	for c := 0; c < numCols; c++ {
+		for r := 0; r < rows; r++ {
+			idx := r*numCols + c
+			if idx >= len(names) {
+				break
+			}
+			if w := utf8.RuneCountInString(names[idx]); w > colWidths[c] {
+				colWidths[c] = w
+			}
+		}
+	}
+	for r := 0; r < rows; r++ {
+		var row []string
+		for c := 0; c < numCols; c++ {
+			idx := r*numCols + c
+			if idx >= len(names) {
+				break
+			}
+			row = append(row, names[idx])
+		}
+		writeGridRow(row, colWidths)
+	}
+}
+
+func findHorizontalMaxCols(entries []string, termWidth int) int {
+	n := len(entries)
+	for cols := n; cols > 1; cols-- {
+		if horizontalGridFits(entries, cols, termWidth) {
+			return cols
+		}
+	}
+	return 1
+}
+
+func horizontalGridFits(entries []string, cols, termWidth int) bool {
+	rows := (len(entries) + cols - 1) / cols
+	colWidths := make([]int, cols)
+	for c := 0; c < cols; c++ {
+		for r := 0; r < rows; r++ {
+			idx := r*cols + c
+			if idx >= len(entries) {
+				break
+			}
+			if w := utf8.RuneCountInString(entries[idx]); w > colWidths[c] {
+				colWidths[c] = w
+			}
+		}
+	}
+	total := 0
+	for c := 0; c < cols; c++ {
+		if c < cols-1 {
+			total += colWidths[c] + 2
+		} else {
+			total += colWidths[c]
+		}
+		if total > termWidth {
+			return false
+		}
+	}
+	return true
 }
 
 func writeLines(names []string) {
