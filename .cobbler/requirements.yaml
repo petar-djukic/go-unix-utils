@@ -680,16 +680,20 @@ requirements:
             issue: 5210
             weight: 1
         R2.7:
-            status: in_progress
+            status: complete
+            issue: 5212
             weight: 1
         R2.8:
-            status: in_progress
+            status: complete
+            issue: 5212
             weight: 1
         R2.9:
-            status: in_progress
+            status: complete
+            issue: 5212
             weight: 1
         R2.10:
-            status: in_progress
+            status: complete
+            issue: 5212
             weight: 1
         R2.11:
             status: ready
