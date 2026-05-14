@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.15.
+// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.15, R4.1-R4.4.
 package main
 
 import (
@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -339,4 +340,69 @@ func setupRecursiveTimeSortDir(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+func TestExitCodes(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	t.Run("success-exits-0", func(t *testing.T) {
+		dir := setupDir(t, "a", "b")
+		cmd := exec.Command(goBin, dir)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("expected exit 0, got error: %v", err)
+		}
+	})
+
+	t.Run("nonexistent-path-exits-1", func(t *testing.T) {
+		cmd := exec.Command(goBin, "/no/such/path")
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		out, err := cmd.CombinedOutput()
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected exit error, got: %v", err)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit 1, got %d", exitErr.ExitCode())
+		}
+		if !strings.Contains(string(out), "cannot access") {
+			t.Errorf("expected diagnostic on stderr, got: %s", out)
+		}
+	})
+
+	t.Run("mixed-valid-invalid-exits-1", func(t *testing.T) {
+		dir := setupDir(t, "a")
+		cmd := exec.Command(goBin, "-1", dir, "/no/such/path")
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		var stdout, stderr strings.Builder
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected exit error, got: %v", err)
+		}
+		if exitErr.ExitCode() != 1 {
+			t.Errorf("expected exit 1, got %d", exitErr.ExitCode())
+		}
+		if !strings.Contains(stdout.String(), "a") {
+			t.Errorf("expected accessible entries in stdout, got: %s", stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "cannot access") {
+			t.Errorf("expected diagnostic on stderr, got: %s", stderr.String())
+		}
+	})
+
+	t.Run("invalid-option-exits-2", func(t *testing.T) {
+		cmd := exec.Command(goBin, "--badopt")
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		err := cmd.Run()
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("expected exit error, got: %v", err)
+		}
+		if exitErr.ExitCode() != 2 {
+			t.Errorf("expected exit 2, got %d", exitErr.ExitCode())
+		}
+	})
 }

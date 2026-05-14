@@ -254,7 +254,7 @@ func classifyPaths(paths []string, exitCode *int, dirAsEntry bool) ([]string, []
 		info, err := os.Lstat(p)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ls: cannot access '%s': %s\n", p, sysError(err))
-			*exitCode = 2
+			*exitCode = 1
 			continue
 		}
 		if info.IsDir() && !dirAsEntry {
@@ -278,7 +278,7 @@ func listDir(path string, opts options) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ls: cannot open directory '%s': %s\n",
 			path, sysError(err))
-		return 2
+		return 1
 	}
 	code := 0
 	if opts.longFormat {
@@ -637,7 +637,7 @@ func writeLongFiles(paths []string, opts options) int {
 		fi, err := sys.Lstat(p)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ls: cannot access '%s': %s\n", p, sysError(err))
-			code = 2
+			code = 1
 			continue
 		}
 		entries = append(entries, newLongEntry(p, p, fi, opts))
@@ -667,7 +667,7 @@ func writeLongDir(path string, names []string, opts options) int {
 		fi, err := sys.Lstat(full)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ls: cannot access '%s': %s\n", full, sysError(err))
-			code = 2
+			code = 1
 			continue
 		}
 		entries = append(entries, newLongEntry(name, full, fi, opts))
