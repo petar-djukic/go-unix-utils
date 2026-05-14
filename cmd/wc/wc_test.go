@@ -4,9 +4,11 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -645,6 +647,77 @@ func TestDiffR52(t *testing.T) {
 			Args:  []string{"-c"},
 			Stdin: []byte(""),
 			Env:   defaultEnv,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffR62(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skip("reference binary gwc not found")
+	}
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "valid.txt", "hello world\nfoo bar\n")
+
+	binaryNameRe := regexp.MustCompile(`(?:/\S+/)?g?wc`)
+	normalizeBinaryName := testutils.NormalizeFunc(func(b []byte) []byte {
+		return binaryNameRe.ReplaceAll(b, []byte("wc"))
+	})
+	normalizeErrCase := testutils.NormalizeFunc(func(b []byte) []byte {
+		return bytes.ToLower(b)
+	})
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "r6_2_nonexistent_file_only",
+			Args:      []string{"nonexistent.txt"},
+			Env:       defaultEnv,
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeErrCase},
+		},
+		{
+			Name:      "r6_2_nonexistent_then_valid",
+			Args:      []string{"nonexistent.txt", "valid.txt"},
+			Env:       defaultEnv,
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeErrCase},
+		},
+		{
+			Name:      "r6_2_valid_then_nonexistent",
+			Args:      []string{"valid.txt", "nonexistent.txt"},
+			Env:       defaultEnv,
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeErrCase},
+		},
+		{
+			Name:      "r6_2_nonexistent_between_valid",
+			Args:      []string{"valid.txt", "nonexistent.txt", "valid.txt"},
+			Env:       defaultEnv,
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeErrCase},
+		},
+		{
+			Name:      "r6_2_nonexistent_flag_l",
+			Args:      []string{"-l", "nonexistent.txt", "valid.txt"},
+			Env:       defaultEnv,
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeErrCase},
+		},
+		{
+			Name:      "r6_2_nonexistent_flag_w",
+			Args:      []string{"-w", "nonexistent.txt", "valid.txt"},
+			Env:       defaultEnv,
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeErrCase},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

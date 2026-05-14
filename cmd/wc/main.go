@@ -68,8 +68,8 @@ func run(opts options, files []string, stdout io.Writer, stderr io.Writer) int {
 		width = computeWidth(files, countColumns(opts))
 	}
 	results, names, hadError := processFiles(files, stderr)
-	printResults(stdout, opts, results, names, width)
-	if hadError {
+	writeErr := printResults(stdout, opts, results, names, width, len(files))
+	if hadError || writeErr {
 		return 1
 	}
 	return 0
@@ -223,13 +223,16 @@ func isPrintable(r rune) bool {
 	return r >= 0x20 && r <= 0x7E
 }
 
-func printResults(w io.Writer, opts options, results []counts, names []string, width int) {
+func printResults(w io.Writer, opts options, results []counts, names []string, width int, numFiles int) bool {
 	total := sumCounts(results)
-	showTotal := shouldShowTotal(opts.totalMode, len(results))
+	showTotal := shouldShowTotal(opts.totalMode, numFiles)
+	writeErr := false
 
 	if opts.totalMode != "only" {
 		for i, c := range results {
-			printLine(w, opts, c, names[i], width)
+			if err := printLine(w, opts, c, names[i], width); err != nil {
+				writeErr = true
+			}
 		}
 	}
 	if showTotal {
@@ -237,8 +240,11 @@ func printResults(w io.Writer, opts options, results []counts, names []string, w
 		if opts.totalMode == "only" {
 			label = ""
 		}
-		printLine(w, opts, total, label, width)
+		if err := printLine(w, opts, total, label, width); err != nil {
+			writeErr = true
+		}
 	}
+	return writeErr
 }
 
 func sumCounts(results []counts) counts {
@@ -312,13 +318,14 @@ func computeWidth(files []string, numColumns int) int {
 	return minWidth
 }
 
-func printLine(w io.Writer, opts options, c counts, name string, width int) {
+func printLine(w io.Writer, opts options, c counts, name string, width int) error {
 	fields := collectFields(opts, c, width)
 	line := strings.Join(fields, " ")
 	if name != "" {
 		line += " " + name
 	}
-	fmt.Fprintln(w, line)
+	_, err := fmt.Fprintln(w, line)
+	return err
 }
 
 func collectFields(opts options, c counts, width int) []string {
