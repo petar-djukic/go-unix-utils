@@ -125,3 +125,9 @@
 [2026-05-14T07:26:39-04:00] [generation-run44] [stitch +2m58s] closeStitchTask: closing #5147 "[stitch] cmd/dirname: error handling and exit codes (srd016-dirname R3.1-R3.3)"
 [2026-05-14T07:26:40-04:00] [generation-run44] [stitch +2m59s] commentCobblerIssue: posted comment on #5147
 [2026-05-14T07:26:40-04:00] [generation-run44] [stitch +2m59s] updateRequirementsFile: marked 3 R-items as uncertain for issue #5147
+[2026-05-14T07:26:43-04:00] [generation-run44] [stitch +3m2s] closeCobblerIssue: closed #5147
+[2026-05-14T07:26:45-04:00] [generation-run44] [stitch +3m4s] closeStitchTask: #5147 closed
+[2026-05-14T07:26:46-04:00] [generation-run44] [stitch +3m5s] doOneTask: task 5147 finished in 2m59s
+[2026-05-14T07:26:46-04:00] [generation-run44] [stitch +3m5s] task 5147 completed in 2m59s
+[2026-05-14T07:26:46-04:00] [generation-run44] [stitch +3m5s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T07:26:46-04:00] [generation-run44] [stitch +3m5s] completed 1 task(s) in 3m5s
