@@ -8,6 +8,8 @@
 package hashutil
 
 import (
+	"encoding/hex"
+	"fmt"
 	"hash"
 	"io"
 )
@@ -30,19 +32,26 @@ type CheckOptions struct {
 // FormatGNU formats a digest and filename in GNU coreutils format.
 // Text mode: "HASH  FILENAME"; binary mode: "HASH *FILENAME". (R1.3)
 func FormatGNU(digest, filename string, binary bool) string {
-	return ""
+	if binary {
+		return fmt.Sprintf("%s *%s", digest, filename)
+	}
+	return fmt.Sprintf("%s  %s", digest, filename)
 }
 
 // FormatBSDTag formats a digest in BSD tag format:
 // "ALGORITHM (FILENAME) = HASH". (R1.3)
 func FormatBSDTag(algorithm, filename, digest string) string {
-	return ""
+	return fmt.Sprintf("%s (%s) = %s", algorithm, filename, digest)
 }
 
 // ComputeDigest reads all bytes from r, computes the hash using cfg, and
 // returns the lowercase hex-encoded digest string. (R1.4)
 func ComputeDigest(r io.Reader, cfg HashConfig) (string, error) {
-	return "", nil
+	h := cfg.NewHash()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", fmt.Errorf("computing digest: %w", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // ParseChecksumLine parses a single checksum line in GNU or BSD tag format.
