@@ -53,20 +53,3 @@ func ComputeDigest(r io.Reader, cfg HashConfig) (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
-
-// ParseChecksumLine parses a single checksum line in GNU or BSD tag format.
-// (R1.4 / R2.1)
-func ParseChecksumLine(line string, cfg HashConfig) (filename, expectedDigest string, binary bool, err error) {
-	return "", "", false, nil
-}
-
-// VerifyChecksums reads a checksum file and verifies each entry against the
-// actual file contents. (R1.4 / R2.3)
-func VerifyChecksums(checksumFile string, cfg HashConfig, opts CheckOptions, stdout, stderr io.Writer) (bool, error) {
-	return false, nil
-}
-
-// DigestFiles computes and prints digests for each file in the list. (R1.4 / R3.1)
-func DigestFiles(files []string, cfg HashConfig, binary, tag bool, stdout, stderr io.Writer) int {
-	return 0
-}
