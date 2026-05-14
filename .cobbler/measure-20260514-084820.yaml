@@ -1,0 +1,184 @@
+- index: 0
+  title: "[stitch] cmd/head: byte-count mode and remaining core behavior (srd018-head R1.5, R2.1-R2.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd018-head.yaml (SRD for head -- focus on R1.5, R2.1, R2.2, R2.3)
+      - cmd/head/main.go (existing implementation covering R1.1-R1.4: basic line output and defaults)
+      - cmd/head/head_test.go (existing differential tests for R1.1-R1.4)
+      - pkg/testutils/ (DiffTest struct and RunDiffTests for differential testing)
+      - pkg/sys/ (InstallSIGPIPEHandler, already called in main)
+
+    files:
+      - path: cmd/head/main.go
+        action: modify
+        note: "Add byte-count mode, negative count support, and remaining group-1/group-2 behavior"
+      - path: cmd/head/head_test.go
+        action: modify
+        note: "Add differential test cases for R1.5, R2.1, R2.2, R2.3 using ghead as reference"
+
+    requirements:
+      - id: R1
+        text: "Implement srd018-head R1.5 per the SRD specification"
+      - id: R2
+        text: "Implement srd018-head R2.1 per the SRD specification"
+      - id: R3
+        text: "Implement srd018-head R2.2 per the SRD specification"
+      - id: R4
+        text: "Implement srd018-head R2.3 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing flag-parsing and output logic established by R1.1-R1.4 in main.go"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests with ghead as the reference binary for all new test cases"
+      - id: D3
+        text: "Set LC_ALL=C in test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/head/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/head/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/head/... -count=1 passes (or skips gracefully if ghead not in PATH)"
+      - id: AC4
+        text: "Requirements R1.5, R2.1, R2.2, R2.3 are implemented in main.go with corresponding differential tests"
+
+- index: 1
+  title: "[stitch] cmd/head: multi-file headers and quiet/verbose control (srd018-head R3.1-R3.4)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd018-head.yaml (SRD for head -- focus on R3.1, R3.2, R3.3, R3.4)
+      - cmd/head/main.go (existing implementation covering R1.1-R1.4 and R1.5-R2.3)
+      - cmd/head/head_test.go (existing differential tests)
+      - pkg/testutils/ (DiffTest struct and RunDiffTests for differential testing)
+
+    files:
+      - path: cmd/head/main.go
+        action: modify
+        note: "Add multi-file header printing with quiet (-q) and verbose (-v) control per R3.1-R3.4"
+      - path: cmd/head/head_test.go
+        action: modify
+        note: "Add differential test cases for R3.1, R3.2, R3.3, R3.4 using ghead as reference"
+
+    requirements:
+      - id: R1
+        text: "Implement srd018-head R3.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd018-head R3.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd018-head R3.3 per the SRD specification"
+      - id: R4
+        text: "Implement srd018-head R3.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing single-file logic to iterate over multiple file arguments"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests with ghead as the reference binary for all new test cases"
+      - id: D3
+        text: "Set LC_ALL=C in test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/head/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/head/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/head/... -count=1 passes (or skips gracefully if ghead not in PATH)"
+      - id: AC4
+        text: "Requirements R3.1, R3.2, R3.3, R3.4 are implemented in main.go with corresponding differential tests"
+
+- index: 2
+  title: "[stitch] cmd/head: remaining multi-file and error handling (srd018-head R3.5, R4.1-R4.3)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd018-head.yaml (SRD for head -- focus on R3.5, R4.1, R4.2, R4.3)
+      - cmd/head/main.go (existing implementation covering R1.1-R3.4)
+      - cmd/head/head_test.go (existing differential tests)
+      - pkg/testutils/ (DiffTest struct and RunDiffTests for differential testing)
+
+    files:
+      - path: cmd/head/main.go
+        action: modify
+        note: "Add remaining group-3 behavior and error-handling/exit-code logic per R3.5, R4.1-R4.3"
+      - path: cmd/head/head_test.go
+        action: modify
+        note: "Add differential test cases for R3.5, R4.1, R4.2, R4.3 using ghead as reference"
+
+    requirements:
+      - id: R1
+        text: "Implement srd018-head R3.5 per the SRD specification"
+      - id: R2
+        text: "Implement srd018-head R4.1 per the SRD specification"
+      - id: R3
+        text: "Implement srd018-head R4.2 per the SRD specification"
+      - id: R4
+        text: "Implement srd018-head R4.3 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing flag-parsing and output logic in main.go"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests with ghead as the reference binary for all new test cases"
+      - id: D3
+        text: "Set LC_ALL=C in test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/head/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/head/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/head/... -count=1 passes (or skips gracefully if ghead not in PATH)"
+      - id: AC4
+        text: "Requirements R3.5, R4.1, R4.2, R4.3 are implemented in main.go with corresponding differential tests"
+
+- index: 3
+  title: "[stitch] cmd/head: final edge cases (srd018-head R4.4)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd018-head.yaml (SRD for head -- focus on R4.4)
+      - cmd/head/main.go (existing implementation covering R1.1-R4.3)
+      - cmd/head/head_test.go (existing differential tests)
+      - pkg/testutils/ (DiffTest struct and RunDiffTests for differential testing)
+
+    files:
+      - path: cmd/head/main.go
+        action: modify
+        note: "Implement remaining edge-case behavior per R4.4"
+      - path: cmd/head/head_test.go
+        action: modify
+        note: "Add differential test cases for R4.4 using ghead as reference"
+
+    requirements:
+      - id: R1
+        text: "Implement srd018-head R4.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing implementation in main.go"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests with ghead as the reference binary"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/head/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/head/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/head/... -count=1 passes (or skips gracefully if ghead not in PATH)"
+      - id: AC4
+        text: "Requirement R4.4 is implemented in main.go with corresponding differential tests"
