@@ -120,3 +120,13 @@
 [2026-05-14T07:53:38-04:00] [generation-run44] [stitch +5m57s] closeStitchTask: closing #5152 "[stitch] cmd/du: depth limit, filesystem boundary, symlinks, and exclusion (srd009-du R2.4-R2.7)"
 [2026-05-14T07:53:39-04:00] [generation-run44] [stitch +5m58s] commentCobblerIssue: posted comment on #5152
 [2026-05-14T07:53:39-04:00] [generation-run44] [stitch +5m58s] updateRequirementsFile: marked 4 R-items as complete for issue #5152
+[2026-05-14T07:53:41-04:00] [generation-run44] [stitch +6m0s] closeCobblerIssue: closed #5152
+[2026-05-14T07:53:43-04:00] [generation-run44] [stitch +6m2s] closeStitchTask: #5152 closed
+[2026-05-14T07:53:44-04:00] [generation-run44] [stitch +6m3s] sweepCompletedTasks: all R-items for #5152 already complete, closing
+[2026-05-14T07:53:45-04:00] [generation-run44] [stitch +6m4s] commentCobblerIssue: posted comment on #5152
+[2026-05-14T07:53:46-04:00] [generation-run44] [stitch +6m5s] closeCobblerIssue: closed #5152
+[2026-05-14T07:53:48-04:00] [generation-run44] [stitch +6m7s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T07:53:48-04:00] [generation-run44] [stitch +6m7s] doOneTask: task 5152 finished in 6m1s
+[2026-05-14T07:53:48-04:00] [generation-run44] [stitch +6m7s] task 5152 completed in 6m1s
+[2026-05-14T07:53:48-04:00] [generation-run44] [stitch +6m7s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T07:53:48-04:00] [generation-run44] [stitch +6m7s] completed 1 task(s) in 6m7s
