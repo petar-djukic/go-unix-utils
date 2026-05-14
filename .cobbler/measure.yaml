@@ -2893,3 +2893,185 @@
       - id: AC6
         text: cmd/yes is feature-complete per srd012-yes
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/dirname: core path extraction and setup (srd016-dirname R1.1-R1.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd016-dirname.yaml (full SRD -- focus on requirements R1.1 through R1.3)
+      - docs/specs/test-suites/test-rel-02.0.yaml (test cases for dirname)
+      - docs/specs/use-cases/rel02.0-uc005-dirname.yaml (use case for dirname)
+      - pkg/sys/ (InstallSIGPIPEHandler pattern)
+      - pkg/testutils/ (DiffTest, RunDiffTests, BuildBinary)
+
+    files:
+      - path: cmd/dirname/main.go
+        action: create
+        note: dirname utility -- main function, flag parsing skeleton, core path extraction
+      - path: cmd/dirname/dirname_test.go
+        action: create
+        note: differential tests against gdirname reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd016-dirname R1.1 -- core dirname behavior that extracts the directory component from a pathname"
+      - id: R2
+        text: "Implement srd016-dirname R1.2 -- handle trailing slash stripping before directory extraction"
+      - id: R3
+        text: "Implement srd016-dirname R1.3 -- when path contains no slash, return dot (.)"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project SIGPIPE protocol"
+      - id: D2
+        text: "Use differential testing pattern -- BuildBinary(t, \".\"), exec.LookPath(\"gdirname\"), RunDiffTests"
+      - id: D3
+        text: "Skip tests if gdirname is not in PATH using t.Skip"
+      - id: D4
+        text: "Set LC_ALL=C in test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/dirname/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/dirname/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/dirname/ -count=1 passes (skips if gdirname not found)"
+      - id: AC4
+        text: "dirname /usr/bin outputs /usr"
+      - id: AC5
+        text: "dirname with a path containing no slash outputs dot"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/dirname: operand handling and flags (srd016-dirname R1.4-R1.5, R2.1-R2.2)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd016-dirname.yaml (requirements R1.4, R1.5, R2.1, R2.2)
+      - cmd/dirname/main.go (existing implementation from prior task)
+      - cmd/dirname/dirname_test.go (existing differential tests from prior task)
+
+    files:
+      - path: cmd/dirname/main.go
+        action: modify
+        note: add root path handling, multi-argument support, --zero flag, end-of-options
+      - path: cmd/dirname/dirname_test.go
+        action: modify
+        note: add differential test cases for R1.4, R1.5, R2.1, R2.2
+
+    requirements:
+      - id: R1
+        text: "Implement srd016-dirname R1.4 -- dirname of root path (/) returns /"
+      - id: R2
+        text: "Implement srd016-dirname R1.5 -- support multiple pathname operands, one output per line"
+      - id: R3
+        text: "Implement srd016-dirname R2.1 -- --zero / -z flag for NUL-terminated output instead of newline"
+      - id: R4
+        text: "Implement srd016-dirname R2.2 -- end-of-options marker (--) stops flag parsing"
+
+    design_decisions:
+      - id: D1
+        text: "Process each operand independently, printing one dirname result per line (or NUL-terminated with -z)"
+      - id: D2
+        text: "After --, treat all subsequent arguments as operands even if they start with a dash"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "dirname / outputs /"
+      - id: AC2
+        text: "dirname with multiple arguments outputs one result per line"
+      - id: AC3
+        text: "dirname -z outputs NUL-terminated results instead of newline-terminated"
+      - id: AC4
+        text: "dirname -- --help treats --help as a pathname operand"
+      - id: AC5
+        text: "go test ./cmd/dirname/ -count=1 passes with new test cases"
+  dependency: 0
+- index: 2
+  title: '[stitch] cmd/dirname: error handling and exit codes (srd016-dirname R3.1-R3.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd016-dirname.yaml (requirements R3.1, R3.2, R3.3)
+      - cmd/dirname/main.go (existing implementation)
+      - cmd/dirname/dirname_test.go (existing tests)
+
+    files:
+      - path: cmd/dirname/main.go
+        action: modify
+        note: add error handling for missing operands and write errors
+      - path: cmd/dirname/dirname_test.go
+        action: modify
+        note: add differential test cases for error conditions
+
+    requirements:
+      - id: R1
+        text: "Implement srd016-dirname R3.1 -- exit code 0 on successful execution"
+      - id: R2
+        text: "Implement srd016-dirname R3.2 -- error message to stderr when no operand is provided"
+      - id: R3
+        text: "Implement srd016-dirname R3.3 -- exit code non-zero on error conditions"
+
+    design_decisions:
+      - id: D1
+        text: "Write error messages to stderr matching GNU dirname format"
+      - id: D2
+        text: "Exit 0 on success, exit non-zero on usage errors (missing operand, unknown option)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "dirname with no arguments prints error to stderr and exits non-zero"
+      - id: AC2
+        text: "dirname with valid arguments exits 0"
+      - id: AC3
+        text: "Error message format matches gdirname output in differential tests"
+      - id: AC4
+        text: "go test ./cmd/dirname/ -count=1 passes with error-case test cases"
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/dirname: version, help, and unknown options (srd016-dirname R4.1-R4.3)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd016-dirname.yaml (requirements R4.1, R4.2, R4.3)
+      - cmd/dirname/main.go (existing implementation)
+      - cmd/dirname/dirname_test.go (existing tests)
+
+    files:
+      - path: cmd/dirname/main.go
+        action: modify
+        note: add --version and --help output, unknown option error handling
+      - path: cmd/dirname/dirname_test.go
+        action: modify
+        note: add differential test cases for version, help, and unknown options
+
+    requirements:
+      - id: R1
+        text: "Implement srd016-dirname R4.1 -- --version flag prints version information to stdout and exits 0"
+      - id: R2
+        text: "Implement srd016-dirname R4.2 -- --help flag prints usage information to stdout and exits 0"
+      - id: R3
+        text: "Implement srd016-dirname R4.3 -- unknown options print error to stderr and exit non-zero"
+
+    design_decisions:
+      - id: D1
+        text: "Version and help output format follows GNU coreutils convention"
+      - id: D2
+        text: "Unknown option error message matches GNU dirname format for differential test parity"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "dirname --version prints version info to stdout and exits 0"
+      - id: AC2
+        text: "dirname --help prints usage to stdout and exits 0"
+      - id: AC3
+        text: "dirname --invalid-option prints error to stderr and exits non-zero"
+      - id: AC4
+        text: "go test ./cmd/dirname/ -count=1 passes with all test cases"
+      - id: AC5
+        text: "All srd016-dirname requirements R1.1 through R4.3 are fully implemented and verified"
+  dependency: 2
