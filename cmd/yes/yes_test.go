@@ -52,13 +52,29 @@ func TestExitCodeOnSIGPIPE(t *testing.T) {
 	t.Parallel()
 	goBin := testutils.BuildBinary(t, ".")
 
-	code := captureExitCode(t, goBin, nil)
-	if code != 0 {
-		t.Errorf("expected exit code 0 on broken pipe, got %d", code)
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"default", nil},
+		{"with-arg", []string{"hello"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			goCode, goStderr := captureExitAndStderr(t, goBin, tc.args)
+			if goCode != 0 {
+				t.Errorf("expected exit code 0 on broken pipe, got %d", goCode)
+			}
+			if len(goStderr) > 0 {
+				t.Errorf("unexpected stderr on SIGPIPE: %q", goStderr)
+			}
+		})
 	}
 }
 
-func captureExitCode(t *testing.T, binary string, args []string) int {
+func captureExitAndStderr(t *testing.T, binary string, args []string) (int, []byte) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -68,6 +84,8 @@ func captureExitCode(t *testing.T, binary string, args []string) int {
 	if err != nil {
 		t.Fatalf("StdoutPipe: %v", err)
 	}
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -80,13 +98,13 @@ func captureExitCode(t *testing.T, binary string, args []string) int {
 
 	err = cmd.Wait()
 	if err == nil {
-		return 0
+		return 0, stderrBuf.Bytes()
 	}
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-		return exitErr.ExitCode()
+		return exitErr.ExitCode(), stderrBuf.Bytes()
 	}
 	t.Fatalf("unexpected wait error: %v", err)
-	return -1
+	return -1, nil
 }
 
 func captureLines(t *testing.T, binary string, args []string, n int) []byte {
