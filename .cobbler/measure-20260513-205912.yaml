@@ -1,0 +1,169 @@
+- index: 0
+  title: "[stitch] cmd/cat (srd006-cat R5.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd006-cat.yaml (requirement R5.4 specification)
+      - cmd/cat/main.go (existing cat implementation to extend)
+      - cmd/cat/cat_test.go (existing differential tests to extend)
+      - pkg/testutils/ (RunDiffTests and BuildBinary pattern)
+
+    files:
+      - path: cmd/cat/main.go
+        action: modify
+        note: Implement R5.4 functionality
+      - path: cmd/cat/cat_test.go
+        action: modify
+        note: Add differential test cases for R5.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd006-cat requirement R5.4 as specified in srd006-cat.yaml. Read the full requirement text in the SRD before implementing."
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code structure and patterns in cmd/cat/main.go -- do not restructure or refactor existing code"
+      - id: D2
+        text: "Add differential test cases in cat_test.go using the existing RunDiffTests pattern with testutils.DiffTest structs"
+      - id: D3
+        text: "Reference binary is gcat from Homebrew GNU coreutils -- use exec.LookPath(\"gcat\") and t.Skip if not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "R5.4 functionality implemented in cmd/cat/main.go"
+      - id: AC2
+        text: "Differential test case(s) added for R5.4 behavior in cat_test.go"
+      - id: AC3
+        text: "go build ./cmd/cat/ succeeds without errors"
+      - id: AC4
+        text: "go test ./cmd/cat/ -count=1 passes (or skips gracefully if gcat reference binary not found)"
+
+- index: 1
+  title: "[stitch] cmd/sponge srd007-sponge (contract)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd007-sponge.yaml (read ALL requirements to understand the complete sponge interface)
+      - CLAUDE.md (project conventions -- SIGPIPE handler, build conventions, differential testing pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler function signature and usage)
+
+    files:
+      - path: cmd/sponge/main.go
+        action: create
+        note: "Package main with flag definitions and function stubs for the sponge utility. sponge reads all stdin into memory, then writes the buffered content to a named file. This allows in-place modification of files in pipelines (e.g., sort file | sponge file)."
+
+    requirements:
+      - id: R1
+        text: "Create cmd/sponge/main.go with package main declaration and all required imports"
+      - id: R2
+        text: "Define all command-line flags specified in srd007-sponge.yaml using the flag package as package-level variables"
+      - id: R3
+        text: "Define internal function stubs with correct signatures for each logical operation described in the SRD -- all stubs must compile with zero-value returns"
+      - id: R4
+        text: "Wire main() to call sys.InstallSIGPIPEHandler(), parse flags, and call the top-level stub function"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the very start of main() per project convention for all cmd/ utilities that write to stdout"
+      - id: D2
+        text: "Use the standard flag package for argument parsing -- do not use third-party CLI libraries"
+      - id: D3
+        text: "Structure the code around sponge's read-then-write semantics -- one function to read all stdin, one to write the output file"
+      - id: D4
+        text: "sponge does not require pkg/format -- only import pkg/sys for SIGPIPE handling"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/sponge/main.go exists with package main declaration and correct imports"
+      - id: AC2
+        text: "go build ./cmd/sponge/ compiles without errors"
+      - id: AC3
+        text: "All flags from srd007-sponge.yaml are defined as package-level flag variables"
+      - id: AC4
+        text: "Function stubs are present for each logical sponge operation with compilable zero-value returns"
+
+- index: 2
+  title: "[stitch] cmd/sponge (srd007-sponge R1.1, R1.2, R1.3, R1.4)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd007-sponge.yaml (requirements R1.1, R1.2, R1.3, R1.4)
+      - cmd/sponge/main.go (contract stubs created by previous task -- read to understand existing structure before modifying)
+
+    files:
+      - path: cmd/sponge/main.go
+        action: modify
+        note: "Replace function stubs with working implementations for R1.1, R1.2, R1.3, R1.4"
+
+    requirements:
+      - id: R1
+        text: "Implement srd007-sponge R1.1 per the specification in srd007-sponge.yaml"
+      - id: R2
+        text: "Implement srd007-sponge R1.2 per the specification in srd007-sponge.yaml"
+      - id: R3
+        text: "Implement srd007-sponge R1.3 per the specification in srd007-sponge.yaml"
+      - id: R4
+        text: "Implement srd007-sponge R1.4 per the specification in srd007-sponge.yaml"
+
+    design_decisions:
+      - id: D1
+        text: "Replace the zero-value function stubs from the contract with working implementations -- preserve function signatures"
+      - id: D2
+        text: "sponge buffers all stdin before writing -- use io.ReadAll(os.Stdin) for the buffering step"
+      - id: D3
+        text: "sponge depends only on pkg/sys for SIGPIPE handling -- do not add other pkg/ dependencies"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "R1.1 through R1.4 fully implemented in cmd/sponge/main.go"
+      - id: AC2
+        text: "go build ./cmd/sponge/ compiles without errors"
+      - id: AC3
+        text: "go vet ./cmd/sponge/ reports no issues"
+
+- index: 3
+  title: "[stitch] cmd/sponge (srd007-sponge R1.5, R2.1, R2.2, R2.3)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd007-sponge.yaml (requirements R1.5, R2.1, R2.2, R2.3)
+      - cmd/sponge/main.go (current implementation with R1.1-R1.4 -- read to understand existing code before extending)
+
+    files:
+      - path: cmd/sponge/main.go
+        action: modify
+        note: "Extend existing implementation with R1.5, R2.1, R2.2, R2.3"
+
+    requirements:
+      - id: R1
+        text: "Implement srd007-sponge R1.5 per the specification in srd007-sponge.yaml"
+      - id: R2
+        text: "Implement srd007-sponge R2.1 per the specification in srd007-sponge.yaml"
+      - id: R3
+        text: "Implement srd007-sponge R2.2 per the specification in srd007-sponge.yaml"
+      - id: R4
+        text: "Implement srd007-sponge R2.3 per the specification in srd007-sponge.yaml"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing implementation -- do not rewrite or restructure code from R1.1-R1.4"
+      - id: D2
+        text: "Follow the patterns and code style established in the R1.1-R1.4 implementation"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "R1.5, R2.1, R2.2, R2.3 implemented in cmd/sponge/main.go"
+      - id: AC2
+        text: "go build ./cmd/sponge/ compiles without errors"
+      - id: AC3
+        text: "go vet ./cmd/sponge/ reports no issues"
+      - id: AC4
+        text: "Previously implemented R1.1-R1.4 functionality is preserved and still works correctly"
