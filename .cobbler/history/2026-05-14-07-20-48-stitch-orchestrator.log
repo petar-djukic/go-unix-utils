@@ -116,3 +116,13 @@
 [2026-05-14T07:23:27-04:00] [generation-run44] [stitch +2m39s] closeStitchTask: closing #5146 "[stitch] cmd/dirname: operand handling and flags (srd016-dirname R1.4-R1.5, R2.1-R2.2)"
 [2026-05-14T07:23:28-04:00] [generation-run44] [stitch +2m40s] commentCobblerIssue: posted comment on #5146
 [2026-05-14T07:23:28-04:00] [generation-run44] [stitch +2m40s] updateRequirementsFile: marked 4 R-items as complete for issue #5146
+[2026-05-14T07:23:31-04:00] [generation-run44] [stitch +2m42s] closeCobblerIssue: closed #5146
+[2026-05-14T07:23:33-04:00] [generation-run44] [stitch +2m44s] closeStitchTask: #5146 closed
+[2026-05-14T07:23:34-04:00] [generation-run44] [stitch +2m45s] sweepCompletedTasks: all R-items for #5146 already complete, closing
+[2026-05-14T07:23:35-04:00] [generation-run44] [stitch +2m46s] commentCobblerIssue: posted comment on #5146
+[2026-05-14T07:23:36-04:00] [generation-run44] [stitch +2m48s] closeCobblerIssue: closed #5146
+[2026-05-14T07:23:38-04:00] [generation-run44] [stitch +2m50s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T07:23:38-04:00] [generation-run44] [stitch +2m50s] doOneTask: task 5146 finished in 2m42s
+[2026-05-14T07:23:38-04:00] [generation-run44] [stitch +2m50s] task 5146 completed in 2m42s
+[2026-05-14T07:23:38-04:00] [generation-run44] [stitch +2m50s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T07:23:38-04:00] [generation-run44] [stitch +2m50s] completed 1 task(s) in 2m50s
