@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"os/exec"
 	"testing"
 	"time"
@@ -45,6 +46,47 @@ func TestDiff(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExitCodeOnSIGPIPE(t *testing.T) {
+	t.Parallel()
+	goBin := testutils.BuildBinary(t, ".")
+
+	code := captureExitCode(t, goBin, nil)
+	if code != 0 {
+		t.Errorf("expected exit code 0 on broken pipe, got %d", code)
+	}
+}
+
+func captureExitCode(t *testing.T, binary string, args []string) int {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("StdoutPipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	if scanner.Scan() {
+		_ = scanner.Text()
+	}
+	stdout.Close()
+
+	err = cmd.Wait()
+	if err == nil {
+		return 0
+	}
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		return exitErr.ExitCode()
+	}
+	t.Fatalf("unexpected wait error: %v", err)
+	return -1
 }
 
 func captureLines(t *testing.T, binary string, args []string, n int) []byte {

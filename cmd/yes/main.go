@@ -4,21 +4,27 @@
 package main
 
 import (
-	"bufio"
+	"errors"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+const blockSize = 8192
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
 	line := buildOutputLine(os.Args[1:])
-	w := bufio.NewWriterSize(os.Stdout, 8192)
+	block := fillBlock(line)
 	for {
-		_, err := w.WriteString(line)
+		_, err := os.Stdout.Write(block)
 		if err != nil {
+			if isEPIPE(err) {
+				os.Exit(0)
+			}
 			os.Exit(1)
 		}
 	}
@@ -37,4 +43,20 @@ func stripDashDash(args []string) []string {
 		return args[1:]
 	}
 	return args
+}
+
+// R2.1: pre-fill a block with repeated copies of the line for bulk writes.
+func fillBlock(line string) []byte {
+	buf := make([]byte, 0, blockSize+len(line))
+	for len(buf)+len(line) <= blockSize {
+		buf = append(buf, line...)
+	}
+	if len(buf) == 0 {
+		buf = append(buf, line...)
+	}
+	return buf
+}
+
+func isEPIPE(err error) bool {
+	return errors.Is(err, syscall.EPIPE)
 }
