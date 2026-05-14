@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5197"
+task_title: '[stitch] cmd/uname: extended flags (srd044-uname R1.5-R1.8)'
+status: success
+started_at: "2026-05-14T17:37:43Z"
+duration: 1m47s
+duration_s: 107
+tokens:
+    input: 356281
+    output: 2015
+    cache_creation: 172539
+    cache_read: 183731
+cost_usd: 1.57645375
+num_turns: 16
+rate_limit_wait_s: 3
+loc_before:
+    production: 4289
+    test: 3560
+loc_after:
+    production: 4297
+    test: 3560
+diff:
+    files: 2
+    insertions: 103
+    deletions: 1

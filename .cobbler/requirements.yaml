@@ -2322,16 +2322,20 @@ requirements:
             issue: 5196
             weight: 1
         R1.5:
-            status: in_progress
+            status: complete
+            issue: 5197
             weight: 1
         R1.6:
-            status: in_progress
+            status: complete
+            issue: 5197
             weight: 1
         R1.7:
-            status: in_progress
+            status: complete
+            issue: 5197
             weight: 1
         R1.8:
-            status: in_progress
+            status: complete
+            issue: 5197
             weight: 1
         R1.9:
             status: proposed
