@@ -1,0 +1,27 @@
+task_id: "5141"
+task_title: '[stitch] cmd/yes: core repeated output and SIGPIPE (srd012-yes R1.1-R1.4)'
+status: success
+branch: task/generation-run44-5141
+diff:
+    files: 3
+    insertions: 214
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-13-23-51-09-stitch-orchestrator.log
+      status: M
+      insertions: 101
+      deletions: 0
+    - path: cmd/yes/main.go
+      status: A
+      insertions: 40
+      deletions: 0
+    - path: cmd/yes/yes_test.go
+      status: A
+      insertions: 74
+      deletions: 0
+loc_before:
+    production: 2095
+    test: 1296
+loc_after:
+    production: 2135
+    test: 1370
