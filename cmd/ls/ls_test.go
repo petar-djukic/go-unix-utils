@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.15, R4.1-R4.8.
+// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.15, R4.1-R4.8 (R4.5 via code review).
 package main
 
 import (
@@ -212,6 +212,34 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "format-1x",
 			Args: []string{"-1x", basicDir},
+		},
+		{
+			Name: "format-Cx",
+			Args: []string{"-Cx", basicDir},
+		},
+		{
+			Name: "format-xC",
+			Args: []string{"-xC", basicDir},
+		},
+		{
+			Name: "format-xl",
+			Args: []string{"-xl", basicDir},
+		},
+		{
+			Name: "format-lx",
+			Args: []string{"-lx", basicDir},
+		},
+		{
+			Name: "format-nC",
+			Args: []string{"-nC", basicDir},
+		},
+		{
+			Name: "format-Cn",
+			Args: []string{"-Cn", basicDir},
+		},
+		{
+			Name: "recursive-numeric",
+			Args: []string{"-nR", recursiveDir},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
