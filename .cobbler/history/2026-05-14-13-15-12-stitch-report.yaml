@@ -1,0 +1,23 @@
+task_id: "5190"
+task_title: '[stitch] cmd/nproc: error handling and edge cases (srd046-nproc R2.1-R2.3)'
+status: success
+branch: task/generation-run44-5190
+diff:
+    files: 2
+    insertions: 100
+    deletions: 1
+files:
+    - path: .cobbler/history/2026-05-14-13-15-01-stitch-orchestrator.log
+      status: M
+      insertions: 100
+      deletions: 0
+    - path: cmd/nproc/main.go
+      status: M
+      insertions: 1
+      deletions: 1
+loc_before:
+    production: 4156
+    test: 3389
+loc_after:
+    production: 4156
+    test: 3389

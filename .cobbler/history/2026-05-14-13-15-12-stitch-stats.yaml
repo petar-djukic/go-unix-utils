@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5190"
+task_title: '[stitch] cmd/nproc: error handling and edge cases (srd046-nproc R2.1-R2.3)'
+status: success
+started_at: "2026-05-14T17:15:12Z"
+duration: 2m12s
+duration_s: 132
+tokens:
+    input: 293718
+    output: 2296
+    cache_creation: 169909
+    cache_read: 123800
+cost_usd: 1.536991
+num_turns: 17
+rate_limit_wait_s: 3
+loc_before:
+    production: 4156
+    test: 3389
+loc_after:
+    production: 4156
+    test: 3389
+diff:
+    files: 2
+    insertions: 100
+    deletions: 1
