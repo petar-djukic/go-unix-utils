@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd046-nproc R1.1-R1.4.
+// Implements srd046-nproc R1.1-R1.4, R2.1-R2.3.
 package main
 
 import (
