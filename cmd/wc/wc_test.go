@@ -4,7 +4,9 @@
 package main
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -169,6 +171,150 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-l", "-w", "-m"},
 			Stdin: []byte("abc def\nghi\n"),
 			Env:   defaultEnv,
+		},
+		{
+			Name:  "flag_L_only",
+			Args:  []string{"-L"},
+			Stdin: []byte("short\na longer line here\nmed\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flag_L_with_tabs",
+			Args:  []string{"-L"},
+			Stdin: []byte("a\tb\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flag_L_multiple_lines",
+			Args:  []string{"-L"},
+			Stdin: []byte("ab\n1234567890\nxyz\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flag_L_no_trailing_newline",
+			Args:  []string{"-L"},
+			Stdin: []byte("hello\nworld"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flag_L_empty",
+			Args:  []string{"-L"},
+			Stdin: []byte(""),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flags_lL_combined",
+			Args:  []string{"-l", "-L"},
+			Stdin: []byte("hello world\ngoodbye\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flags_wL_combined",
+			Args:  []string{"-w", "-L"},
+			Stdin: []byte("hello world\ngoodbye\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flags_cL_combined",
+			Args:  []string{"-c", "-L"},
+			Stdin: []byte("hello world\ngoodbye\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flags_lwcL_combined",
+			Args:  []string{"-l", "-w", "-c", "-L"},
+			Stdin: []byte("test data\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flags_lwmL_combined",
+			Args:  []string{"-l", "-w", "-m", "-L"},
+			Stdin: []byte("test data\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "flag_order_Llw",
+			Args:  []string{"-L", "-l", "-w"},
+			Stdin: []byte("one two\nthree\n"),
+			Env:   defaultEnv,
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func writeFixture(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiffFiles(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gwc")
+	if err != nil {
+		t.Skip("reference binary gwc not found")
+	}
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "short.txt", "hi\n")
+	writeFixture(t, dir, "longer.txt", "hello world\nthis is a longer file with more content\n")
+	writeFixture(t, dir, "empty.txt", "")
+
+	tests := []testutils.DiffTest{
+		{
+			Name:    "multi_file_default",
+			Args:    []string{"short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "multi_file_flag_l",
+			Args:    []string{"-l", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "multi_file_flag_w",
+			Args:    []string{"-w", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "multi_file_flag_c",
+			Args:    []string{"-c", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "multi_file_flag_L",
+			Args:    []string{"-L", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "multi_file_flags_lwc",
+			Args:    []string{"-l", "-w", "-c", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "multi_file_flags_lwcL",
+			Args:    []string{"-l", "-w", "-c", "-L", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "multi_file_three_files",
+			Args:    []string{"short.txt", "longer.txt", "empty.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "single_file_no_total",
+			Args:    []string{"short.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
