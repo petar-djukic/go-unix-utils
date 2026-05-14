@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.3.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.7.
 package main
 
 import (
@@ -28,6 +28,7 @@ Sort entries alphabetically if no flags given.
   -A             do not list implied . and ..
   -C             list entries by columns
   -d             list directories themselves, not their contents
+  -h             with -l and/or -s, print human readable sizes
   -i             print the index number of each file
   -l             use a long listing format
   -n             like -l, but list numeric user and group IDs
@@ -49,22 +50,23 @@ const versionText = `ls (go-unix-utils) dev
 `
 
 type options struct {
-	singleColumn   bool
-	longFormat     bool
-	forceColumns   bool
+	singleColumn  bool
+	longFormat    bool
+	forceColumns  bool
 	horizontalSort bool
-	showAll        bool
-	showAlmostAll  bool
-	dirAsEntry     bool
-	sortByTime     bool
-	sortBySize     bool
-	reverseSort    bool
-	unsorted       bool
-	versionSort    bool
-	showInode      bool
-	showBlocks     bool
-	numericIds     bool
-	colorMode      string
+	showAll       bool
+	showAlmostAll bool
+	dirAsEntry    bool
+	sortByTime    bool
+	sortBySize    bool
+	reverseSort   bool
+	unsorted      bool
+	versionSort   bool
+	showInode     bool
+	showBlocks    bool
+	numericIds    bool
+	humanReadable bool
+	colorMode     string
 }
 
 func main() {
@@ -140,6 +142,8 @@ func parseShortFlags(flags string, opts *options) {
 			opts.showAll = false
 		case 'd':
 			opts.dirAsEntry = true
+		case 'h':
+			opts.humanReadable = true
 		case 'i':
 			opts.showInode = true
 		case 'n':
@@ -271,6 +275,9 @@ func listDir(path string, opts options) int {
 	if opts.longFormat {
 		return writeLongDir(path, names, opts)
 	}
+	if opts.showBlocks {
+		writeTotalLine(path, names, opts)
+	}
 	display := buildDisplayNames(names, path, opts)
 	writeEntries(display, opts)
 	return 0
@@ -358,7 +365,7 @@ type entryInfo struct {
 	mode   os.FileMode
 }
 
-func statDisplayEntries(names []string, basePath string) ([]entryInfo, int, int) {
+func statDisplayEntries(names []string, basePath string, opts options) ([]entryInfo, int, int) {
 	infos := make([]entryInfo, len(names))
 	var inodeW, blocksW int
 	for i, name := range names {
@@ -374,7 +381,8 @@ func statDisplayEntries(names []string, basePath string) ([]entryInfo, int, int)
 		if n := len(strconv.FormatUint(fi.Ino, 10)); n > inodeW {
 			inodeW = n
 		}
-		if n := len(strconv.FormatInt(fi.Blocks/2, 10)); n > blocksW {
+		bstr := formatBlocks(infos[i].blocks, opts.humanReadable)
+		if n := len(bstr); n > blocksW {
 			blocksW = n
 		}
 	}
@@ -387,7 +395,7 @@ func buildDisplayNames(names []string, basePath string, opts options) []string {
 	if !needPrefix && !needColor {
 		return names
 	}
-	infos, inodeW, blocksW := statDisplayEntries(names, basePath)
+	infos, inodeW, blocksW := statDisplayEntries(names, basePath, opts)
 	result := make([]string, len(names))
 	for i, name := range names {
 		var b strings.Builder
@@ -396,7 +404,8 @@ func buildDisplayNames(names []string, basePath string, opts options) []string {
 			b.WriteByte(' ')
 		}
 		if opts.showBlocks {
-			b.WriteString(format.PadLeft(strconv.FormatInt(infos[i].blocks, 10), blocksW))
+			bstr := formatBlocks(infos[i].blocks, opts.humanReadable)
+			b.WriteString(format.PadLeft(bstr, blocksW))
 			b.WriteByte(' ')
 		}
 		b.WriteString(colorEntry(name, infos[i].mode))
@@ -585,6 +594,19 @@ func writeLongFiles(paths []string, opts options) int {
 	return code
 }
 
+func writeTotalLine(path string, names []string, opts options) {
+	total := int64(0)
+	for _, name := range names {
+		p := filepath.Join(path, name)
+		fi, err := sys.Lstat(p)
+		if err != nil {
+			continue
+		}
+		total += fi.Blocks
+	}
+	writeLine(fmt.Sprintf("total %s", formatBlocks(total/2, opts.humanReadable)))
+}
+
 func writeLongDir(path string, names []string, opts options) int {
 	entries := make([]longEntry, 0, len(names))
 	code := 0
@@ -602,7 +624,8 @@ func writeLongDir(path string, names []string, opts options) int {
 	for _, e := range entries {
 		totalBlocks += e.info.Blocks
 	}
-	writeLine(fmt.Sprintf("total %d", totalBlocks/2))
+	total := formatBlocks(totalBlocks/2, opts.humanReadable)
+	writeLine(fmt.Sprintf("total %s", total))
 	writeLongEntries(entries, opts)
 	return code
 }
@@ -642,7 +665,8 @@ func computeLongWidths(entries []longEntry, opts options) longWidths {
 			}
 		}
 		if opts.showBlocks {
-			if n := len(strconv.FormatInt(e.info.Blocks/2, 10)); n > w.blocks {
+			bstr := formatBlocks(e.info.Blocks/2, opts.humanReadable)
+			if n := len(bstr); n > w.blocks {
 				w.blocks = n
 			}
 		}
@@ -655,7 +679,8 @@ func computeLongWidths(entries []longEntry, opts options) longWidths {
 		if n := len(e.group); n > w.group {
 			w.group = n
 		}
-		if n := len(strconv.FormatInt(e.info.Size, 10)); n > w.size {
+		sstr := formatSize(e.info.Size, opts.humanReadable)
+		if n := len(sstr); n > w.size {
 			w.size = n
 		}
 	}
@@ -668,10 +693,11 @@ func formatLongLine(e longEntry, w longWidths, opts options) string {
 		prefix += format.PadLeft(strconv.FormatUint(e.info.Ino, 10), w.inode) + " "
 	}
 	if opts.showBlocks {
-		prefix += format.PadLeft(strconv.FormatInt(e.info.Blocks/2, 10), w.blocks) + " "
+		bstr := formatBlocks(e.info.Blocks/2, opts.humanReadable)
+		prefix += format.PadLeft(bstr, w.blocks) + " "
 	}
 	nlink := strconv.FormatUint(e.info.Nlink, 10)
-	size := strconv.FormatInt(e.info.Size, 10)
+	size := formatSize(e.info.Size, opts.humanReadable)
 	name := colorEntry(e.name, e.info.Mode)
 	if e.info.Mode&os.ModeSymlink != 0 {
 		if target, err := os.Readlink(e.path); err == nil {
@@ -686,6 +712,20 @@ func formatLongLine(e longEntry, w longWidths, opts options) string {
 		format.PadLeft(size, w.size) + " " +
 		formatMtime(e.info.ModTime) + " " +
 		name
+}
+
+func formatBlocks(blocks int64, human bool) string {
+	if !human {
+		return strconv.FormatInt(blocks, 10)
+	}
+	return format.HumanSize(blocks*1024, format.HumanSizeOpts{Binary: true})
+}
+
+func formatSize(size int64, human bool) string {
+	if !human {
+		return strconv.FormatInt(size, 10)
+	}
+	return format.HumanSize(size, format.HumanSizeOpts{Binary: true})
 }
 
 func permString(mode os.FileMode) string {

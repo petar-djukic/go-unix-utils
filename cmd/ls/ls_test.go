@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.8, R2.3-R2.6.
+// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.7.
 package main
 
 import (
@@ -33,6 +33,7 @@ func TestDiff(t *testing.T) {
 	onlyDotDir := setupDir(t, ".hidden", ".secret")
 	timeSortDir := setupTimeSortDir(t)
 	sizeSortDir := setupSizeSortDir(t)
+	humanSizeDir := setupHumanSizeDir(t)
 
 	tests := []testutils.DiffTest{
 		{
@@ -114,6 +115,26 @@ func TestDiff(t *testing.T) {
 			Name: "size-sort",
 			Args: []string{"-1S", sizeSortDir},
 		},
+		{
+			Name: "color-never",
+			Args: []string{"--color=never", basicDir},
+		},
+		{
+			Name: "long-human-readable",
+			Args: []string{"-lh", humanSizeDir},
+		},
+		{
+			Name: "long-human-readable-blocks",
+			Args: []string{"-lhs", humanSizeDir},
+		},
+		{
+			Name: "blocks-human-readable",
+			Args: []string{"-1sh", humanSizeDir},
+		},
+		{
+			Name: "human-readable-no-long",
+			Args: []string{"-1h", basicDir},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -140,6 +161,25 @@ func setupTimeSortDir(t *testing.T) string {
 		}
 		mt := base.Add(time.Duration(i) * time.Hour)
 		if err := os.Chtimes(p, mt, mt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func setupHumanSizeDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, f := range []struct {
+		name string
+		size int
+	}{
+		{"big", 10240},
+		{"medium", 2048},
+		{"tiny", 10},
+	} {
+		p := filepath.Join(dir, f.name)
+		if err := os.WriteFile(p, make([]byte, f.size), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
