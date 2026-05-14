@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5142"
+task_title: '[stitch] cmd/yes: argument handling and output format (srd012-yes R2.1-R2.2, R3.1-R3.2)'
+status: success
+started_at: "2026-05-14T10:50:05Z"
+duration: 5m53s
+duration_s: 353
+tokens:
+    input: 569333
+    output: 16884
+    cache_creation: 169527
+    cache_read: 399792
+cost_usd: 2.0891875
+num_turns: 23
+rate_limit_wait_s: 1
+loc_before:
+    production: 2135
+    test: 1370
+loc_after:
+    production: 2157
+    test: 1412
+diff:
+    files: 3
+    insertions: 176
+    deletions: 3
