@@ -44,9 +44,18 @@ const (
 	modeBytes
 )
 
+type headerMode int
+
+const (
+	headerAuto headerMode = iota
+	headerAlways
+	headerNever
+)
+
 type options struct {
-	mode  countMode
-	count int64
+	mode   countMode
+	count  int64
+	header headerMode
 }
 
 func main() {
@@ -63,8 +72,14 @@ func main() {
 		files = []string{"-"}
 	}
 
+	showHeaders := opts.header == headerAlways ||
+		(opts.header == headerAuto && len(files) > 1)
+
 	exitCode := 0
-	for _, file := range files {
+	for i, file := range files {
+		if showHeaders {
+			printHeader(file, i > 0)
+		}
 		if err := processFile(opts, file); err != nil {
 			fmt.Fprintf(os.Stderr, "head: %s\n", err)
 			exitCode = 1
@@ -73,6 +88,13 @@ func main() {
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
+}
+
+func printHeader(name string, needsBlank bool) {
+	if needsBlank {
+		fmt.Fprintln(os.Stdout)
+	}
+	fmt.Fprintf(os.Stdout, "==> %s <==\n", name)
 }
 
 func parseArgs(args []string) (options, []string, error) {
@@ -157,6 +179,12 @@ func parseLongFlag(flag string, remaining []string, opts *options) (int, error) 
 		opts.count = count
 		opts.mode = modeBytes
 		return 1, nil
+	case flag == "--quiet" || flag == "--silent":
+		opts.header = headerNever
+		return 1, nil
+	case flag == "--verbose":
+		opts.header = headerAlways
+		return 1, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
@@ -200,6 +228,10 @@ func parseShortFlags(flags string, remaining []string, opts *options) (int, erro
 			opts.count = count
 			opts.mode = modeBytes
 			return consumed, nil
+		case 'q':
+			opts.header = headerNever
+		case 'v':
+			opts.header = headerAlways
 		default:
 			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
