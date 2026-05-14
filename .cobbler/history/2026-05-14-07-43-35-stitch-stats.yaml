@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5151"
+task_title: '[stitch] cmd/du: summarize, all-files, and total modes (srd009-du R1.5, R2.1-R2.3)'
+status: success
+started_at: "2026-05-14T11:43:35Z"
+duration: 3m54s
+duration_s: 234
+tokens:
+    input: 386174
+    output: 9681
+    cache_creation: 171950
+    cache_read: 214217
+cost_usd: 1.8040257499999999
+num_turns: 10
+rate_limit_wait_s: 2
+loc_before:
+    production: 2424
+    test: 1544
+loc_after:
+    production: 2466
+    test: 1544
+diff:
+    files: 2
+    insertions: 139
+    deletions: 17
