@@ -1909,3 +1909,279 @@
       - id: AC4
         text: "Previously implemented R1.1-R1.4 functionality is preserved and still works correctly"
   dependency: 2
+- index: 0
+  title: 'pkg/testutils: implement DiffTest, RunDiffTests, and normalizers (srd001-testutils)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (full SRD for testutils)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern)
+      - CLAUDE.md (differential testing pattern and BuildBinary usage)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: DiffTest struct, NormalizeFunc type, RunDiffTests, ComposeNormalizers, TimestampNormalizer
+      - path: pkg/testutils/build.go
+        action: create
+        note: BuildBinary helper for compiling cmd/ packages in tests
+
+    requirements:
+      - id: R1
+        text: |
+          Define the DiffTest struct with fields: Name string, Args []string, Stdin []byte,
+          Env []string, WorkDir string, ExitCode int, Normalize []NormalizeFunc,
+          ExpectedFiles map[string][]byte. Define NormalizeFunc as func([]byte) []byte.
+      - id: R2
+        text: |
+          Implement RunDiffTests(t *testing.T, goBinary, refBinary string, tests []DiffTest).
+          For each DiffTest, run both binaries with identical args, stdin, env, and working
+          directory. Compare stdout, stderr, and exit code. If Normalize functions are
+          provided, apply them to stdout and stderr before comparison. If ExpectedFiles is
+          set, compare file contents after execution. Report differences using t.Errorf with
+          the test name, input, expected output, and actual output.
+      - id: R3
+        text: |
+          Implement ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc that chains
+          multiple normalizers in order. Implement TimestampNormalizer as a package-level
+          NormalizeFunc that replaces timestamp patterns with a fixed placeholder so
+          time-dependent output can be compared.
+      - id: R4
+        text: |
+          Implement BuildBinary(t *testing.T, dir string) string. Compile the Go package
+          at the given directory within the module using "go build -o <tempdir>/<name> <dir>".
+          Return the path to the compiled binary. Call t.Fatal if compilation fails. Register
+          a t.Cleanup to remove the temporary binary. The function must work from within the
+          Go module -- do not create temporary Go programs outside the module boundary.
+
+    design_decisions:
+      - id: D1
+        text: |
+          RunDiffTests sets LC_ALL=C in the environment for both binaries to ensure
+          locale-independent output comparison, per ARCHITECTURE.yaml DD6.
+      - id: D2
+        text: |
+          BuildBinary uses t.TempDir() for the output binary path and registers cleanup
+          via t.Cleanup. It calls "go build" with the module-relative directory path.
+      - id: D3
+        text: |
+          The package is github.com/petar-djukic/go-unix-utils/pkg/testutils. It must not
+          import any cmd/ package or any other pkg/ package.
+      - id: D4
+        text: |
+          RunDiffTests runs each test case as a subtest via t.Run(test.Name, ...) so
+          failures are isolated and named.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/testutils/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/testutils/... reports no issues"
+      - id: AC3
+        text: DiffTest struct matches the contract signature exactly
+      - id: AC4
+        text: RunDiffTests runs both binaries and compares stdout, stderr, and exit code
+      - id: AC5
+        text: BuildBinary compiles a cmd/ package and returns the binary path
+      - id: AC6
+        text: ComposeNormalizers chains normalizers and TimestampNormalizer replaces timestamps
+  dependency: -1
+- index: 1
+  title: 'pkg/testutils: differential testing tests (srd001-testutils)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (full SRD for testutils)
+      - pkg/testutils/difftest.go (DiffTest, RunDiffTests, BuildBinary from task 0)
+      - pkg/testutils/build.go (BuildBinary implementation from task 0)
+      - CLAUDE.md (differential testing pattern and graceful skip)
+
+    files:
+      - path: pkg/testutils/difftest_test.go
+        action: create
+        note: Tests for RunDiffTests, ComposeNormalizers, TimestampNormalizer, BuildBinary
+
+    requirements:
+      - id: R1
+        text: |
+          Test RunDiffTests with matching binaries (e.g., use /bin/echo or /usr/bin/true as
+          both go and ref binary) to verify that identical outputs produce no test failures.
+          Use a mock testing.T or verify behavior through subprocess test patterns.
+      - id: R2
+        text: |
+          Test RunDiffTests with divergent binaries to verify that stdout, stderr, or exit
+          code differences are reported as test failures with the test name and divergent
+          output included in the error message.
+      - id: R3
+        text: |
+          Test ComposeNormalizers chains multiple normalizers in order. Test
+          TimestampNormalizer replaces common timestamp formats with a fixed placeholder
+          string and leaves non-timestamp text unchanged.
+      - id: R4
+        text: |
+          Test BuildBinary compiles a valid cmd/ package (use cmd/version if it exists, or
+          skip gracefully per CLAUDE.md if no cmd/ package has source). Verify the returned
+          path points to an executable file. Verify compilation failure causes t.Fatal.
+
+    design_decisions:
+      - id: D1
+        text: |
+          Tests for RunDiffTests use real system binaries (/bin/echo, /usr/bin/true) rather
+          than building Go binaries, to avoid circular dependencies on BuildBinary.
+      - id: D2
+        text: |
+          If no cmd/ package has Go source files (generation run state), tests that require
+          BuildBinary skip gracefully with t.Skip per CLAUDE.md generation-run guidance.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./pkg/testutils/... -count=1 passes"
+      - id: AC2
+        text: Tests cover matching outputs, divergent outputs, normalizers, and BuildBinary
+      - id: AC3
+        text: Tests skip gracefully when cmd/ source is absent (generation-run state)
+  dependency: 0
+- index: 2
+  title: 'pkg/format: implement HumanSize, color, and column alignment (srd003-format)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd003-format.yaml (full SRD for format)
+      - docs/ARCHITECTURE.yaml (pkg/format component description)
+      - pkg/sys/ (IsTerminal used by ColorEnabled)
+
+    files:
+      - path: pkg/format/humansize.go
+        action: create
+        note: HumanSizeOpts struct and HumanSize function
+      - path: pkg/format/color.go
+        action: create
+        note: FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled
+      - path: pkg/format/pad.go
+        action: create
+        note: PadRight, PadLeft, Columns functions
+
+    requirements:
+      - id: R1
+        text: |
+          Define HumanSizeOpts struct with Binary bool field. Implement HumanSize(bytes int64,
+          opts HumanSizeOpts) string. When Binary is true, use 1024-based units (K, M, G, T)
+          matching GNU coreutils -h output. When Binary is false, use 1000-based units (kB,
+          MB, GB, TB) matching GNU coreutils --si output. Format values to match GNU output
+          precision (e.g., "4.0K", "1.2M").
+      - id: R2
+        text: |
+          Implement FileTypeColor(mode os.FileMode) string returning the ANSI escape sequence
+          for the given file type (directory=blue, symlink=cyan, executable=green, etc.
+          matching default GNU LS_COLORS). Implement Reset() string returning the ANSI reset
+          sequence. Implement ColorEnabled(w io.Writer) bool that returns true when w is a
+          terminal (using pkg/sys.IsTerminal). Implement SetColorEnabled(enabled bool) and
+          ResetColorEnabled() for manual override of color state.
+      - id: R3
+        text: |
+          Implement PadRight(s string, width int) string that right-pads s with spaces to
+          the given width. Implement PadLeft(s string, width int) string that left-pads s
+          with spaces to the given width. If s is already wider than width, return s
+          unchanged.
+      - id: R4
+        text: |
+          Implement Columns(entries []string, termWidth int) [][]string that arranges entries
+          into columns fitting within termWidth, using the same column-filling algorithm as
+          GNU ls -C (fill columns top-to-bottom, then left-to-right). Each column is padded
+          to the width of its widest entry plus 2 spaces.
+
+    design_decisions:
+      - id: D1
+        text: |
+          The package is github.com/petar-djukic/go-unix-utils/pkg/format. It imports
+          pkg/sys for IsTerminal. It must not import any cmd/ package.
+      - id: D2
+        text: |
+          ColorEnabled uses a package-level variable that can be overridden by SetColorEnabled.
+          ResetColorEnabled restores the auto-detect behavior based on IsTerminal.
+      - id: D3
+        text: |
+          HumanSize output must match GNU coreutils formatting exactly -- values below 10
+          show one decimal place (e.g., "4.0K"), values at 10 or above show no decimal
+          for whole numbers.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./pkg/format/... compiles without errors"
+      - id: AC2
+        text: "go vet ./pkg/format/... reports no issues"
+      - id: AC3
+        text: HumanSize produces GNU-compatible output for both binary and SI modes
+      - id: AC4
+        text: FileTypeColor returns correct ANSI codes for directories, symlinks, executables
+      - id: AC5
+        text: PadRight and PadLeft pad correctly and handle strings wider than width
+      - id: AC6
+        text: Columns arranges entries into columns fitting the given terminal width
+  dependency: -1
+- index: 3
+  title: 'pkg/format: formatting tests (srd003-format)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd003-format.yaml (full SRD for format)
+      - pkg/format/humansize.go (HumanSize implementation from task 2)
+      - pkg/format/color.go (color functions from task 2)
+      - pkg/format/pad.go (PadRight, PadLeft, Columns from task 2)
+
+    files:
+      - path: pkg/format/humansize_test.go
+        action: create
+        note: Tests for HumanSize with binary and SI modes
+      - path: pkg/format/color_test.go
+        action: create
+        note: Tests for FileTypeColor, Reset, ColorEnabled
+      - path: pkg/format/pad_test.go
+        action: create
+        note: Tests for PadRight, PadLeft, Columns
+
+    requirements:
+      - id: R1
+        text: |
+          Test HumanSize with binary mode (1024-based): 0 bytes, 512 bytes, 1024 (1.0K),
+          1536 (1.5K), 1048576 (1.0M), 1073741824 (1.0G). Test SI mode (1000-based): 1000
+          (1.0kB), 1500 (1.5kB), 1000000 (1.0MB). Verify output matches GNU coreutils
+          formatting.
+      - id: R2
+        text: |
+          Test FileTypeColor returns correct ANSI escape sequences for regular files,
+          directories, symlinks, and executables. Test Reset returns the ANSI reset
+          sequence. Test ColorEnabled returns false for non-terminal writers (e.g.,
+          bytes.Buffer). Test SetColorEnabled overrides auto-detection and
+          ResetColorEnabled restores it.
+      - id: R3
+        text: |
+          Test PadRight and PadLeft with strings shorter than, equal to, and longer than
+          the target width. Test Columns with varying entry counts and terminal widths,
+          verifying that entries fill columns top-to-bottom and that column widths
+          accommodate the widest entry.
+
+    design_decisions:
+      - id: D1
+        text: |
+          HumanSize tests use table-driven test cases comparing output against known GNU
+          coreutils output values.
+      - id: D2
+        text: |
+          ColorEnabled tests use bytes.Buffer as a non-terminal writer to verify
+          auto-detection returns false without requiring a real terminal.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./pkg/format/... -count=1 passes"
+      - id: AC2
+        text: Tests cover HumanSize binary and SI modes with boundary values
+      - id: AC3
+        text: Tests cover FileTypeColor for all common file types
+      - id: AC4
+        text: Tests cover PadRight, PadLeft, and Columns edge cases
+  dependency: 2
