@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // cmd/du implements recursive directory disk usage reporting.
-// Implements srd009-du R1.1-R1.5, R2.2, R2.3, R2.7, R4.1-R4.2.
+// Implements srd009-du R1.1-R1.5, R2.2-R2.7, R3.1-R3.3, R4.1-R4.2, R5.1.
 package main
 
 import (
@@ -20,9 +20,12 @@ type inodeKey struct {
 }
 
 type options struct {
-	summarize  bool
-	allFiles   bool
-	grandTotal bool
+	summarize     bool
+	allFiles      bool
+	grandTotal    bool
+	maxDepth      int
+	megaBlocks    bool
+	oneFileSystem bool
 }
 
 func main() {
@@ -47,7 +50,7 @@ func main() {
 	}
 
 	if opts.grandTotal {
-		printEntry(cumTotal, "total")
+		printEntry(cumTotal, "total", &opts)
 	}
 
 	os.Exit(exitCode)
@@ -58,6 +61,12 @@ func parseFlags() options {
 	flag.BoolVar(&opts.summarize, "s", false, "display only a total for each argument")
 	flag.BoolVar(&opts.allFiles, "a", false, "write counts for all files, not just directories")
 	flag.BoolVar(&opts.grandTotal, "c", false, "produce a grand total")
+	flag.IntVar(&opts.maxDepth, "d", -1, "max display depth")
+	flag.IntVar(&opts.maxDepth, "max-depth", -1, "max display depth")
+	flag.Bool("k", false, "use 1024-byte blocks (default)")
+	flag.BoolVar(&opts.megaBlocks, "m", false, "use 1048576-byte blocks")
+	flag.BoolVar(&opts.oneFileSystem, "x", false, "skip directories on different file systems")
+	flag.BoolVar(&opts.oneFileSystem, "one-file-system", false, "skip directories on different file systems")
 	flag.Parse()
 	return opts
 }
@@ -69,42 +78,44 @@ func processArg(path string, seen map[inodeKey]bool, opts *options) (int64, erro
 		return 0, err
 	}
 
+	rootDev := fi.Dev
+
 	if !fi.Mode.IsDir() {
 		size := fileSize(fi, seen)
-		printEntry(size, path)
+		printEntry(size, path, opts)
 		return size, nil
 	}
 
-	return walkDir(path, fi, seen, opts, 0)
+	return walkDir(path, fi, seen, opts, 0, rootDev)
 }
 
-func walkDir(path string, fi *sys.FileInfo, seen map[inodeKey]bool, opts *options, depth int) (int64, error) {
+func walkDir(path string, fi *sys.FileInfo, seen map[inodeKey]bool, opts *options, depth int, rootDev uint64) (int64, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "du: %v\n", err)
 		size := blockSize(fi)
 		if shouldPrint(depth, true, opts) {
-			printEntry(size, path)
+			printEntry(size, path, opts)
 		}
 		return size, err
 	}
 
-	total, firstErr := accumChildren(path, entries, seen, opts, depth)
+	total, firstErr := accumChildren(path, entries, seen, opts, depth, rootDev)
 	total += blockSize(fi)
 	if shouldPrint(depth, true, opts) {
-		printEntry(total, path)
+		printEntry(total, path, opts)
 	}
 	return total, firstErr
 }
 
-func accumChildren(dir string, entries []os.DirEntry, seen map[inodeKey]bool, opts *options, parentDepth int) (int64, error) {
+func accumChildren(dir string, entries []os.DirEntry, seen map[inodeKey]bool, opts *options, parentDepth int, rootDev uint64) (int64, error) {
 	var total int64
 	var firstErr error
 	childDepth := parentDepth + 1
 
 	for _, entry := range entries {
 		childPath := filepath.Join(dir, entry.Name())
-		size, err := childSize(childPath, seen, opts, childDepth)
+		size, err := childSize(childPath, seen, opts, childDepth, rootDev)
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
@@ -114,7 +125,7 @@ func accumChildren(dir string, entries []os.DirEntry, seen map[inodeKey]bool, op
 	return total, firstErr
 }
 
-func childSize(path string, seen map[inodeKey]bool, opts *options, depth int) (int64, error) {
+func childSize(path string, seen map[inodeKey]bool, opts *options, depth int, rootDev uint64) (int64, error) {
 	fi, err := sys.Lstat(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "du: %v\n", err)
@@ -122,12 +133,15 @@ func childSize(path string, seen map[inodeKey]bool, opts *options, depth int) (i
 	}
 
 	if fi.Mode.IsDir() {
-		return walkDir(path, fi, seen, opts, depth)
+		if opts.oneFileSystem && fi.Dev != rootDev {
+			return 0, nil
+		}
+		return walkDir(path, fi, seen, opts, depth, rootDev)
 	}
 
 	size := fileSize(fi, seen)
 	if shouldPrint(depth, false, opts) {
-		printEntry(size, path)
+		printEntry(size, path, opts)
 	}
 	return size, nil
 }
@@ -135,6 +149,9 @@ func childSize(path string, seen map[inodeKey]bool, opts *options, depth int) (i
 func shouldPrint(depth int, isDir bool, opts *options) bool {
 	if opts.summarize {
 		return depth == 0
+	}
+	if opts.maxDepth >= 0 && depth > opts.maxDepth {
+		return false
 	}
 	if isDir {
 		return true
@@ -152,9 +169,16 @@ func fileSize(fi *sys.FileInfo, seen map[inodeKey]bool) int64 {
 }
 
 func blockSize(fi *sys.FileInfo) int64 {
-	return fi.Blocks / 2
+	return fi.Blocks
 }
 
-func printEntry(size int64, path string) {
-	fmt.Fprintf(os.Stdout, "%d\t%s\n", size, path)
+func displaySize(raw int64, opts *options) int64 {
+	if opts.megaBlocks {
+		return (raw + 2047) / 2048
+	}
+	return raw / 2
+}
+
+func printEntry(size int64, path string, opts *options) {
+	fmt.Fprintf(os.Stdout, "%d\t%s\n", displaySize(size, opts), path)
 }
