@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5153"
+task_title: '[stitch] cmd/du: apparent size, human-readable output, and null termination (srd009-du R2.8, R3.1-R3.3)'
+status: success
+started_at: "2026-05-14T11:53:59Z"
+duration: 4m55s
+duration_s: 294
+tokens:
+    input: 309379
+    output: 12250
+    cache_creation: 179270
+    cache_read: 130101
+cost_usd: 1.854078
+num_turns: 13
+rate_limit_wait_s: 3
+loc_before:
+    production: 2490
+    test: 1544
+loc_after:
+    production: 2523
+    test: 1544
+diff:
+    files: 2
+    insertions: 129
+    deletions: 9
