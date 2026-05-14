@@ -64,11 +64,11 @@ code_status:
         - version: "01.3"
           name: Batch 1.3 — du specification and differential test
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: all implemented
           usecases:
             - id: rel01.3-uc001-du
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "02.0"
