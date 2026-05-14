@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.6.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.10.
 package main
 
 import (
@@ -29,8 +29,11 @@ Sort entries alphabetically if no flags given.
   -C             list entries by columns
   -d             list directories themselves, not their contents
   -l             use a long listing format
+  -r             reverse order while sorting
   -S             sort by file size, largest first
   -t             sort by modification time, newest first
+  -U             do not sort; list entries in directory order
+  -v             natural sort of (version) numbers within text
   -x             list entries by lines instead of by columns
   -1             list one file per line
       --help     display this help and exit
@@ -50,6 +53,9 @@ type options struct {
 	dirAsEntry     bool
 	sortByTime     bool
 	sortBySize     bool
+	reverseSort    bool
+	unsorted       bool
+	versionSort    bool
 }
 
 func main() {
@@ -121,12 +127,28 @@ func parseShortFlags(flags string, opts *options) {
 			opts.showAll = false
 		case 'd':
 			opts.dirAsEntry = true
+		case 'r':
+			opts.reverseSort = true
 		case 't':
 			opts.sortByTime = true
 			opts.sortBySize = false
+			opts.unsorted = false
+			opts.versionSort = false
 		case 'S':
 			opts.sortBySize = true
 			opts.sortByTime = false
+			opts.unsorted = false
+			opts.versionSort = false
+		case 'U':
+			opts.unsorted = true
+			opts.sortByTime = false
+			opts.sortBySize = false
+			opts.versionSort = false
+		case 'v':
+			opts.versionSort = true
+			opts.sortByTime = false
+			opts.sortBySize = false
+			opts.unsorted = false
 		default:
 			fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
 			fmt.Fprintln(os.Stderr, "Try 'ls --help' for more information.")
@@ -222,8 +244,23 @@ func readNames(path string, opts options) ([]string, error) {
 }
 
 func sortEntries(names []string, basePath string, opts options) {
+	if opts.unsorted {
+		return
+	}
+	if opts.versionSort {
+		sort.SliceStable(names, func(i, j int) bool {
+			return strverscmp(names[i], names[j]) < 0
+		})
+		if opts.reverseSort {
+			reverseSlice(names)
+		}
+		return
+	}
 	if !opts.sortByTime && !opts.sortBySize {
 		sort.Strings(names)
+		if opts.reverseSort {
+			reverseSlice(names)
+		}
 		return
 	}
 	type entry struct {
@@ -257,6 +294,9 @@ func sortEntries(names []string, basePath string, opts options) {
 	})
 	for i, e := range entries {
 		names[i] = e.name
+	}
+	if opts.reverseSort {
+		reverseSlice(names)
 	}
 }
 
