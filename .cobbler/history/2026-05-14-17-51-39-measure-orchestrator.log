@@ -126,3 +126,25 @@
 [2026-05-14T17:58:20-04:00] [generation-run44] [measure +6m41s] validateMeasureOutput: [3] "[stitch] cmd/ls: features tests (srd008-ls R2.15, R3.1-R3.3)": file cmd/ls/ls_test.go matches package name (P7 violation)
 [2026-05-14T17:58:21-04:00] [generation-run44] [measure +6m43s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-14T17:58:21-04:00] [generation-run44] [measure +6m43s] transitionRequirements: marked 4 R-items as proposed
+[2026-05-14T17:58:22-04:00] [generation-run44] [measure +6m43s] importIssues: creating task 0: [stitch] cmd/ls: extended features implementation (srd008-ls R2.11-R2.14) (dep=-1)
+[2026-05-14T17:58:23-04:00] [generation-run44] [measure +6m44s] createCobblerIssue: created #5215 "[measure] cmd/ls: extended features implementation (srd008-ls R2.11-R2.14)" gen=generation-run44 index=0 dep=-1
+[2026-05-14T17:58:23-04:00] [generation-run44] [measure +6m44s] importIssues: creating task 1: [stitch] cmd/ls: extended features tests (srd008-ls R2.11-R2.14) (dep=0)
+[2026-05-14T17:58:24-04:00] [generation-run44] [measure +6m45s] createCobblerIssue: created #5216 "[measure] cmd/ls: extended features tests (srd008-ls R2.11-R2.14)" gen=generation-run44 index=1 dep=0
+[2026-05-14T17:58:24-04:00] [generation-run44] [measure +6m45s] importIssues: creating task 2: [stitch] cmd/ls: features implementation (srd008-ls R2.15, R3.1-R3.3) (dep=1)
+[2026-05-14T17:58:25-04:00] [generation-run44] [measure +6m46s] createCobblerIssue: created #5217 "[measure] cmd/ls: features implementation (srd008-ls R2.15, R3.1-R3.3)" gen=generation-run44 index=2 dep=1
+[2026-05-14T17:58:25-04:00] [generation-run44] [measure +6m46s] importIssues: creating task 3: [stitch] cmd/ls: features tests (srd008-ls R2.15, R3.1-R3.3) (dep=2)
+[2026-05-14T17:58:26-04:00] [generation-run44] [measure +6m47s] createCobblerIssue: created #5218 "[measure] cmd/ls: features tests (srd008-ls R2.15, R3.1-R3.3)" gen=generation-run44 index=3 dep=2
+[2026-05-14T17:58:26-04:00] [generation-run44] [measure +6m48s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-14T17:58:28-04:00] [generation-run44] [measure +6m49s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-14T17:58:30-04:00] [generation-run44] [measure +6m51s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-14T17:58:31-04:00] [generation-run44] [measure +6m52s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-14T17:58:35-04:00] [generation-run44] [measure +6m56s] importIssues: 4 of 4 issue(s) imported
+[2026-05-14T17:58:35-04:00] [generation-run44] [measure +6m56s] appendMeasureLog: 124 total issues in .cobbler/measure.yaml
+[2026-05-14T17:58:35-04:00] [generation-run44] [measure +6m56s] iteration 1 imported 4 issue(s)
+[2026-05-14T17:58:38-04:00] [generation-run44] [measure +6m59s] linkSubIssue: linked #5215 as sub-issue of #5214
+[2026-05-14T17:58:39-04:00] [generation-run44] [measure +7m0s] linkSubIssue: linked #5216 as sub-issue of #5214
+[2026-05-14T17:58:40-04:00] [generation-run44] [measure +7m1s] linkSubIssue: linked #5217 as sub-issue of #5214
+[2026-05-14T17:58:40-04:00] [generation-run44] [measure +7m2s] linkSubIssue: linked #5218 as sub-issue of #5214
+[2026-05-14T17:58:42-04:00] [generation-run44] [measure +7m3s] closeMeasuringPlaceholder: closed #5214
+[2026-05-14T17:58:42-04:00] [generation-run44] [measure +7m3s] finalizeMeasurePlaceholder: finalized #5214 with 4 child issue(s)
+[2026-05-14T17:58:42-04:00] [generation-run44] [measure +7m3s] completed 1 iteration(s), 4 issue(s) created in 7m3s
