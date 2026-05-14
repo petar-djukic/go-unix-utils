@@ -238,6 +238,36 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("one two\nthree\n"),
 			Env:   defaultEnv,
 		},
+		{
+			Name:  "r1_1_default_counts_order",
+			Args:  nil,
+			Stdin: []byte("one two three\nfour five\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "r1_1_default_no_trailing_newline",
+			Args:  nil,
+			Stdin: []byte("hello world"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "r1_1_default_single_newline",
+			Args:  nil,
+			Stdin: []byte("\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "r1_2_stdin_dash_arg",
+			Args:  []string{"-"},
+			Stdin: []byte("hello\n"),
+			Env:   defaultEnv,
+		},
+		{
+			Name:  "r1_2_stdin_dash_default_flags",
+			Args:  []string{"-"},
+			Stdin: []byte("one two\nthree\n"),
+			Env:   defaultEnv,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -313,6 +343,30 @@ func TestDiffFiles(t *testing.T) {
 		{
 			Name:    "single_file_no_total",
 			Args:    []string{"short.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r1_3_single_file_with_name",
+			Args:    []string{"longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r1_4_two_files_total_line",
+			Args:    []string{"short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r1_4_three_files_total_line",
+			Args:    []string{"empty.txt", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r1_4_total_with_empty_file",
+			Args:    []string{"empty.txt", "longer.txt"},
 			Env:     defaultEnv,
 			WorkDir: dir,
 		},

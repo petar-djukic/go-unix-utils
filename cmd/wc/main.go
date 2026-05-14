@@ -60,7 +60,7 @@ func run(opts options, files []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	if len(files) == 0 {
-		files = []string{"-"}
+		files = []string{""}
 	}
 
 	width := computeWidth(files, countColumns(opts))
@@ -90,7 +90,7 @@ func processFiles(files []string, stderr io.Writer) ([]counts, []string, bool) {
 			continue
 		}
 		results = append(results, c)
-		if f == "-" {
+		if f == "" {
 			names = append(names, "")
 		} else {
 			names = append(names, f)
@@ -101,7 +101,7 @@ func processFiles(files []string, stderr io.Writer) ([]counts, []string, bool) {
 
 func countFile(name string) (counts, error) {
 	var r io.Reader
-	if name == "-" {
+	if name == "-" || name == "" {
 		r = os.Stdin
 	} else {
 		f, err := os.Open(name)
@@ -266,7 +266,7 @@ func computeWidth(files []string, numColumns int) int {
 	totalSize := int64(0)
 	hasRegular := false
 	for _, f := range files {
-		if f == "-" {
+		if f == "-" || f == "" {
 			continue
 		}
 		info, err := os.Stat(f)
