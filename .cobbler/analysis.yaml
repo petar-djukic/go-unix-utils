@@ -74,11 +74,11 @@ code_status:
         - version: "02.0"
           name: Batch 2 — trivial utilities (true, false, yes, basename, dirname)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel02.0-uc001-true
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc002-false
