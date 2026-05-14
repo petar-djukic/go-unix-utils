@@ -88,6 +88,53 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"--version"},
 			Normalize: []testutils.NormalizeFunc{discardStdout},
 		},
+		// R4.4: single argument (seq 5)
+		{
+			Name: "single-arg-5",
+			Args: []string{"5"},
+		},
+		// R4.4: two arguments (seq 2 5)
+		{
+			Name: "two-args-2-5",
+			Args: []string{"2", "5"},
+		},
+		// R4.4: three arguments (seq 1 2 10)
+		{
+			Name: "three-args-1-2-10",
+			Args: []string{"1", "2", "10"},
+		},
+		// R4.4: descending sequence (seq 5 -1 1)
+		{
+			Name: "descending-5-neg1-1",
+			Args: []string{"5", "-1", "1"},
+		},
+		// R4.4: floating-point sequence (seq 0.1 0.1 0.5)
+		{
+			Name: "float-0.1-0.1-0.5",
+			Args: []string{"0.1", "0.1", "0.5"},
+		},
+		// R4.4: equal-width (seq -w 8 12)
+		{
+			Name: "equal-width-8-12",
+			Args: []string{"-w", "8", "12"},
+		},
+		// R4.4: custom separator (seq -s ', ' 1 5)
+		{
+			Name: "separator-comma-1-5",
+			Args: []string{"-s", ", ", "1", "5"},
+		},
+		// R4.4: format string (seq -f '%.2f' 1 3)
+		{
+			Name: "format-2f-1-3",
+			Args: []string{"-f", "%.2f", "1", "3"},
+		},
+		// R4.4: invalid format error
+		{
+			Name:      "error-invalid-format",
+			Args:      []string{"-f", "%d", "1", "3"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

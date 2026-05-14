@@ -58,7 +58,8 @@ func main() {
 			exitWithError("format string may not be specified when printing equal width strings")
 		}
 		if err := validateFormat(opts.format); err != nil {
-			exitWithError(err.Error())
+			fmt.Fprintf(os.Stderr, "seq: %s\n", err.Error())
+			os.Exit(1)
 		}
 	}
 	printSequence(opts, first, incr, last, operands)
