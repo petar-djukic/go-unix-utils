@@ -1,0 +1,189 @@
+- index: 0
+  title: "[stitch] cmd/wc: basic input processing and counting core (srd005-wc R1.1-R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd005-wc.yaml (requirements R1.1 through R1.4)
+      - cmd/wc/main.go (existing implementation -- R2.1-R2.6, R3.1-R3.2 already implemented)
+      - cmd/wc/wc_test.go (existing differential tests)
+      - pkg/testutils/ (differential testing framework used by all cmd/ packages)
+      - pkg/sys/ (SIGPIPE handler)
+
+    files:
+      - path: cmd/wc/main.go
+        action: modify
+        note: Add functionality for srd005-wc R1.1-R1.4
+      - path: cmd/wc/wc_test.go
+        action: modify
+        note: Add differential test cases for R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: Implement srd005-wc R1.1 as specified in the SRD
+      - id: R2
+        text: Implement srd005-wc R1.2 as specified in the SRD
+      - id: R3
+        text: Implement srd005-wc R1.3 as specified in the SRD
+      - id: R4
+        text: Implement srd005-wc R1.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Preserve all existing functionality for R2.1-R2.6 and R3.1-R3.2 -- do not remove or rewrite existing code
+      - id: D2
+        text: Follow the differential testing pattern using testutils.RunDiffTests with gwc as the reference binary
+      - id: D3
+        text: Ensure sys.InstallSIGPIPEHandler() is called at the start of main per project convention
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd005-wc requirements R1.1, R1.2, R1.3, R1.4 are implemented in cmd/wc/main.go
+      - id: AC2
+        text: Differential tests for R1.1-R1.4 pass against the gwc reference binary
+      - id: AC3
+        text: All existing tests for R2.1-R2.6 and R3.1-R3.2 still pass
+      - id: AC4
+        text: go build ./cmd/wc/ succeeds with no errors
+      - id: AC5
+        text: go test ./cmd/wc/ -count=1 passes all tests
+
+- index: 1
+  title: "[stitch] cmd/wc: remaining counting mode and additional features (srd005-wc R3.3, R4.1-R4.3)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd005-wc.yaml (requirements R3.3, R4.1, R4.2, R4.3)
+      - cmd/wc/main.go (existing implementation with R1.1-R1.4, R2.1-R2.6, R3.1-R3.2 implemented)
+      - cmd/wc/wc_test.go (existing differential tests)
+
+    files:
+      - path: cmd/wc/main.go
+        action: modify
+        note: Add functionality for R3.3 and R4.1-R4.3
+      - path: cmd/wc/wc_test.go
+        action: modify
+        note: Add differential test cases for R3.3 and R4.1-R4.3
+
+    requirements:
+      - id: R1
+        text: Implement srd005-wc R3.3 as specified in the SRD
+      - id: R2
+        text: Implement srd005-wc R4.1 as specified in the SRD
+      - id: R3
+        text: Implement srd005-wc R4.2 as specified in the SRD
+      - id: R4
+        text: Implement srd005-wc R4.3 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Preserve all existing functionality -- do not remove or rewrite existing code
+      - id: D2
+        text: Follow the differential testing pattern using testutils.RunDiffTests with gwc as the reference binary
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd005-wc requirements R3.3, R4.1, R4.2, R4.3 are implemented in cmd/wc/main.go
+      - id: AC2
+        text: Differential tests for R3.3 and R4.1-R4.3 pass against the gwc reference binary
+      - id: AC3
+        text: All existing tests still pass
+      - id: AC4
+        text: go build ./cmd/wc/ succeeds with no errors
+      - id: AC5
+        text: go test ./cmd/wc/ -count=1 passes all tests
+
+- index: 2
+  title: "[stitch] cmd/wc: edge cases and extended behavior (srd005-wc R4.4, R5.1-R5.2, R6.1)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd005-wc.yaml (requirements R4.4, R5.1, R5.2, R6.1)
+      - cmd/wc/main.go (existing implementation)
+      - cmd/wc/wc_test.go (existing differential tests)
+
+    files:
+      - path: cmd/wc/main.go
+        action: modify
+        note: Add functionality for R4.4, R5.1-R5.2, R6.1
+      - path: cmd/wc/wc_test.go
+        action: modify
+        note: Add differential test cases for R4.4, R5.1-R5.2, R6.1
+
+    requirements:
+      - id: R1
+        text: Implement srd005-wc R4.4 as specified in the SRD
+      - id: R2
+        text: Implement srd005-wc R5.1 as specified in the SRD
+      - id: R3
+        text: Implement srd005-wc R5.2 as specified in the SRD
+      - id: R4
+        text: Implement srd005-wc R6.1 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Preserve all existing functionality -- do not remove or rewrite existing code
+      - id: D2
+        text: Follow the differential testing pattern using testutils.RunDiffTests with gwc as the reference binary
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd005-wc requirements R4.4, R5.1, R5.2, R6.1 are implemented in cmd/wc/main.go
+      - id: AC2
+        text: Differential tests for R4.4, R5.1-R5.2, R6.1 pass against the gwc reference binary
+      - id: AC3
+        text: All existing tests still pass
+      - id: AC4
+        text: go build ./cmd/wc/ succeeds with no errors
+      - id: AC5
+        text: go test ./cmd/wc/ -count=1 passes all tests
+
+- index: 3
+  title: "[stitch] cmd/wc: final requirements and completion (srd005-wc R6.2-R6.3)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd005-wc.yaml (requirements R6.2, R6.3)
+      - cmd/wc/main.go (existing implementation)
+      - cmd/wc/wc_test.go (existing differential tests)
+
+    files:
+      - path: cmd/wc/main.go
+        action: modify
+        note: Add functionality for R6.2-R6.3
+      - path: cmd/wc/wc_test.go
+        action: modify
+        note: Add differential test cases for R6.2-R6.3
+
+    requirements:
+      - id: R1
+        text: Implement srd005-wc R6.2 as specified in the SRD
+      - id: R2
+        text: Implement srd005-wc R6.3 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Preserve all existing functionality -- do not remove or rewrite existing code
+      - id: D2
+        text: Follow the differential testing pattern using testutils.RunDiffTests with gwc as the reference binary
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd005-wc requirements R6.2, R6.3 are implemented in cmd/wc/main.go
+      - id: AC2
+        text: Differential tests for R6.2-R6.3 pass against the gwc reference binary
+      - id: AC3
+        text: All existing tests still pass
+      - id: AC4
+        text: go build ./cmd/wc/ succeeds with no errors
+      - id: AC5
+        text: go test ./cmd/wc/ -count=1 passes all tests
+      - id: AC6
+        text: All srd005-wc requirements are now implemented -- cmd/wc is feature-complete for rel03.0
