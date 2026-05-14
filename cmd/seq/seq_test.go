@@ -135,6 +135,30 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
 		},
+		// R4.4: floating-point accumulation near endpoint
+		{
+			Name: "float-accum-0.8-0.1-1.2",
+			Args: []string{"0.8", "0.1", "1.2"},
+		},
+		{
+			Name: "float-accum-0.1-0.1-0.3",
+			Args: []string{"0.1", "0.1", "0.3"},
+		},
+		// R4.4: descending float sequence
+		{
+			Name: "descending-float-1.0-neg0.1-0.0",
+			Args: []string{"1.0", "-0.1", "0.0"},
+		},
+		// R4.4: equal-width with negative range
+		{
+			Name: "equal-width-neg5-5",
+			Args: []string{"-w", "--", "-5", "5"},
+		},
+		// R4.4: single-element sequence (FIRST == LAST)
+		{
+			Name: "first-equals-last",
+			Args: []string{"5", "5"},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

@@ -306,8 +306,12 @@ func printSequence(opts options, first, incr, last float64, rawArgs []string) {
 		}
 	}
 	started := false
+	prev := math.NaN()
 	for i := 0; ; i++ {
 		val := first + float64(i)*incr
+		if val == prev {
+			break
+		}
 		if !inRange(val, incr, last) {
 			break
 		}
@@ -316,6 +320,7 @@ func printSequence(opts options, first, incr, last float64, rawArgs []string) {
 		}
 		fmt.Fprintf(w, format, val)
 		started = true
+		prev = val
 	}
 	if started {
 		fmt.Fprintln(w)
@@ -337,10 +342,11 @@ func equalWidthFormat(defFmt string, first, last float64) string {
 }
 
 func inRange(val, incr, last float64) bool {
+	eps := math.Abs(incr) * 1e-10
 	if incr >= 0 {
-		return val <= last
+		return val-last <= eps
 	}
-	return val >= last
+	return last-val <= eps
 }
 
 func defaultFormat(rawArgs []string) string {
