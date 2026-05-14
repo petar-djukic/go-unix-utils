@@ -29,15 +29,11 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--help":
-			if _, err := fmt.Fprint(os.Stdout, helpText); err != nil {
-				os.Exit(1)
-			}
-			os.Exit(0)
+			fmt.Fprint(os.Stdout, helpText)
+			os.Exit(1)
 		case "--version":
-			if _, err := fmt.Fprint(os.Stdout, versionText); err != nil {
-				os.Exit(1)
-			}
-			os.Exit(0)
+			fmt.Fprint(os.Stdout, versionText)
+			os.Exit(1)
 		}
 	}
 
