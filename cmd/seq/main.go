@@ -54,6 +54,9 @@ func main() {
 		exitWithError(fmt.Sprintf("invalid Zero increment value: '%s'", stepStr))
 	}
 	if opts.format != "" {
+		if opts.equalWidth {
+			exitWithError("format string may not be specified when printing equal width strings")
+		}
 		if err := validateFormat(opts.format); err != nil {
 			exitWithError(err.Error())
 		}
@@ -226,7 +229,10 @@ func parseNumber(s string) (float64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid floating point argument: '%s'", s)
 	}
-	if math.IsNaN(n) || math.IsInf(n, 0) {
+	if math.IsNaN(n) {
+		return 0, fmt.Errorf("invalid 'not-a-number' argument: '%s'", s)
+	}
+	if math.IsInf(n, 0) {
 		return 0, fmt.Errorf("invalid floating point argument: '%s'", s)
 	}
 	return n, nil
