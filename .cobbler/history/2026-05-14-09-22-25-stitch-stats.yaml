@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5171"
+task_title: '[stitch] cmd/seq: format string, separator, and help flags (srd019-seq R1.5, R2.1-R2.3)'
+status: success
+started_at: "2026-05-14T13:22:25Z"
+duration: 2m26s
+duration_s: 145
+tokens:
+    input: 559028
+    output: 4509
+    cache_creation: 176154
+    cache_read: 382857
+cost_usd: 1.7346234999999999
+num_turns: 29
+rate_limit_wait_s: 7
+loc_before:
+    production: 3325
+    test: 2501
+loc_after:
+    production: 3386
+    test: 2501
+diff:
+    files: 2
+    insertions: 182
+    deletions: 0

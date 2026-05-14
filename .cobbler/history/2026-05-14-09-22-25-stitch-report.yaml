@@ -1,0 +1,23 @@
+task_id: "5171"
+task_title: '[stitch] cmd/seq: format string, separator, and help flags (srd019-seq R1.5, R2.1-R2.3)'
+status: success
+branch: task/generation-run44-5171
+diff:
+    files: 2
+    insertions: 182
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-14-09-22-16-stitch-orchestrator.log
+      status: M
+      insertions: 122
+      deletions: 0
+    - path: cmd/seq/main.go
+      status: M
+      insertions: 61
+      deletions: 0
+loc_before:
+    production: 3325
+    test: 2501
+loc_after:
+    production: 3386
+    test: 2501
