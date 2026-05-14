@@ -1,0 +1,23 @@
+task_id: "5222"
+task_title: '[stitch] cmd/ls: features implementation (srd008-ls R3.12-R3.15)'
+status: success
+branch: task/generation-run44-5222
+diff:
+    files: 2
+    insertions: 171
+    deletions: 1
+files:
+    - path: .cobbler/history/2026-05-14-18-37-06-stitch-orchestrator.log
+      status: M
+      insertions: 107
+      deletions: 0
+    - path: cmd/ls/ls_test.go
+      status: M
+      insertions: 65
+      deletions: 1
+loc_before:
+    production: 5306
+    test: 3992
+loc_after:
+    production: 5306
+    test: 4056
