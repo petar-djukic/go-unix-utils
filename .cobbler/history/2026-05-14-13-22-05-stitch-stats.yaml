@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5193"
+task_title: '[stitch] cmd/nproc: differential tests (srd046-nproc R3.1-R3.3)'
+status: success
+started_at: "2026-05-14T17:22:05Z"
+duration: 2m12s
+duration_s: 132
+tokens:
+    input: 300904
+    output: 1650
+    cache_creation: 174653
+    cache_read: 126242
+cost_usd: 1.5610619500000003
+num_turns: 17
+rate_limit_wait_s: 2
+loc_before:
+    production: 4156
+    test: 3452
+loc_after:
+    production: 4156
+    test: 3515
+diff:
+    files: 2
+    insertions: 170
+    deletions: 0
