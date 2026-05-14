@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5109"
+task_title: '[stitch] cmd/version (srd011-magefiles R5.1, srd059-version R1.5)'
+status: success
+started_at: "2026-05-14T00:46:05Z"
+duration: 3m41s
+duration_s: 221
+tokens:
+    input: 702620
+    output: 6135
+    cache_creation: 168987
+    cache_read: 533624
+cost_usd: 1.7883182499999997
+num_turns: 20
+rate_limit_wait_s: 23
+loc_before:
+    production: 1389
+    test: 56
+loc_after:
+    production: 1390
+    test: 63
+diff:
+    files: 3
+    insertions: 113
+    deletions: 5
