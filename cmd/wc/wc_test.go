@@ -290,6 +290,7 @@ func TestDiffFiles(t *testing.T) {
 	writeFixture(t, dir, "short.txt", "hi\n")
 	writeFixture(t, dir, "longer.txt", "hello world\nthis is a longer file with more content\n")
 	writeFixture(t, dir, "empty.txt", "")
+	writeFixture(t, dir, "binary.dat", "\x00\x01\xff\xfe\x0a")
 
 	tests := []testutils.DiffTest{
 		{
@@ -367,6 +368,114 @@ func TestDiffFiles(t *testing.T) {
 		{
 			Name:    "r1_4_total_with_empty_file",
 			Args:    []string{"empty.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_always_single",
+			Args:    []string{"--total=always", "short.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_always_multi",
+			Args:    []string{"--total=always", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_only_single",
+			Args:    []string{"--total=only", "short.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_only_multi",
+			Args:    []string{"--total=only", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_never_single",
+			Args:    []string{"--total=never", "short.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_never_multi",
+			Args:    []string{"--total=never", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_auto_single",
+			Args:    []string{"--total=auto", "short.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_auto_multi",
+			Args:    []string{"--total=auto", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_only_flags_lwc",
+			Args:    []string{"--total=only", "-l", "-w", "-c", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_never_flags_lwc",
+			Args:    []string{"--total=never", "-l", "-w", "-c", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_total_always_three_files",
+			Args:    []string{"--total=always", "empty.txt", "short.txt", "longer.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_3_empty_file_alone",
+			Args:    []string{"empty.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_3_empty_file_flag_l",
+			Args:    []string{"-l", "empty.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_3_empty_file_flag_c",
+			Args:    []string{"-c", "empty.txt"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_2_binary_file",
+			Args:    []string{"binary.dat"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_2_binary_file_flag_c",
+			Args:    []string{"-c", "binary.dat"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_2_binary_file_flag_m",
+			Args:    []string{"-m", "binary.dat"},
+			Env:     defaultEnv,
+			WorkDir: dir,
+		},
+		{
+			Name:    "r4_2_binary_file_flag_L",
+			Args:    []string{"-L", "binary.dat"},
 			Env:     defaultEnv,
 			WorkDir: dir,
 		},

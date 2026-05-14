@@ -63,7 +63,10 @@ func run(opts options, files []string, stdout io.Writer, stderr io.Writer) int {
 		files = []string{""}
 	}
 
-	width := computeWidth(files, countColumns(opts))
+	width := 1
+	if opts.totalMode != "only" {
+		width = computeWidth(files, countColumns(opts))
+	}
 	results, names, hadError := processFiles(files, stderr)
 	printResults(stdout, opts, results, names, width)
 	if hadError {
@@ -145,7 +148,7 @@ func processChunk(data []byte, c *counts, inWord *bool, lineLen *int64) {
 		r, size := utf8.DecodeRune(data[i:])
 		if r == utf8.RuneError && size == 1 {
 			c.chars++
-			processNonSpaceByte(data[i], c, inWord, lineLen)
+			processInvalidByte(data[i], c, inWord, lineLen)
 			i++
 			continue
 		}
@@ -155,36 +158,44 @@ func processChunk(data []byte, c *counts, inWord *bool, lineLen *int64) {
 			handleNewline(c, inWord, lineLen)
 		} else if r == '\t' {
 			handleTab(inWord, lineLen)
+		} else if r == '\r' || r == '\f' {
+			*inWord = false
+			handleReturn(c, lineLen)
 		} else if unicode.IsSpace(r) {
 			*inWord = false
-			*lineLen++
+			if isPrintable(r) {
+				*lineLen++
+			}
 		} else {
 			if !*inWord {
 				c.words++
 				*inWord = true
 			}
-			*lineLen++
+			if isPrintable(r) {
+				*lineLen++
+			}
 		}
 		i += size
 	}
 }
 
-func processNonSpaceByte(b byte, c *counts, inWord *bool, lineLen *int64) {
+func processInvalidByte(b byte, c *counts, inWord *bool, lineLen *int64) {
 	switch b {
 	case '\n':
 		c.lines++
 		handleNewline(c, inWord, lineLen)
 	case '\t':
 		handleTab(inWord, lineLen)
-	case ' ', '\r', '\f', '\v':
+	case '\r', '\f':
 		*inWord = false
-		*lineLen++
+		handleReturn(c, lineLen)
+	case ' ', '\v':
+		*inWord = false
 	default:
 		if !*inWord {
 			c.words++
 			*inWord = true
 		}
-		*lineLen++
 	}
 }
 
@@ -196,9 +207,20 @@ func handleNewline(c *counts, inWord *bool, lineLen *int64) {
 	*lineLen = 0
 }
 
+func handleReturn(c *counts, lineLen *int64) {
+	if *lineLen > c.maxLine {
+		c.maxLine = *lineLen
+	}
+	*lineLen = 0
+}
+
 func handleTab(inWord *bool, lineLen *int64) {
 	*inWord = false
 	*lineLen = (*lineLen/8 + 1) * 8
+}
+
+func isPrintable(r rune) bool {
+	return r >= 0x20 && r <= 0x7E
 }
 
 func printResults(w io.Writer, opts options, results []counts, names []string, width int) {
@@ -211,7 +233,11 @@ func printResults(w io.Writer, opts options, results []counts, names []string, w
 		}
 	}
 	if showTotal {
-		printLine(w, opts, total, "total", width)
+		label := "total"
+		if opts.totalMode == "only" {
+			label = ""
+		}
+		printLine(w, opts, total, label, width)
 	}
 }
 
