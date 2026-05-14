@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.10.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15.
 package main
 
 import (
@@ -28,8 +28,11 @@ Sort entries alphabetically if no flags given.
   -A             do not list implied . and ..
   -C             list entries by columns
   -d             list directories themselves, not their contents
+  -i             print the index number of each file
   -l             use a long listing format
+  -n             like -l, but list numeric user and group IDs
   -r             reverse order while sorting
+  -s             print the allocated size of each file, in blocks
   -S             sort by file size, largest first
   -t             sort by modification time, newest first
   -U             do not sort; list entries in directory order
@@ -56,6 +59,9 @@ type options struct {
 	reverseSort    bool
 	unsorted       bool
 	versionSort    bool
+	showInode      bool
+	showBlocks     bool
+	numericIds     bool
 }
 
 func main() {
@@ -127,8 +133,18 @@ func parseShortFlags(flags string, opts *options) {
 			opts.showAll = false
 		case 'd':
 			opts.dirAsEntry = true
+		case 'i':
+			opts.showInode = true
+		case 'n':
+			opts.numericIds = true
+			opts.longFormat = true
+			opts.singleColumn = false
+			opts.forceColumns = false
+			opts.horizontalSort = false
 		case 'r':
 			opts.reverseSort = true
+		case 's':
+			opts.showBlocks = true
 		case 't':
 			opts.sortByTime = true
 			opts.sortBySize = false
@@ -164,9 +180,10 @@ func run(paths []string, opts options) int {
 	if len(files) > 0 {
 		sortEntries(files, "", opts)
 		if opts.longFormat {
-			exitCode = maxCode(exitCode, writeLongFiles(files))
+			exitCode = maxCode(exitCode, writeLongFiles(files, opts))
 		} else {
-			writeEntries(files, opts)
+			display := prependPrefixes(files, "", opts)
+			writeEntries(display, opts)
 		}
 		needSep = true
 	}
@@ -218,9 +235,10 @@ func listDir(path string, opts options) int {
 		return 2
 	}
 	if opts.longFormat {
-		return writeLongDir(path, names)
+		return writeLongDir(path, names, opts)
 	}
-	writeEntries(names, opts)
+	display := prependPrefixes(names, path, opts)
+	writeEntries(display, opts)
 	return 0
 }
 
@@ -298,6 +316,51 @@ func sortEntries(names []string, basePath string, opts options) {
 	if opts.reverseSort {
 		reverseSlice(names)
 	}
+}
+
+type prefixInfo struct {
+	inode  uint64
+	blocks int64
+}
+
+func prependPrefixes(names []string, basePath string, opts options) []string {
+	if !opts.showInode && !opts.showBlocks {
+		return names
+	}
+	infos := make([]prefixInfo, len(names))
+	var inodeW, blocksW int
+	for i, name := range names {
+		p := name
+		if basePath != "" {
+			p = filepath.Join(basePath, name)
+		}
+		fi, err := sys.Lstat(p)
+		if err != nil {
+			continue
+		}
+		infos[i] = prefixInfo{fi.Ino, fi.Blocks / 2}
+		if n := len(strconv.FormatUint(fi.Ino, 10)); n > inodeW {
+			inodeW = n
+		}
+		if n := len(strconv.FormatInt(fi.Blocks/2, 10)); n > blocksW {
+			blocksW = n
+		}
+	}
+	result := make([]string, len(names))
+	for i, name := range names {
+		var b strings.Builder
+		if opts.showInode {
+			b.WriteString(format.PadLeft(strconv.FormatUint(infos[i].inode, 10), inodeW))
+			b.WriteByte(' ')
+		}
+		if opts.showBlocks {
+			b.WriteString(format.PadLeft(strconv.FormatInt(infos[i].blocks, 10), blocksW))
+			b.WriteByte(' ')
+		}
+		b.WriteString(name)
+		result[i] = b.String()
+	}
+	return result
 }
 
 func writeEntries(names []string, opts options) {
@@ -448,13 +511,15 @@ type longEntry struct {
 }
 
 type longWidths struct {
-	nlink int
-	owner int
-	group int
-	size  int
+	inode  int
+	blocks int
+	nlink  int
+	owner  int
+	group  int
+	size   int
 }
 
-func writeLongFiles(paths []string) int {
+func writeLongFiles(paths []string, opts options) int {
 	entries := make([]longEntry, 0, len(paths))
 	code := 0
 	for _, p := range paths {
@@ -464,13 +529,13 @@ func writeLongFiles(paths []string) int {
 			code = 2
 			continue
 		}
-		entries = append(entries, newLongEntry(p, p, fi))
+		entries = append(entries, newLongEntry(p, p, fi, opts))
 	}
-	writeLongEntries(entries)
+	writeLongEntries(entries, opts)
 	return code
 }
 
-func writeLongDir(path string, names []string) int {
+func writeLongDir(path string, names []string, opts options) int {
 	entries := make([]longEntry, 0, len(names))
 	code := 0
 	for _, name := range names {
@@ -481,40 +546,56 @@ func writeLongDir(path string, names []string) int {
 			code = 2
 			continue
 		}
-		entries = append(entries, newLongEntry(name, full, fi))
+		entries = append(entries, newLongEntry(name, full, fi, opts))
 	}
 	totalBlocks := int64(0)
 	for _, e := range entries {
 		totalBlocks += e.info.Blocks
 	}
 	writeLine(fmt.Sprintf("total %d", totalBlocks/2))
-	writeLongEntries(entries)
+	writeLongEntries(entries, opts)
 	return code
 }
 
-func newLongEntry(name string, path string, fi *sys.FileInfo) longEntry {
+func newLongEntry(name, path string, fi *sys.FileInfo, opts options) longEntry {
+	owner := resolveOwner(fi.Uid)
+	group := resolveGroup(fi.Gid)
+	if opts.numericIds {
+		owner = strconv.FormatUint(uint64(fi.Uid), 10)
+		group = strconv.FormatUint(uint64(fi.Gid), 10)
+	}
 	return longEntry{
 		name:  name,
 		path:  path,
 		info:  fi,
-		owner: resolveOwner(fi.Uid),
-		group: resolveGroup(fi.Gid),
+		owner: owner,
+		group: group,
 	}
 }
 
-func writeLongEntries(entries []longEntry) {
+func writeLongEntries(entries []longEntry, opts options) {
 	if len(entries) == 0 {
 		return
 	}
-	w := computeLongWidths(entries)
+	w := computeLongWidths(entries, opts)
 	for _, e := range entries {
-		writeLine(formatLongLine(e, w))
+		writeLine(formatLongLine(e, w, opts))
 	}
 }
 
-func computeLongWidths(entries []longEntry) longWidths {
+func computeLongWidths(entries []longEntry, opts options) longWidths {
 	var w longWidths
 	for _, e := range entries {
+		if opts.showInode {
+			if n := len(strconv.FormatUint(e.info.Ino, 10)); n > w.inode {
+				w.inode = n
+			}
+		}
+		if opts.showBlocks {
+			if n := len(strconv.FormatInt(e.info.Blocks/2, 10)); n > w.blocks {
+				w.blocks = n
+			}
+		}
 		if n := len(strconv.FormatUint(e.info.Nlink, 10)); n > w.nlink {
 			w.nlink = n
 		}
@@ -531,7 +612,14 @@ func computeLongWidths(entries []longEntry) longWidths {
 	return w
 }
 
-func formatLongLine(e longEntry, w longWidths) string {
+func formatLongLine(e longEntry, w longWidths, opts options) string {
+	var prefix string
+	if opts.showInode {
+		prefix += format.PadLeft(strconv.FormatUint(e.info.Ino, 10), w.inode) + " "
+	}
+	if opts.showBlocks {
+		prefix += format.PadLeft(strconv.FormatInt(e.info.Blocks/2, 10), w.blocks) + " "
+	}
 	nlink := strconv.FormatUint(e.info.Nlink, 10)
 	size := strconv.FormatInt(e.info.Size, 10)
 	name := e.name
@@ -540,7 +628,8 @@ func formatLongLine(e longEntry, w longWidths) string {
 			name += " -> " + target
 		}
 	}
-	return permString(e.info.Mode) + " " +
+	return prefix +
+		permString(e.info.Mode) + " " +
 		format.PadLeft(nlink, w.nlink) + " " +
 		format.PadRight(e.owner, w.owner) + " " +
 		format.PadRight(e.group, w.group) + " " +
