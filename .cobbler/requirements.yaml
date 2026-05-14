@@ -600,16 +600,20 @@ requirements:
             weight: 1
     srd008-ls:
         R1.1:
-            status: in_progress
+            status: complete
+            issue: 5202
             weight: 1
         R1.2:
-            status: in_progress
+            status: complete
+            issue: 5202
             weight: 1
         R1.3:
-            status: in_progress
+            status: complete
+            issue: 5202
             weight: 1
         R1.4:
-            status: in_progress
+            status: complete
+            issue: 5202
             weight: 1
         R1.5:
             status: proposed
