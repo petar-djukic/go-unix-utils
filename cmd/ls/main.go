@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.8.
+// Implements srd008-ls R1.1-R1.12.
 package main
 
 import (
@@ -24,6 +24,7 @@ const helpText = `Usage: ls [OPTION]... [FILE]...
 List information about the FILEs (the current directory by default).
 Sort entries alphabetically if no flags given.
 
+  -C             list entries by columns
   -1             list one file per line
   -l             use a long listing format
       --help     display this help and exit
@@ -36,6 +37,7 @@ const versionText = `ls (go-unix-utils) dev
 type options struct {
 	singleColumn bool
 	longFormat   bool
+	forceColumns bool
 }
 
 func main() {
@@ -79,11 +81,17 @@ func parseShortFlags(flags string, opts *options) {
 	for _, ch := range flags {
 		switch ch {
 		case '1':
+			opts.forceColumns = false
 			if !opts.longFormat {
 				opts.singleColumn = true
 			}
 		case 'l':
 			opts.longFormat = true
+			opts.singleColumn = false
+			opts.forceColumns = false
+		case 'C':
+			opts.forceColumns = true
+			opts.longFormat = false
 			opts.singleColumn = false
 		default:
 			fmt.Fprintf(os.Stderr, "ls: invalid option -- '%c'\n", ch)
@@ -178,19 +186,24 @@ func writeEntries(names []string, opts options) {
 	if len(names) == 0 {
 		return
 	}
-	if opts.singleColumn || !sys.IsTerminal(os.Stdout.Fd()) {
+	if opts.forceColumns {
+		writeColumnsWidth(names, 0)
+	} else if opts.singleColumn || !sys.IsTerminal(os.Stdout.Fd()) {
 		writeLines(names)
 	} else {
-		writeColumns(names)
+		writeColumnsWidth(names, 0)
 	}
 }
 
-func writeColumns(names []string) {
-	termWidth, err := sys.TerminalWidth()
-	if err != nil {
-		termWidth = 80
+func writeColumnsWidth(names []string, width int) {
+	if width <= 0 {
+		w, err := sys.TerminalWidth()
+		if err != nil {
+			w = 80
+		}
+		width = w
 	}
-	grid := format.Columns(names, termWidth)
+	grid := format.Columns(names, width)
 	widths := gridColumnWidths(grid)
 	for _, row := range grid {
 		writeGridRow(row, widths)
@@ -233,6 +246,7 @@ func writeGridRow(row []string, widths []int) {
 
 type longEntry struct {
 	name  string
+	path  string
 	info  *sys.FileInfo
 	owner string
 	group string
@@ -255,7 +269,7 @@ func writeLongFiles(paths []string) int {
 			code = 2
 			continue
 		}
-		entries = append(entries, newLongEntry(p, fi))
+		entries = append(entries, newLongEntry(p, p, fi))
 	}
 	writeLongEntries(entries)
 	return code
@@ -272,7 +286,7 @@ func writeLongDir(path string, names []string) int {
 			code = 2
 			continue
 		}
-		entries = append(entries, newLongEntry(name, fi))
+		entries = append(entries, newLongEntry(name, full, fi))
 	}
 	totalBlocks := int64(0)
 	for _, e := range entries {
@@ -283,9 +297,10 @@ func writeLongDir(path string, names []string) int {
 	return code
 }
 
-func newLongEntry(name string, fi *sys.FileInfo) longEntry {
+func newLongEntry(name string, path string, fi *sys.FileInfo) longEntry {
 	return longEntry{
 		name:  name,
+		path:  path,
 		info:  fi,
 		owner: resolveOwner(fi.Uid),
 		group: resolveGroup(fi.Gid),
@@ -324,13 +339,19 @@ func computeLongWidths(entries []longEntry) longWidths {
 func formatLongLine(e longEntry, w longWidths) string {
 	nlink := strconv.FormatUint(e.info.Nlink, 10)
 	size := strconv.FormatInt(e.info.Size, 10)
+	name := e.name
+	if e.info.Mode&os.ModeSymlink != 0 {
+		if target, err := os.Readlink(e.path); err == nil {
+			name += " -> " + target
+		}
+	}
 	return permString(e.info.Mode) + " " +
 		format.PadLeft(nlink, w.nlink) + " " +
 		format.PadRight(e.owner, w.owner) + " " +
 		format.PadRight(e.group, w.group) + " " +
 		format.PadLeft(size, w.size) + " " +
 		formatMtime(e.info.ModTime) + " " +
-		e.name
+		name
 }
 
 func permString(mode os.FileMode) string {
