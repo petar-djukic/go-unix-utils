@@ -569,10 +569,10 @@ requirements:
             issue: 5133
             weight: 1
         R6.1:
-            status: ready
+            status: proposed
             weight: 1
         R6.2:
-            status: ready
+            status: proposed
             weight: 1
     srd008-ls:
         R1.1:
@@ -942,40 +942,40 @@ requirements:
             weight: 1
     srd015-basename:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R1.2:
-            status: ready
+            status: proposed
             weight: 1
         R1.3:
-            status: ready
+            status: proposed
             weight: 1
         R1.4:
-            status: ready
+            status: proposed
             weight: 1
         R1.5:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
             status: ready

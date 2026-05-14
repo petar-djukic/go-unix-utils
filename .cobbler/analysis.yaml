@@ -54,11 +54,11 @@ code_status:
         - version: "01.2"
           name: Batch 1.2 — sponge specification and differential test
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: all implemented
           usecases:
             - id: rel01.2-uc001-sponge
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "01.3"
