@@ -136,3 +136,13 @@
 [2026-05-14T13:05:05-04:00] [generation-run44] [stitch +2m20s] closeStitchTask: closing #5188 "[stitch] cmd/nproc: core implementation (srd046-nproc R1.1-R1.4)"
 [2026-05-14T13:05:06-04:00] [generation-run44] [stitch +2m21s] commentCobblerIssue: posted comment on #5188
 [2026-05-14T13:05:06-04:00] [generation-run44] [stitch +2m21s] updateRequirementsFile: marked 4 R-items as complete for issue #5188
+[2026-05-14T13:05:09-04:00] [generation-run44] [stitch +2m24s] closeCobblerIssue: closed #5188
+[2026-05-14T13:05:11-04:00] [generation-run44] [stitch +2m26s] closeStitchTask: #5188 closed
+[2026-05-14T13:05:12-04:00] [generation-run44] [stitch +2m27s] sweepCompletedTasks: all R-items for #5188 already complete, closing
+[2026-05-14T13:05:13-04:00] [generation-run44] [stitch +2m28s] commentCobblerIssue: posted comment on #5188
+[2026-05-14T13:05:14-04:00] [generation-run44] [stitch +2m30s] closeCobblerIssue: closed #5188
+[2026-05-14T13:05:15-04:00] [generation-run44] [stitch +2m30s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T13:05:15-04:00] [generation-run44] [stitch +2m30s] doOneTask: task 5188 finished in 2m23s
+[2026-05-14T13:05:15-04:00] [generation-run44] [stitch +2m30s] task 5188 completed in 2m23s
+[2026-05-14T13:05:15-04:00] [generation-run44] [stitch +2m30s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T13:05:15-04:00] [generation-run44] [stitch +2m30s] completed 1 task(s) in 2m30s
