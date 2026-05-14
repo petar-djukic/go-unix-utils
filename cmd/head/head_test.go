@@ -4,6 +4,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,35 @@ func TestDiff(t *testing.T) {
 	discardStderr := testutils.NormalizeFunc(func([]byte) []byte { return nil })
 
 	tests := []testutils.DiffTest{
+		// R4.4: default 10 lines (no flags)
+		{
+			Name:  "default-10-lines",
+			Stdin: seq(1, 20),
+		},
+		// R4.4: explicit -n count
+		{
+			Name:  "explicit-n-5",
+			Args:  []string{"-n", "5"},
+			Stdin: seq(1, 20),
+		},
+		// R4.4: negative line count -n -5
+		{
+			Name:  "negative-n-5",
+			Args:  []string{"-n", "-5"},
+			Stdin: seq(1, 20),
+		},
+		// R4.4: negative byte count -c -100
+		{
+			Name:  "negative-c-100",
+			Args:  []string{"-c", "-100"},
+			Stdin: bytes512(),
+		},
+		// R4.4: stdin input (no file arguments)
+		{
+			Name:  "stdin-no-args",
+			Stdin: []byte("line1\nline2\nline3\n"),
+		},
+
 		// R1.5: last line without newline is still counted
 		{
 			Name:  "line-no-trailing-newline",
@@ -252,6 +282,14 @@ func bytes512() []byte {
 	b := make([]byte, 600)
 	for i := range b {
 		b[i] = byte('a' + i%26)
+	}
+	return b
+}
+
+func seq(start, end int) []byte {
+	var b []byte
+	for i := start; i <= end; i++ {
+		b = fmt.Appendf(b, "%d\n", i)
 	}
 	return b
 }
