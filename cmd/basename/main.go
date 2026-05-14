@@ -23,6 +23,7 @@ func main() {
 	opts, names, err := parseArgs(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "basename: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Try 'basename --help' for more information.\n")
 		os.Exit(1)
 	}
 
