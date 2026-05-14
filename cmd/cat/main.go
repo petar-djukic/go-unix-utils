@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/cat implements srd006-cat: file concatenation with line numbering and blank squeezing.
+// cmd/cat implements srd006-cat: file concatenation with line numbering,
+// blank squeezing, and non-printing display.
 package main
 
 import (
@@ -18,6 +19,9 @@ var (
 	flagN bool
 	flagB bool
 	flagS bool
+	flagV bool
+	flagE bool
+	flagT bool
 )
 
 func main() {
@@ -57,22 +61,42 @@ func parseFlags(args []string) []string {
 			continue
 		}
 		for _, c := range arg[1:] {
-			switch c {
-			case 'n':
-				flagN = true
-			case 'b':
-				flagB = true
-			case 's':
-				flagS = true
-			case 'u':
-				// R4.8: accepted but ignored
-			default:
-				fmt.Fprintf(os.Stderr, "cat: invalid option -- '%c'\n", c)
-				os.Exit(1)
-			}
+			applyFlag(c)
 		}
 	}
 	return files
+}
+
+func applyFlag(c rune) {
+	switch c {
+	case 'n':
+		flagN = true
+	case 'b':
+		flagB = true
+	case 's':
+		flagS = true
+	case 'v':
+		flagV = true
+	case 'E':
+		flagE = true
+	case 'T':
+		flagT = true
+	case 'A':
+		flagV = true
+		flagE = true
+		flagT = true
+	case 'e':
+		flagV = true
+		flagE = true
+	case 't':
+		flagV = true
+		flagT = true
+	case 'u':
+		// R4.8: accepted but ignored
+	default:
+		fmt.Fprintf(os.Stderr, "cat: invalid option -- '%c'\n", c)
+		os.Exit(1)
+	}
 }
 
 // R1.1, R1.2: open a named file or stdin and write to stdout.
@@ -88,7 +112,7 @@ func catFile(name string, lineNum int, prevBlank bool) (int, bool, error) {
 		defer f.Close()
 		r = f
 	}
-	if !flagN && !flagB && !flagS {
+	if !flagN && !flagB && !flagS && !flagV && !flagE && !flagT {
 		_, err := io.Copy(os.Stdout, r)
 		return lineNum, prevBlank, err
 	}
@@ -116,7 +140,7 @@ func catTransform(r io.Reader, lineNum int, prevBlank bool) (int, bool, error) {
 	return lineNum, prevBlank, nil
 }
 
-// R2.1, R2.2, R2.3, R3.1: apply squeeze, then number.
+// R2.1, R2.2, R2.3, R3.1, R4.9: squeeze, then transform, then number.
 func writeLine(w *bufio.Writer, line []byte, lineNum int, prevBlank bool) (int, bool) {
 	isBlank := len(line) == 1 && line[0] == '\n'
 	if flagS && isBlank && prevBlank {
@@ -126,8 +150,55 @@ func writeLine(w *bufio.Writer, line []byte, lineNum int, prevBlank bool) (int, 
 		fmt.Fprintf(w, "%6d\t", lineNum)
 		lineNum++
 	}
-	w.Write(line)
+	if flagV || flagE || flagT {
+		writeTransformed(w, line)
+	} else {
+		w.Write(line)
+	}
 	return lineNum, isBlank
+}
+
+// R4.1, R4.2, R4.3, R4.4: byte-level display transformation.
+func writeTransformed(w *bufio.Writer, line []byte) {
+	for _, b := range line {
+		if b == '\n' {
+			if flagE {
+				w.WriteByte('$')
+			}
+			w.WriteByte('\n')
+			continue
+		}
+		if b == '\t' {
+			if flagT {
+				w.WriteString("^I")
+			} else {
+				w.WriteByte('\t')
+			}
+			continue
+		}
+		if flagV {
+			writeVisible(w, b)
+			continue
+		}
+		w.WriteByte(b)
+	}
+}
+
+// R4.1: caret and M- notation for non-printing characters.
+func writeVisible(w *bufio.Writer, b byte) {
+	if b >= 128 {
+		w.WriteString("M-")
+		b -= 128
+	}
+	if b < 32 {
+		w.WriteByte('^')
+		w.WriteByte(b + 64)
+	} else if b == 127 {
+		w.WriteByte('^')
+		w.WriteByte('?')
+	} else {
+		w.WriteByte(b)
+	}
 }
 
 // R5.2: format os.PathError for stderr output.
