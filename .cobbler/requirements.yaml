@@ -792,16 +792,16 @@ requirements:
             issue: 5223
             weight: 1
         R4.5:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.6:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.7:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.8:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.9:
             status: proposed
