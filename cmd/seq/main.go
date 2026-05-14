@@ -53,6 +53,11 @@ func main() {
 		}
 		exitWithError(fmt.Sprintf("invalid Zero increment value: '%s'", stepStr))
 	}
+	if opts.format != "" {
+		if err := validateFormat(opts.format); err != nil {
+			exitWithError(err.Error())
+		}
+	}
 	printSequence(opts, first, incr, last, operands)
 }
 
@@ -225,6 +230,62 @@ func parseNumber(s string) (float64, error) {
 		return 0, fmt.Errorf("invalid floating point argument: '%s'", s)
 	}
 	return n, nil
+}
+
+func validateFormat(format string) error {
+	count := 0
+	i := 0
+	for i < len(format) {
+		if format[i] != '%' {
+			i++
+			continue
+		}
+		i++
+		if i >= len(format) {
+			break
+		}
+		if format[i] == '%' {
+			i++
+			continue
+		}
+		conv, next, err := scanConversion(format, i)
+		if err != nil {
+			return err
+		}
+		i = next
+		if strings.ContainsRune("aefgAEFG", rune(conv)) {
+			count++
+		} else {
+			return fmt.Errorf("format '%s' has unknown %%%c directive", format, conv)
+		}
+	}
+	if count == 0 {
+		return fmt.Errorf("format '%s' has no %% directive", format)
+	}
+	if count > 1 {
+		return fmt.Errorf("format '%s' has too many %% directives", format)
+	}
+	return nil
+}
+
+func scanConversion(format string, i int) (byte, int, error) {
+	for i < len(format) && strings.ContainsRune("-+#0 '", rune(format[i])) {
+		i++
+	}
+	for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+		i++
+	}
+	if i < len(format) && format[i] == '.' {
+		i++
+		for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+			i++
+		}
+	}
+	if i >= len(format) {
+		return 0, i, fmt.Errorf("format '%s' has no %% directive", format)
+	}
+	conv := format[i]
+	return conv, i + 1, nil
 }
 
 func printSequence(opts options, first, incr, last float64, rawArgs []string) {
