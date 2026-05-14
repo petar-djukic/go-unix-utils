@@ -5,10 +5,12 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -301,6 +303,135 @@ func runMultiFileAppendTest(t *testing.T, binary, label string) {
 	if string(gotB) != wantB {
 		t.Fatalf("%s: b.txt\n  got:  %q\n  want: %q", label, gotB, wantB)
 	}
+}
+
+func TestWriteErrorReadOnly(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	roDir := filepath.Join(dir, "readonly")
+	os.Mkdir(roDir, 0o555)
+	badFile := filepath.Join(roDir, "nope.txt")
+	goodFile := filepath.Join(dir, "good.txt")
+
+	goExit, goStdout, goStderr := runCapture(t, goBin, []byte("data\n"), badFile, goodFile)
+	if goExit != 1 {
+		t.Fatalf("expected exit 1, got %d", goExit)
+	}
+	if string(goStdout) != "data\n" {
+		t.Fatalf("stdout: got %q, want %q", goStdout, "data\n")
+	}
+	got, err := os.ReadFile(goodFile)
+	if err != nil {
+		t.Fatalf("read good file: %v", err)
+	}
+	if string(got) != "data\n" {
+		t.Fatalf("good file: got %q, want %q", got, "data\n")
+	}
+	if !strings.Contains(string(goStderr), "nope.txt") {
+		t.Fatalf("stderr should mention failed file, got: %q", goStderr)
+	}
+
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skip("reference binary gtee not found")
+	}
+	refExit, _, _ := runCapture(t, refBin, []byte("data\n"), badFile, goodFile)
+	if goExit != refExit {
+		t.Fatalf("exit code divergence: go=%d ref=%d", goExit, refExit)
+	}
+}
+
+func TestWriteErrorContinuesWriting(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	roDir := filepath.Join(dir, "readonly")
+	os.Mkdir(roDir, 0o555)
+	badFile := filepath.Join(roDir, "fail.txt")
+	fileA := filepath.Join(dir, "a.txt")
+	fileB := filepath.Join(dir, "b.txt")
+
+	exit, stdout, _ := runCapture(t, goBin, []byte("hello\n"), fileA, badFile, fileB)
+	if exit != 1 {
+		t.Fatalf("expected exit 1, got %d", exit)
+	}
+	if string(stdout) != "hello\n" {
+		t.Fatalf("stdout: got %q, want %q", stdout, "hello\n")
+	}
+	for _, p := range []string{fileA, fileB} {
+		got, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		if string(got) != "hello\n" {
+			t.Fatalf("%s: got %q, want %q", p, got, "hello\n")
+		}
+	}
+}
+
+func TestBrokenStdout(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	goExit := runWithBrokenStdout(t, goBin)
+	if goExit != 1 {
+		t.Fatalf("expected exit 1, got %d", goExit)
+	}
+}
+
+func TestExitZeroOnSuccess(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "out.txt")
+	cmd := exec.Command(goBin, outFile)
+	cmd.Stdin = bytes.NewReader([]byte("ok\n"))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("expected exit 0, got: %v", err)
+	}
+}
+
+func runCapture(
+	t *testing.T, binary string, stdin []byte, args ...string,
+) (int, []byte, []byte) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return 0, stdout.Bytes(), stderr.Bytes()
+	}
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		return exitErr.ExitCode(), stdout.Bytes(), stderr.Bytes()
+	}
+	t.Fatalf("unexpected error: %v", err)
+	return -1, nil, nil
+}
+
+func runWithBrokenStdout(t *testing.T, binary string) int {
+	t.Helper()
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(binary)
+	cmd.Stdin = bytes.NewReader(bytes.Repeat([]byte("a\n"), 100000))
+	cmd.Stdout = pw
+	if err := cmd.Start(); err != nil {
+		pr.Close()
+		pw.Close()
+		t.Fatal(err)
+	}
+	pw.Close()
+	pr.Close()
+	err = cmd.Wait()
+	if err == nil {
+		return 0
+	}
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		return exitErr.ExitCode()
+	}
+	t.Fatalf("unexpected error: %v", err)
+	return -1
 }
 
 func allBytes() []byte {

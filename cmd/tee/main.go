@@ -11,25 +11,21 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
 func main() {
-	sys.InstallSIGPIPEHandler()
+	// R3.4: ignore SIGPIPE so writes return EPIPE instead of killing the process.
+	signal.Ignore(syscall.SIGPIPE)
 
 	appendMode, ignoreInterrupts, files := parseFlags(os.Args[1:])
 	if ignoreInterrupts {
 		signal.Ignore(os.Interrupt)
 	}
-	writers, closers, exitCode := openOutputs(files, appendMode)
+	outputs, closers, exitCode := openOutputs(files, appendMode)
 	defer closeAll(closers)
 
-	if err := copyStdin(writers); err != nil {
-		if !errors.Is(err, syscall.EPIPE) {
-			fmt.Fprintf(os.Stderr, "tee: %v\n", err)
-			exitCode = 1
-		}
+	if copyToAll(outputs) {
+		exitCode = 1
 	}
 	if exitCode != 0 {
 		os.Exit(exitCode)
@@ -73,9 +69,15 @@ func parseFlags(args []string) (bool, bool, []string) {
 	return appendMode, ignoreInterrupts, files
 }
 
-// R1.1, R1.4: build writers for stdout and each named file.
-func openOutputs(files []string, appendMode bool) ([]io.Writer, []io.Closer, int) {
-	writers := []io.Writer{os.Stdout}
+type namedWriter struct {
+	w    io.Writer
+	name string
+	ok   bool
+}
+
+// R1.1, R1.4, R3.2: build writers for stdout and each named file.
+func openOutputs(files []string, appendMode bool) ([]namedWriter, []io.Closer, int) {
+	outputs := []namedWriter{{w: os.Stdout, name: "standard output", ok: true}}
 	var closers []io.Closer
 	exitCode := 0
 	for _, name := range files {
@@ -88,10 +90,10 @@ func openOutputs(files []string, appendMode bool) ([]io.Writer, []io.Closer, int
 			exitCode = 1
 			continue
 		}
-		writers = append(writers, f)
+		outputs = append(outputs, namedWriter{w: f, name: name, ok: true})
 		closers = append(closers, f)
 	}
-	return writers, closers, exitCode
+	return outputs, closers, exitCode
 }
 
 // R1.3: create or truncate; append if -a.
@@ -105,11 +107,36 @@ func openFile(name string, appendMode bool) (*os.File, error) {
 	return os.OpenFile(name, flags, 0o666)
 }
 
-// R1.1, R1.5: copy stdin to all writers in order received.
-func copyStdin(writers []io.Writer) error {
-	mw := io.MultiWriter(writers...)
-	_, err := io.Copy(mw, os.Stdin)
-	return err
+// R1.5, R3.3: copy stdin to all outputs; skip failed writers.
+func copyToAll(outputs []namedWriter) bool {
+	buf := make([]byte, 32*1024)
+	hadError := false
+	for {
+		n, readErr := os.Stdin.Read(buf)
+		if n > 0 && writeAll(outputs, buf[:n]) {
+			hadError = true
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	return hadError
+}
+
+// R3.2, R3.3, R3.4: write data to each active output; disable on error.
+func writeAll(outputs []namedWriter, data []byte) bool {
+	hadError := false
+	for i := range outputs {
+		if !outputs[i].ok {
+			continue
+		}
+		if _, err := outputs[i].w.Write(data); err != nil {
+			outputs[i].ok = false
+			fmt.Fprintf(os.Stderr, "tee: %s: %v\n", outputs[i].name, unwrapErr(err))
+			hadError = true
+		}
+	}
+	return hadError
 }
 
 func closeAll(closers []io.Closer) {
