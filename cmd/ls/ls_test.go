@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.15, R4.1-R4.8 (R4.5 via code review).
+// Implements srd008-ls R1.1-R1.8, R2.3-R2.6, R3.4-R3.15, R4.1-R4.9 (R4.5 via code review).
 package main
 
 import (
@@ -240,6 +240,22 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "recursive-numeric",
 			Args: []string{"-nR", recursiveDir},
+		},
+		{
+			Name: "recursive-inode",
+			Args: []string{"-1iR", recursiveDir},
+		},
+		{
+			Name: "recursive-blocks",
+			Args: []string{"-1sR", recursiveDir},
+		},
+		{
+			Name: "recursive-classify",
+			Args: []string{"-1FR", recursiveDir},
+		},
+		{
+			Name: "recursive-inode-blocks-classify",
+			Args: []string{"-1isFR", recursiveDir},
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
