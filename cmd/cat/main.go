@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -39,6 +40,9 @@ func main() {
 		var err error
 		lineNum, prevBlank, err = catFile(name, lineNum, prevBlank)
 		if err != nil {
+			if errors.Is(err, syscall.EPIPE) {
+				os.Exit(0)
+			}
 			fmt.Fprintf(os.Stderr, "cat: %s\n", formatErr(err))
 			exitCode = 1
 		}
