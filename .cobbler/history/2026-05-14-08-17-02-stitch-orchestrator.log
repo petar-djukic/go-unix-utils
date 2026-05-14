@@ -192,3 +192,13 @@
 [2026-05-14T08:26:59-04:00] [generation-run44] [stitch +9m58s] closeStitchTask: closing #5158 "[stitch] cmd/tee: error reporting, write failure handling, and exit status (srd017-tee R3.1-R3.4)"
 [2026-05-14T08:27:00-04:00] [generation-run44] [stitch +9m59s] commentCobblerIssue: posted comment on #5158
 [2026-05-14T08:27:00-04:00] [generation-run44] [stitch +9m59s] updateRequirementsFile: marked 4 R-items as complete for issue #5158
+[2026-05-14T08:27:03-04:00] [generation-run44] [stitch +10m1s] closeCobblerIssue: closed #5158
+[2026-05-14T08:27:05-04:00] [generation-run44] [stitch +10m3s] closeStitchTask: #5158 closed
+[2026-05-14T08:27:06-04:00] [generation-run44] [stitch +10m4s] sweepCompletedTasks: all R-items for #5158 already complete, closing
+[2026-05-14T08:27:07-04:00] [generation-run44] [stitch +10m5s] commentCobblerIssue: posted comment on #5158
+[2026-05-14T08:27:08-04:00] [generation-run44] [stitch +10m7s] closeCobblerIssue: closed #5158
+[2026-05-14T08:27:09-04:00] [generation-run44] [stitch +10m7s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T08:27:09-04:00] [generation-run44] [stitch +10m7s] doOneTask: task 5158 finished in 9m52s
+[2026-05-14T08:27:09-04:00] [generation-run44] [stitch +10m7s] task 5158 completed in 9m52s
+[2026-05-14T08:27:09-04:00] [generation-run44] [stitch +10m7s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T08:27:09-04:00] [generation-run44] [stitch +10m7s] completed 1 task(s) in 10m7s
