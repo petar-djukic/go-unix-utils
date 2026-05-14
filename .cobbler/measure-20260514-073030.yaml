@@ -1,0 +1,167 @@
+- index: 0
+  title: "[stitch] cmd/du: recursive traversal and default output (srd009-du R1.1-R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd009-du.yaml (requirements R1.1 through R1.4)
+      - pkg/sys/sys.go (FileInfo struct and Stat/Lstat functions for file metadata)
+
+    files:
+      - path: cmd/du/main.go
+        action: create
+        note: du utility -- recursive directory disk usage reporting
+
+    requirements:
+      - id: R1
+        text: Implement basic recursive directory traversal and disk usage summation per srd009-du R1.1
+      - id: R2
+        text: Implement default output format with tab-separated block count and pathname per srd009-du R1.2
+      - id: R3
+        text: Implement block size calculation and default allocation units per srd009-du R1.3
+      - id: R4
+        text: Implement hard link deduplication so shared blocks are counted once per srd009-du R1.4
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol
+      - id: D2
+        text: Use pkg/sys.Lstat for file metadata to avoid following symlinks by default
+      - id: D3
+        text: Use the standard flag package for command-line option parsing
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/du ./cmd/du/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/du/ passes with no warnings
+      - id: AC3
+        text: Binary recursively reports disk usage for directories per srd009-du R1.1-R1.4
+      - id: AC4
+        text: Default output uses tab-separated block count and path, one line per directory entry
+
+- index: 1
+  title: "[stitch] cmd/du: summarize, all-files, and total modes (srd009-du R1.5, R2.1-R2.3)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd009-du.yaml (requirements R1.5, R2.1 through R2.3)
+      - cmd/du/main.go (existing implementation with core traversal from previous task)
+
+    files:
+      - path: cmd/du/main.go
+        action: modify
+        note: Add exit code handling, summarize, all-files, and grand total modes
+
+    requirements:
+      - id: R1
+        text: Implement exit code and error reporting behavior per srd009-du R1.5
+      - id: R2
+        text: Implement summarize mode (-s) reporting only the total for each argument per srd009-du R2.1
+      - id: R3
+        text: Implement all-files mode (-a) reporting usage for every file per srd009-du R2.2
+      - id: R4
+        text: Implement grand total mode (-c) printing a cumulative total line per srd009-du R2.3
+
+    design_decisions:
+      - id: D1
+        text: Wire -s, -a, and -c flags via the standard flag package consistent with existing flags
+      - id: D2
+        text: Exit code 1 on any error per GNU du convention, continuing to process remaining arguments
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/du ./cmd/du/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/du/ passes with no warnings
+      - id: AC3
+        text: du -s outputs exactly one line per argument with the total size
+      - id: AC4
+        text: du -c appends a grand total line after all argument output
+
+- index: 2
+  title: "[stitch] cmd/du: depth limit, filesystem boundary, symlinks, and exclusion (srd009-du R2.4-R2.7)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd009-du.yaml (requirements R2.4 through R2.7)
+      - cmd/du/main.go (existing implementation from previous tasks)
+      - pkg/sys/sys.go (FileInfo.Dev field for filesystem boundary detection)
+
+    files:
+      - path: cmd/du/main.go
+        action: modify
+        note: Add traversal control flags -- depth limit, filesystem boundary, symlinks, exclusion
+
+    requirements:
+      - id: R1
+        text: Implement max depth limit (-d/--max-depth) restricting output to N levels per srd009-du R2.4
+      - id: R2
+        text: Implement one-filesystem mode (-x/--one-file-system) staying on the initial device per srd009-du R2.5
+      - id: R3
+        text: Implement dereference mode (-L/--dereference) following symbolic links per srd009-du R2.6
+      - id: R4
+        text: Implement exclude patterns (--exclude) skipping files matching the pattern per srd009-du R2.7
+
+    design_decisions:
+      - id: D1
+        text: Track the root device ID from pkg/sys.FileInfo.Dev to implement -x filesystem boundary
+      - id: D2
+        text: Use filepath.Match for --exclude pattern matching consistent with GNU du glob semantics
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/du ./cmd/du/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/du/ passes with no warnings
+      - id: AC3
+        text: du -d 1 limits output to one level below the argument
+      - id: AC4
+        text: du -x does not cross filesystem mount points
+
+- index: 3
+  title: "[stitch] cmd/du: apparent size, human-readable output, and null termination (srd009-du R2.8, R3.1-R3.3)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd009-du.yaml (requirements R2.8, R3.1 through R3.3)
+      - cmd/du/main.go (existing implementation from previous tasks)
+      - pkg/format/format.go (HumanSize and HumanSizeOpts for human-readable output)
+
+    files:
+      - path: cmd/du/main.go
+        action: modify
+        note: Add apparent size, human-readable output, SI units, and null-terminated output
+
+    requirements:
+      - id: R1
+        text: Implement apparent size mode (--apparent-size) reporting byte counts instead of disk blocks per srd009-du R2.8
+      - id: R2
+        text: Implement human-readable output (-h) using binary K/M/G/T suffixes per srd009-du R3.1
+      - id: R3
+        text: Implement SI output (--si) using 1000-based unit suffixes per srd009-du R3.2
+      - id: R4
+        text: Implement null-terminated output (-0/--null) for machine-parseable output per srd009-du R3.3
+
+    design_decisions:
+      - id: D1
+        text: Use pkg/format.HumanSize with Binary=true for -h and Binary=false for --si
+      - id: D2
+        text: Replace newline with null byte for -0 flag at the output formatting layer
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/du ./cmd/du/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/du/ passes with no warnings
+      - id: AC3
+        text: du -h prints sizes with binary suffixes (K, M, G, T)
+      - id: AC4
+        text: du -0 separates entries with null bytes instead of newlines
