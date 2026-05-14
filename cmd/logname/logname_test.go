@@ -25,9 +25,9 @@ func TestDiff(t *testing.T) {
 	})
 
 	tests := []testutils.DiffTest{
-		{Name: "no_args"},
-		{Name: "extra_operand", Args: []string{"extraarg"}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
-		{Name: "unknown_flag", Args: []string{"--unknown"}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
+		{Name: "no_args", Env: []string{"LC_ALL=C"}},
+		{Name: "extra_operand", Args: []string{"extraarg"}, ExitCode: 1, Env: []string{"LC_ALL=C"}, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
+		{Name: "unknown_flag", Args: []string{"--unknown"}, ExitCode: 1, Env: []string{"LC_ALL=C"}, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
