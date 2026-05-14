@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -275,4 +276,163 @@ func envWithTMPDIR(dir string) []string {
 		}
 	}
 	return append(env, "TMPDIR="+dir)
+}
+
+// R6.1, R6.2: differential tests comparing output file content (not stdout).
+func TestDiffOutputFile(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin := lookupRefBinary(t)
+
+	tests := []struct {
+		name    string
+		stdin   []byte
+		initial []byte
+		exists  bool
+	}{
+		{name: "file_small_new", stdin: []byte("hello\nworld\n")},
+		{name: "file_small_existing", stdin: []byte("new content\n"), initial: []byte("old content\n"), exists: true},
+		{name: "file_large_new", stdin: bytes.Repeat([]byte("data-line\n"), 200000)},
+		{name: "file_large_existing", stdin: bytes.Repeat([]byte("data-line\n"), 200000), initial: []byte("original\n"), exists: true},
+		{name: "file_empty_stdin_new", stdin: []byte{}},
+		{name: "file_binary_data", stdin: allBytes()},
+		{name: "file_single_byte", stdin: []byte("x")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			goDir := t.TempDir()
+			refDir := t.TempDir()
+			goOut := filepath.Join(goDir, "out.txt")
+			refOut := filepath.Join(refDir, "out.txt")
+
+			if tc.exists {
+				writeFile(t, goOut, tc.initial)
+				writeFile(t, refOut, tc.initial)
+			}
+
+			runSponge(t, goBin, []string{goOut}, tc.stdin)
+			runSponge(t, refBin, []string{refOut}, tc.stdin)
+
+			goContent := readFile(t, goOut)
+			refContent := readFile(t, refOut)
+
+			if !bytes.Equal(goContent, refContent) {
+				t.Fatalf("file content divergence\n  ref len=%d\n  go  len=%d",
+					len(refContent), len(goContent))
+			}
+		})
+	}
+}
+
+// R6.2: verify file mode preservation when output file already exists.
+func TestDiffModePreservation(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin := lookupRefBinary(t)
+
+	modes := []os.FileMode{0o600, 0o755, 0o444}
+	for _, mode := range modes {
+		t.Run(fmt.Sprintf("mode_%04o", mode), func(t *testing.T) {
+			goDir := t.TempDir()
+			refDir := t.TempDir()
+			goOut := filepath.Join(goDir, "out.txt")
+			refOut := filepath.Join(refDir, "out.txt")
+
+			writeFile(t, goOut, []byte("original\n"))
+			writeFile(t, refOut, []byte("original\n"))
+			if err := os.Chmod(goOut, mode); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(refOut, mode); err != nil {
+				t.Fatal(err)
+			}
+
+			runSponge(t, goBin, []string{goOut}, []byte("replacement\n"))
+			runSponge(t, refBin, []string{refOut}, []byte("replacement\n"))
+
+			goInfo, err := os.Lstat(goOut)
+			if err != nil {
+				t.Fatalf("lstat go output: %v", err)
+			}
+			refInfo, err := os.Lstat(refOut)
+			if err != nil {
+				t.Fatalf("lstat ref output: %v", err)
+			}
+
+			if goInfo.Mode().Perm() != refInfo.Mode().Perm() {
+				t.Fatalf("mode divergence: go=%04o ref=%04o",
+					goInfo.Mode().Perm(), refInfo.Mode().Perm())
+			}
+
+			goContent := readFile(t, goOut)
+			refContent := readFile(t, refOut)
+			if !bytes.Equal(goContent, refContent) {
+				t.Fatalf("file content divergence\n  ref: %q\n  go:  %q",
+					refContent, goContent)
+			}
+		})
+	}
+}
+
+// R6.2: cross-device rename fallback (TMPDIR on different path from output).
+func TestDiffCrossDeviceFallback(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin := lookupRefBinary(t)
+
+	customTmpDir := t.TempDir()
+	stdin := []byte("cross-device content\n")
+
+	tests := []struct {
+		name    string
+		stdin   []byte
+		initial []byte
+		exists  bool
+	}{
+		{name: "xdev_new_file", stdin: stdin},
+		{name: "xdev_existing_file", stdin: stdin, initial: []byte("old\n"), exists: true},
+		{name: "xdev_large", stdin: bytes.Repeat([]byte("xdev-line\n"), 200000)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			goDir := t.TempDir()
+			refDir := t.TempDir()
+			goOut := filepath.Join(goDir, "out.txt")
+			refOut := filepath.Join(refDir, "out.txt")
+
+			if tc.exists {
+				writeFile(t, goOut, tc.initial)
+				writeFile(t, refOut, tc.initial)
+			}
+
+			runSpongeEnv(t, goBin, []string{goOut}, tc.stdin, envWithTMPDIR(customTmpDir))
+			runSpongeEnv(t, refBin, []string{refOut}, tc.stdin, envWithTMPDIR(customTmpDir))
+
+			goContent := readFile(t, goOut)
+			refContent := readFile(t, refOut)
+
+			if !bytes.Equal(goContent, refContent) {
+				t.Fatalf("file content divergence\n  ref len=%d\n  go  len=%d",
+					len(refContent), len(goContent))
+			}
+		})
+	}
+}
+
+func runSpongeEnv(t *testing.T, binary string, args []string, stdin []byte, env []string) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	if env != nil {
+		cmd.Env = env
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("%s exited %d: %s", binary, exitErr.ExitCode(), stderr.String())
+		}
+		t.Fatalf("%s failed: %v", binary, err)
+	}
 }
