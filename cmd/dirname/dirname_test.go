@@ -18,6 +18,8 @@ func TestDiff(t *testing.T) {
 		t.Skip("reference binary gdirname not found")
 	}
 
+	discardStdout := testutils.NormalizeFunc(func([]byte) []byte { return nil })
+
 	binaryNameRe := regexp.MustCompile(`(?:/\S+/)?g?dirname`)
 	normalizeBinaryName := testutils.NormalizeFunc(func(b []byte) []byte {
 		return binaryNameRe.ReplaceAll(b, []byte("dirname"))
@@ -87,6 +89,22 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "no_args_error",
 			Args:      []string{},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		{
+			Name:      "help",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{discardStdout},
+		},
+		{
+			Name:      "version",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{discardStdout},
+		},
+		{
+			Name:      "unknown_option",
+			Args:      []string{"--invalid-option"},
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
 		},

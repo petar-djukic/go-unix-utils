@@ -12,6 +12,22 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+const helpText = `Usage: dirname [OPTION] NAME...
+Output each NAME with its last non-slash component and trailing slashes
+removed; if NAME contains no /'s, output '.' (meaning the current directory).
+
+  -z, --zero     end each output line with NUL, not newline
+      --help     display this help and exit
+      --version  output version information and exit
+
+Examples:
+  dirname /usr/bin/          -> "/usr"
+  dirname dir1/str1 dir2/str2 -> "dir1" followed by "dir2"
+`
+
+const versionText = `dirname (go-unix-utils) dev
+`
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
@@ -20,6 +36,12 @@ func main() {
 
 	for len(args) > 0 {
 		switch args[0] {
+		case "--help":
+			fmt.Fprint(os.Stdout, helpText)
+			os.Exit(0)
+		case "--version":
+			fmt.Fprint(os.Stdout, versionText)
+			os.Exit(0)
 		case "-z", "--zero":
 			nulDelimited = true
 			args = args[1:]
@@ -29,6 +51,7 @@ func main() {
 		default:
 			if strings.HasPrefix(args[0], "-") && len(args[0]) > 1 {
 				fmt.Fprintf(os.Stderr, "dirname: unrecognized option '%s'\n", args[0])
+				fmt.Fprintln(os.Stderr, "Try 'dirname --help' for more information.")
 				os.Exit(1)
 			}
 			goto done
