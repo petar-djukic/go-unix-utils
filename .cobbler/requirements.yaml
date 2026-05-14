@@ -436,40 +436,40 @@ requirements:
             issue: 5102
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
         R4.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.5:
-            status: ready
+            status: proposed
             weight: 1
         R4.6:
-            status: ready
+            status: proposed
             weight: 1
         R4.7:
-            status: ready
+            status: proposed
             weight: 1
         R4.8:
-            status: ready
+            status: proposed
             weight: 1
         R4.9:
-            status: ready
+            status: proposed
             weight: 1
         R5.1:
-            status: ready
+            status: proposed
             weight: 1
         R5.2:
-            status: ready
+            status: proposed
             weight: 1
         R5.3:
-            status: ready
+            status: proposed
             weight: 1
         R5.4:
             status: ready
@@ -777,7 +777,7 @@ requirements:
             issue: 5107
             weight: 1
         R5.1:
-            status: ready
+            status: proposed
             weight: 1
     srd012-yes:
         R1.1:
@@ -2732,7 +2732,7 @@ requirements:
             issue: 5099
             weight: 1
         R1.5:
-            status: ready
+            status: proposed
             weight: 1
     srd060-date:
         R1.1:
