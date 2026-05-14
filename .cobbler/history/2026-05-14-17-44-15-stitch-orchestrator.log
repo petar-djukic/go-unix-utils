@@ -132,3 +132,9 @@
 [2026-05-14T17:47:12-04:00] [generation-run44] [stitch +2m57s] doOneTask: closing task 5211
 [2026-05-14T17:47:12-04:00] [generation-run44] [stitch +2m57s] closeStitchTask: closing #5211 "[stitch] cmd/ls: extended features tests (srd008-ls R2.3-R2.6)"
 [2026-05-14T17:47:14-04:00] [generation-run44] [stitch +2m58s] commentCobblerIssue: posted comment on #5211
+[2026-05-14T17:47:16-04:00] [generation-run44] [stitch +3m1s] closeCobblerIssue: closed #5211
+[2026-05-14T17:47:18-04:00] [generation-run44] [stitch +3m3s] closeStitchTask: #5211 closed
+[2026-05-14T17:47:18-04:00] [generation-run44] [stitch +3m3s] doOneTask: task 5211 finished in 2m56s
+[2026-05-14T17:47:18-04:00] [generation-run44] [stitch +3m3s] task 5211 completed in 2m56s
+[2026-05-14T17:47:18-04:00] [generation-run44] [stitch +3m3s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T17:47:18-04:00] [generation-run44] [stitch +3m3s] completed 1 task(s) in 3m3s
