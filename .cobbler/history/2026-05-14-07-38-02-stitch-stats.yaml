@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5150"
+task_title: '[stitch] cmd/du: recursive traversal and default output (srd009-du R1.1-R1.4)'
+status: success
+started_at: "2026-05-14T11:38:02Z"
+duration: 5m13s
+duration_s: 313
+tokens:
+    input: 527227
+    output: 11869
+    cache_creation: 172833
+    cache_read: 354382
+cost_usd: 1.939208
+num_turns: 19
+rate_limit_wait_s: 3
+loc_before:
+    production: 2306
+    test: 1544
+loc_after:
+    production: 2424
+    test: 1544
+diff:
+    files: 2
+    insertions: 219
+    deletions: 0

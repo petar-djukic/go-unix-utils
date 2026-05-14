@@ -1,0 +1,23 @@
+task_id: "5150"
+task_title: '[stitch] cmd/du: recursive traversal and default output (srd009-du R1.1-R1.4)'
+status: success
+branch: task/generation-run44-5150
+diff:
+    files: 2
+    insertions: 219
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-14-07-37-52-stitch-orchestrator.log
+      status: M
+      insertions: 102
+      deletions: 0
+    - path: cmd/du/main.go
+      status: A
+      insertions: 118
+      deletions: 0
+loc_before:
+    production: 2306
+    test: 1544
+loc_after:
+    production: 2424
+    test: 1544
