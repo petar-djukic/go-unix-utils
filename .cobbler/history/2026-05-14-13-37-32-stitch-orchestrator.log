@@ -127,3 +127,13 @@
 [2026-05-14T13:39:28-04:00] [generation-run44] [stitch +1m56s] closeStitchTask: closing #5197 "[stitch] cmd/uname: extended flags (srd044-uname R1.5-R1.8)"
 [2026-05-14T13:39:30-04:00] [generation-run44] [stitch +1m57s] commentCobblerIssue: posted comment on #5197
 [2026-05-14T13:39:30-04:00] [generation-run44] [stitch +1m57s] updateRequirementsFile: marked 4 R-items as complete for issue #5197
+[2026-05-14T13:39:34-04:00] [generation-run44] [stitch +2m1s] closeCobblerIssue: closed #5197
+[2026-05-14T13:39:36-04:00] [generation-run44] [stitch +2m3s] closeStitchTask: #5197 closed
+[2026-05-14T13:39:37-04:00] [generation-run44] [stitch +2m4s] sweepCompletedTasks: all R-items for #5197 already complete, closing
+[2026-05-14T13:39:38-04:00] [generation-run44] [stitch +2m5s] commentCobblerIssue: posted comment on #5197
+[2026-05-14T13:39:39-04:00] [generation-run44] [stitch +2m7s] closeCobblerIssue: closed #5197
+[2026-05-14T13:39:41-04:00] [generation-run44] [stitch +2m8s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T13:39:41-04:00] [generation-run44] [stitch +2m8s] doOneTask: task 5197 finished in 2m0s
+[2026-05-14T13:39:41-04:00] [generation-run44] [stitch +2m8s] task 5197 completed in 2m0s
+[2026-05-14T13:39:41-04:00] [generation-run44] [stitch +2m8s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T13:39:41-04:00] [generation-run44] [stitch +2m8s] completed 1 task(s) in 2m8s
