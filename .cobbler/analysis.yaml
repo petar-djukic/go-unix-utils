@@ -88,7 +88,7 @@ code_status:
               testfiles: 0
             - id: rel02.0-uc003-yes
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel02.0-uc004-basename
