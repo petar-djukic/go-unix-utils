@@ -76,13 +76,24 @@ func main() {
 		(opts.header == headerAuto && len(files) > 1)
 
 	exitCode := 0
-	for i, file := range files {
-		if showHeaders {
-			printHeader(file, i > 0)
-		}
-		if err := processFile(opts, file); err != nil {
+	firstOutput := true
+	for _, file := range files {
+		r, closer, err := openInput(file)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "head: %s\n", err)
 			exitCode = 1
+			continue
+		}
+		if showHeaders {
+			printHeader(file, !firstOutput)
+		}
+		firstOutput = false
+		if err := processInput(opts, r, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "head: %s\n", err)
+			exitCode = 1
+		}
+		if closer != nil {
+			closer.Close()
 		}
 	}
 	if exitCode != 0 {
@@ -255,19 +266,12 @@ func parseByteCount(s string) (int64, error) {
 	return n, nil
 }
 
-func processFile(opts options, name string) error {
-	r, closer, err := openInput(name)
-	if err != nil {
-		return err
-	}
-	if closer != nil {
-		defer closer.Close()
-	}
+func processInput(opts options, r io.Reader, w io.Writer) error {
 	switch opts.mode {
 	case modeBytes:
-		return headBytes(r, os.Stdout, opts.count)
+		return headBytes(r, w, opts.count)
 	default:
-		return headLines(r, os.Stdout, opts.count)
+		return headLines(r, w, opts.count)
 	}
 }
 

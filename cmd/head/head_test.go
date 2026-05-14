@@ -213,6 +213,30 @@ func TestDiffHeaders(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardStderr},
 		},
+		// R3.5+R4.2: valid file then nonexistent
+		{
+			Name:      "valid-then-nonexistent",
+			Args:      []string{"a.txt", "nonexistent.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R3.5+R4.2: nonexistent between valid files
+		{
+			Name:      "nonexistent-between-valid",
+			Args:      []string{"a.txt", "nonexistent.txt", "b.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R4.2: single nonexistent file
+		{
+			Name:      "nonexistent-only",
+			Args:      []string{"nonexistent.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
