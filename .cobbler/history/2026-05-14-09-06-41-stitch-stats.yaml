@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5168"
+task_title: '[stitch] cmd/head: final edge cases (srd018-head R4.4)'
+status: success
+started_at: "2026-05-14T13:06:41Z"
+duration: 1m47s
+duration_s: 106
+tokens:
+    input: 414157
+    output: 2564
+    cache_creation: 173350
+    cache_read: 240795
+cost_usd: 1.61035525
+num_turns: 20
+rate_limit_wait_s: 3
+loc_before:
+    production: 3041
+    test: 2463
+loc_after:
+    production: 3041
+    test: 2501
+diff:
+    files: 2
+    insertions: 140
+    deletions: 0

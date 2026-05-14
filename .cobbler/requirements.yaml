@@ -1214,7 +1214,8 @@ requirements:
             issue: 5167
             weight: 1
         R4.4:
-            status: in_progress
+            status: complete
+            issue: 5168
             weight: 1
     srd019-seq:
         R1.1:
