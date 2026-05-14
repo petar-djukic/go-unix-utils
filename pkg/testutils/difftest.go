@@ -238,17 +238,3 @@ func ComposeNormalizers(fns ...NormalizeFunc) NormalizeFunc {
 	}
 }
 
-// BuildBinary compiles the cmd/ package in dir and returns the path to the
-// built binary. It calls t.Fatal if the build fails.
-// D4: included per the differential testing shared protocol.
-func BuildBinary(t *testing.T, dir string) string {
-	t.Helper()
-	outDir := t.TempDir()
-	binPath := filepath.Join(outDir, "testbin")
-	cmd := exec.Command("go", "build", "-o", binPath, dir)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("BuildBinary(%s) failed: %v\n%s", dir, err, out)
-	}
-	return binPath
-}
