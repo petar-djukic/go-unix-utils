@@ -37,13 +37,25 @@ type fieldEntry struct {
 	get  func(*unix.Utsname) string
 }
 
+func processorType(u *unix.Utsname) string {
+	if utsToString(u.Sysname[:]) == "Darwin" {
+		switch utsToString(u.Machine[:]) {
+		case "arm64":
+			return "arm"
+		case "x86_64":
+			return "i386"
+		}
+	}
+	return "unknown"
+}
+
 var fields = []fieldEntry{
 	{'s', func(u *unix.Utsname) string { return utsToString(u.Sysname[:]) }},
 	{'n', func(u *unix.Utsname) string { return utsToString(u.Nodename[:]) }},
 	{'r', func(u *unix.Utsname) string { return utsToString(u.Release[:]) }},
 	{'v', func(u *unix.Utsname) string { return utsToString(u.Version[:]) }},
 	{'m', func(u *unix.Utsname) string { return utsToString(u.Machine[:]) }},
-	{'p', func(_ *unix.Utsname) string { return "unknown" }},
+	{'p', processorType},
 	{'i', func(_ *unix.Utsname) string { return "unknown" }},
 	{'o', func(u *unix.Utsname) string {
 		sysname := utsToString(u.Sysname[:])
