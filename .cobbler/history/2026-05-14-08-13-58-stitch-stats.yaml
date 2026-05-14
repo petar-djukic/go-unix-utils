@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5157"
+task_title: '[stitch] cmd/tee: multi-file output, append mode, and SIGINT suppression (srd017-tee R1.5, R2.1-R2.3)'
+status: success
+started_at: "2026-05-14T12:13:58Z"
+duration: 2m39s
+duration_s: 159
+tokens:
+    input: 540501
+    output: 5413
+    cache_creation: 179994
+    cache_read: 360491
+cost_usd: 1.7890529999999998
+num_turns: 27
+rate_limit_wait_s: 2
+loc_before:
+    production: 2636
+    test: 1873
+loc_after:
+    production: 2649
+    test: 1989
+diff:
+    files: 3
+    insertions: 254
+    deletions: 4
