@@ -2705,3 +2705,191 @@
       - id: AC3
         text: "R3.1-R3.4 behaviors implemented per the SRD"
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/basename: version, help, and error diagnostics (srd015-basename R4.1-R4.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd015-basename.yaml (R4.1-R4.3 requirements)
+      - cmd/basename/main.go (existing implementation to extend)
+      - cmd/basename/basename_test.go (existing differential tests to extend)
+
+    files:
+      - path: cmd/basename/main.go
+        action: modify
+        note: Add remaining R4.x functionality per SRD
+      - path: cmd/basename/basename_test.go
+        action: modify
+        note: Add differential test cases for R4.x requirements
+
+    requirements:
+      - id: R1
+        text: Implement srd015-basename R4.1 per the SRD specification
+      - id: R2
+        text: Implement srd015-basename R4.2 per the SRD specification
+      - id: R3
+        text: Implement srd015-basename R4.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing main.go -- do not rewrite from scratch
+      - id: D2
+        text: Add differential test cases to the existing TestDiff function using testutils.RunDiffTests against the gbasename reference binary
+      - id: D3
+        text: Call exec.LookPath("gbasename") and t.Skip if the reference binary is not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R4.1-R4.3 requirements from srd015-basename are implemented
+      - id: AC2
+        text: Differential tests pass against gbasename for the new requirements
+      - id: AC3
+        text: go build ./cmd/basename/ compiles without errors
+      - id: AC4
+        text: go test ./cmd/basename/ -count=1 passes (or skips if gbasename is absent)
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/yes: core repeated output and SIGPIPE (srd012-yes R1.1-R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd012-yes.yaml (R1.1-R1.4 requirements)
+      - cmd/basename/main.go (reference for cmd/ package structure and SIGPIPE pattern)
+      - cmd/basename/basename_test.go (reference for differential testing pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler function)
+      - pkg/testutils/ (BuildBinary and RunDiffTests functions)
+
+    files:
+      - path: cmd/yes/main.go
+        action: create
+        note: Initial yes implementation with core output loop
+      - path: cmd/yes/yes_test.go
+        action: create
+        note: Differential tests against gyes reference binary
+
+    requirements:
+      - id: R1
+        text: Implement srd012-yes R1.1 per the SRD specification
+      - id: R2
+        text: Implement srd012-yes R1.2 per the SRD specification
+      - id: R3
+        text: Implement srd012-yes R1.3 per the SRD specification
+      - id: R4
+        text: Implement srd012-yes R1.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main to match GNU coreutils behavior when piped to consumers that close stdin early
+      - id: D2
+        text: Use testutils.BuildBinary(t, ".") and testutils.RunDiffTests to compare against gyes reference binary
+      - id: D3
+        text: Call exec.LookPath("gyes") and t.Skip if the reference binary is not found
+      - id: D4
+        text: Package is github.com/petar-djukic/go-unix-utils/cmd/yes
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R1.1-R1.4 requirements from srd012-yes are implemented
+      - id: AC2
+        text: Differential tests pass against gyes for the R1.x requirements
+      - id: AC3
+        text: go build ./cmd/yes/ compiles without errors
+      - id: AC4
+        text: go test ./cmd/yes/ -count=1 passes (or skips if gyes is absent)
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/yes: argument handling and output format (srd012-yes R2.1-R2.2, R3.1-R3.2)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd012-yes.yaml (R2.1-R2.2, R3.1-R3.2 requirements)
+      - cmd/yes/main.go (existing implementation from previous task)
+      - cmd/yes/yes_test.go (existing tests from previous task)
+
+    files:
+      - path: cmd/yes/main.go
+        action: modify
+        note: Add R2.x and R3.1-R3.2 functionality per SRD
+      - path: cmd/yes/yes_test.go
+        action: modify
+        note: Add differential test cases for R2.x and R3.1-R3.2 requirements
+
+    requirements:
+      - id: R1
+        text: Implement srd012-yes R2.1 per the SRD specification
+      - id: R2
+        text: Implement srd012-yes R2.2 per the SRD specification
+      - id: R3
+        text: Implement srd012-yes R3.1 per the SRD specification
+      - id: R4
+        text: Implement srd012-yes R3.2 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing main.go -- do not rewrite from scratch
+      - id: D2
+        text: Add differential test cases to the existing TestDiff function using testutils.RunDiffTests against the gyes reference binary
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R2.1-R2.2 and R3.1-R3.2 requirements from srd012-yes are implemented
+      - id: AC2
+        text: Differential tests pass against gyes for the new requirements
+      - id: AC3
+        text: go build ./cmd/yes/ compiles without errors
+      - id: AC4
+        text: go test ./cmd/yes/ -count=1 passes (or skips if gyes is absent)
+      - id: AC5
+        text: Previously implemented R1.x functionality still works -- no regressions
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/yes: edge cases, version, and help (srd012-yes R3.3, R4.1-R4.3)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd012-yes.yaml (R3.3, R4.1-R4.3 requirements)
+      - cmd/yes/main.go (existing implementation from previous tasks)
+      - cmd/yes/yes_test.go (existing tests from previous tasks)
+
+    files:
+      - path: cmd/yes/main.go
+        action: modify
+        note: Add R3.3 and R4.x functionality per SRD
+      - path: cmd/yes/yes_test.go
+        action: modify
+        note: Add differential test cases for R3.3 and R4.x requirements
+
+    requirements:
+      - id: R1
+        text: Implement srd012-yes R3.3 per the SRD specification
+      - id: R2
+        text: Implement srd012-yes R4.1 per the SRD specification
+      - id: R3
+        text: Implement srd012-yes R4.2 per the SRD specification
+      - id: R4
+        text: Implement srd012-yes R4.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing main.go -- do not rewrite from scratch
+      - id: D2
+        text: Add differential test cases to the existing TestDiff function using testutils.RunDiffTests against the gyes reference binary
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R3.3 and R4.1-R4.3 requirements from srd012-yes are implemented
+      - id: AC2
+        text: Differential tests pass against gyes for the new requirements
+      - id: AC3
+        text: go build ./cmd/yes/ compiles without errors
+      - id: AC4
+        text: go test ./cmd/yes/ -count=1 passes (or skips if gyes is absent)
+      - id: AC5
+        text: All previously implemented R1.x-R3.2 functionality still works -- no regressions
+      - id: AC6
+        text: cmd/yes is feature-complete per srd012-yes
+  dependency: 2
