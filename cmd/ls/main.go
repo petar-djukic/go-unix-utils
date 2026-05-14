@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd008-ls R1.1-R1.14, R2.1-R2.15.
+// Implements srd008-ls R1.1-R1.14, R2.1-R2.15, R3.1-R3.3.
 package main
 
 import (
@@ -39,6 +39,8 @@ Sort entries alphabetically if no flags given.
   -v             natural sort of (version) numbers within text
   -x             list entries by lines instead of by columns
   -1             list one file per line
+      --color[=WHEN]  colorize the output; WHEN can be 'always'
+                         (default if omitted), 'auto', or 'never'
       --help     display this help and exit
       --version  output version information and exit
 `
@@ -62,6 +64,7 @@ type options struct {
 	showInode      bool
 	showBlocks     bool
 	numericIds     bool
+	colorMode      string
 }
 
 func main() {
@@ -88,6 +91,10 @@ func parseArgs(args []string) (options, []string) {
 			os.Exit(0)
 		case arg == "--":
 			return opts, append(paths, args...)
+		case arg == "--color":
+			opts.colorMode = "always"
+		case strings.HasPrefix(arg, "--color="):
+			opts.colorMode = parseColorValue(arg)
 		case strings.HasPrefix(arg, "--"):
 			fmt.Fprintf(os.Stderr, "ls: unrecognized option '%s'\n", arg)
 			fmt.Fprintln(os.Stderr, "Try 'ls --help' for more information.")
@@ -173,7 +180,34 @@ func parseShortFlags(flags string, opts *options) {
 	}
 }
 
+func parseColorValue(arg string) string {
+	val := arg[len("--color="):]
+	switch val {
+	case "always", "auto", "never":
+		return val
+	default:
+		fmt.Fprintf(os.Stderr,
+			"ls: invalid argument '%s' for '--color'\n", val)
+		fmt.Fprintln(os.Stderr,
+			"Try 'ls --help' for more information.")
+		os.Exit(2)
+		return ""
+	}
+}
+
+func setupColor(opts options) {
+	switch opts.colorMode {
+	case "always":
+		format.SetColorEnabled(true)
+	case "auto":
+		format.SetColorEnabled(sys.IsTerminal(os.Stdout.Fd()))
+	default:
+		format.SetColorEnabled(false)
+	}
+}
+
 func run(paths []string, opts options) int {
+	setupColor(opts)
 	exitCode := 0
 	files, dirs := classifyPaths(paths, &exitCode, opts.dirAsEntry)
 	needSep := false
@@ -182,7 +216,7 @@ func run(paths []string, opts options) int {
 		if opts.longFormat {
 			exitCode = maxCode(exitCode, writeLongFiles(files, opts))
 		} else {
-			display := prependPrefixes(files, "", opts)
+			display := buildDisplayNames(files, "", opts)
 			writeEntries(display, opts)
 		}
 		needSep = true
@@ -237,7 +271,7 @@ func listDir(path string, opts options) int {
 	if opts.longFormat {
 		return writeLongDir(path, names, opts)
 	}
-	display := prependPrefixes(names, path, opts)
+	display := buildDisplayNames(names, path, opts)
 	writeEntries(display, opts)
 	return 0
 }
@@ -318,16 +352,14 @@ func sortEntries(names []string, basePath string, opts options) {
 	}
 }
 
-type prefixInfo struct {
+type entryInfo struct {
 	inode  uint64
 	blocks int64
+	mode   os.FileMode
 }
 
-func prependPrefixes(names []string, basePath string, opts options) []string {
-	if !opts.showInode && !opts.showBlocks {
-		return names
-	}
-	infos := make([]prefixInfo, len(names))
+func statDisplayEntries(names []string, basePath string) ([]entryInfo, int, int) {
+	infos := make([]entryInfo, len(names))
 	var inodeW, blocksW int
 	for i, name := range names {
 		p := name
@@ -338,7 +370,7 @@ func prependPrefixes(names []string, basePath string, opts options) []string {
 		if err != nil {
 			continue
 		}
-		infos[i] = prefixInfo{fi.Ino, fi.Blocks / 2}
+		infos[i] = entryInfo{fi.Ino, fi.Blocks / 2, fi.Mode}
 		if n := len(strconv.FormatUint(fi.Ino, 10)); n > inodeW {
 			inodeW = n
 		}
@@ -346,6 +378,16 @@ func prependPrefixes(names []string, basePath string, opts options) []string {
 			blocksW = n
 		}
 	}
+	return infos, inodeW, blocksW
+}
+
+func buildDisplayNames(names []string, basePath string, opts options) []string {
+	needPrefix := opts.showInode || opts.showBlocks
+	needColor := format.FileTypeColor(os.ModeDir) != ""
+	if !needPrefix && !needColor {
+		return names
+	}
+	infos, inodeW, blocksW := statDisplayEntries(names, basePath)
 	result := make([]string, len(names))
 	for i, name := range names {
 		var b strings.Builder
@@ -357,10 +399,18 @@ func prependPrefixes(names []string, basePath string, opts options) []string {
 			b.WriteString(format.PadLeft(strconv.FormatInt(infos[i].blocks, 10), blocksW))
 			b.WriteByte(' ')
 		}
-		b.WriteString(name)
+		b.WriteString(colorEntry(name, infos[i].mode))
 		result[i] = b.String()
 	}
 	return result
+}
+
+func colorEntry(name string, mode os.FileMode) string {
+	c := format.FileTypeColor(mode)
+	if c == "" {
+		return name
+	}
+	return c + name + format.Reset()
 }
 
 func writeEntries(names []string, opts options) {
@@ -622,7 +672,7 @@ func formatLongLine(e longEntry, w longWidths, opts options) string {
 	}
 	nlink := strconv.FormatUint(e.info.Nlink, 10)
 	size := strconv.FormatInt(e.info.Size, 10)
-	name := e.name
+	name := colorEntry(e.name, e.info.Mode)
 	if e.info.Mode&os.ModeSymlink != 0 {
 		if target, err := os.Readlink(e.path); err == nil {
 			name += " -> " + target
