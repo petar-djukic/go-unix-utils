@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -387,6 +388,48 @@ func TestExitZeroOnSuccess(t *testing.T) {
 	}
 }
 
+func TestDiffSIGINTSignal(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtee")
+	if err != nil {
+		t.Skip("reference binary gtee not found")
+	}
+	goStdout, goFile, goExit := runSIGINTTest(t, goBin, "go")
+	refStdout, refFile, refExit := runSIGINTTest(t, refBin, "ref")
+	if goExit != refExit {
+		t.Fatalf("exit code: go=%d ref=%d", goExit, refExit)
+	}
+	if !bytes.Equal(goStdout, refStdout) {
+		t.Fatalf("stdout divergence\n  go:  %q\n  ref: %q", goStdout, refStdout)
+	}
+	if !bytes.Equal(goFile, refFile) {
+		t.Fatalf("file divergence\n  go:  %q\n  ref: %q", goFile, refFile)
+	}
+}
+
+func TestFileMatchesStdout(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	input := []byte("verify\nbyte-for-byte\nmatch\n")
+	dir := t.TempDir()
+	fileA := filepath.Join(dir, "a.txt")
+	fileB := filepath.Join(dir, "b.txt")
+	cmd := exec.Command(goBin, fileA, fileB)
+	cmd.Stdin = bytes.NewReader(input)
+	stdout, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, p := range []string{fileA, fileB} {
+		got, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		if !bytes.Equal(got, stdout) {
+			t.Fatalf("%s content != stdout\n  file:   %q\n  stdout: %q", p, got, stdout)
+		}
+	}
+}
+
 func runCapture(
 	t *testing.T, binary string, stdin []byte, args ...string,
 ) (int, []byte, []byte) {
@@ -440,4 +483,47 @@ func allBytes() []byte {
 		b[i] = byte(i)
 	}
 	return b
+}
+
+func runSIGINTTest(t *testing.T, binary, label string) ([]byte, []byte, int) {
+	t.Helper()
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "out.txt")
+	cmd := exec.Command(binary, "-i", outFile)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("%s: stdin pipe: %v", label, err)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("%s: start: %v", label, err)
+	}
+	// Wait for the process to create the output file before proceeding.
+	for range 50 {
+		if _, serr := os.Stat(outFile); serr == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	stdin.Write([]byte("before\n"))
+	time.Sleep(100 * time.Millisecond)
+	cmd.Process.Signal(os.Interrupt)
+	time.Sleep(100 * time.Millisecond)
+	stdin.Write([]byte("after\n"))
+	stdin.Close()
+	exitCode := 0
+	if err := cmd.Wait(); err != nil {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("%s: wait: %v", label, err)
+		}
+	}
+	file, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("%s: read file: %v (stderr: %s)", label, err, stderr.String())
+	}
+	return stdout.Bytes(), file, exitCode
 }
