@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5128"
+task_title: '[stitch] cmd/false: differential tests (srd014-false R3.1-R3.2, R4.1-R4.3)'
+status: success
+started_at: "2026-05-14T02:36:25Z"
+duration: 3m25s
+duration_s: 205
+tokens:
+    input: 678547
+    output: 6592
+    cache_creation: 176943
+    cache_read: 501592
+cost_usd: 1.8158817500000002
+num_turns: 27
+rate_limit_wait_s: 3
+loc_before:
+    production: 1661
+    test: 683
+loc_after:
+    production: 1657
+    test: 727
+diff:
+    files: 3
+    insertions: 165
+    deletions: 8
