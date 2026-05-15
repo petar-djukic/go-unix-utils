@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd049-realpath R1.1-R1.5, R2.1-R2.3.
+// Implements srd049-realpath R1.1-R1.5, R2.1-R2.3, R3.1-R3.3, R4.1.
 package main
 
 import (
@@ -271,8 +271,7 @@ func doCanonM(absPath string) (string, error) {
 }
 
 func sysError(err error) string {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
+	if pe, ok := errors.AsType[*os.PathError](err); ok {
 		msg := pe.Err.Error()
 		if len(msg) > 0 {
 			return strings.ToUpper(msg[:1]) + msg[1:]

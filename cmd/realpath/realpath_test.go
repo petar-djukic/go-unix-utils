@@ -89,7 +89,7 @@ func TestDiff(t *testing.T) {
 			Name: "multiple-ok",
 			Args: []string{filepath.Join(dir, "file.txt"), filepath.Join(dir, "subdir")},
 		},
-		// Multiple operands: mixed results
+		// R3.3: multiple operands, mixed results
 		{
 			Name: "multiple-mixed",
 			Args: []string{
@@ -99,10 +99,33 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: errNorm,
 		},
-		// Error: no operand
+		// R3.1: no operand
 		{Name: "no-operand", ExitCode: 1, Normalize: errNorm},
-		// Error: unknown long flag
+		// R3.2: unknown long flag
 		{Name: "unknown-long-flag", Args: []string{"--bogus"}, ExitCode: 1, Normalize: errNorm},
+		// R3.2: unknown short flag
+		{Name: "unknown-short-flag", Args: []string{"-Z"}, ExitCode: 1, Normalize: errNorm},
+		// R3.3: multiple operands all failing
+		{
+			Name: "multiple-all-fail",
+			Args: []string{
+				filepath.Join(dir, "nodir", "a"),
+				filepath.Join(dir, "nodir", "b"),
+			},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R3.3: three operands, middle one fails
+		{
+			Name: "multiple-middle-fail",
+			Args: []string{
+				filepath.Join(dir, "file.txt"),
+				filepath.Join(dir, "nodir", "f"),
+				filepath.Join(dir, "subdir"),
+			},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
 		// R1.5: -s (strip/no-symlinks) does not resolve symlinks
 		{Name: "s-symlink-file", Args: []string{"-s", filepath.Join(dir, "link")}},
 		{Name: "s-symlink-dir", Args: []string{"-s", filepath.Join(dir, "dirlink")}},
