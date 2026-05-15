@@ -1,0 +1,31 @@
+task_id: "5258"
+task_title: '[stitch] cmd/nl: implement srd022-nl R2.1-R2.4'
+status: success
+branch: task/generation-run44-5258
+diff:
+    files: 4
+    insertions: 300
+    deletions: 4
+files:
+    - path: .cobbler/history/2026-05-14-23-37-48-stitch-orchestrator.log
+      status: M
+      insertions: 211
+      deletions: 0
+    - path: .cobbler/requirements.yaml
+      status: M
+      insertions: 8
+      deletions: 4
+    - path: cmd/nl/main.go
+      status: M
+      insertions: 6
+      deletions: 0
+    - path: cmd/nl/nl_test.go
+      status: M
+      insertions: 76
+      deletions: 0
+loc_before:
+    production: 6809
+    test: 5240
+loc_after:
+    production: 6815
+    test: 5316
