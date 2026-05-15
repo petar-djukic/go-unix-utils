@@ -193,7 +193,7 @@ code_status:
               testfiles: 0
             - id: rel04.1-uc002-readlink
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel04.1-uc003-pwd
