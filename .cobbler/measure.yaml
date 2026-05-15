@@ -6976,3 +6976,201 @@
       - id: AC5
         text: "go test ./cmd/tac/... -count=1 passes (or skips gracefully if gtac not found)"
   dependency: 2
+- index: 0
+  title: 'cmd/nl: srd022-nl (contract)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd022-nl.yaml (nl SRD -- all requirements and acceptance criteria define the flags, numbering styles, and behaviors)
+      - cmd/tac/main.go (reference for cmd/ package structure, flag parsing pattern, and InstallSIGPIPEHandler usage)
+      - cmd/tac/tac_test.go (reference for differential test structure using testutils.RunDiffTests)
+
+    files:
+      - path: cmd/nl/main.go
+        action: create
+        note: Package main with option struct, flag parsing, InstallSIGPIPEHandler call, and function stubs for all core processing
+      - path: cmd/nl/nl_test.go
+        action: create
+        note: TestDiff skeleton with BuildBinary, LookPath for gnl, empty DiffTest slice
+
+    requirements:
+      - id: R1
+        text: Create cmd/nl/main.go with package main, imports, and an options struct with fields for all flags defined in srd022-nl
+      - id: R2
+        text: Define main() that calls sys.InstallSIGPIPEHandler(), parses all flags into the options struct, and calls a stub processInput function that reads from stdin or file arguments
+      - id: R3
+        text: Define stub function signatures for core nl processing logic per srd022-nl -- stubs must compile but contain only placeholder logic (e.g. return nil)
+      - id: R4
+        text: Create cmd/nl/nl_test.go with TestDiff that calls testutils.BuildBinary(t, "."), exec.LookPath("gnl"), t.Skip if gnl not found, and testutils.RunDiffTests with an empty test slice
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() as the first statement in main() per project shared protocol
+      - id: D2
+        text: Use testutils.BuildBinary(t, ".") and testutils.RunDiffTests(t, goBin, refBin, tests) pattern per project shared protocol
+      - id: D3
+        text: Skip tests gracefully with t.Skip if gnl reference binary is not found via exec.LookPath
+      - id: D4
+        text: Derive all flag names, types, and default values from srd022-nl -- do not invent flags or defaults not specified in the SRD
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/nl/ compiles without errors
+      - id: AC2
+        text: go vet ./cmd/nl/ reports no issues
+      - id: AC3
+        text: go test ./cmd/nl/ -count=1 passes (tests skip if gnl not found, pass with empty test slice if found)
+      - id: AC4
+        text: All srd022-nl flags are represented as fields in the options struct with correct types and defaults
+      - id: AC5
+        text: All core processing functions have stub signatures that compile
+  dependency: -1
+- index: 1
+  title: 'cmd/tac: implement srd021-tac R4.1-R4.3'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd021-tac.yaml (tac SRD -- focus on requirements R4.1, R4.2, R4.3 and their acceptance criteria)
+      - cmd/tac/main.go (existing tac implementation covering R1.1-R3.4 -- extend without rewriting)
+      - cmd/tac/tac_test.go (existing differential tests -- add new DiffTest entries for R4.1-R4.3)
+
+    files:
+      - path: cmd/tac/main.go
+        action: modify
+        note: Add functionality for srd021-tac R4.1, R4.2, R4.3
+      - path: cmd/tac/tac_test.go
+        action: modify
+        note: Add DiffTest entries exercising R4.1, R4.2, R4.3
+
+    requirements:
+      - id: R1
+        text: Implement srd021-tac R4.1 per the SRD acceptance criteria
+      - id: R2
+        text: Implement srd021-tac R4.2 per the SRD acceptance criteria
+      - id: R3
+        text: Implement srd021-tac R4.3 per the SRD acceptance criteria
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/tac implementation -- do not rewrite or restructure code from R1.1-R3.4 that already works
+      - id: D2
+        text: Add DiffTest entries to the existing test slice in tac_test.go using the testutils.RunDiffTests pattern against gtac reference binary
+      - id: D3
+        text: Set LC_ALL=C in test Env fields per project convention for locale-independent comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd021-tac R4.1 acceptance criteria met per the SRD
+      - id: AC2
+        text: srd021-tac R4.2 acceptance criteria met per the SRD
+      - id: AC3
+        text: srd021-tac R4.3 acceptance criteria met per the SRD
+      - id: AC4
+        text: go build ./cmd/tac/ compiles without errors
+      - id: AC5
+        text: go test ./cmd/tac/ -count=1 passes (or skips gracefully if gtac not found)
+  dependency: -1
+- index: 2
+  title: 'cmd/nl: implement srd022-nl R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd022-nl.yaml (nl SRD -- focus on requirements R1.1, R1.2, R1.3, R1.4 and their acceptance criteria)
+      - cmd/nl/main.go (contract stubs created by the previous task -- fill in implementations)
+      - cmd/nl/nl_test.go (test skeleton created by the previous task -- add DiffTest entries)
+
+    files:
+      - path: cmd/nl/main.go
+        action: modify
+        note: Implement srd022-nl R1.1-R1.4 by filling in contract stubs with working logic
+      - path: cmd/nl/nl_test.go
+        action: modify
+        note: Add DiffTest entries covering R1.1-R1.4 behaviors
+
+    requirements:
+      - id: R1
+        text: Implement srd022-nl R1.1 per the SRD acceptance criteria
+      - id: R2
+        text: Implement srd022-nl R1.2 per the SRD acceptance criteria
+      - id: R3
+        text: Implement srd022-nl R1.3 per the SRD acceptance criteria
+      - id: R4
+        text: Implement srd022-nl R1.4 per the SRD acceptance criteria
+
+    design_decisions:
+      - id: D1
+        text: Fill in the function stubs created by the contract task -- do not restructure the package layout or rename functions
+      - id: D2
+        text: Add DiffTest entries to the existing test slice in nl_test.go using testutils.RunDiffTests against gnl reference binary
+      - id: D3
+        text: Set LC_ALL=C in all test Env fields per project convention for locale-independent comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd022-nl R1.1 acceptance criteria met per the SRD
+      - id: AC2
+        text: srd022-nl R1.2 acceptance criteria met per the SRD
+      - id: AC3
+        text: srd022-nl R1.3 acceptance criteria met per the SRD
+      - id: AC4
+        text: srd022-nl R1.4 acceptance criteria met per the SRD
+      - id: AC5
+        text: go build ./cmd/nl/ compiles without errors
+      - id: AC6
+        text: go test ./cmd/nl/ -count=1 passes (or skips gracefully if gnl not found)
+  dependency: 0
+- index: 3
+  title: 'cmd/nl: implement srd022-nl R2.1-R2.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd022-nl.yaml (nl SRD -- focus on requirements R2.1, R2.2, R2.3, R2.4 and their acceptance criteria)
+      - cmd/nl/main.go (existing implementation with R1.1-R1.4 -- extend without rewriting)
+      - cmd/nl/nl_test.go (existing tests with R1.1-R1.4 entries -- add new DiffTest entries)
+
+    files:
+      - path: cmd/nl/main.go
+        action: modify
+        note: Add functionality for srd022-nl R2.1-R2.4
+      - path: cmd/nl/nl_test.go
+        action: modify
+        note: Add DiffTest entries covering R2.1-R2.4 behaviors
+
+    requirements:
+      - id: R1
+        text: Implement srd022-nl R2.1 per the SRD acceptance criteria
+      - id: R2
+        text: Implement srd022-nl R2.2 per the SRD acceptance criteria
+      - id: R3
+        text: Implement srd022-nl R2.3 per the SRD acceptance criteria
+      - id: R4
+        text: Implement srd022-nl R2.4 per the SRD acceptance criteria
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing R1.1-R1.4 implementation -- do not rewrite or restructure working code
+      - id: D2
+        text: Add DiffTest entries to the existing test slice in nl_test.go using testutils.RunDiffTests against gnl reference binary
+      - id: D3
+        text: Set LC_ALL=C in all test Env fields per project convention for locale-independent comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd022-nl R2.1 acceptance criteria met per the SRD
+      - id: AC2
+        text: srd022-nl R2.2 acceptance criteria met per the SRD
+      - id: AC3
+        text: srd022-nl R2.3 acceptance criteria met per the SRD
+      - id: AC4
+        text: srd022-nl R2.4 acceptance criteria met per the SRD
+      - id: AC5
+        text: go build ./cmd/nl/ compiles without errors
+      - id: AC6
+        text: go test ./cmd/nl/ -count=1 passes (or skips gracefully if gnl not found)
+      - id: AC7
+        text: Existing R1.1-R1.4 differential tests still pass -- no regressions from R2.1-R2.4 additions
+  dependency: 2
