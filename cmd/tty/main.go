@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd052-tty R1.1-R2.1.
+// Implements srd052-tty R1.1-R2.2.
 package main
 
 /*
