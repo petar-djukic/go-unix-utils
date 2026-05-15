@@ -282,6 +282,9 @@ func processInput(r io.Reader, opts options, state *nlState, w *bufio.Writer) er
 		}
 		if line == bodyDelim {
 			state.section = "body"
+			if !opts.noReset {
+				state.lineNum = opts.startNum
+			}
 			state.blankCount = 0
 			if _, err := fmt.Fprint(w, "\n"); err != nil {
 				return err
@@ -290,6 +293,9 @@ func processInput(r io.Reader, opts options, state *nlState, w *bufio.Writer) er
 		}
 		if line == footerDelim {
 			state.section = "footer"
+			if !opts.noReset {
+				state.lineNum = opts.startNum
+			}
 			state.blankCount = 0
 			if _, err := fmt.Fprint(w, "\n"); err != nil {
 				return err

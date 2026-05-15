@@ -58,6 +58,82 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+func TestDiffR2(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:  "R2.1_body_style_a",
+			Args:  []string{"-b", "a"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_body_style_t",
+			Args:  []string{"-b", "t"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_body_style_n",
+			Args:  []string{"-b", "n"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_body_style_p_regex",
+			Args:  []string{"-b", "p^[ab]"},
+			Stdin: []byte("apple\nbanana\ncherry\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_header_style_a",
+			Args:  []string{"-h", "a"},
+			Stdin: []byte("\\:\\:\\:\nheader1\nheader2\n\\:\\:\nbody1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_header_style_default_n",
+			Stdin: []byte("\\:\\:\\:\nheader1\nheader2\n\\:\\:\nbody1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_footer_style_a",
+			Args:  []string{"-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nheader1\n\\:\\:\nbody1\n\\:\nfooter1\nfooter2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_footer_style_default_n",
+			Stdin: []byte("\\:\\:\\:\nheader1\n\\:\\:\nbody1\n\\:\nfooter1\nfooter2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.4_style_n_no_number_no_separator",
+			Args:  []string{"-b", "n"},
+			Stdin: []byte("line1\nline2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_R2.2_R2.3_all_sections_styled",
+			Args:  []string{"-h", "a", "-b", "a", "-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nh1\nh2\n\\:\\:\nb1\nb2\n\\:\nf1\nf2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_body_style_p_no_match",
+			Args:  []string{"-b", "p^z"},
+			Stdin: []byte("apple\nbanana\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 func TestDiffFiles(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gnl")
