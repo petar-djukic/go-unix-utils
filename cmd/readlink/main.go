@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd050-readlink R1.1-R1.6, R2.1-R2.2.
+// Implements srd050-readlink R1.1-R1.6, R2.1-R2.2, R3.1-R3.2.
 package main
 
 import (

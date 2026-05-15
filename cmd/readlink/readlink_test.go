@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd050-readlink R1.5-R1.6, R2.1-R2.2, R4.1-R4.3.
+// Implements srd050-readlink R1.5-R1.6, R2.1-R2.2, R3.1-R3.2, R4.1-R4.3.
 package main
 
 import (
@@ -79,10 +79,12 @@ func TestDiff(t *testing.T) {
 		{Name: "e-missing", Args: []string{"-e", partialPath}, Env: lcEnv, ExitCode: 1},
 		// R1.4: --canonicalize-existing long form
 		{Name: "e-long", Args: []string{"--canonicalize-existing", regularFile}, Env: lcEnv},
-		// Error: no operand
+		// R3.1: no operand
 		{Name: "error-no-operand", Env: lcEnv, ExitCode: 1, Normalize: errorNorm},
-		// Error: unknown flag
+		// R3.2: unknown long flag
 		{Name: "error-unknown-flag", Args: []string{"--bogus"}, Env: lcEnv, ExitCode: 1, Normalize: errorNorm},
+		// R3.2: unknown short flag
+		{Name: "error-unknown-short-flag", Args: []string{"-Q"}, Env: lcEnv, ExitCode: 1, Normalize: errorNorm},
 		// R1.5: -m with completely missing path
 		{Name: "m-missing", Args: []string{"-m", missingPath}, Env: lcEnv},
 		// R1.5: -m with partial path (parent exists, file doesn't)
