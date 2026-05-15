@@ -1,0 +1,194 @@
+- index: 0
+  title: "[stitch] cmd/pwd: features implementation (srd051-pwd R3.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd051-pwd.yaml (requirement R3.3 specification)
+      - cmd/pwd/main.go (existing pwd implementation to modify)
+      - cmd/pwd/pwd_test.go (existing differential test file to update)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/pwd/main.go
+        action: modify
+        note: Add R3.3 feature to existing pwd implementation
+      - path: cmd/pwd/pwd_test.go
+        action: modify
+        note: Add differential test cases for R3.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd051-pwd requirement R3.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code patterns in cmd/pwd/main.go"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for differential testing against gpwd"
+      - id: D3
+        text: "Set LC_ALL=C in all differential test environments"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd051-pwd requirement R3.3 is implemented per the SRD"
+      - id: AC2
+        text: "go build -o bin/pwd ./cmd/pwd/ succeeds with no errors"
+      - id: AC3
+        text: "go vet ./cmd/pwd/ reports no issues"
+      - id: AC4
+        text: "go test ./cmd/pwd/... -count=1 passes"
+
+- index: 1
+  title: "[stitch] cmd/readlink: features implementation (srd050-readlink R1.1-R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd050-readlink.yaml (requirements R1.1 through R1.4)
+      - pkg/sys/ (InstallSIGPIPEHandler function for SIGPIPE handling)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/readlink/main.go
+        action: create
+        note: "readlink utility -- prints symlink targets and canonicalizes paths via -f, -e, -m modes"
+      - path: cmd/readlink/readlink_test.go
+        action: create
+        note: Differential tests against greadlink from Homebrew coreutils
+
+    requirements:
+      - id: R1
+        text: "Implement srd050-readlink requirement R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd050-readlink requirement R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd050-readlink requirement R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd050-readlink requirement R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() to match GNU coreutils behavior"
+      - id: D2
+        text: "Use os.Readlink for the core readlink(2) system call"
+      - id: D3
+        text: "Use pkg/testutils.BuildBinary(t, '.') to compile the Go binary for differential tests"
+      - id: D4
+        text: "Call exec.LookPath('greadlink') and t.Skip if the reference binary is not found"
+      - id: D5
+        text: "Set LC_ALL=C in all differential test environments"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/readlink/main.go compiles -- go build -o bin/readlink ./cmd/readlink/"
+      - id: AC2
+        text: "go vet ./cmd/readlink/ reports no issues"
+      - id: AC3
+        text: "R1.1 through R1.4 features work correctly per the SRD"
+      - id: AC4
+        text: "go test ./cmd/readlink/... -count=1 passes"
+      - id: AC5
+        text: "Differential tests match greadlink output for R1.1-R1.4 test cases"
+
+- index: 2
+  title: "[stitch] cmd/readlink: features implementation (srd050-readlink R1.5-R1.6, R2.1-R2.2)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd050-readlink.yaml (requirements R1.5, R1.6, R2.1, R2.2)
+      - cmd/readlink/main.go (existing implementation from prior task)
+      - cmd/readlink/readlink_test.go (existing differential test file to extend)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/readlink/main.go
+        action: modify
+        note: Add R1.5, R1.6, R2.1, R2.2 features to existing readlink implementation
+      - path: cmd/readlink/readlink_test.go
+        action: modify
+        note: Add differential test cases for R1.5, R1.6, R2.1, R2.2
+
+    requirements:
+      - id: R1
+        text: "Implement srd050-readlink requirement R1.5 as specified in the SRD"
+      - id: R2
+        text: "Implement srd050-readlink requirement R1.6 as specified in the SRD"
+      - id: R3
+        text: "Implement srd050-readlink requirement R2.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd050-readlink requirement R2.2 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing flag parsing and dispatch logic in cmd/readlink/main.go"
+      - id: D2
+        text: "Add new DiffTest entries to the existing test slice in readlink_test.go"
+      - id: D3
+        text: "Set LC_ALL=C in all new differential test environments"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/readlink/main.go compiles -- go build -o bin/readlink ./cmd/readlink/"
+      - id: AC2
+        text: "go vet ./cmd/readlink/ reports no issues"
+      - id: AC3
+        text: "R1.5, R1.6, R2.1, R2.2 features work correctly per the SRD"
+      - id: AC4
+        text: "go test ./cmd/readlink/... -count=1 passes (all tests including prior features)"
+      - id: AC5
+        text: "Differential tests match greadlink output for all implemented features"
+
+- index: 3
+  title: "[stitch] cmd/readlink: features implementation (srd050-readlink R3.1-R3.2, R4.1-R4.2)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd050-readlink.yaml (requirements R3.1, R3.2, R4.1, R4.2)
+      - cmd/readlink/main.go (existing implementation from prior tasks)
+      - cmd/readlink/readlink_test.go (existing differential test file to extend)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/readlink/main.go
+        action: modify
+        note: Add R3.1, R3.2, R4.1, R4.2 features to existing readlink implementation
+      - path: cmd/readlink/readlink_test.go
+        action: modify
+        note: Add differential test cases for R3.1, R3.2, R4.1, R4.2
+
+    requirements:
+      - id: R1
+        text: "Implement srd050-readlink requirement R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd050-readlink requirement R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd050-readlink requirement R4.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd050-readlink requirement R4.2 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing flag parsing and dispatch logic in cmd/readlink/main.go"
+      - id: D2
+        text: "Add new DiffTest entries to the existing test slice in readlink_test.go"
+      - id: D3
+        text: "Set LC_ALL=C in all new differential test environments"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/readlink/main.go compiles -- go build -o bin/readlink ./cmd/readlink/"
+      - id: AC2
+        text: "go vet ./cmd/readlink/ reports no issues"
+      - id: AC3
+        text: "R3.1, R3.2, R4.1, R4.2 features work correctly per the SRD"
+      - id: AC4
+        text: "go test ./cmd/readlink/... -count=1 passes (all tests including prior features)"
+      - id: AC5
+        text: "Differential tests match greadlink output for all implemented features"

@@ -203,7 +203,7 @@ code_status:
               testfiles: 0
             - id: rel04.1-uc004-tty
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel04.1-uc005-logname
