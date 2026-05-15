@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5275"
+task_title: '[stitch] cmd/unexpand: implement srd025-unexpand R2.1-R2.3'
+status: success
+started_at: "2026-05-15T14:38:18Z"
+duration: 4m19s
+duration_s: 258
+tokens:
+    input: 554769
+    output: 10077
+    cache_creation: 195657
+    cache_read: 359097
+cost_usd: 2.0481632000000003
+num_turns: 27
+rate_limit_wait_s: 2
+loc_before:
+    production: 7487
+    test: 6037
+loc_after:
+    production: 7494
+    test: 6188
+diff:
+    files: 3
+    insertions: 291
+    deletions: 7
