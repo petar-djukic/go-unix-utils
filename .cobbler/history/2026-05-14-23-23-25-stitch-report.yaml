@@ -1,0 +1,27 @@
+task_id: "5255"
+task_title: '[stitch] cmd/nl: srd022-nl (contract)'
+status: success
+branch: task/generation-run44-5255
+diff:
+    files: 3
+    insertions: 370
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-14-23-23-15-stitch-orchestrator.log
+      status: M
+      insertions: 104
+      deletions: 0
+    - path: cmd/nl/main.go
+      status: A
+      insertions: 208
+      deletions: 0
+    - path: cmd/nl/nl_test.go
+      status: A
+      insertions: 59
+      deletions: 0
+loc_before:
+    production: 6483
+    test: 5114
+loc_after:
+    production: 6691
+    test: 5173
