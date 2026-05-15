@@ -146,6 +146,89 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-a"},
 			Stdin: []byte("a       b\n"),
 		},
+
+		// R3.1: -t N sets uniform interval
+		{
+			Name:  "t4_leading_4_spaces",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    text\n"),
+		},
+		{
+			Name:  "t4_leading_8_spaces",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("        text\n"),
+		},
+		{
+			Name:  "t4_leading_3_spaces_no_tab",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("   text\n"),
+		},
+		{
+			Name:  "t4_non_leading_spaces",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a   b\n"),
+		},
+		{
+			Name:  "t4_multiple_runs",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a   b   c\n"),
+		},
+
+		// R3.1: -t LIST sets absolute tab stop positions
+		{
+			Name:  "tlist_4_8_leading_spaces",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("    text\n"),
+		},
+		{
+			Name:  "tlist_4_8_12_leading_12",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("            text\n"),
+		},
+		{
+			Name:  "tlist_4_8_midline",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("a   b   c\n"),
+		},
+
+		// R3.2: past last explicit stop, spaces kept as-is
+		{
+			Name:  "tlist_4_8_past_last_stop",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("            text\n"),
+		},
+		{
+			Name:  "tlist_4_past_last_nonleading",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a               b\n"),
+		},
+		{
+			Name:  "tlist_4_8_spaces_beyond_stop",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("a       b       c\n"),
+		},
+		{
+			Name:  "tlist_4_only_past_stop",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("1234567890          end\n"),
+		},
+
+		// R3.3: -t implies -a (no explicit -a needed)
+		{
+			Name:  "t4_implies_a_non_leading",
+			Args:  []string{"-t4"},
+			Stdin: []byte("a   b   c\n"),
+		},
+		{
+			Name:  "tlist_implies_a",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("a   b       c\n"),
+		},
+		{
+			Name:  "t4_implies_a_mixed",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("    a   b\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

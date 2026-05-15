@@ -204,17 +204,26 @@ func nextTabStop(col int, stops tabStops) int {
 	return col + 1
 }
 
+func pastLastStop(col int, stops tabStops) bool {
+	if stops.positions == nil {
+		return false
+	}
+	return col-1 >= stops.positions[len(stops.positions)-1]
+}
+
 func emitCompacted(w *bufio.Writer, startCol int, count int, stops tabStops) {
 	col := startCol
 	end := startCol + count
 	for col < end {
-		next := nextTabStop(col, stops)
-		if next <= end {
-			w.WriteByte('\t')
-			col = next
-		} else {
-			w.WriteByte(' ')
-			col++
+		if !pastLastStop(col, stops) {
+			next := nextTabStop(col, stops)
+			if next <= end {
+				w.WriteByte('\t')
+				col = next
+				continue
+			}
 		}
+		w.WriteByte(' ')
+		col++
 	}
 }
