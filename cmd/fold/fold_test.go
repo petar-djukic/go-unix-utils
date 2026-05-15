@@ -4,6 +4,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"testing"
 
@@ -320,4 +321,58 @@ func TestDiff(t *testing.T) {
 		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffExitCodes(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gfold")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "valid.txt", "hello world\n")
+
+	discardStderr := testutils.NormalizeFunc(func([]byte) []byte { return nil })
+
+	tests := []testutils.DiffTest{
+		{
+			Name:    "R4.1_success_exit_0",
+			Args:    []string{"valid.txt"},
+			WorkDir: dir,
+			Env:     []string{"LC_ALL=C"},
+		},
+		{
+			Name:      "R4.2_nonexistent_file_exit_1",
+			Args:      []string{"nonexistent.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+			Env:       []string{"LC_ALL=C"},
+		},
+		{
+			Name:      "R4.2_nonexistent_with_valid_continues",
+			Args:      []string{"nonexistent.txt", "valid.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+			Env:       []string{"LC_ALL=C"},
+		},
+		{
+			Name:      "R4.2_valid_then_nonexistent",
+			Args:      []string{"valid.txt", "nonexistent.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+			Env:       []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func writeFixture(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(dir+"/"+name, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
