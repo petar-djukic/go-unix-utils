@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Implements srd051-pwd R3.1-R3.3.
 package main
 
 import (
