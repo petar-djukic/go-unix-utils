@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5260"
+task_title: '[stitch] cmd/fold: implement srd023-fold R1.1-R1.4'
+status: success
+started_at: "2026-05-15T03:50:07Z"
+duration: 3m57s
+duration_s: 236
+tokens:
+    input: 692009
+    output: 9079
+    cache_creation: 196341
+    cache_read: 495649
+cost_usd: 2.0871652000000003
+num_turns: 40
+loc_before:
+    production: 6815
+    test: 5316
+loc_after:
+    production: 7118
+    test: 5453
+diff:
+    files: 3
+    insertions: 592
+    deletions: 0
