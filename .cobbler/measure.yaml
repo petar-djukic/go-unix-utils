@@ -6391,3 +6391,202 @@
       - id: AC5
         text: "Differential tests match greadlink output for all implemented features"
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/readlink: features implementation (srd050-readlink R4.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd050-readlink.yaml (full SRD for readlink)
+      - cmd/readlink/main.go (existing implementation to extend)
+      - cmd/readlink/readlink_test.go (existing differential tests to extend)
+      - pkg/testutils/ (differential testing pattern)
+
+    files:
+      - path: cmd/readlink/main.go
+        action: modify
+        note: Implement behavior for srd050-readlink R4.3
+      - path: cmd/readlink/readlink_test.go
+        action: modify
+        note: Add differential test cases for R4.3
+
+    requirements:
+      - id: R1
+        text: Implement srd050-readlink requirement R4.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Follow the existing code structure in cmd/readlink/main.go -- extend rather than rewrite
+      - id: D2
+        text: Use testutils.RunDiffTests with reference binary greadlink for differential testing
+      - id: D3
+        text: Call sys.InstallSIGPIPEHandler() at start of main (already present -- do not remove)
+
+    acceptance_criteria:
+      - id: AC1
+        text: R4.3 behavior implemented per the SRD
+      - id: AC2
+        text: Differential test cases added that exercise R4.3
+      - id: AC3
+        text: go build ./cmd/readlink/ succeeds with no errors
+      - id: AC4
+        text: go test ./cmd/readlink/ -count=1 passes (or skips gracefully if greadlink not in PATH)
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/realpath: features implementation (srd049-realpath R1.1-R1.2, R1.3-R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd049-realpath.yaml (full SRD for realpath)
+      - pkg/sys/sys.go (InstallSIGPIPEHandler and file metadata)
+      - pkg/testutils/ (differential testing pattern -- RunDiffTests, BuildBinary, DiffTest struct)
+
+    files:
+      - path: cmd/realpath/main.go
+        action: create
+        note: Main implementation of realpath covering R1.1 through R1.4
+      - path: cmd/realpath/realpath_test.go
+        action: create
+        note: Differential tests against grealpath for R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: Implement srd049-realpath requirement R1.1 per the SRD specification
+      - id: R2
+        text: Implement srd049-realpath requirement R1.2 per the SRD specification
+      - id: R3
+        text: Implement srd049-realpath requirement R1.3 per the SRD specification
+      - id: R4
+        text: Implement srd049-realpath requirement R1.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at start of main per project SIGPIPE protocol
+      - id: D2
+        text: Use testutils.BuildBinary(t, ".") and exec.LookPath("grealpath") for differential testing
+      - id: D3
+        text: Skip tests with t.Skip if grealpath reference binary not found in PATH
+      - id: D4
+        text: Set LC_ALL=C in test environment per project differential testing protocol
+      - id: D5
+        text: Use flag or manual argument parsing as specified in the SRD -- do not use third-party CLI libraries
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/realpath/main.go created with R1.1-R1.4 behavior implemented per SRD
+      - id: AC2
+        text: cmd/realpath/realpath_test.go created with differential test cases for R1.1-R1.4
+      - id: AC3
+        text: go build ./cmd/realpath/ succeeds with no errors
+      - id: AC4
+        text: go vet ./cmd/realpath/ reports no issues
+      - id: AC5
+        text: go test ./cmd/realpath/ -count=1 passes (or skips gracefully if grealpath not in PATH)
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/realpath: features implementation (srd049-realpath R1.5, R2.1-R2.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd049-realpath.yaml (full SRD for realpath)
+      - cmd/realpath/main.go (existing implementation from prior task)
+      - cmd/realpath/realpath_test.go (existing differential tests from prior task)
+      - pkg/testutils/ (differential testing pattern -- RunDiffTests, BuildBinary, DiffTest struct)
+
+    files:
+      - path: cmd/realpath/main.go
+        action: modify
+        note: Add R1.5 and R2.1-R2.3 features to existing realpath implementation
+      - path: cmd/realpath/realpath_test.go
+        action: modify
+        note: Add differential test cases for R1.5 and R2.1-R2.3
+
+    requirements:
+      - id: R1
+        text: Implement srd049-realpath requirement R1.5 per the SRD specification
+      - id: R2
+        text: Implement srd049-realpath requirement R2.1 per the SRD specification
+      - id: R3
+        text: Implement srd049-realpath requirement R2.2 per the SRD specification
+      - id: R4
+        text: Implement srd049-realpath requirement R2.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing main.go structure -- do not rewrite code from prior requirements (R1.1-R1.4)
+      - id: D2
+        text: Use testutils.RunDiffTests with reference binary grealpath for differential testing
+      - id: D3
+        text: Add new test cases to the existing tests slice in realpath_test.go
+      - id: D4
+        text: Set LC_ALL=C in test environment per project differential testing protocol
+
+    acceptance_criteria:
+      - id: AC1
+        text: R1.5 and R2.1-R2.3 behavior implemented per the SRD
+      - id: AC2
+        text: Differential test cases added for R1.5 and R2.1-R2.3
+      - id: AC3
+        text: go build ./cmd/realpath/ succeeds with no errors
+      - id: AC4
+        text: go vet ./cmd/realpath/ reports no issues
+      - id: AC5
+        text: go test ./cmd/realpath/ -count=1 passes (or skips gracefully if grealpath not in PATH)
+      - id: AC6
+        text: Previously implemented R1.1-R1.4 functionality is not broken
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/realpath: features implementation (srd049-realpath R3.1-R3.3, R4.1)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd049-realpath.yaml (full SRD for realpath)
+      - cmd/realpath/main.go (existing implementation from prior tasks)
+      - cmd/realpath/realpath_test.go (existing differential tests from prior tasks)
+      - pkg/testutils/ (differential testing pattern -- RunDiffTests, BuildBinary, DiffTest struct)
+
+    files:
+      - path: cmd/realpath/main.go
+        action: modify
+        note: Add R3.1-R3.3 and R4.1 features to existing realpath implementation
+      - path: cmd/realpath/realpath_test.go
+        action: modify
+        note: Add differential test cases for R3.1-R3.3 and R4.1
+
+    requirements:
+      - id: R1
+        text: Implement srd049-realpath requirement R3.1 per the SRD specification
+      - id: R2
+        text: Implement srd049-realpath requirement R3.2 per the SRD specification
+      - id: R3
+        text: Implement srd049-realpath requirement R3.3 per the SRD specification
+      - id: R4
+        text: Implement srd049-realpath requirement R4.1 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing main.go structure -- do not rewrite code from prior requirements (R1.1-R2.3)
+      - id: D2
+        text: Use testutils.RunDiffTests with reference binary grealpath for differential testing
+      - id: D3
+        text: Add new test cases to the existing tests slice in realpath_test.go
+      - id: D4
+        text: Set LC_ALL=C in test environment per project differential testing protocol
+
+    acceptance_criteria:
+      - id: AC1
+        text: R3.1-R3.3 and R4.1 behavior implemented per the SRD
+      - id: AC2
+        text: Differential test cases added for R3.1-R3.3 and R4.1
+      - id: AC3
+        text: go build ./cmd/realpath/ succeeds with no errors
+      - id: AC4
+        text: go vet ./cmd/realpath/ reports no issues
+      - id: AC5
+        text: go test ./cmd/realpath/ -count=1 passes (or skips gracefully if grealpath not in PATH)
+      - id: AC6
+        text: Previously implemented R1.1-R2.3 functionality is not broken
+  dependency: 2
