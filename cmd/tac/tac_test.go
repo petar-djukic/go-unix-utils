@@ -149,6 +149,41 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("abc"),
 			Env:   []string{"LC_ALL=C"},
 		},
+		// R2.3: -r interprets separator as regex
+		{
+			Name:  "regex-digit-sep",
+			Args:  []string{"-r", "-s", "[0-9]+"},
+			Stdin: []byte("a1b22c"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -r with dot regex
+		{
+			Name:  "regex-dot-sep",
+			Args:  []string{"-r", "-s", ":+"},
+			Stdin: []byte("a:b::c:::d:"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: -r and -s combined with trailing match
+		{
+			Name:  "regex-combined-trailing",
+			Args:  []string{"-r", "-s", "[;,]+"},
+			Stdin: []byte("a;b,,c;"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.4: -r and -s combined with -b (before)
+		{
+			Name:  "regex-before",
+			Args:  []string{"-r", "-b", "-s", "[0-9]+"},
+			Stdin: []byte("1a2b3c"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		// R2.3: -r with no trailing match
+		{
+			Name:  "regex-no-trailing",
+			Args:  []string{"-r", "-s", "[0-9]+"},
+			Stdin: []byte("a1b2c"),
+			Env:   []string{"LC_ALL=C"},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

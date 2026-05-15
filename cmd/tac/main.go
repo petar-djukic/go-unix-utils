@@ -156,7 +156,7 @@ func reverseInput(input string, opts options) string {
 
 func findMatches(input string, opts options) [][]int {
 	if opts.regex {
-		re, err := regexp.Compile(opts.separator)
+		re, err := regexp.Compile("(?U)" + opts.separator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "tac: %s: %s\n", opts.separator, err)
 			return nil
