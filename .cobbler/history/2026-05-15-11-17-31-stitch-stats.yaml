@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5285"
+task_title: '[stitch] cmd/cut -- srd026 R4.1-R4.4'
+status: success
+started_at: "2026-05-15T15:17:31Z"
+duration: 6m50s
+duration_s: 410
+tokens:
+    input: 531570
+    output: 14948
+    cache_creation: 205544
+    cache_read: 326013
+cost_usd: 2.4048943499999997
+num_turns: 59
+rate_limit_wait_s: 3
+loc_before:
+    production: 8024
+    test: 6383
+loc_after:
+    production: 8024
+    test: 6463
+diff:
+    files: 2
+    insertions: 323
+    deletions: 1
