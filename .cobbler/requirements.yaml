@@ -2643,7 +2643,8 @@ requirements:
             issue: 5238
             weight: 1
         R4.3:
-            status: in_progress
+            status: uncertain
+            issue: 5240
             weight: 1
     srd051-pwd:
         R1.1:
