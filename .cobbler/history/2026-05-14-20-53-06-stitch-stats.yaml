@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5235"
+task_title: '[stitch] cmd/pwd: features implementation (srd051-pwd R3.3)'
+status: success
+started_at: "2026-05-15T00:53:06Z"
+duration: 1m59s
+duration_s: 119
+tokens:
+    input: 308171
+    output: 2812
+    cache_creation: 179442
+    cache_read: 128720
+cost_usd: 1.594402
+num_turns: 14
+rate_limit_wait_s: 3
+loc_before:
+    production: 5634
+    test: 4418
+loc_after:
+    production: 5634
+    test: 4436
+diff:
+    files: 3
+    insertions: 109
+    deletions: 1
