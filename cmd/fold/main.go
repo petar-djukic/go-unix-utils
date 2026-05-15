@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd023-fold R1.1-R1.4, R2.1-R2.3.
+// Implements srd023-fold R1.1-R1.4, R2.1-R2.3, R3.1-R3.4.
 package main
 
 import (
@@ -240,13 +240,13 @@ func wrapColumnMode(line []byte, opts options, w *bufio.Writer) error {
 			col = recalcColumn(line[start:i+1], 0)
 			lastSpace = -1
 			for j := start; j <= i; j++ {
-				if line[j] == ' ' {
+				if line[j] == ' ' || line[j] == '\t' {
 					lastSpace = j
 				}
 			}
 			continue
 		}
-		if b == ' ' {
+		if b == ' ' || b == '\t' {
 			lastSpace = i
 		}
 		col = nextCol
@@ -289,7 +289,7 @@ func breakAtSpace(line []byte, width int) []byte {
 	}
 	seg := line[:width]
 	for i := len(seg) - 1; i >= 0; i-- {
-		if seg[i] == ' ' {
+		if seg[i] == ' ' || seg[i] == '\t' {
 			return seg[:i+1]
 		}
 	}

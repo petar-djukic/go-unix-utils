@@ -228,6 +228,96 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("abcdefghij\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
+		{
+			Name:  "R3.1_space_break_basic",
+			Args:  []string{"-s", "-w", "11"},
+			Stdin: []byte("hello world foo bar\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_space_break_multiple_spaces",
+			Args:  []string{"-s", "-w", "10"},
+			Stdin: []byte("aa bb cc dd ee ff gg\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_space_break_exact_boundary",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_space_break_short_line",
+			Args:  []string{"-s", "-w", "20"},
+			Stdin: []byte("hello world\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_no_space_fallback",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("abcdefghijklmno\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_no_space_then_space",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("abcdefgh ij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.3_space_included_before_newline",
+			Args:  []string{"-s", "-w", "6"},
+			Stdin: []byte("aa bb cc dd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.3_trailing_spaces",
+			Args:  []string{"-s", "-w", "8"},
+			Stdin: []byte("abc def ghi jkl\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.3_space_at_width",
+			Args:  []string{"-s", "-w", "5"},
+			Stdin: []byte("abcd efgh\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.4_space_break_byte_mode",
+			Args:  []string{"-bs", "-w", "8"},
+			Stdin: []byte("hello world foo bar\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.4_space_break_byte_mode_no_space",
+			Args:  []string{"-b", "-s", "-w", "5"},
+			Stdin: []byte("abcdefghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.4_space_break_byte_mode_multibyte",
+			Args:  []string{"-bs", "-w", "6"},
+			Stdin: []byte("\xc3\xa9\xc3\xa9 \xc3\xa9\xc3\xa9 \xc3\xa9\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_space_break_no_trailing_newline",
+			Args:  []string{"-s", "-w", "6"},
+			Stdin: []byte("aa bb cc dd"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_space_break_multiple_lines",
+			Args:  []string{"-s", "-w", "10"},
+			Stdin: []byte("hello world foo\nbar baz qux quux\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_space_break_with_tab",
+			Args:  []string{"-s", "-w", "12"},
+			Stdin: []byte("hello\tworld test\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
