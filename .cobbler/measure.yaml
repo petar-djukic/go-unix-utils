@@ -6590,3 +6590,201 @@
       - id: AC6
         text: Previously implemented R1.1-R2.3 functionality is not broken
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/realpath: features implementation (srd049-realpath R4.2, R4.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd049-realpath.yaml (R4.2 and R4.3 requirements)
+      - cmd/realpath/main.go (existing implementation to extend)
+      - cmd/realpath/realpath_test.go (existing differential tests to extend)
+
+    files:
+      - path: cmd/realpath/main.go
+        action: modify
+        note: Implement R4.2 and R4.3 features
+      - path: cmd/realpath/realpath_test.go
+        action: modify
+        note: Add differential test cases for R4.2 and R4.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd049-realpath R4.2 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R2
+        text: "Implement srd049-realpath R4.3 -- read the SRD for the exact specification and implement the described behavior"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/realpath/main.go code structure -- do not restructure or refactor existing code"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests with reference binary grealpath for differential testing"
+      - id: D3
+        text: "Call exec.LookPath for grealpath and t.Skip if not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd049-realpath R4.2 implemented and behavior matches grealpath reference binary"
+      - id: AC2
+        text: "srd049-realpath R4.3 implemented and behavior matches grealpath reference binary"
+      - id: AC3
+        text: "go build ./cmd/realpath/ compiles without errors"
+      - id: AC4
+        text: "go test ./cmd/realpath/ -count=1 passes (or skips gracefully if grealpath not found)"
+      - id: AC5
+        text: "go vet ./cmd/realpath/ reports no issues"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/echo: features implementation (srd020-echo R1.1-R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd020-echo.yaml (R1.1 through R1.4 specification)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler pattern for SIGPIPE handling)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function signature)
+
+    files:
+      - path: cmd/echo/main.go
+        action: create
+        note: "echo implementation covering R1.1-R1.4 core behavior"
+      - path: cmd/echo/echo_test.go
+        action: create
+        note: "Differential tests for R1.1-R1.4 against gecho"
+
+    requirements:
+      - id: R1
+        text: "Implement srd020-echo R1.1 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R2
+        text: "Implement srd020-echo R1.2 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R3
+        text: "Implement srd020-echo R1.3 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R4
+        text: "Implement srd020-echo R1.4 -- read the SRD for the exact specification and implement the described behavior"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the project SIGPIPE protocol"
+      - id: D2
+        text: "Use pkg/testutils.BuildBinary(t, \".\") and RunDiffTests for differential testing against gecho"
+      - id: D3
+        text: "Call exec.LookPath for gecho and t.Skip if not found"
+      - id: D4
+        text: "Set LC_ALL=C in test environment for consistent cross-platform behavior"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd020-echo R1.1 implemented and behavior matches gecho reference binary"
+      - id: AC2
+        text: "srd020-echo R1.2 implemented and behavior matches gecho reference binary"
+      - id: AC3
+        text: "srd020-echo R1.3 implemented and behavior matches gecho reference binary"
+      - id: AC4
+        text: "srd020-echo R1.4 implemented and behavior matches gecho reference binary"
+      - id: AC5
+        text: "go build ./cmd/echo/ compiles without errors"
+      - id: AC6
+        text: "go test ./cmd/echo/ -count=1 passes (or skips gracefully if gecho not found)"
+      - id: AC7
+        text: "go vet ./cmd/echo/ reports no issues"
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/echo: features implementation (srd020-echo R2.1-R2.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd020-echo.yaml (R2.1 through R2.4 specification)
+      - cmd/echo/main.go (existing implementation to extend)
+      - cmd/echo/echo_test.go (existing differential tests to extend)
+
+    files:
+      - path: cmd/echo/main.go
+        action: modify
+        note: "Add features per R2.1-R2.4"
+      - path: cmd/echo/echo_test.go
+        action: modify
+        note: "Add differential test cases for R2.1-R2.4"
+
+    requirements:
+      - id: R1
+        text: "Implement srd020-echo R2.1 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R2
+        text: "Implement srd020-echo R2.2 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R3
+        text: "Implement srd020-echo R2.3 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R4
+        text: "Implement srd020-echo R2.4 -- read the SRD for the exact specification and implement the described behavior"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/echo/main.go code structure -- do not restructure or refactor existing code"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests with reference binary gecho for differential testing"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd020-echo R2.1 implemented and behavior matches gecho reference binary"
+      - id: AC2
+        text: "srd020-echo R2.2 implemented and behavior matches gecho reference binary"
+      - id: AC3
+        text: "srd020-echo R2.3 implemented and behavior matches gecho reference binary"
+      - id: AC4
+        text: "srd020-echo R2.4 implemented and behavior matches gecho reference binary"
+      - id: AC5
+        text: "go build ./cmd/echo/ compiles without errors"
+      - id: AC6
+        text: "go test ./cmd/echo/ -count=1 passes (or skips gracefully if gecho not found)"
+      - id: AC7
+        text: "go vet ./cmd/echo/ reports no issues"
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/echo: features implementation (srd020-echo R3.1-R3.3, R4.1)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd020-echo.yaml (R3.1-R3.3 and R4.1 specification)
+      - cmd/echo/main.go (existing implementation to extend)
+      - cmd/echo/echo_test.go (existing differential tests to extend)
+
+    files:
+      - path: cmd/echo/main.go
+        action: modify
+        note: "Add features per R3.1-R3.3 and R4.1"
+      - path: cmd/echo/echo_test.go
+        action: modify
+        note: "Add differential test cases for R3.1-R3.3 and R4.1"
+
+    requirements:
+      - id: R1
+        text: "Implement srd020-echo R3.1 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R2
+        text: "Implement srd020-echo R3.2 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R3
+        text: "Implement srd020-echo R3.3 -- read the SRD for the exact specification and implement the described behavior"
+      - id: R4
+        text: "Implement srd020-echo R4.1 -- read the SRD for the exact specification and implement the described behavior"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/echo/main.go code structure -- do not restructure or refactor existing code"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests with reference binary gecho for differential testing"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd020-echo R3.1 implemented and behavior matches gecho reference binary"
+      - id: AC2
+        text: "srd020-echo R3.2 implemented and behavior matches gecho reference binary"
+      - id: AC3
+        text: "srd020-echo R3.3 implemented and behavior matches gecho reference binary"
+      - id: AC4
+        text: "srd020-echo R4.1 implemented and behavior matches gecho reference binary"
+      - id: AC5
+        text: "go build ./cmd/echo/ compiles without errors"
+      - id: AC6
+        text: "go test ./cmd/echo/ -count=1 passes (or skips gracefully if gecho not found)"
+      - id: AC7
+        text: "go vet ./cmd/echo/ reports no issues"
+  dependency: 2
