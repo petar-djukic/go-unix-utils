@@ -132,6 +132,102 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("abc\rdefgh\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
+		{
+			Name:  "R2.1_width_flag_inline",
+			Args:  []string{"-w5"},
+			Stdin: []byte("abcdefghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_width_flag_separate",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("abcdefghijklmno\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_width_1",
+			Args:  []string{"-w", "1"},
+			Stdin: []byte("abcd\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.1_width_large",
+			Args:  []string{"-w", "200"},
+			Stdin: []byte("short line\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_tab_at_col_0",
+			Args:  []string{"-w", "8"},
+			Stdin: []byte("\thello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_tab_mid_column",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("abc\tdefgh\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_multiple_tabs",
+			Args:  []string{"-w", "20"},
+			Stdin: []byte("a\tb\tc\td\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_tab_causes_wrap",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("abc\tdef\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_control_char_one_column",
+			Args:  []string{"-w", "5"},
+			Stdin: []byte("ab\x01\x02cdef\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_tab_near_boundary",
+			Args:  []string{"-w", "9"},
+			Stdin: []byte("1234567\tx\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.2_consecutive_tabs",
+			Args:  []string{"-w", "16"},
+			Stdin: []byte("\t\tabcdef\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_byte_mode_tab_as_one_byte",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("\tabcdef\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_byte_mode_multibyte_char",
+			Args:  []string{"-b", "-w", "4"},
+			Stdin: []byte("\xc3\xa9\xc3\xa9\xc3\xa9\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_byte_mode_control_chars",
+			Args:  []string{"-b", "-w", "3"},
+			Stdin: []byte("\x01\x02\x03\x04\x05\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_byte_mode_combined_bs",
+			Args:  []string{"-bs", "-w", "6"},
+			Stdin: []byte("hello world test\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R2.3_byte_mode_width_inline",
+			Args:  []string{"-bw4"},
+			Stdin: []byte("abcdefghij\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

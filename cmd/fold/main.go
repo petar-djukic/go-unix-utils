@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd023-fold R1.1-R1.4.
+// Implements srd023-fold R1.1-R1.4, R2.1-R2.3.
 package main
 
 import (
@@ -94,24 +94,22 @@ func parseArgs(args []string) (options, []string, error) {
 
 func parseFlag(arg string, remaining []string, opts *options) (int, error) {
 	flag := arg[1:]
-	switch {
-	case flag == "b":
-		opts.byteMode = true
-		return 0, nil
-	case flag == "s":
-		opts.spaceMode = true
-		return 0, nil
-	case flag == "bs" || flag == "sb":
-		opts.byteMode = true
-		opts.spaceMode = true
-		return 0, nil
-	case len(flag) > 1 && flag[0] == 'w':
-		return setWidth(flag[1:], nil, opts)
-	case flag == "w":
-		return setWidth("", remaining, opts)
-	default:
-		return 0, fmt.Errorf("invalid option -- '%s'", flag)
+	i := 0
+	for i < len(flag) {
+		switch flag[i] {
+		case 'b':
+			opts.byteMode = true
+			i++
+		case 's':
+			opts.spaceMode = true
+			i++
+		case 'w':
+			return setWidth(flag[i+1:], remaining, opts)
+		default:
+			return 0, fmt.Errorf("invalid option -- '%c'", flag[i])
+		}
 	}
+	return 0, nil
 }
 
 func setWidth(val string, remaining []string, opts *options) (int, error) {
