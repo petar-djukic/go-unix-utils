@@ -146,3 +146,13 @@
 [2026-05-14T21:14:57-04:00] [generation-run44] [stitch +2m57s] closeStitchTask: closing #5237 "[stitch] cmd/readlink: features implementation (srd050-readlink R1.5-R1.6, R2.1-R2.2)"
 [2026-05-14T21:14:58-04:00] [generation-run44] [stitch +2m58s] commentCobblerIssue: posted comment on #5237
 [2026-05-14T21:14:58-04:00] [generation-run44] [stitch +2m58s] updateRequirementsFile: marked 4 R-items as complete for issue #5237
+[2026-05-14T21:15:00-04:00] [generation-run44] [stitch +3m0s] closeCobblerIssue: closed #5237
+[2026-05-14T21:15:02-04:00] [generation-run44] [stitch +3m2s] closeStitchTask: #5237 closed
+[2026-05-14T21:15:03-04:00] [generation-run44] [stitch +3m3s] sweepCompletedTasks: all R-items for #5237 already complete, closing
+[2026-05-14T21:15:04-04:00] [generation-run44] [stitch +3m4s] commentCobblerIssue: posted comment on #5237
+[2026-05-14T21:15:05-04:00] [generation-run44] [stitch +3m5s] closeCobblerIssue: closed #5237
+[2026-05-14T21:15:06-04:00] [generation-run44] [stitch +3m6s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T21:15:06-04:00] [generation-run44] [stitch +3m6s] doOneTask: task 5237 finished in 3m0s
+[2026-05-14T21:15:06-04:00] [generation-run44] [stitch +3m6s] task 5237 completed in 3m0s
+[2026-05-14T21:15:06-04:00] [generation-run44] [stitch +3m6s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T21:15:06-04:00] [generation-run44] [stitch +3m6s] completed 1 task(s) in 3m6s
