@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5232"
+task_title: '[stitch] cmd/tty: features implementation (srd052-tty R1.1-R2.1)'
+status: success
+started_at: "2026-05-15T00:22:35Z"
+duration: 12m40s
+duration_s: 760
+tokens:
+    input: 1652404
+    output: 32197
+    cache_creation: 225201
+    cache_read: 1427169
+cost_usd: 3.309667200000001
+num_turns: 79
+rate_limit_wait_s: 7
+loc_before:
+    production: 5531
+    test: 4337
+loc_after:
+    production: 5634
+    test: 4337
+diff:
+    files: 2
+    insertions: 352
+    deletions: 0
