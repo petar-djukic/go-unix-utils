@@ -103,6 +103,74 @@ func TestDiff(t *testing.T) {
 		{Name: "no-operand", ExitCode: 1, Normalize: errNorm},
 		// Error: unknown long flag
 		{Name: "unknown-long-flag", Args: []string{"--bogus"}, ExitCode: 1, Normalize: errNorm},
+		// R1.5: -s (strip/no-symlinks) does not resolve symlinks
+		{Name: "s-symlink-file", Args: []string{"-s", filepath.Join(dir, "link")}},
+		{Name: "s-symlink-dir", Args: []string{"-s", filepath.Join(dir, "dirlink")}},
+		{Name: "s-existing-file", Args: []string{"-s", filepath.Join(dir, "file.txt")}},
+		{Name: "s-with-dotdot", Args: []string{"-s", filepath.Join(dir, "subdir", "..")}},
+		{Name: "s-missing-intermediate", Args: []string{"-s", filepath.Join(dir, "nodir", "file")}},
+		{Name: "s-missing-last", Args: []string{"-s", filepath.Join(dir, "nonexistent")}},
+		// R1.5: -s combined with -e
+		{Name: "s-e-existing", Args: []string{"-s", "-e", filepath.Join(dir, "file.txt")}},
+		{
+			Name:      "s-e-missing",
+			Args:      []string{"-s", "-e", filepath.Join(dir, "nonexistent")},
+			ExitCode:  1,
+			Normalize: errNorm,
+		},
+		// R1.5: -s combined with -m
+		{Name: "s-m-missing", Args: []string{"-s", "-m", filepath.Join(dir, "x", "y")}},
+		// R1.5: long forms
+		{Name: "strip-long", Args: []string{"--strip", filepath.Join(dir, "link")}},
+		{Name: "no-symlinks-long", Args: []string{"--no-symlinks", filepath.Join(dir, "link")}},
+		// R2.1: --relative-to
+		{
+			Name: "relative-to-parent",
+			Args: []string{"--relative-to=" + dir, filepath.Join(dir, "subdir")},
+		},
+		{
+			Name: "relative-to-subdir",
+			Args: []string{"--relative-to=" + filepath.Join(dir, "subdir"), filepath.Join(dir, "file.txt")},
+		},
+		{
+			Name: "relative-to-space",
+			Args: []string{"--relative-to", dir, filepath.Join(dir, "file.txt")},
+		},
+		// R2.2: --relative-base
+		{
+			Name: "relative-base-under",
+			Args: []string{"--relative-base=" + dir, filepath.Join(dir, "subdir")},
+		},
+		{
+			Name: "relative-base-outside",
+			Args: []string{"--relative-base=" + filepath.Join(dir, "subdir"), filepath.Join(dir, "file.txt")},
+		},
+		{
+			Name: "relative-base-exact",
+			Args: []string{"--relative-base=" + dir, dir},
+		},
+		// R2.3: --relative-to + --relative-base combined
+		{
+			Name: "rel-to-and-base-under",
+			Args: []string{
+				"--relative-to=" + filepath.Join(dir, "subdir"),
+				"--relative-base=" + dir,
+				filepath.Join(dir, "file.txt"),
+			},
+		},
+		{
+			Name: "rel-to-and-base-outside",
+			Args: []string{
+				"--relative-to=" + filepath.Join(dir, "subdir"),
+				"--relative-base=" + dir,
+				"/",
+			},
+		},
+		// R1.5+R2.1: -s combined with --relative-to
+		{
+			Name: "s-relative-to",
+			Args: []string{"-s", "--relative-to=" + dir, filepath.Join(dir, "link")},
+		},
 		// --help and --version (discard stdout since text differs)
 		{Name: "help", Args: []string{"--help"}, Normalize: []testutils.NormalizeFunc{discardStdout}},
 		{Name: "version", Args: []string{"--version"}, Normalize: []testutils.NormalizeFunc{discardStdout}},
