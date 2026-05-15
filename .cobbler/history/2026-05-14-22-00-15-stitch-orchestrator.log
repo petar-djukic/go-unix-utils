@@ -172,3 +172,13 @@
 [2026-05-14T22:10:46-04:00] [generation-run44] [stitch +10m31s] closeStitchTask: closing #5241 "[stitch] cmd/realpath: features implementation (srd049-realpath R1.1-R1.2, R1.3-R1.4)"
 [2026-05-14T22:10:47-04:00] [generation-run44] [stitch +10m32s] commentCobblerIssue: posted comment on #5241
 [2026-05-14T22:10:47-04:00] [generation-run44] [stitch +10m32s] updateRequirementsFile: marked 4 R-items as complete for issue #5241
+[2026-05-14T22:10:49-04:00] [generation-run44] [stitch +10m35s] closeCobblerIssue: closed #5241
+[2026-05-14T22:10:51-04:00] [generation-run44] [stitch +10m36s] closeStitchTask: #5241 closed
+[2026-05-14T22:10:52-04:00] [generation-run44] [stitch +10m37s] sweepCompletedTasks: all R-items for #5241 already complete, closing
+[2026-05-14T22:10:52-04:00] [generation-run44] [stitch +10m38s] commentCobblerIssue: posted comment on #5241
+[2026-05-14T22:10:54-04:00] [generation-run44] [stitch +10m39s] closeCobblerIssue: closed #5241
+[2026-05-14T22:10:56-04:00] [generation-run44] [stitch +10m41s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-14T22:10:56-04:00] [generation-run44] [stitch +10m41s] doOneTask: task 5241 finished in 10m35s
+[2026-05-14T22:10:56-04:00] [generation-run44] [stitch +10m41s] task 5241 completed in 10m35s
+[2026-05-14T22:10:56-04:00] [generation-run44] [stitch +10m41s] reached per-cycle limit (1), pausing for measure
+[2026-05-14T22:10:56-04:00] [generation-run44] [stitch +10m41s] completed 1 task(s) in 10m41s
