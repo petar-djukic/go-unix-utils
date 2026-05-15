@@ -184,7 +184,7 @@ code_status:
         - version: "04.1"
           name: Batch 4.1 — path and terminal utilities (realpath, readlink, pwd, tty, logname)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel04.1-uc001-realpath
               specstatus: spec_complete
@@ -198,7 +198,7 @@ code_status:
               testfiles: 0
             - id: rel04.1-uc003-pwd
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel04.1-uc004-tty
