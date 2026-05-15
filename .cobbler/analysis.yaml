@@ -233,7 +233,7 @@ code_status:
               testfiles: 0
             - id: rel05.0-uc004-fold
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "05.1"
