@@ -2584,16 +2584,20 @@ requirements:
             issue: 5242
             weight: 1
         R3.1:
-            status: in_progress
+            status: complete
+            issue: 5243
             weight: 1
         R3.2:
-            status: in_progress
+            status: complete
+            issue: 5243
             weight: 1
         R3.3:
-            status: in_progress
+            status: complete
+            issue: 5243
             weight: 1
         R4.1:
-            status: in_progress
+            status: complete
+            issue: 5243
             weight: 1
         R4.2:
             status: ready

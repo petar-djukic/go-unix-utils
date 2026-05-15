@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5243"
+task_title: '[stitch] cmd/realpath: features implementation (srd049-realpath R3.1-R3.3, R4.1)'
+status: success
+started_at: "2026-05-15T02:18:03Z"
+duration: 3m10s
+duration_s: 189
+tokens:
+    input: 1019462
+    output: 5237
+    cache_creation: 190771
+    cache_read: 828663
+cost_usd: 2.10048075
+num_turns: 46
+rate_limit_wait_s: 5
+loc_before:
+    production: 6116
+    test: 4746
+loc_after:
+    production: 6115
+    test: 4769
+diff:
+    files: 3
+    insertions: 190
+    deletions: 6
