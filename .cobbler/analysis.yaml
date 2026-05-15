@@ -188,7 +188,7 @@ code_status:
           usecases:
             - id: rel04.1-uc001-realpath
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel04.1-uc002-readlink
