@@ -239,7 +239,7 @@ code_status:
         - version: "05.1"
           name: Batch 5.1 — tab conversion pair (expand, unexpand)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel05.1-uc001-expand
               specstatus: spec_complete
@@ -248,7 +248,7 @@ code_status:
               testfiles: 0
             - id: rel05.1-uc002-unexpand
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "05.2"

@@ -123,3 +123,13 @@
 [2026-05-15T10:46:52-04:00] [generation-run44] [stitch +4m8s] closeStitchTask: closing #5276 "[stitch] cmd/unexpand: implement srd025-unexpand R3.1-R3.3"
 [2026-05-15T10:46:53-04:00] [generation-run44] [stitch +4m9s] commentCobblerIssue: posted comment on #5276
 [2026-05-15T10:46:53-04:00] [generation-run44] [stitch +4m9s] updateRequirementsFile: marked 3 R-items as complete for issue #5276
+[2026-05-15T10:46:56-04:00] [generation-run44] [stitch +4m11s] closeCobblerIssue: closed #5276
+[2026-05-15T10:46:58-04:00] [generation-run44] [stitch +4m13s] closeStitchTask: #5276 closed
+[2026-05-15T10:46:58-04:00] [generation-run44] [stitch +4m14s] sweepCompletedTasks: all R-items for #5276 already complete, closing
+[2026-05-15T10:46:59-04:00] [generation-run44] [stitch +4m15s] commentCobblerIssue: posted comment on #5276
+[2026-05-15T10:47:01-04:00] [generation-run44] [stitch +4m16s] closeCobblerIssue: closed #5276
+[2026-05-15T10:47:03-04:00] [generation-run44] [stitch +4m18s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-15T10:47:03-04:00] [generation-run44] [stitch +4m18s] doOneTask: task 5276 finished in 4m10s
+[2026-05-15T10:47:03-04:00] [generation-run44] [stitch +4m18s] task 5276 completed in 4m10s
+[2026-05-15T10:47:03-04:00] [generation-run44] [stitch +4m18s] reached per-cycle limit (1), pausing for measure
+[2026-05-15T10:47:03-04:00] [generation-run44] [stitch +4m18s] completed 1 task(s) in 4m18s
