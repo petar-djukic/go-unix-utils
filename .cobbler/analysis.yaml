@@ -214,7 +214,7 @@ code_status:
         - version: "05.0"
           name: Batch 5 — text stream transforms (echo, tac, nl, fold)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel05.0-uc001-echo
               specstatus: spec_complete
@@ -228,7 +228,7 @@ code_status:
               testfiles: 0
             - id: rel05.0-uc003-nl
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel05.0-uc004-fold
