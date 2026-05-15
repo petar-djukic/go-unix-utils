@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd051-pwd R1.1-R1.4.
+// Implements srd051-pwd R1.1-R1.4, R2.1-R2.2.
 package main
 
 import (
@@ -51,6 +51,7 @@ func main() {
 
 func parseArgs(args []string) string {
 	mode := "physical"
+	hasOperands := false
 	for i := range len(args) {
 		arg := args[i]
 		switch {
@@ -66,9 +67,10 @@ func parseArgs(args []string) string {
 			mode = "physical"
 		case arg == "--":
 			if i+1 < len(args) {
-				fmt.Fprintf(os.Stderr, "pwd: extra operand '%s'\n", args[i+1])
-				fmt.Fprintln(os.Stderr, "Try 'pwd --help' for more information.")
-				os.Exit(1)
+				hasOperands = true
+			}
+			if hasOperands {
+				fmt.Fprintln(os.Stderr, "pwd: ignoring non-option arguments")
 			}
 			return mode
 		case strings.HasPrefix(arg, "--"):
@@ -78,10 +80,11 @@ func parseArgs(args []string) string {
 		case strings.HasPrefix(arg, "-") && len(arg) > 1:
 			mode = parseShortFlags(arg[1:], mode)
 		default:
-			fmt.Fprintf(os.Stderr, "pwd: extra operand '%s'\n", arg)
-			fmt.Fprintln(os.Stderr, "Try 'pwd --help' for more information.")
-			os.Exit(1)
+			hasOperands = true
 		}
+	}
+	if hasOperands {
+		fmt.Fprintln(os.Stderr, "pwd: ignoring non-option arguments")
 	}
 	return mode
 }
