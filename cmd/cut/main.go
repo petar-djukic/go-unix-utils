@@ -8,7 +8,10 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -187,12 +190,151 @@ func cutLine(r io.Reader, w *bufio.Writer, opts options) {
 	}
 }
 
-func cutBytes(_ io.Reader, _ *bufio.Writer, _ options) {
-	panic("not implemented")
+func cutBytes(r io.Reader, w *bufio.Writer, opts options) {
+	ranges, err := parseRangeList(opts.byteList)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cut: %s\n", err)
+		return
+	}
+	if opts.complement {
+		ranges = complementRanges(ranges)
+	}
+	processLines(r, w, ranges)
 }
 
-func cutChars(_ io.Reader, _ *bufio.Writer, _ options) {
-	panic("not implemented")
+func cutChars(r io.Reader, w *bufio.Writer, opts options) {
+	ranges, err := parseRangeList(opts.charList)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cut: %s\n", err)
+		return
+	}
+	if opts.complement {
+		ranges = complementRanges(ranges)
+	}
+	processLines(r, w, ranges)
+}
+
+func processLines(r io.Reader, w *bufio.Writer, ranges [][2]int) {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 && line[len(line)-1] == '\n' {
+			line = line[:len(line)-1]
+		}
+		if len(line) > 0 {
+			writeSelectedBytes(w, line, ranges)
+		}
+		if err == nil || len(line) > 0 {
+			w.WriteByte('\n')
+		}
+		if err != nil {
+			break
+		}
+	}
+}
+
+func writeSelectedBytes(w *bufio.Writer, line []byte, ranges [][2]int) {
+	lineLen := len(line)
+	for _, rng := range ranges {
+		lo := rng[0] - 1
+		hi := rng[1]
+		if lo >= lineLen {
+			continue
+		}
+		if hi > lineLen {
+			hi = lineLen
+		}
+		w.Write(line[lo:hi])
+	}
+}
+
+func parseRangeList(list string) ([][2]int, error) {
+	parts := strings.Split(list, ",")
+	var ranges [][2]int
+	for _, p := range parts {
+		r, err := parseRange(p)
+		if err != nil {
+			return nil, err
+		}
+		ranges = append(ranges, r)
+	}
+	return mergeRanges(ranges), nil
+}
+
+func parseRange(s string) ([2]int, error) {
+	if s == "" {
+		return [2]int{}, fmt.Errorf("invalid range")
+	}
+	idx := strings.Index(s, "-")
+	if idx < 0 {
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
+			return [2]int{}, fmt.Errorf("invalid byte/character position '%s'", s)
+		}
+		return [2]int{n, n}, nil
+	}
+	return parseHyphenRange(s, idx)
+}
+
+func parseHyphenRange(s string, idx int) ([2]int, error) {
+	if idx == 0 {
+		hi, err := strconv.Atoi(s[1:])
+		if err != nil || hi <= 0 {
+			return [2]int{}, fmt.Errorf("invalid range '%s'", s)
+		}
+		return [2]int{1, hi}, nil
+	}
+	lo, err := strconv.Atoi(s[:idx])
+	if err != nil || lo <= 0 {
+		return [2]int{}, fmt.Errorf("invalid range '%s'", s)
+	}
+	if idx == len(s)-1 {
+		return [2]int{lo, math.MaxInt}, nil
+	}
+	hi, err := strconv.Atoi(s[idx+1:])
+	if err != nil || hi <= 0 {
+		return [2]int{}, fmt.Errorf("invalid range '%s'", s)
+	}
+	if lo > hi {
+		return [2]int{}, fmt.Errorf("invalid decreasing range")
+	}
+	return [2]int{lo, hi}, nil
+}
+
+func mergeRanges(ranges [][2]int) [][2]int {
+	if len(ranges) == 0 {
+		return ranges
+	}
+	sort.Slice(ranges, func(i, j int) bool {
+		return ranges[i][0] < ranges[j][0]
+	})
+	merged := [][2]int{ranges[0]}
+	for _, r := range ranges[1:] {
+		last := &merged[len(merged)-1]
+		if r[0] <= last[1]+1 {
+			if r[1] > last[1] {
+				last[1] = r[1]
+			}
+		} else {
+			merged = append(merged, r)
+		}
+	}
+	return merged
+}
+
+func complementRanges(ranges [][2]int) [][2]int {
+	var result [][2]int
+	prev := 1
+	for _, r := range ranges {
+		if r[0] > prev {
+			result = append(result, [2]int{prev, r[0] - 1})
+		}
+		prev = r[1] + 1
+	}
+	if prev > 0 && prev < math.MaxInt {
+		result = append(result, [2]int{prev, math.MaxInt})
+	}
+	return result
 }
 
 func cutFields(_ io.Reader, _ *bufio.Writer, _ options) {
