@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Implements srd021-tac R4.1-R4.3.
 package main
 
 import (
@@ -36,7 +37,7 @@ func TestDiff(t *testing.T) {
 	discardStderr := testutils.NormalizeFunc(func([]byte) []byte { return nil })
 
 	tests := []testutils.DiffTest{
-		// R1.1: basic line reversal via stdin
+		// R1.1, R4.2, R4.3: basic line reversal via stdin (LC_ALL=C per R4.3)
 		{Name: "basic-stdin", Stdin: []byte("a\nb\nc\n"), Env: []string{"LC_ALL=C"}},
 		// R1.1: single line
 		{Name: "single-line", Stdin: []byte("hello\n"), Env: []string{"LC_ALL=C"}},
@@ -55,28 +56,28 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("p\nq\nr\n"),
 			Env:   []string{"LC_ALL=C"},
 		},
-		// R1.4: single file argument
+		// R1.4, R4.2: single file argument (single-file reversal)
 		{
 			Name:    "single-file",
 			Args:    []string{"abc.txt"},
 			WorkDir: dir,
 			Env:     []string{"LC_ALL=C"},
 		},
-		// R1.4: multiple files processed independently
+		// R1.4, R4.2: multiple files processed independently (multi-file reversal)
 		{
 			Name:    "multi-file",
 			Args:    []string{"abc.txt", "xyz.txt"},
 			WorkDir: dir,
 			Env:     []string{"LC_ALL=C"},
 		},
-		// R1.4: file with no trailing newline
+		// R1.4, R4.2: file with no trailing newline
 		{
 			Name:    "file-no-trailing-nl",
 			Args:    []string{"notail.txt"},
 			WorkDir: dir,
 			Env:     []string{"LC_ALL=C"},
 		},
-		// R2.1: custom separator -s
+		// R2.1, R4.2: custom separator -s
 		{
 			Name:  "custom-sep-colon",
 			Args:  []string{"-s", ":"},
@@ -97,7 +98,7 @@ func TestDiff(t *testing.T) {
 			Stdin: []byte("a:b:c"),
 			Env:   []string{"LC_ALL=C"},
 		},
-		// R2.2: -b places separator before record
+		// R2.2, R4.2: -b places separator before record
 		{
 			Name:  "before-flag",
 			Args:  []string{"-b", "-s", ":"},
@@ -189,7 +190,7 @@ func TestDiff(t *testing.T) {
 			Env:   []string{"LC_ALL=C"},
 		},
 	}
-	testutils.RunDiffTests(t, goBin, refBin, tests)
+	testutils.RunDiffTests(t, goBin, refBin, tests) // R4.1: byte-for-byte comparison against gtac
 }
 
 // R3.4: tac must exit 0 when stdout is closed by a downstream consumer.
