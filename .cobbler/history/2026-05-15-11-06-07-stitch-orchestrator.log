@@ -183,3 +183,13 @@ echo "=== AC1: -d: -f2 ...
 [2026-05-15T11:10:06-04:00] [generation-run44] [stitch +3m59s] closeStitchTask: closing #5282 "[stitch] cmd/cut: implement srd026-cut R2.1-R2.4"
 [2026-05-15T11:10:07-04:00] [generation-run44] [stitch +4m0s] commentCobblerIssue: posted comment on #5282
 [2026-05-15T11:10:07-04:00] [generation-run44] [stitch +4m0s] updateRequirementsFile: marked 4 R-items as complete for issue #5282
+[2026-05-15T11:10:10-04:00] [generation-run44] [stitch +4m3s] closeCobblerIssue: closed #5282
+[2026-05-15T11:10:12-04:00] [generation-run44] [stitch +4m5s] closeStitchTask: #5282 closed
+[2026-05-15T11:10:13-04:00] [generation-run44] [stitch +4m5s] sweepCompletedTasks: all R-items for #5282 already complete, closing
+[2026-05-15T11:10:14-04:00] [generation-run44] [stitch +4m7s] commentCobblerIssue: posted comment on #5282
+[2026-05-15T11:10:15-04:00] [generation-run44] [stitch +4m8s] closeCobblerIssue: closed #5282
+[2026-05-15T11:10:17-04:00] [generation-run44] [stitch +4m10s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-15T11:10:17-04:00] [generation-run44] [stitch +4m10s] doOneTask: task 5282 finished in 4m2s
+[2026-05-15T11:10:17-04:00] [generation-run44] [stitch +4m10s] task 5282 completed in 4m2s
+[2026-05-15T11:10:17-04:00] [generation-run44] [stitch +4m10s] reached per-cycle limit (1), pausing for measure
+[2026-05-15T11:10:17-04:00] [generation-run44] [stitch +4m10s] completed 1 task(s) in 4m10s
