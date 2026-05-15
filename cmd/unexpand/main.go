@@ -134,7 +134,9 @@ func unexpand(r io.Reader, w *bufio.Writer, stops tabStops, allMode bool) {
 	for {
 		b, err := br.ReadByte()
 		if err != nil {
-			flushSpaces(w, spaceRun)
+			if spaceRun > 0 {
+				emitCompacted(w, spaceRunStart, spaceRun, stops)
+			}
 			return
 		}
 		switch b {
@@ -161,9 +163,11 @@ func unexpand(r io.Reader, w *bufio.Writer, stops tabStops, allMode bool) {
 				col = nextTabStop(col, stops)
 			}
 		case '\n':
-			flushSpaces(w, spaceRun)
-			spaceRun = 0
-			spaceRunStart = 0
+			if spaceRun > 0 {
+				emitCompacted(w, spaceRunStart, spaceRun, stops)
+				spaceRun = 0
+				spaceRunStart = 0
+			}
 			w.WriteByte('\n')
 			col = 1
 			leading = true
@@ -205,11 +209,5 @@ func emitCompacted(w *bufio.Writer, startCol int, count int, stops tabStops) {
 			w.WriteByte(' ')
 			col++
 		}
-	}
-}
-
-func flushSpaces(w *bufio.Writer, count int) {
-	for range count {
-		w.WriteByte(' ')
 	}
 }
