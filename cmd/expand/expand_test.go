@@ -57,6 +57,71 @@ func TestDiff(t *testing.T) {
 			Name:  "tab_only",
 			Stdin: []byte("\t"),
 		},
+		{
+			Name:  "t_uniform_4",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a\tb\n"),
+		},
+		{
+			Name:  "t_uniform_4_attached",
+			Args:  []string{"-t4"},
+			Stdin: []byte("a\tb\n"),
+		},
+		{
+			Name:  "t_uniform_2",
+			Args:  []string{"-t", "2"},
+			Stdin: []byte("\t\t\n"),
+		},
+		{
+			Name:  "t_uniform_at_boundary",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("abc\td\n"),
+		},
+		{
+			Name:  "t_uniform_multiple_tabs",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			Name:  "t_list_absolute",
+			Args:  []string{"-t", "1,5,9"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			Name:  "t_list_past_last_stop",
+			Args:  []string{"-t", "4,8"},
+			Stdin: []byte("abcdefgh\tx\n"),
+		},
+		{
+			Name:  "t_list_two_stops",
+			Args:  []string{"-t", "3,6"},
+			Stdin: []byte("a\tb\tc\n"),
+		},
+		{
+			Name:  "t_list_single_value_is_uniform",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("ab\tcd\tefgh\ti\n"),
+		},
+		{
+			Name:  "t_multiple_flags_concatenate",
+			Args:  []string{"-t", "2", "-t", "4"},
+			Stdin: []byte("a\tb\n"),
+		},
+		{
+			Name:  "t_uniform_no_tabs",
+			Args:  []string{"-t", "4"},
+			Stdin: []byte("hello world\n"),
+		},
+		{
+			Name:  "t_list_consecutive_tabs",
+			Args:  []string{"-t", "4,8,12"},
+			Stdin: []byte("\t\t\t\n"),
+		},
+		{
+			Name:  "t_list_tab_at_col1",
+			Args:  []string{"-t", "5,10"},
+			Stdin: []byte("\thello\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
