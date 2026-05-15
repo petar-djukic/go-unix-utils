@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -52,6 +53,12 @@ func defaultOptions() options {
 	}
 }
 
+type nlState struct {
+	lineNum    int
+	section    string
+	blankCount int
+}
+
 func run(args []string) int {
 	opts, files, err := parseArgs(args)
 	if err != nil {
@@ -61,15 +68,27 @@ func run(args []string) int {
 	if len(files) == 0 {
 		files = []string{"-"}
 	}
+	state := &nlState{
+		lineNum: opts.startNum,
+		section: "body",
+	}
+	w := bufio.NewWriter(os.Stdout)
 	exitCode := 0
 	for _, f := range files {
-		if err := processFile(f, opts); err != nil {
+		if err := processFile(f, opts, state, w); err != nil {
 			if errors.Is(err, syscall.EPIPE) {
 				os.Exit(0)
 			}
 			fmt.Fprintf(os.Stderr, "nl: %s\n", err)
 			exitCode = 1
 		}
+	}
+	if err := w.Flush(); err != nil {
+		if errors.Is(err, syscall.EPIPE) {
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "nl: %s\n", err)
+		exitCode = 1
 	}
 	return exitCode
 }
@@ -178,7 +197,7 @@ func setIntOpt(val string, remaining []string, dst *int, flag byte) (int, error)
 	return 0, fmt.Errorf("option requires an argument -- '%c'", flag)
 }
 
-func processFile(path string, opts options) error {
+func processFile(path string, opts options, state *nlState, w *bufio.Writer) error {
 	var r io.Reader
 	if path == "-" {
 		r = os.Stdin
@@ -190,19 +209,118 @@ func processFile(path string, opts options) error {
 		defer f.Close()
 		r = f
 	}
-	return processInput(r, opts)
+	return processInput(r, opts, state, w)
 }
 
-func processInput(r io.Reader, opts options) error {
-	w := bufio.NewWriter(os.Stdout)
+func sectionStyle(section string, opts options) string {
+	switch section {
+	case "header":
+		return opts.headerStyle
+	case "footer":
+		return opts.footerStyle
+	default:
+		return opts.bodyStyle
+	}
+}
+
+func shouldNumber(style string, line string, blankCount int, joinBlankCount int) bool {
+	empty := line == ""
+	switch {
+	case style == "a":
+		if !empty {
+			return true
+		}
+		return blankCount >= joinBlankCount
+	case style == "t":
+		return !empty
+	case style == "n":
+		return false
+	case strings.HasPrefix(style, "p"):
+		if empty {
+			return false
+		}
+		re, err := regexp.Compile(style[1:])
+		if err != nil {
+			return false
+		}
+		return re.MatchString(line)
+	}
+	return false
+}
+
+func formatNumber(num int, width int, format string) string {
+	switch format {
+	case "ln":
+		return fmt.Sprintf("%-*d", width, num)
+	case "rz":
+		return fmt.Sprintf("%0*d", width, num)
+	default:
+		return fmt.Sprintf("%*d", width, num)
+	}
+}
+
+func processInput(r io.Reader, opts options, state *nlState, w *bufio.Writer) error {
 	scanner := bufio.NewScanner(r)
-	lineNum := opts.startNum
+
+	headerDelim := opts.delimiter + opts.delimiter + opts.delimiter
+	bodyDelim := opts.delimiter + opts.delimiter
+	footerDelim := opts.delimiter
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		if _, err := fmt.Fprintf(w, "%*d%s%s\n", opts.width, lineNum, opts.separator, line); err != nil {
-			return err
+
+		if line == headerDelim {
+			state.section = "header"
+			if !opts.noReset {
+				state.lineNum = opts.startNum
+			}
+			state.blankCount = 0
+			if _, err := fmt.Fprint(w, "\n"); err != nil {
+				return err
+			}
+			continue
 		}
-		lineNum += opts.increment
+		if line == bodyDelim {
+			state.section = "body"
+			state.blankCount = 0
+			if _, err := fmt.Fprint(w, "\n"); err != nil {
+				return err
+			}
+			continue
+		}
+		if line == footerDelim {
+			state.section = "footer"
+			state.blankCount = 0
+			if _, err := fmt.Fprint(w, "\n"); err != nil {
+				return err
+			}
+			continue
+		}
+
+		style := sectionStyle(state.section, opts)
+
+		if line == "" {
+			state.blankCount++
+		} else {
+			state.blankCount = 0
+		}
+
+		if shouldNumber(style, line, state.blankCount, opts.joinBlankCount) {
+			numStr := formatNumber(state.lineNum, opts.width, opts.numberFormat)
+			if _, err := fmt.Fprintf(w, "%s%s%s\n", numStr, opts.separator, line); err != nil {
+				return err
+			}
+			state.lineNum += opts.increment
+			if line == "" {
+				state.blankCount = 0
+			}
+		} else {
+			pad := strings.Repeat(" ", opts.width+len(opts.separator))
+			if _, err := fmt.Fprintf(w, "%s%s\n", pad, line); err != nil {
+				return err
+			}
+		}
 	}
-	return w.Flush()
+
+	return scanner.Err()
 }

@@ -23,7 +23,66 @@ func TestDiff(t *testing.T) {
 		t.Skip("reference binary not found")
 	}
 
-	tests := []testutils.DiffTest{}
+	tests := []testutils.DiffTest{
+		{
+			Name:  "R1.1_default_numbering",
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R1.2_empty_lines_not_numbered",
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R1.2_all_empty_lines",
+			Stdin: []byte("\n\n\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R1.1_single_line",
+			Stdin: []byte("hello\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R1.2_mixed_empty_and_content",
+			Stdin: []byte("\na\n\n\nb\n\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R1.1_trailing_no_newline",
+			Stdin: []byte("a\nb"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffFiles(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	dir := t.TempDir()
+	writeFixture(t, dir, "f1.txt", "a\nb\n")
+	writeFixture(t, dir, "f2.txt", "c\nd\n")
+
+	tests := []testutils.DiffTest{
+		{
+			Name:    "R1.4_continuous_across_files",
+			Args:    []string{"f1.txt", "f2.txt"},
+			WorkDir: dir,
+			Env:     []string{"LC_ALL=C"},
+		},
+		{
+			Name:    "R1.3_single_named_file",
+			Args:    []string{"f1.txt"},
+			WorkDir: dir,
+			Env:     []string{"LC_ALL=C"},
+		},
+	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -55,5 +114,12 @@ func TestSIGPIPE(t *testing.T) {
 	}
 	if err != nil {
 		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
+}
+
+func writeFixture(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
