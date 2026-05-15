@@ -1,0 +1,181 @@
+- index: 0
+  title: "[stitch] cmd/fold: implement srd023-fold R1.1-R1.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd023-fold.yaml (SRD for fold utility -- read all requirements, focus on R1.1-R1.4)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for differential testing)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler for SIGPIPE handling)
+
+    files:
+      - path: cmd/fold/main.go
+        action: create
+        note: fold utility main implementation covering srd023-fold R1.1-R1.4
+      - path: cmd/fold/fold_test.go
+        action: create
+        note: differential tests for srd023-fold R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: Implement srd023-fold requirement R1.1
+      - id: R2
+        text: Implement srd023-fold requirement R1.2
+      - id: R3
+        text: Implement srd023-fold requirement R1.3
+      - id: R4
+        text: Implement srd023-fold requirement R1.4
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main to match GNU coreutils behavior when piped
+      - id: D2
+        text: Use testutils.BuildBinary(t, ".") and testutils.RunDiffTests for differential testing against the gfold reference binary
+      - id: D3
+        text: Call exec.LookPath("gfold") and t.Skip if the reference binary is not found
+      - id: D4
+        text: Set LC_ALL=C in test Env to ensure consistent output comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/fold/main.go compiles without errors -- go build -o bin/fold ./cmd/fold/
+      - id: AC2
+        text: All differential tests pass -- go test ./cmd/fold/ -count=1
+      - id: AC3
+        text: go vet ./cmd/fold/ reports no issues
+      - id: AC4
+        text: SRD requirements R1.1 through R1.4 are implemented with corresponding test cases
+
+- index: 1
+  title: "[stitch] cmd/fold: implement srd023-fold R2.1-R2.3"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd023-fold.yaml (SRD for fold utility -- read all requirements, focus on R2.1-R2.3)
+      - cmd/fold/main.go (existing implementation from previous task covering R1.1-R1.4)
+      - cmd/fold/fold_test.go (existing differential tests to extend)
+
+    files:
+      - path: cmd/fold/main.go
+        action: modify
+        note: extend fold implementation with srd023-fold R2.1-R2.3
+      - path: cmd/fold/fold_test.go
+        action: modify
+        note: add differential tests for srd023-fold R2.1-R2.3
+
+    requirements:
+      - id: R1
+        text: Implement srd023-fold requirement R2.1
+      - id: R2
+        text: Implement srd023-fold requirement R2.2
+      - id: R3
+        text: Implement srd023-fold requirement R2.3
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing fold implementation without restructuring code from R1.1-R1.4
+      - id: D2
+        text: Add new test cases to the existing TestDiff function in fold_test.go
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/fold/main.go compiles without errors -- go build -o bin/fold ./cmd/fold/
+      - id: AC2
+        text: All differential tests pass including both R1.x and R2.x -- go test ./cmd/fold/ -count=1
+      - id: AC3
+        text: go vet ./cmd/fold/ reports no issues
+      - id: AC4
+        text: SRD requirements R2.1 through R2.3 are implemented with corresponding test cases
+
+- index: 2
+  title: "[stitch] cmd/nl: implement srd022-nl R3.1-R3.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd022-nl.yaml (SRD for nl utility -- read all requirements, focus on R3.1-R3.4)
+      - cmd/nl/main.go (existing implementation covering R1.1-R2.4)
+      - cmd/nl/nl_test.go (existing differential tests to extend)
+
+    files:
+      - path: cmd/nl/main.go
+        action: modify
+        note: extend nl implementation with srd022-nl R3.1-R3.4
+      - path: cmd/nl/nl_test.go
+        action: modify
+        note: add differential tests for srd022-nl R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: Implement srd022-nl requirement R3.1
+      - id: R2
+        text: Implement srd022-nl requirement R3.2
+      - id: R3
+        text: Implement srd022-nl requirement R3.3
+      - id: R4
+        text: Implement srd022-nl requirement R3.4
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing nl implementation without restructuring code from R1.1-R2.4
+      - id: D2
+        text: Add new test cases to the existing TestDiff function in nl_test.go
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/nl/main.go compiles without errors -- go build -o bin/nl ./cmd/nl/
+      - id: AC2
+        text: All differential tests pass including R1.x, R2.x, and R3.x -- go test ./cmd/nl/ -count=1
+      - id: AC3
+        text: go vet ./cmd/nl/ reports no issues
+      - id: AC4
+        text: SRD requirements R3.1 through R3.4 are implemented with corresponding test cases
+
+- index: 3
+  title: "[stitch] cmd/nl: implement srd022-nl R4.1-R4.4"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd022-nl.yaml (SRD for nl utility -- read all requirements, focus on R4.1-R4.4)
+      - cmd/nl/main.go (existing implementation covering R1.1-R3.4)
+      - cmd/nl/nl_test.go (existing differential tests to extend)
+
+    files:
+      - path: cmd/nl/main.go
+        action: modify
+        note: extend nl implementation with srd022-nl R4.1-R4.4
+      - path: cmd/nl/nl_test.go
+        action: modify
+        note: add differential tests for srd022-nl R4.1-R4.4
+
+    requirements:
+      - id: R1
+        text: Implement srd022-nl requirement R4.1
+      - id: R2
+        text: Implement srd022-nl requirement R4.2
+      - id: R3
+        text: Implement srd022-nl requirement R4.3
+      - id: R4
+        text: Implement srd022-nl requirement R4.4
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing nl implementation without restructuring code from R1.1-R3.4
+      - id: D2
+        text: Add new test cases to the existing TestDiff function in nl_test.go
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/nl/main.go compiles without errors -- go build -o bin/nl ./cmd/nl/
+      - id: AC2
+        text: All differential tests pass including R1.x through R4.x -- go test ./cmd/nl/ -count=1
+      - id: AC3
+        text: go vet ./cmd/nl/ reports no issues
+      - id: AC4
+        text: SRD requirements R4.1 through R4.4 are implemented with corresponding test cases
