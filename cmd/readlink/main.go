@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd050-readlink R1.1-R1.4.
+// Implements srd050-readlink R1.1-R1.6, R2.1-R2.2.
 package main
 
 import (
@@ -50,6 +50,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "readlink: missing operand")
 		fmt.Fprintln(os.Stderr, "Try 'readlink --help' for more information.")
 		os.Exit(1)
+	}
+
+	if noNewline && len(operands) > 1 {
+		fmt.Fprintln(os.Stderr, "readlink: ignoring --no-newline with multiple arguments")
 	}
 
 	exitCode := 0

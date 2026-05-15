@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd050-readlink R4.1-R4.3.
+// Implements srd050-readlink R1.5-R1.6, R2.1-R2.2, R4.1-R4.3.
 package main
 
 import (
@@ -83,6 +83,26 @@ func TestDiff(t *testing.T) {
 		{Name: "error-no-operand", Env: lcEnv, ExitCode: 1, Normalize: errorNorm},
 		// Error: unknown flag
 		{Name: "error-unknown-flag", Args: []string{"--bogus"}, Env: lcEnv, ExitCode: 1, Normalize: errorNorm},
+		// R1.5: -m with completely missing path
+		{Name: "m-missing", Args: []string{"-m", missingPath}, Env: lcEnv},
+		// R1.5: -m with partial path (parent exists, file doesn't)
+		{Name: "m-partial", Args: []string{"-m", partialPath}, Env: lcEnv},
+		// R1.5: -m with existing file
+		{Name: "m-existing", Args: []string{"-m", regularFile}, Env: lcEnv},
+		// R1.5: -m with symlink
+		{Name: "m-symlink", Args: []string{"-m", symlink}, Env: lcEnv},
+		// R1.5: --canonicalize-missing long form
+		{Name: "m-long", Args: []string{"--canonicalize-missing", missingPath}, Env: lcEnv},
+		// R1.6: -n with single operand (no trailing newline)
+		{Name: "n-single", Args: []string{"-n", symlink}, Env: lcEnv},
+		// R1.6: -n with -f
+		{Name: "nf-single", Args: []string{"-nf", regularFile}, Env: lcEnv},
+		// R1.6: --no-newline long form
+		{Name: "n-long", Args: []string{"--no-newline", symlink}, Env: lcEnv},
+		// R2.1: multiple operands
+		{Name: "multi-operands", Args: []string{"-f", regularFile, symlink}, Env: lcEnv},
+		// R2.2: multiple operands with -n (newlines still printed)
+		{Name: "multi-n-ignored", Args: []string{"-nf", regularFile, symlink}, Env: lcEnv, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
 		// --help and --version (discard stdout since text differs)
 		{Name: "help", Args: []string{"--help"}, Env: lcEnv, Normalize: []testutils.NormalizeFunc{discardStdout}},
 		{Name: "version", Args: []string{"--version"}, Env: lcEnv, Normalize: []testutils.NormalizeFunc{discardStdout}},
