@@ -1,0 +1,27 @@
+task_id: "5261"
+task_title: '[stitch] cmd/fold: implement srd023-fold R2.1-R2.3'
+status: success
+branch: task/generation-run44-5261
+diff:
+    files: 3
+    insertions: 225
+    deletions: 18
+files:
+    - path: .cobbler/history/2026-05-14-23-54-14-stitch-orchestrator.log
+      status: M
+      insertions: 114
+      deletions: 0
+    - path: cmd/fold/fold_test.go
+      status: M
+      insertions: 96
+      deletions: 0
+    - path: cmd/fold/main.go
+      status: M
+      insertions: 16
+      deletions: 18
+loc_before:
+    production: 7118
+    test: 5453
+loc_after:
+    production: 7116
+    test: 5549
