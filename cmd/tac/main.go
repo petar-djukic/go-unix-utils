@@ -5,11 +5,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -31,6 +33,9 @@ func run(args []string) int {
 	exitCode := 0
 	for _, f := range files {
 		if err := processFile(f, opts); err != nil {
+			if errors.Is(err, syscall.EPIPE) {
+				os.Exit(0)
+			}
 			fmt.Fprintf(os.Stderr, "tac: %s\n", err)
 			exitCode = 1
 		}
@@ -134,10 +139,7 @@ func processFile(path string, opts options) error {
 	}
 	output := reverseInput(string(data), opts)
 	_, werr := os.Stdout.WriteString(output)
-	if werr != nil {
-		os.Exit(1)
-	}
-	return nil
+	return werr
 }
 
 func reverseInput(input string, opts options) string {
