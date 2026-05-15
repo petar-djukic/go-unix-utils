@@ -7568,3 +7568,181 @@
       - id: AC6
         text: "go test ./cmd/expand/ -count=1 passes (or skips gracefully if gexpand is not installed)"
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/expand: implement srd024-expand R3.1-R3.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd024-expand.yaml (requirements R3.1, R3.2, R3.3, R3.4)
+      - cmd/expand/main.go (existing implementation covering R1.1 through R2.4)
+      - CLAUDE.md (project conventions and build instructions)
+      - pkg/sys/ (for InstallSIGPIPEHandler convention)
+
+    files:
+      - path: cmd/expand/main.go
+        action: modify
+        note: Add R3.1-R3.4 functionality to existing expand implementation
+
+    requirements:
+      - id: R1
+        text: "Implement srd024-expand requirement R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd024-expand requirement R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd024-expand requirement R3.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd024-expand requirement R3.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Read srd024-expand.yaml for the exact specification of R3.1-R3.4. Modify the existing cmd/expand/main.go -- do not rewrite from scratch. Preserve all existing R1.1-R2.4 functionality."
+      - id: D2
+        text: "Follow existing code patterns in main.go for flag parsing, I/O handling, and error reporting."
+      - id: D3
+        text: "Ensure sys.InstallSIGPIPEHandler() is called at the start of main if not already present."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/expand ./cmd/expand/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/expand/... reports no issues"
+      - id: AC3
+        text: "All behavior specified in srd024-expand R3.1-R3.4 is implemented in cmd/expand/main.go"
+      - id: AC4
+        text: "Existing R1.1-R2.4 functionality is preserved -- no regressions in flag parsing or tab expansion logic"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/expand: implement srd024-expand R4.1-R4.3'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd024-expand.yaml (requirements R4.1, R4.2, R4.3)
+      - cmd/expand/main.go (existing implementation covering R1.1 through R3.4)
+      - cmd/expand/expand_test.go (existing test file, if present)
+      - pkg/testutils/ (differential testing harness -- BuildBinary, RunDiffTests, DiffTest)
+      - CLAUDE.md (project conventions, differential testing pattern, and build instructions)
+
+    files:
+      - path: cmd/expand/main.go
+        action: modify
+        note: Add R4.1-R4.3 functionality to complete the expand implementation
+      - path: cmd/expand/expand_test.go
+        action: create
+        note: Create or update differential test file if R4.x requirements include testing
+
+    requirements:
+      - id: R1
+        text: "Implement srd024-expand requirement R4.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd024-expand requirement R4.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd024-expand requirement R4.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Read srd024-expand.yaml for the exact specification of R4.1-R4.3. Modify existing files -- do not rewrite from scratch."
+      - id: D2
+        text: "If R4.x includes differential test requirements, use the project testing pattern: testutils.BuildBinary(t, \".\"), exec.LookPath(\"gexpand\"), t.Skip if not found, testutils.RunDiffTests with []testutils.DiffTest."
+      - id: D3
+        text: "The reference binary for expand is gexpand (Homebrew GNU coreutils). Always call exec.LookPath and t.Skip if the reference binary is not found."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/expand ./cmd/expand/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/expand/... reports no issues"
+      - id: AC3
+        text: "All behavior specified in srd024-expand R4.1-R4.3 is implemented"
+      - id: AC4
+        text: "go test ./cmd/expand/... -count=1 passes (tests skip gracefully if gexpand reference binary is not in PATH)"
+  dependency: 0
+- index: 2
+  title: '[stitch] cmd/unexpand (contract)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd025-unexpand.yaml (full SRD -- all requirement groups R1 through R4)
+      - cmd/expand/main.go (reference for tab-conversion utility structure -- unexpand is the inverse of expand)
+      - CLAUDE.md (project conventions and build instructions)
+      - pkg/sys/ (for InstallSIGPIPEHandler)
+
+    files:
+      - path: cmd/unexpand/main.go
+        action: create
+        note: "Contract stub file with package declaration, imports, main function skeleton, flag definitions for all srd025-unexpand flags, and internal function signatures"
+
+    requirements:
+      - id: R1
+        text: "Create cmd/unexpand/main.go with package main declaration and all imports needed by srd025-unexpand"
+      - id: R2
+        text: "Define the main function skeleton with sys.InstallSIGPIPEHandler(), flag variable declarations for all flags in srd025-unexpand, and flag.Parse call"
+      - id: R3
+        text: "Define stub signatures for all internal helper functions needed by srd025-unexpand -- e.g., unexpand processing logic, tab stop list parsing, whitespace conversion"
+      - id: R4
+        text: "All function bodies contain minimal placeholder logic (e.g., return nil or os.Exit(0)) so the file compiles and builds"
+
+    design_decisions:
+      - id: D1
+        text: "Read srd025-unexpand.yaml to identify all flags, modes, and behaviors. Create a stub for each distinct behavior."
+      - id: D2
+        text: "Use cmd/expand/main.go as structural reference -- unexpand shares tab stop configuration and I/O patterns with expand."
+      - id: D3
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project convention for all cmd/ utilities that write to stdout."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/unexpand/main.go exists and compiles: go build -o bin/unexpand ./cmd/unexpand/"
+      - id: AC2
+        text: "go vet ./cmd/unexpand/... reports no issues"
+      - id: AC3
+        text: "All flags from srd025-unexpand have corresponding flag variable declarations"
+      - id: AC4
+        text: "All internal helper functions have stub signatures -- the file is structured for incremental implementation of R1.1-R4.4"
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/unexpand: implement srd025-unexpand R1.1-R1.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd025-unexpand.yaml (requirements R1.1, R1.2, R1.3, R1.4)
+      - cmd/unexpand/main.go (contract stubs from previous task)
+      - cmd/expand/main.go (reference implementation for tab-conversion utility patterns)
+      - CLAUDE.md (project conventions and build instructions)
+
+    files:
+      - path: cmd/unexpand/main.go
+        action: modify
+        note: Implement R1.1-R1.4 by filling in contract stubs with working logic
+
+    requirements:
+      - id: R1
+        text: "Implement srd025-unexpand requirement R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd025-unexpand requirement R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd025-unexpand requirement R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd025-unexpand requirement R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Read srd025-unexpand.yaml for the exact specification of R1.1-R1.4. Fill in the stub functions from the contract task -- do not restructure the file."
+      - id: D2
+        text: "unexpand converts spaces to tabs. By default only leading whitespace is converted. Follow the SRD for exact conversion semantics."
+      - id: D3
+        text: "Preserve all contract stubs for R2-R4 requirements -- only implement R1.1-R1.4 in this task."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/unexpand ./cmd/unexpand/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/unexpand/... reports no issues"
+      - id: AC3
+        text: "All behavior specified in srd025-unexpand R1.1-R1.4 is implemented"
+      - id: AC4
+        text: "Contract stubs for R2.x-R4.x requirements remain intact for future tasks"
+  dependency: 2
