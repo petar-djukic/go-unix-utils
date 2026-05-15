@@ -81,6 +81,33 @@ func TestDiff(t *testing.T) {
 		{Name: "Ee-last-wins", Args: []string{"-E", "-e", `a\tb`}, Env: []string{"LC_ALL=C"}},
 		// combined -n -e
 		{Name: "ne-suppress-newline-and-escape", Args: []string{"-ne", `a\tb`}, Env: []string{"LC_ALL=C"}},
+		// R2.1: octal edge cases
+		{Name: "e-octal-zero", Args: []string{"-e", `\0`}, Env: []string{"LC_ALL=C"}},
+		{Name: "e-octal-one-digit", Args: []string{"-e", `\07`}, Env: []string{"LC_ALL=C"}},
+		{Name: "e-octal-two-digits", Args: []string{"-e", `\077`}, Env: []string{"LC_ALL=C"}},
+		{Name: "e-octal-max", Args: []string{"-e", `\0377`}, Env: []string{"LC_ALL=C"}},
+		// R2.1: hex edge cases
+		{Name: "e-hex-one-digit", Args: []string{"-e", `\xA`}, Env: []string{"LC_ALL=C"}},
+		{Name: "e-hex-lower", Args: []string{"-e", `\x6f`}, Env: []string{"LC_ALL=C"}},
+		{Name: "e-hex-no-digits", Args: []string{"-e", `\xZZ`}, Env: []string{"LC_ALL=C"}},
+		// R2.1: unknown escape passes through literally
+		{Name: "e-unknown-escape", Args: []string{"-e", `\q`}, Env: []string{"LC_ALL=C"}},
+		// R2.1: multiple escapes in one string
+		{Name: "e-multiple-escapes", Args: []string{"-e", `\t\n\a`}, Env: []string{"LC_ALL=C"}},
+		// R2.2: \c suppresses further arguments too
+		{Name: "e-c-multi-arg", Args: []string{"-e", `before\c`, "after"}, Env: []string{"LC_ALL=C"}},
+		// R2.2: \c at start
+		{Name: "e-c-at-start", Args: []string{"-e", `\crest`}, Env: []string{"LC_ALL=C"}},
+		// R2.3: -E with backslash sequences written literally
+		{Name: "E-literal-backslash-n", Args: []string{"-E", `a\nb`}, Env: []string{"LC_ALL=C"}},
+		// R2.4: -eE combined in single flag (last char wins)
+		{Name: "eE-combined-flag", Args: []string{"-eE", `a\tb`}, Env: []string{"LC_ALL=C"}},
+		// R2.4: -Ee combined in single flag (last char wins)
+		{Name: "Ee-combined-flag", Args: []string{"-Ee", `a\tb`}, Env: []string{"LC_ALL=C"}},
+		// R2.4: multiple separate flags, last wins
+		{Name: "e-E-e-last-wins", Args: []string{"-e", "-E", "-e", `a\tb`}, Env: []string{"LC_ALL=C"}},
+		// combined -n with -E then -e
+		{Name: "n-E-e-combined", Args: []string{"-n", "-E", "-e", `a\tb`}, Env: []string{"LC_ALL=C"}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
