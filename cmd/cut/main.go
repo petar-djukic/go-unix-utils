@@ -337,6 +337,90 @@ func complementRanges(ranges [][2]int) [][2]int {
 	return result
 }
 
-func cutFields(_ io.Reader, _ *bufio.Writer, _ options) {
-	panic("not implemented")
+func cutFields(r io.Reader, w *bufio.Writer, opts options) {
+	ranges, err := parseRangeList(opts.fieldList)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cut: %s\n", err)
+		return
+	}
+	if opts.complement {
+		ranges = complementRanges(ranges)
+	}
+	outDelim := string(opts.delimiter)
+	if opts.hasOutputDel {
+		outDelim = opts.outputDelim
+	}
+	br := bufio.NewReader(r)
+	for {
+		line, readErr := br.ReadString('\n')
+		hasNewline := len(line) > 0 && line[len(line)-1] == '\n'
+		if hasNewline {
+			line = line[:len(line)-1]
+		}
+		hasDelim := containsByte(line, opts.delimiter)
+		if !hasDelim && opts.onlyDelimited {
+			if readErr != nil {
+				break
+			}
+			continue
+		}
+		if hasDelim {
+			writeSelectedFields(w, line, opts.delimiter, ranges, outDelim)
+		} else if len(line) > 0 {
+			w.WriteString(line)
+		}
+		if readErr == nil || len(line) > 0 {
+			w.WriteByte('\n')
+		}
+		if readErr != nil {
+			break
+		}
+	}
+}
+
+func writeSelectedFields(w *bufio.Writer, line string, delim byte, ranges [][2]int, outDelim string) {
+	fields := splitFields(line, delim)
+	selected := selectFields(fields, ranges)
+	w.WriteString(strings.Join(selected, outDelim))
+}
+
+func containsByte(s string, b byte) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			return true
+		}
+	}
+	return false
+}
+
+func splitFields(line string, delim byte) []string {
+	var fields []string
+	start := 0
+	for i := 0; i < len(line); i++ {
+		if line[i] == delim {
+			fields = append(fields, line[start:i])
+			start = i + 1
+		}
+	}
+	fields = append(fields, line[start:])
+	return fields
+}
+
+func selectFields(fields []string, ranges [][2]int) []string {
+	var result []string
+	n := len(fields)
+	for _, rng := range ranges {
+		lo := rng[0]
+		hi := rng[1]
+		if lo > n {
+			continue
+		}
+		if hi > n {
+			hi = n
+		}
+		for i := lo; i <= hi; i++ {
+			result = append(result, fields[i-1])
+		}
+	}
+	return result
 }
