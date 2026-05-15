@@ -134,6 +134,120 @@ func TestDiffR2(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+func TestDiffR3(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:  "R3.1_format_ln",
+			Args:  []string{"-n", "ln"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_format_rn",
+			Args:  []string{"-n", "rn"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_format_rz",
+			Args:  []string{"-n", "rz"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_format_ln_with_empty",
+			Args:  []string{"-b", "a", "-n", "ln"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_format_rz_with_empty",
+			Args:  []string{"-b", "a", "-n", "rz"},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_width_3",
+			Args:  []string{"-w", "3"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_width_10",
+			Args:  []string{"-w", "10"},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_width_1",
+			Args:  []string{"-w", "1"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.3_separator_colon_space",
+			Args:  []string{"-s", ": "},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.3_separator_pipe",
+			Args:  []string{"-s", "|"},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.3_separator_empty",
+			Args:  []string{"-s", ""},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.4_start_value",
+			Args:  []string{"-v", "10"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.4_increment",
+			Args:  []string{"-i", "5"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.4_start_and_increment",
+			Args:  []string{"-v", "10", "-i", "5"},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.1_R3.2_R3.3_combined_AC2",
+			Args:  []string{"-b", "a", "-n", "ln", "-w", "3", "-s", ": "},
+			Stdin: []byte("a\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.2_R3.1_width_with_rz",
+			Args:  []string{"-n", "rz", "-w", "4"},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R3.3_separator_with_unnumbered",
+			Args:  []string{"-s", ": "},
+			Stdin: []byte("a\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 func TestDiffFiles(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gnl")
