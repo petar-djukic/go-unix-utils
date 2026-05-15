@@ -1757,13 +1757,16 @@ requirements:
             issue: 5282
             weight: 1
         R3.1:
-            status: in_progress
+            status: uncertain
+            issue: 5283
             weight: 1
         R3.2:
-            status: in_progress
+            status: uncertain
+            issue: 5283
             weight: 1
         R3.3:
-            status: in_progress
+            status: uncertain
+            issue: 5283
             weight: 1
         R4.1:
             status: ready
