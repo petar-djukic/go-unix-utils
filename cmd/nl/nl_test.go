@@ -307,6 +307,108 @@ func TestSIGPIPE(t *testing.T) {
 	}
 }
 
+func TestDiffR4(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gnl")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:  "R4.1_section_delimiters_replaced",
+			Args:  []string{"-b", "a", "-h", "a", "-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nheader1\n\\:\\:\nbody1\n\\:\nfooter1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.1_body_delimiter_only",
+			Args:  []string{"-b", "a"},
+			Stdin: []byte("line1\n\\:\\:\nline2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.1_footer_delimiter_only",
+			Args:  []string{"-b", "a", "-f", "a"},
+			Stdin: []byte("line1\n\\:\nfooter1\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.1_multiple_pages",
+			Args:  []string{"-b", "a", "-h", "a", "-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nh1\n\\:\\:\nb1\nb2\n\\:\nf1\n\\:\\:\\:\nh2\n\\:\\:\nb3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.2_header_resets_counter",
+			Args:  []string{"-b", "a", "-h", "a"},
+			Stdin: []byte("\\:\\:\\:\nh1\nh2\n\\:\\:\nb1\nb2\n\\:\\:\\:\nh3\n\\:\\:\nb3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.2_reset_with_custom_start",
+			Args:  []string{"-b", "a", "-h", "a", "-v", "10"},
+			Stdin: []byte("\\:\\:\\:\nh1\n\\:\\:\nb1\nb2\n\\:\\:\\:\nh2\n\\:\\:\nb3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.2_reset_with_start_and_increment",
+			Args:  []string{"-b", "a", "-h", "a", "-v", "5", "-i", "2"},
+			Stdin: []byte("\\:\\:\\:\nh1\n\\:\\:\nb1\n\\:\\:\\:\nh2\n\\:\\:\nb2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.3_no_reset_with_p",
+			Args:  []string{"-p", "-b", "a", "-h", "a", "-f", "a"},
+			Stdin: []byte("\\:\\:\\:\nh1\nh2\n\\:\\:\nb1\nb2\n\\:\nf1\n\\:\\:\\:\nh3\n\\:\\:\nb3\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.3_no_reset_across_pages",
+			Args:  []string{"-p", "-b", "a", "-h", "a"},
+			Stdin: []byte("\\:\\:\\:\nh1\n\\:\\:\nb1\nb2\n\\:\\:\\:\nh2\n\\:\\:\nb3\nb4\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.4_join_blank_l2",
+			Args:  []string{"-b", "a", "-l", "2"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.4_join_blank_l3",
+			Args:  []string{"-b", "a", "-l", "3"},
+			Stdin: []byte("a\n\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.4_join_blank_l1_default",
+			Args:  []string{"-b", "a"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.4_join_blank_fewer_than_threshold",
+			Args:  []string{"-b", "a", "-l", "3"},
+			Stdin: []byte("a\n\n\nb\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.1_R4.2_R4.3_combined_sections_with_p",
+			Args:  []string{"-p", "-b", "a", "-h", "a", "-f", "a", "-v", "10", "-i", "5"},
+			Stdin: []byte("\\:\\:\\:\nh1\n\\:\\:\nb1\n\\:\nf1\n\\:\\:\\:\nh2\n\\:\\:\nb2\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+		{
+			Name:  "R4.4_join_blank_with_body_t",
+			Args:  []string{"-l", "2"},
+			Stdin: []byte("a\n\n\nb\n\nc\n"),
+			Env:   []string{"LC_ALL=C"},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 func writeFixture(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
