@@ -8878,3 +8878,190 @@
       - id: AC5
         text: go vet ./cmd/md5sum/ reports no issues
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/md5sum -- srd030 R4.1-R4.3'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd030-md5sum.yaml (SRD for md5sum -- focus on requirement group R4)
+      - cmd/md5sum/main.go (existing implementation with R1-R3 already implemented)
+      - cmd/md5sum/md5sum_test.go (existing differential tests)
+      - pkg/hashutil/ (shared hash utility library used by all checksum commands)
+
+    files:
+      - path: cmd/md5sum/main.go
+        action: modify
+        note: Add functionality for srd030 R4.1-R4.3
+      - path: cmd/md5sum/md5sum_test.go
+        action: modify
+        note: Add differential tests covering R4.1-R4.3
+
+    requirements:
+      - id: R1
+        text: Implement srd030 R4.1 per the SRD specification
+      - id: R2
+        text: Implement srd030 R4.2 per the SRD specification
+      - id: R3
+        text: Implement srd030 R4.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Use existing pkg/hashutil functions (DigestFiles, VerifyChecksums, FormatGNU, FormatBSDTag, ParseChecksumLine, CheckOptions) for all shared checksum logic
+      - id: D2
+        text: Follow the established patterns in the existing cmd/md5sum code for flag parsing and error handling
+      - id: D3
+        text: Reference binary for differential testing is gmd5sum from Homebrew coreutils -- use exec.LookPath and t.Skip if not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/md5sum/ compiles without errors
+      - id: AC2
+        text: go test ./cmd/md5sum/... -count=1 passes all tests including new R4 differential tests
+      - id: AC3
+        text: All srd030 R4.1, R4.2, and R4.3 requirements are implemented as specified in the SRD
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/sha1sum -- srd031 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd031-sha1sum.yaml (SRD for sha1sum -- focus on requirement group R1)
+      - cmd/md5sum/main.go (reference pattern -- sha1sum follows the same structure as md5sum)
+      - cmd/md5sum/md5sum_test.go (reference test pattern for differential testing)
+      - pkg/hashutil/ (shared hash utility library -- provides HashConfig, ComputeDigest, DigestFiles, FormatGNU)
+      - pkg/sys/ (provides InstallSIGPIPEHandler)
+
+    files:
+      - path: cmd/sha1sum/main.go
+        action: create
+        note: SHA-1 checksum utility implementing srd031 R1.1-R1.4
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: create
+        note: Differential tests for sha1sum R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: Implement srd031 R1.1 per the SRD specification
+      - id: R2
+        text: Implement srd031 R1.2 per the SRD specification
+      - id: R3
+        text: Implement srd031 R1.3 per the SRD specification
+      - id: R4
+        text: Implement srd031 R1.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Use crypto/sha1 as the hash algorithm via pkg/hashutil.HashConfig
+      - id: D2
+        text: Use pkg/hashutil functions (DigestFiles, ComputeDigest, FormatGNU) for all shared checksum logic -- do not duplicate hashutil functionality
+      - id: D3
+        text: Call sys.InstallSIGPIPEHandler() at the start of main
+      - id: D4
+        text: Follow the same structure as cmd/md5sum/main.go for flag parsing, file processing, and error handling
+      - id: D5
+        text: Reference binary for differential testing is gsha1sum from Homebrew coreutils -- use exec.LookPath and t.Skip if not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/sha1sum/ compiles without errors
+      - id: AC2
+        text: go test ./cmd/sha1sum/... -count=1 passes all differential tests
+      - id: AC3
+        text: All srd031 R1.1, R1.2, R1.3, and R1.4 requirements are implemented as specified in the SRD
+      - id: AC4
+        text: cmd/sha1sum/main.go calls sys.InstallSIGPIPEHandler() at the start of main
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/sha1sum -- srd031 R2.1-R2.3, R3.1'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd031-sha1sum.yaml (SRD for sha1sum -- focus on R2.1-R2.3 and R3.1)
+      - cmd/sha1sum/main.go (existing implementation from previous task with R1.1-R1.4)
+      - cmd/sha1sum/sha1sum_test.go (existing differential tests)
+      - pkg/hashutil/ (shared hash utility library -- provides FormatGNU, FormatBSDTag, ParseChecksumLine, VerifyChecksums)
+
+    files:
+      - path: cmd/sha1sum/main.go
+        action: modify
+        note: Add R2.1-R2.3 output formatting and R3.1 check mode functionality
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: modify
+        note: Add differential tests covering R2.1-R2.3 and R3.1
+
+    requirements:
+      - id: R1
+        text: Implement srd031 R2.1 per the SRD specification
+      - id: R2
+        text: Implement srd031 R2.2 per the SRD specification
+      - id: R3
+        text: Implement srd031 R2.3 per the SRD specification
+      - id: R4
+        text: Implement srd031 R3.1 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Use pkg/hashutil functions (FormatGNU, FormatBSDTag, ParseChecksumLine, VerifyChecksums) for output formatting and checksum parsing
+      - id: D2
+        text: Follow the same flag names and behaviors as the GNU gsha1sum reference binary
+      - id: D3
+        text: Reference binary for differential testing is gsha1sum from Homebrew coreutils
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/sha1sum/ compiles without errors
+      - id: AC2
+        text: go test ./cmd/sha1sum/... -count=1 passes all tests including new R2 and R3.1 differential tests
+      - id: AC3
+        text: All srd031 R2.1, R2.2, R2.3, and R3.1 requirements are implemented as specified in the SRD
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/sha1sum -- srd031 R3.2, R4.1-R4.3'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd031-sha1sum.yaml (SRD for sha1sum -- focus on R3.2 and R4.1-R4.3)
+      - cmd/sha1sum/main.go (existing implementation from previous tasks with R1-R2 and R3.1)
+      - cmd/sha1sum/sha1sum_test.go (existing differential tests)
+      - pkg/hashutil/ (shared hash utility library -- provides VerifyChecksums, CheckOptions)
+
+    files:
+      - path: cmd/sha1sum/main.go
+        action: modify
+        note: Complete R3.2 check mode and add R4.1-R4.3 functionality
+      - path: cmd/sha1sum/sha1sum_test.go
+        action: modify
+        note: Add differential tests covering R3.2 and R4.1-R4.3
+
+    requirements:
+      - id: R1
+        text: Implement srd031 R3.2 per the SRD specification
+      - id: R2
+        text: Implement srd031 R4.1 per the SRD specification
+      - id: R3
+        text: Implement srd031 R4.2 per the SRD specification
+      - id: R4
+        text: Implement srd031 R4.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Use pkg/hashutil.VerifyChecksums and pkg/hashutil.CheckOptions for check mode verification
+      - id: D2
+        text: Follow the same flag names and behaviors as the GNU gsha1sum reference binary
+      - id: D3
+        text: Reference binary for differential testing is gsha1sum from Homebrew coreutils
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/sha1sum/ compiles without errors
+      - id: AC2
+        text: go test ./cmd/sha1sum/... -count=1 passes all tests including new R3.2 and R4 differential tests
+      - id: AC3
+        text: All srd031 R3.2, R4.1, R4.2, and R4.3 requirements are implemented as specified in the SRD
+      - id: AC4
+        text: sha1sum implementation is feature-complete -- all 12 SRD requirements (R1.1 through R4.3) are implemented
+  dependency: 2
