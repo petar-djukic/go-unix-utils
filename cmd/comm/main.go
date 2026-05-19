@@ -90,7 +90,7 @@ func parseArgs(args []string) (options, string, string, bool) {
 func run(w *bufio.Writer, opts *options, path1, path2 string) int {
 	r1, c1, err := openInput(path1)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "comm: %s\n", err)
+		printFileError(path1, err)
 		return 1
 	}
 	if c1 != nil {
@@ -98,7 +98,7 @@ func run(w *bufio.Writer, opts *options, path1, path2 string) int {
 	}
 	r2, c2, err := openInput(path2)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "comm: %s\n", err)
+		printFileError(path2, err)
 		return 1
 	}
 	if c2 != nil {
@@ -252,6 +252,14 @@ func writeLine(w *bufio.Writer, opts *options, col int, line string) error {
 		return err
 	}
 	return w.WriteByte('\n')
+}
+
+func printFileError(name string, err error) {
+	if pe, ok := errors.AsType[*os.PathError](err); ok {
+		fmt.Fprintf(os.Stderr, "comm: %s: %s\n", pe.Path, pe.Err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "comm: %s: %s\n", name, err)
 }
 
 func epipeOr1(err error) int {

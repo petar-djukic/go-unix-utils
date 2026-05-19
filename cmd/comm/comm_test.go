@@ -31,6 +31,10 @@ func normStderr(b []byte) []byte {
 	return out
 }
 
+func normStderrLower(b []byte) []byte {
+	return bytes.ToLower(normStderr(b))
+}
+
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gcomm")
@@ -341,6 +345,20 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"--output-delimiter", "|", "file1.txt", "file2.txt"},
 			WorkDir: dir,
 			Env:     env,
+		},
+		{
+			Name:      "r4_2_nonexistent_file1",
+			Args:      []string{"nonexistent.txt", "file2.txt"},
+			WorkDir:   dir,
+			Env:       env,
+			Normalize: []testutils.NormalizeFunc{normStderrLower},
+		},
+		{
+			Name:      "r4_2_nonexistent_file2",
+			Args:      []string{"file1.txt", "nonexistent.txt"},
+			WorkDir:   dir,
+			Env:       env,
+			Normalize: []testutils.NormalizeFunc{normStderrLower},
 		},
 	}
 
