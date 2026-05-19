@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5312"
+task_title: '[stitch] cmd/sha256sum completion (srd032 R3.2, R4.1, R4.2, R4.3)'
+status: success
+started_at: "2026-05-19T23:24:00Z"
+duration: 3m24s
+duration_s: 203
+tokens:
+    input: 606979
+    output: 5682
+    cache_creation: 195264
+    cache_read: 411698
+cost_usd: 2.0505842000000007
+num_turns: 51
+loc_before:
+    production: 9064
+    test: 8474
+loc_after:
+    production: 9118
+    test: 8474
+diff:
+    files: 2
+    insertions: 255
+    deletions: 2
