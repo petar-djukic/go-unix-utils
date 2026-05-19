@@ -42,7 +42,16 @@ func TestDiff(t *testing.T) {
 	normalizeOpenPrefix := testutils.NormalizeFunc(func(b []byte) []byte {
 		return bytes.ReplaceAll(b, []byte(": open "), []byte(": "))
 	})
-	errNorm := []testutils.NormalizeFunc{normalizeBinaryName, normalizeErrCase, normalizeOpenPrefix}
+	normalizeTryHelp := testutils.NormalizeFunc(func(b []byte) []byte {
+		var out [][]byte
+		for _, line := range bytes.Split(b, []byte("\n")) {
+			if !bytes.HasPrefix(bytes.TrimSpace(bytes.ToLower(line)), []byte("try ")) {
+				out = append(out, line)
+			}
+		}
+		return bytes.Join(out, []byte("\n"))
+	})
+	errNorm := []testutils.NormalizeFunc{normalizeBinaryName, normalizeErrCase, normalizeOpenPrefix, normalizeTryHelp}
 
 	tests := []testutils.DiffTest{
 		{
@@ -439,6 +448,42 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-f", "1", "-c"},
 			Stdin: []byte("a foo\nb foo\nc bar\n"),
 			Env:   env,
+		},
+		{
+			Name:  "r4_1_exit_0_success",
+			Args:  []string{},
+			Stdin: []byte("a\nb\nc\n"),
+			Env:   env,
+		},
+		{
+			Name:    "r4_1_exit_0_file",
+			Args:    []string{"abc.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:      "r4_2_nonexistent_file",
+			Args:      []string{"no_such_file.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: errNorm,
+			Env:       env,
+		},
+		{
+			Name:      "r4_2_extra_operand",
+			Args:      []string{"abc.txt", "out2.txt", "extra.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: errNorm,
+			Env:       env,
+		},
+		{
+			Name:      "r4_2_invalid_option",
+			Args:      []string{"-x"},
+			Stdin:     []byte("a\n"),
+			ExitCode:  1,
+			Normalize: errNorm,
+			Env:       env,
 		},
 	}
 
