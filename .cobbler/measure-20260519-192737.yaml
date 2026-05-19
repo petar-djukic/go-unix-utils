@@ -1,0 +1,190 @@
+- index: 0
+  title: "[stitch] cmd/sha512sum basic hashing (srd033 R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd033-sha512sum.yaml (full SRD for sha512sum)
+      - pkg/hashutil/hashutil.go (shared checksum protocol -- HashConfig, DigestFiles, FormatGNU)
+      - cmd/sha256sum/main.go (reference implementation of same protocol for SHA-256)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler pattern)
+
+    files:
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: sha512sum utility -- hash files and stdin, output GNU two-space format
+
+    requirements:
+      - id: R1
+        text: "Implement file hashing: compute SHA-512 digest of one or more named files, output in GNU two-space format (digest followed by two spaces and filename)"
+      - id: R2
+        text: "Hash stdin when no file arguments are given or when a filename argument is \"-\""
+      - id: R3
+        text: "Support binary mode flag (-b) that outputs asterisk-prefixed filename format"
+      - id: R4
+        text: "Install SIGPIPE handler via sys.InstallSIGPIPEHandler(), support --version and --help flags"
+
+    design_decisions:
+      - id: D1
+        text: "Use pkg/hashutil.HashConfig with crypto/sha512.New and DigestLen 64"
+      - id: D2
+        text: "Delegate file iteration and formatting to pkg/hashutil.DigestFiles"
+      - id: D3
+        text: "Follow the exact same main() structure as cmd/sha256sum -- parse flags, build HashConfig, call DigestFiles, exit with returned code"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/sha512sum ./cmd/sha512sum/ compiles without errors"
+      - id: AC2
+        text: "echo hello | bin/sha512sum outputs correct SHA-512 digest in GNU two-space format with - as filename"
+      - id: AC3
+        text: "bin/sha512sum file.txt outputs correct digest with filename"
+      - id: AC4
+        text: "bin/sha512sum -b file.txt outputs asterisk-prefixed filename"
+      - id: AC5
+        text: "bin/sha512sum --version prints version info and exits 0"
+
+- index: 1
+  title: "[stitch] cmd/sha512sum check mode and tag format (srd033 R2.1, R2.2, R2.3, R3.1)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd033-sha512sum.yaml (full SRD for sha512sum)
+      - pkg/hashutil/hashutil.go (VerifyChecksums, CheckOptions, ParseChecksumLine)
+      - cmd/sha512sum/main.go (existing basic hashing implementation to extend)
+      - cmd/sha256sum/main.go (reference for check mode flag wiring)
+
+    files:
+      - path: cmd/sha512sum/main.go
+        action: modify
+        note: add --check, --warn, --quiet, --status, and --tag flags
+
+    requirements:
+      - id: R1
+        text: "Implement check mode (-c/--check): read a checksum file, verify each entry against the filesystem, print OK or FAILED per line"
+      - id: R2
+        text: "Support --warn flag that prints warnings for improperly formatted checksum lines during verification"
+      - id: R3
+        text: "Support --quiet and --status flags: --quiet suppresses OK lines, --status suppresses all output and uses only exit code"
+      - id: R4
+        text: "Support --tag flag that outputs BSD-style tag format: SHA512 (filename) = digest"
+
+    design_decisions:
+      - id: D1
+        text: "Delegate check mode to pkg/hashutil.VerifyChecksums with CheckOptions{Warn, Quiet, Status}"
+      - id: D2
+        text: "Delegate tag format to pkg/hashutil.FormatBSDTag with algorithm string \"SHA512\""
+      - id: D3
+        text: "Follow cmd/sha256sum flag wiring pattern exactly -- same flag names, same option mapping"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/sha512sum ./cmd/sha512sum/ compiles without errors"
+      - id: AC2
+        text: "bin/sha512sum --tag file.txt outputs \"SHA512 (file.txt) = <digest>\""
+      - id: AC3
+        text: "bin/sha512sum --check checksums.txt verifies files and prints OK/FAILED"
+      - id: AC4
+        text: "bin/sha512sum --check --quiet checksums.txt suppresses OK lines"
+      - id: AC5
+        text: "bin/sha512sum --check --status checksums.txt exits 1 on mismatch with no output"
+
+- index: 2
+  title: "[stitch] cmd/sha512sum completion (srd033 R3.2, R4.1, R4.2, R4.3)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd033-sha512sum.yaml (full SRD for sha512sum)
+      - pkg/hashutil/hashutil.go (error handling patterns in DigestFiles and VerifyChecksums)
+      - cmd/sha512sum/main.go (existing implementation to finalize)
+      - cmd/sha256sum/sha256sum_test.go (reference for differential test structure)
+      - pkg/testutils/difftest.go (DiffTest struct, RunDiffTests, BuildBinary)
+
+    files:
+      - path: cmd/sha512sum/main.go
+        action: modify
+        note: finalize text mode flag and error handling
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: differential tests against gsha512sum
+
+    requirements:
+      - id: R1
+        text: "Support text mode flag (-t) as the default mode indicator -- text mode uses two-space separator without asterisk"
+      - id: R2
+        text: "Handle errors for missing or unreadable files: print diagnostic to stderr, continue processing remaining files, exit non-zero"
+      - id: R3
+        text: "Exit code semantics: 0 on success, 1 when check mode finds mismatches, non-zero for I/O errors"
+      - id: R4
+        text: "Implement differential tests using testutils.RunDiffTests comparing output against gsha512sum reference binary"
+
+    design_decisions:
+      - id: D1
+        text: "Use testutils.BuildBinary(t, \".\") and exec.LookPath(\"gsha512sum\") with t.Skip if reference not found"
+      - id: D2
+        text: "Test cases cover: single file, multiple files, stdin, binary mode, tag mode, check mode, missing file errors"
+      - id: D3
+        text: "Set LC_ALL=C in test environment via DiffTest.Env field"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/sha512sum ./cmd/sha512sum/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/sha512sum/... -count=1 passes (or skips if gsha512sum not in PATH)"
+      - id: AC3
+        text: "bin/sha512sum nonexistent.txt prints error to stderr and exits non-zero"
+      - id: AC4
+        text: "bin/sha512sum file1.txt nonexistent.txt file2.txt processes all files, prints error for missing, exits non-zero"
+      - id: AC5
+        text: "Differential tests cover at least 8 scenarios matching gsha512sum behavior"
+
+- index: 3
+  title: "[stitch] cmd/ln basic hard and symbolic links (srd037 R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd037-ln.yaml (full SRD for ln)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler pattern)
+      - cmd/mkdir/main.go (reference for simple file operation utility structure, if it exists; otherwise use cmd/basename/main.go)
+
+    files:
+      - path: cmd/ln/main.go
+        action: create
+        note: ln utility -- create hard and symbolic links
+
+    requirements:
+      - id: R1
+        text: "Create hard links by default: ln TARGET LINK_NAME creates a hard link LINK_NAME pointing to TARGET"
+      - id: R2
+        text: "Create symbolic links with -s flag: ln -s TARGET LINK_NAME creates a symbolic link"
+      - id: R3
+        text: "Support target directory form: when last argument is a directory, create links inside it using target basenames"
+      - id: R4
+        text: "Install SIGPIPE handler via sys.InstallSIGPIPEHandler(), support --version and --help flags"
+
+    design_decisions:
+      - id: D1
+        text: "Use os.Link for hard links and os.Symlink for symbolic links"
+      - id: D2
+        text: "Detect target directory: if last argument is a directory (os.Stat + IsDir), create links inside using filepath.Base of each target"
+      - id: D3
+        text: "Parse flags with standard flag package or manual argument parsing matching GNU ln behavior"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/ln ./cmd/ln/ compiles without errors"
+      - id: AC2
+        text: "bin/ln target link creates a hard link (verified by stat showing same inode)"
+      - id: AC3
+        text: "bin/ln -s target link creates a symbolic link (verified by readlink)"
+      - id: AC4
+        text: "bin/ln target1 target2 dir/ creates links inside dir with correct basenames"
+      - id: AC5
+        text: "bin/ln --version prints version info and exits 0"

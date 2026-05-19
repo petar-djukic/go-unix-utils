@@ -298,7 +298,7 @@ code_status:
               testfiles: 0
             - id: rel05.4-uc003-sha256sum
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel05.4-uc004-sha512sum
