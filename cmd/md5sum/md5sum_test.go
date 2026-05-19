@@ -203,6 +203,32 @@ func TestDiff(t *testing.T) {
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{discardStderr},
 		},
+		// R3.1: binary mode with multiple files
+		{
+			Name: "binary-multiple-files",
+			Args: []string{"-b", helloFile, emptyFile},
+		},
+		// R3.1: binary mode with stdin
+		{
+			Name:  "binary-stdin",
+			Args:  []string{"-b"},
+			Stdin: []byte("abc"),
+		},
+		// R3.1: long form --binary
+		{
+			Name: "binary-long-flag",
+			Args: []string{"--binary", helloFile},
+		},
+		// R3.2: text mode with multiple files
+		{
+			Name: "text-multiple-files",
+			Args: []string{"-t", helloFile, emptyFile},
+		},
+		// R3.3: tag format ignores binary flag, multiple files
+		{
+			Name: "tag-binary-multiple",
+			Args: []string{"--tag", "-b", helloFile, emptyFile},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
