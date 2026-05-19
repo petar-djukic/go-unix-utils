@@ -4,13 +4,17 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -229,9 +233,73 @@ func TestDiff(t *testing.T) {
 			Name: "tag-binary-multiple",
 			Args: []string{"--tag", "-b", helloFile, emptyFile},
 		},
+		// R4.1: exit 0 when all files processed successfully
+		{
+			Name: "exit-0-single-file",
+			Args: []string{helloFile},
+		},
+		// R4.1: exit 0 when all verified digests match
+		{
+			Name:      "exit-0-check-valid",
+			Args:      []string{"--check", validChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R4.2: exit 1 when a named file cannot be opened
+		{
+			Name:      "exit-1-missing-file",
+			Args:      []string{filepath.Join(tmpDir, "no-such-file.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R4.2: exit 1 when a digest fails verification
+		{
+			Name:      "exit-1-check-mismatch",
+			Args:      []string{"--check", mismatchChecksum},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R4.2: exit 1 when the checksum file is unreadable
+		{
+			Name:      "exit-1-check-unreadable",
+			Args:      []string{"--check", filepath.Join(tmpDir, "nonexistent.md5")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	largePath := filepath.Join(dir, "large.dat")
+	if err := os.WriteFile(largePath, bytes.Repeat([]byte("x\n"), 500000), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, goBin, largePath)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(stdout, buf); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Close()
+	err = cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatal("md5sum timed out; SIGPIPE handler may not be installed")
+	}
+	if err != nil {
+		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
 }
 
 func md5hex(data []byte) string {
