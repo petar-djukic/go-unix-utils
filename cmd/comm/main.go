@@ -17,7 +17,10 @@ import (
 )
 
 type options struct {
-	suppress [3]bool
+	suppress        [3]bool
+	checkOrder      bool
+	noCheckOrder    bool
+	outputDelimiter string
 }
 
 func main() {
@@ -39,10 +42,28 @@ func main() {
 }
 
 func parseArgs(args []string) (options, string, string, bool) {
-	var opts options
+	opts := options{outputDelimiter: "\t"}
 	var files []string
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if arg == "--" {
+			continue
+		}
+		if arg == "--check-order" {
+			opts.checkOrder = true
+			continue
+		}
+		if arg == "--nocheck-order" {
+			opts.noCheckOrder = true
+			continue
+		}
+		if arg == "--output-delimiter" && i+1 < len(args) {
+			i++
+			opts.outputDelimiter = args[i]
+			continue
+		}
+		if strings.HasPrefix(arg, "--output-delimiter=") {
+			opts.outputDelimiter = arg[len("--output-delimiter="):]
 			continue
 		}
 		if strings.HasPrefix(arg, "-") && arg != "-" && !strings.HasPrefix(arg, "--") {
@@ -102,39 +123,111 @@ func compare(w *bufio.Writer, opts *options, r1, r2 io.Reader) int {
 	s2 := bufio.NewScanner(r2)
 	have1 := s1.Scan()
 	have2 := s2.Scan()
+	var prev1, prev2 string
+	var hasPrev1, hasPrev2 bool
+	var warned1, warned2, violated bool
 	for have1 && have2 {
 		line1 := s1.Text()
 		line2 := s2.Text()
 		var err error
 		if line1 < line2 {
 			err = writeLine(w, opts, 1, line1)
+			prev1 = line1
+			hasPrev1 = true
 			have1 = s1.Scan()
+			if have1 {
+				if code := checkOrder(opts, s1.Text(), prev1, 1, &warned1, &violated); code >= 0 {
+					return code
+				}
+			}
 		} else if line2 < line1 {
 			err = writeLine(w, opts, 2, line2)
+			prev2 = line2
+			hasPrev2 = true
 			have2 = s2.Scan()
+			if have2 {
+				if code := checkOrder(opts, s2.Text(), prev2, 2, &warned2, &violated); code >= 0 {
+					return code
+				}
+			}
 		} else {
 			err = writeLine(w, opts, 3, line1)
+			prev1 = line1
+			prev2 = line2
+			hasPrev1 = true
+			hasPrev2 = true
 			have1 = s1.Scan()
 			have2 = s2.Scan()
+			if opts.checkOrder {
+				if have1 {
+					if code := checkOrder(opts, s1.Text(), prev1, 1, &warned1, &violated); code >= 0 {
+						return code
+					}
+				}
+				if have2 {
+					if code := checkOrder(opts, s2.Text(), prev2, 2, &warned2, &violated); code >= 0 {
+						return code
+					}
+				}
+			}
 		}
 		if err != nil {
 			return epipeOr1(err)
 		}
 	}
-	return drain(w, opts, s1, s2, have1, have2)
+	code := drainWithOrder(w, opts, s1, s2, have1, have2, prev1, prev2, hasPrev1, hasPrev2, &warned1, &warned2, &violated)
+	if code != 0 {
+		return code
+	}
+	if violated {
+		fmt.Fprintf(os.Stderr, "comm: input is not in sorted order\n")
+		return 1
+	}
+	return 0
 }
 
-func drain(w *bufio.Writer, opts *options, s1, s2 *bufio.Scanner, have1, have2 bool) int {
+func checkOrder(opts *options, cur, prev string, fileNum int, warned, violated *bool) int {
+	if opts.noCheckOrder || cur >= prev {
+		return -1
+	}
+	*violated = true
+	if !*warned {
+		*warned = true
+		fmt.Fprintf(os.Stderr, "comm: file %d is not in sorted order\n", fileNum)
+	}
+	if opts.checkOrder {
+		return 1
+	}
+	return -1
+}
+
+func drainWithOrder(w *bufio.Writer, opts *options, s1, s2 *bufio.Scanner, have1, have2 bool, prev1, prev2 string, hasPrev1, hasPrev2 bool, warned1, warned2 *bool, violated *bool) int {
 	for have1 {
-		if err := writeLine(w, opts, 1, s1.Text()); err != nil {
+		line := s1.Text()
+		if hasPrev1 {
+			if code := checkOrder(opts, line, prev1, 1, warned1, violated); code >= 0 {
+				return code
+			}
+		}
+		if err := writeLine(w, opts, 1, line); err != nil {
 			return epipeOr1(err)
 		}
+		prev1 = line
+		hasPrev1 = true
 		have1 = s1.Scan()
 	}
 	for have2 {
-		if err := writeLine(w, opts, 2, s2.Text()); err != nil {
+		line := s2.Text()
+		if hasPrev2 {
+			if code := checkOrder(opts, line, prev2, 2, warned2, violated); code >= 0 {
+				return code
+			}
+		}
+		if err := writeLine(w, opts, 2, line); err != nil {
 			return epipeOr1(err)
 		}
+		prev2 = line
+		hasPrev2 = true
 		have2 = s2.Scan()
 	}
 	return 0
@@ -144,14 +237,14 @@ func writeLine(w *bufio.Writer, opts *options, col int, line string) error {
 	if opts.suppress[col-1] {
 		return nil
 	}
-	tabs := 0
+	delims := 0
 	for i := 0; i < col-1; i++ {
 		if !opts.suppress[i] {
-			tabs++
+			delims++
 		}
 	}
-	for i := 0; i < tabs; i++ {
-		if _, err := w.WriteString("\t"); err != nil {
+	for i := 0; i < delims; i++ {
+		if _, err := w.WriteString(opts.outputDelimiter); err != nil {
 			return err
 		}
 	}
