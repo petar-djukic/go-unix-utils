@@ -1,0 +1,27 @@
+task_id: "5295"
+task_title: '[stitch] cmd/uniq -- srd028 R4.1-R4.4'
+status: success
+branch: task/generation-run44-5295
+diff:
+    files: 3
+    insertions: 218
+    deletions: 3
+files:
+    - path: .cobbler/history/2026-05-19-17-33-10-stitch-orchestrator.log
+      status: M
+      insertions: 157
+      deletions: 0
+    - path: cmd/uniq/main.go
+      status: M
+      insertions: 15
+      deletions: 3
+    - path: cmd/uniq/uniq_test.go
+      status: M
+      insertions: 47
+      deletions: 0
+loc_before:
+    production: 8431
+    test: 7079
+loc_after:
+    production: 8443
+    test: 7126
