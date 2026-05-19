@@ -128,22 +128,30 @@ func pasteParallel(w *bufio.Writer, opts options, files []string) int {
 		if !anyActive {
 			break
 		}
-		writeFields(w, opts.delimiters, fields)
+		if err := writeFields(w, opts.delimiters, fields); err != nil {
+			return 1
+		}
 	}
 	return 0
 }
 
-func writeFields(w *bufio.Writer, delims string, fields []string) {
+func writeFields(w *bufio.Writer, delims string, fields []string) error {
+	var err error
 	for i, f := range fields {
 		if i > 0 && len(delims) > 0 {
 			d := delims[(i-1)%len(delims)]
 			if d != 0 {
-				w.WriteByte(d)
+				err = w.WriteByte(d)
 			}
 		}
-		w.WriteString(f)
+		if err == nil {
+			_, err = w.WriteString(f)
+		}
 	}
-	w.WriteByte('\n')
+	if err == nil {
+		err = w.WriteByte('\n')
+	}
+	return err
 }
 
 func openInputs(files []string) ([]*bufio.Scanner, []io.Closer, error) {
@@ -193,7 +201,9 @@ func pasteSerial(w *bufio.Writer, opts options, files []string) int {
 		for s.Scan() {
 			lines = append(lines, s.Text())
 		}
-		writeFields(w, opts.delimiters, lines)
+		if err := writeFields(w, opts.delimiters, lines); err != nil {
+			return 1
+		}
 	}
 	return 0
 }
