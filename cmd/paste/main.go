@@ -82,8 +82,28 @@ func flagValue(a, flag string, args []string, i int) (string, int, error) {
 	return a[len(flag):], i, nil
 }
 
-func parseDelimiters(_ string) string {
-	panic("not implemented")
+func parseDelimiters(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case 'n':
+				b.WriteByte('\n')
+			case 't':
+				b.WriteByte('\t')
+			case '\\':
+				b.WriteByte('\\')
+			case '0':
+				b.WriteByte(0)
+			default:
+				b.WriteByte(s[i+1])
+			}
+			i++
+		} else {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
 }
 
 func pasteParallel(w *bufio.Writer, opts options, files []string) int {
@@ -116,7 +136,10 @@ func pasteParallel(w *bufio.Writer, opts options, files []string) int {
 func writeFields(w *bufio.Writer, delims string, fields []string) {
 	for i, f := range fields {
 		if i > 0 && len(delims) > 0 {
-			w.WriteByte(delims[(i-1)%len(delims)])
+			d := delims[(i-1)%len(delims)]
+			if d != 0 {
+				w.WriteByte(d)
+			}
 		}
 		w.WriteString(f)
 	}
