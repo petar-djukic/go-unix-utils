@@ -6,11 +6,13 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -36,6 +38,9 @@ func main() {
 	}
 	exitCode := run(w, opts, inputFile, outputFile)
 	if err := w.Flush(); err != nil {
+		if errors.Is(err, syscall.EPIPE) {
+			os.Exit(0)
+		}
 		os.Exit(1)
 	}
 	os.Exit(exitCode)
@@ -231,7 +236,7 @@ func deduplicate(r io.Reader, w *bufio.Writer, opts options) int {
 			continue
 		}
 		if err := emitRun(w, prev, count, opts); err != nil {
-			return 1
+			return epipeOr1(err)
 		}
 		prev = line
 		prevKey = key
@@ -239,11 +244,11 @@ func deduplicate(r io.Reader, w *bufio.Writer, opts options) int {
 	}
 	if !first {
 		if err := emitRun(w, prev, count, opts); err != nil {
-			return 1
+			return epipeOr1(err)
 		}
 	}
 	if err := w.Flush(); err != nil {
-		return 1
+		return epipeOr1(err)
 	}
 	return 0
 }
@@ -265,6 +270,13 @@ func emitRun(w *bufio.Writer, line string, count int, opts options) error {
 		}
 	}
 	return nil
+}
+
+func epipeOr1(err error) int {
+	if errors.Is(err, syscall.EPIPE) {
+		return 0
+	}
+	return 1
 }
 
 func runCopies(count int, opts options) int {
