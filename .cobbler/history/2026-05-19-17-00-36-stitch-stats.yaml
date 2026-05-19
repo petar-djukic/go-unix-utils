@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5290"
+task_title: '[stitch] cmd/paste -- srd027 R4.1-R4.4'
+status: success
+started_at: "2026-05-19T21:00:36Z"
+duration: 2m44s
+duration_s: 163
+tokens:
+    input: 481907
+    output: 4202
+    cache_creation: 189379
+    cache_read: 292514
+cost_usd: 1.8482475500000004
+num_turns: 30
+rate_limit_wait_s: 2
+loc_before:
+    production: 8128
+    test: 6463
+loc_after:
+    production: 8138
+    test: 6581
+diff:
+    files: 3
+    insertions: 274
+    deletions: 6
