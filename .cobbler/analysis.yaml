@@ -284,11 +284,11 @@ code_status:
         - version: "05.4"
           name: Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel05.4-uc001-md5sum
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel05.4-uc002-sha1sum
