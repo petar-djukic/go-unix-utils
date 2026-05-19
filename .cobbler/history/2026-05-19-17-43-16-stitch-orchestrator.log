@@ -337,3 +337,13 @@ echo -n "a\nb\nc\n" > ...
 [2026-05-19T17:59:10-04:00] [generation-run44] [stitch +15m54s] closeStitchTask: closing #5298 "[stitch] cmd/comm -- srd029 R3.1-R3.4"
 [2026-05-19T17:59:11-04:00] [generation-run44] [stitch +15m55s] commentCobblerIssue: posted comment on #5298
 [2026-05-19T17:59:11-04:00] [generation-run44] [stitch +15m55s] updateRequirementsFile: marked 4 R-items as complete for issue #5298
+[2026-05-19T17:59:13-04:00] [generation-run44] [stitch +15m57s] closeCobblerIssue: closed #5298
+[2026-05-19T17:59:16-04:00] [generation-run44] [stitch +16m0s] closeStitchTask: #5298 closed
+[2026-05-19T17:59:16-04:00] [generation-run44] [stitch +16m1s] sweepCompletedTasks: all R-items for #5298 already complete, closing
+[2026-05-19T17:59:17-04:00] [generation-run44] [stitch +16m1s] commentCobblerIssue: posted comment on #5298
+[2026-05-19T17:59:19-04:00] [generation-run44] [stitch +16m3s] closeCobblerIssue: closed #5298
+[2026-05-19T17:59:19-04:00] [generation-run44] [stitch +16m3s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-19T17:59:19-04:00] [generation-run44] [stitch +16m3s] doOneTask: task 5298 finished in 15m58s
+[2026-05-19T17:59:19-04:00] [generation-run44] [stitch +16m3s] task 5298 completed in 15m58s
+[2026-05-19T17:59:19-04:00] [generation-run44] [stitch +16m3s] reached per-cycle limit (1), pausing for measure
+[2026-05-19T17:59:19-04:00] [generation-run44] [stitch +16m3s] completed 1 task(s) in 16m3s
