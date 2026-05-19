@@ -175,6 +175,25 @@ func closeAll(closers []io.Closer) {
 	}
 }
 
-func pasteSerial(_ *bufio.Writer, _ options, _ []string) int {
-	panic("not implemented")
+func pasteSerial(w *bufio.Writer, opts options, files []string) int {
+	for _, name := range files {
+		var s *bufio.Scanner
+		if name == "-" {
+			s = bufio.NewScanner(os.Stdin)
+		} else {
+			f, err := os.Open(name)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "paste: %s\n", err)
+				return 1
+			}
+			defer f.Close()
+			s = bufio.NewScanner(f)
+		}
+		var lines []string
+		for s.Scan() {
+			lines = append(lines, s.Text())
+		}
+		writeFields(w, opts.delimiters, lines)
+	}
+	return 0
 }
