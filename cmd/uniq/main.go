@@ -13,22 +13,30 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+type options struct {
+	count       bool
+	repeated    bool
+	allRepeated bool
+	unique      bool
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	w := bufio.NewWriter(os.Stdout)
-	inputFile, outputFile, err := parseArgs(os.Args[1:])
+	opts, inputFile, outputFile, err := parseArgs(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "uniq: %s\n", err)
 		os.Exit(1)
 	}
-	exitCode := run(w, inputFile, outputFile)
+	exitCode := run(w, opts, inputFile, outputFile)
 	if err := w.Flush(); err != nil {
 		os.Exit(1)
 	}
 	os.Exit(exitCode)
 }
 
-func parseArgs(args []string) (string, string, error) {
+func parseArgs(args []string) (options, string, string, error) {
+	var opts options
 	var positional []string
 	for i := range len(args) {
 		a := args[i]
@@ -36,10 +44,15 @@ func parseArgs(args []string) (string, string, error) {
 			positional = append(positional, args[i+1:]...)
 			break
 		}
-		if len(a) > 0 && a[0] == '-' && a != "-" {
-			return "", "", fmt.Errorf("invalid option -- '%s'", a[1:])
+		if a == "-" || len(a) == 0 || a[0] != '-' {
+			positional = append(positional, a)
+			continue
 		}
-		positional = append(positional, a)
+		for _, ch := range a[1:] {
+			if err := parseFlag(&opts, ch); err != nil {
+				return options{}, "", "", err
+			}
+		}
 	}
 	inputFile := ""
 	outputFile := ""
@@ -50,12 +63,28 @@ func parseArgs(args []string) (string, string, error) {
 		outputFile = positional[1]
 	}
 	if len(positional) > 2 {
-		return "", "", fmt.Errorf("extra operand '%s'", positional[2])
+		return options{}, "", "", fmt.Errorf("extra operand '%s'", positional[2])
 	}
-	return inputFile, outputFile, nil
+	return opts, inputFile, outputFile, nil
 }
 
-func run(w *bufio.Writer, inputFile, outputFile string) int {
+func parseFlag(opts *options, ch rune) error {
+	switch ch {
+	case 'c':
+		opts.count = true
+	case 'd':
+		opts.repeated = true
+	case 'D':
+		opts.allRepeated = true
+	case 'u':
+		opts.unique = true
+	default:
+		return fmt.Errorf("invalid option -- '%c'", ch)
+	}
+	return nil
+}
+
+func run(w *bufio.Writer, opts options, inputFile, outputFile string) int {
 	r, closer, err := openInput(inputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "uniq: %s\n", err)
@@ -64,7 +93,6 @@ func run(w *bufio.Writer, inputFile, outputFile string) int {
 	if closer != nil {
 		defer closer.Close()
 	}
-
 	out, outCloser, err := openOutput(w, outputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "uniq: %s\n", err)
@@ -73,8 +101,7 @@ func run(w *bufio.Writer, inputFile, outputFile string) int {
 	if outCloser != nil {
 		defer outCloser.Close()
 	}
-
-	return deduplicate(r, out)
+	return deduplicate(r, out, opts)
 }
 
 func openInput(name string) (io.Reader, io.Closer, error) {
@@ -99,25 +126,80 @@ func openOutput(w *bufio.Writer, name string) (*bufio.Writer, io.Closer, error) 
 	return bufio.NewWriter(f), f, nil
 }
 
-func deduplicate(r io.Reader, w *bufio.Writer) int {
+func deduplicate(r io.Reader, w *bufio.Writer, opts options) int {
 	scanner := bufio.NewScanner(r)
 	first := true
 	var prev string
+	count := 0
 	for scanner.Scan() {
 		line := scanner.Text()
-		if first || line != prev {
-			if _, err := w.WriteString(line); err != nil {
-				return 1
-			}
-			if err := w.WriteByte('\n'); err != nil {
-				return 1
-			}
+		if first {
 			prev = line
+			count = 1
 			first = false
+			continue
+		}
+		if line == prev {
+			count++
+			continue
+		}
+		if err := emitRun(w, prev, count, opts); err != nil {
+			return 1
+		}
+		prev = line
+		count = 1
+	}
+	if !first {
+		if err := emitRun(w, prev, count, opts); err != nil {
+			return 1
 		}
 	}
 	if err := w.Flush(); err != nil {
 		return 1
 	}
 	return 0
+}
+
+func emitRun(w *bufio.Writer, line string, count int, opts options) error {
+	n := runCopies(count, opts)
+	for range n {
+		if opts.count {
+			if _, err := fmt.Fprintf(w, "%7d %s\n", count, line); err != nil {
+				return err
+			}
+		} else {
+			if _, err := w.WriteString(line); err != nil {
+				return err
+			}
+			if err := w.WriteByte('\n'); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func runCopies(count int, opts options) int {
+	if (opts.repeated || opts.allRepeated) && opts.unique {
+		return 0
+	}
+	if opts.allRepeated {
+		if count > 1 {
+			return count
+		}
+		return 0
+	}
+	if opts.repeated {
+		if count > 1 {
+			return 1
+		}
+		return 0
+	}
+	if opts.unique {
+		if count == 1 {
+			return 1
+		}
+		return 0
+	}
+	return 1
 }
