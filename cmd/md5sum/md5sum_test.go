@@ -4,6 +4,9 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +33,27 @@ func TestDiff(t *testing.T) {
 	}
 
 	discardStderr := testutils.NormalizeFunc(func([]byte) []byte { return nil })
+
+	helloHash := md5hex([]byte("hello\n"))
+	emptyHash := md5hex([]byte{})
+
+	validChecksum := filepath.Join(tmpDir, "valid.md5")
+	writeFile(t, validChecksum, fmt.Sprintf("%s  %s\n", helloHash, helloFile))
+
+	multiChecksum := filepath.Join(tmpDir, "multi.md5")
+	writeFile(t, multiChecksum, fmt.Sprintf("%s  %s\n%s  %s\n", helloHash, helloFile, emptyHash, emptyFile))
+
+	mismatchChecksum := filepath.Join(tmpDir, "mismatch.md5")
+	writeFile(t, mismatchChecksum, fmt.Sprintf("%s  %s\n", "00000000000000000000000000000000", helloFile))
+
+	mixedChecksum := filepath.Join(tmpDir, "mixed.md5")
+	writeFile(t, mixedChecksum, fmt.Sprintf("%s  %s\n%s  %s\n", helloHash, helloFile, "00000000000000000000000000000000", emptyFile))
+
+	malformedChecksum := filepath.Join(tmpDir, "malformed.md5")
+	writeFile(t, malformedChecksum, fmt.Sprintf("this is not a checksum\n%s  %s\n", helloHash, helloFile))
+
+	bsdChecksum := filepath.Join(tmpDir, "bsd.md5")
+	writeFile(t, bsdChecksum, fmt.Sprintf("MD5 (%s) = %s\n", helloFile, helloHash))
 
 	tests := []testutils.DiffTest{
 		// R1.2: stdin with no arguments
@@ -102,7 +126,96 @@ func TestDiff(t *testing.T) {
 			Name:  "stdin-with-newline",
 			Stdin: []byte("hello world\n"),
 		},
+		// R2.1, R2.2: --check with valid checksum file
+		{
+			Name:      "check-valid",
+			Args:      []string{"--check", validChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.1, R2.2: --check with multiple valid entries
+		{
+			Name:      "check-multi-valid",
+			Args:      []string{"--check", multiChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.2: --check with mismatched hash exits 1
+		{
+			Name:      "check-mismatch",
+			Args:      []string{"--check", mismatchChecksum},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.2: --check with mix of valid and invalid
+		{
+			Name:      "check-mixed",
+			Args:      []string{"--check", mixedChecksum},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.1: --check with BSD tag format
+		{
+			Name:      "check-bsd-tag",
+			Args:      []string{"--check", bsdChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.3: --check --warn with malformed lines
+		{
+			Name:      "check-warn-malformed",
+			Args:      []string{"--check", "--warn", malformedChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.4: --check --quiet suppresses OK lines
+		{
+			Name:      "check-quiet-all-ok",
+			Args:      []string{"--check", "--quiet", multiChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.4: --check --quiet shows only failures
+		{
+			Name:      "check-quiet-with-fail",
+			Args:      []string{"--check", "--quiet", mixedChecksum},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.4: --check --status suppresses all output, exit 0
+		{
+			Name:      "check-status-ok",
+			Args:      []string{"--check", "--status", validChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.4: --check --status suppresses all output, exit 1 on failure
+		{
+			Name:      "check-status-fail",
+			Args:      []string{"--check", "--status", mismatchChecksum},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R2.1: --check with short flag -c
+		{
+			Name:      "check-short-flag",
+			Args:      []string{"-c", validChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func md5hex(data []byte) string {
+	sum := md5.Sum(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
