@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -18,6 +20,10 @@ type options struct {
 	repeated    bool
 	allRepeated bool
 	unique      bool
+	ignoreCase  bool
+	skipFields  int
+	skipChars   int
+	checkChars  int
 }
 
 func main() {
@@ -36,9 +42,9 @@ func main() {
 }
 
 func parseArgs(args []string) (options, string, string, error) {
-	var opts options
+	opts := options{checkChars: -1}
 	var positional []string
-	for i := range len(args) {
+	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
 			positional = append(positional, args[i+1:]...)
@@ -48,14 +54,13 @@ func parseArgs(args []string) (options, string, string, error) {
 			positional = append(positional, a)
 			continue
 		}
-		for _, ch := range a[1:] {
-			if err := parseFlag(&opts, ch); err != nil {
-				return options{}, "", "", err
-			}
+		var err error
+		i, err = parseFlags(&opts, args, i)
+		if err != nil {
+			return options{}, "", "", err
 		}
 	}
-	inputFile := ""
-	outputFile := ""
+	inputFile, outputFile := "", ""
 	if len(positional) > 0 {
 		inputFile = positional[0]
 	}
@@ -68,6 +73,57 @@ func parseArgs(args []string) (options, string, string, error) {
 	return opts, inputFile, outputFile, nil
 }
 
+func parseFlags(opts *options, args []string, i int) (int, error) {
+	flagStr := args[i][1:]
+	for j := 0; j < len(flagStr); j++ {
+		ch := rune(flagStr[j])
+		switch ch {
+		case 'f', 's', 'w':
+			rest := flagStr[j+1:]
+			if len(rest) == 0 {
+				i++
+				if i >= len(args) {
+					return i, fmt.Errorf("option requires an argument -- '%c'", ch)
+				}
+				rest = args[i]
+			}
+			n, err := strconv.Atoi(rest)
+			if err != nil {
+				return i, fmt.Errorf("invalid number of %s: '%s'", flagDescription(ch), rest)
+			}
+			setNumericOpt(opts, ch, n)
+			return i, nil
+		default:
+			if err := parseFlag(opts, ch); err != nil {
+				return i, err
+			}
+		}
+	}
+	return i, nil
+}
+
+func flagDescription(ch rune) string {
+	switch ch {
+	case 'f':
+		return "fields to skip"
+	case 's':
+		return "bytes to skip"
+	default:
+		return "bytes to compare"
+	}
+}
+
+func setNumericOpt(opts *options, ch rune, n int) {
+	switch ch {
+	case 'f':
+		opts.skipFields = n
+	case 's':
+		opts.skipChars = n
+	case 'w':
+		opts.checkChars = n
+	}
+}
+
 func parseFlag(opts *options, ch rune) error {
 	switch ch {
 	case 'c':
@@ -78,6 +134,8 @@ func parseFlag(opts *options, ch rune) error {
 		opts.allRepeated = true
 	case 'u':
 		opts.unique = true
+	case 'i':
+		opts.ignoreCase = true
 	default:
 		return fmt.Errorf("invalid option -- '%c'", ch)
 	}
@@ -126,20 +184,49 @@ func openOutput(w *bufio.Writer, name string) (*bufio.Writer, io.Closer, error) 
 	return bufio.NewWriter(f), f, nil
 }
 
+func comparisonKey(line string, opts options) string {
+	s := line
+	for range opts.skipFields {
+		for len(s) > 0 && (s[0] == ' ' || s[0] == '\t') {
+			s = s[1:]
+		}
+		for len(s) > 0 && s[0] != ' ' && s[0] != '\t' {
+			s = s[1:]
+		}
+	}
+	if opts.skipChars > 0 {
+		if opts.skipChars >= len(s) {
+			s = ""
+		} else {
+			s = s[opts.skipChars:]
+		}
+	}
+	if opts.checkChars >= 0 && opts.checkChars < len(s) {
+		s = s[:opts.checkChars]
+	}
+	if opts.ignoreCase {
+		s = strings.ToLower(s)
+	}
+	return s
+}
+
 func deduplicate(r io.Reader, w *bufio.Writer, opts options) int {
 	scanner := bufio.NewScanner(r)
 	first := true
 	var prev string
+	var prevKey string
 	count := 0
 	for scanner.Scan() {
 		line := scanner.Text()
+		key := comparisonKey(line, opts)
 		if first {
 			prev = line
+			prevKey = key
 			count = 1
 			first = false
 			continue
 		}
-		if line == prev {
+		if key == prevKey {
 			count++
 			continue
 		}
@@ -147,6 +234,7 @@ func deduplicate(r io.Reader, w *bufio.Writer, opts options) int {
 			return 1
 		}
 		prev = line
+		prevKey = key
 		count = 1
 	}
 	if !first {
