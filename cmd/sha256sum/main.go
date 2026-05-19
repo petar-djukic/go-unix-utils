@@ -4,14 +4,38 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/hashutil"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+const helpText = `Usage: sha256sum [OPTION]... [FILE]...
+Print or check SHA256 (256-bit) checksums.
+
+With no FILE, or when FILE is -, read standard input.
+  -b, --binary         read in binary mode
+  -c, --check          read checksums from the FILEs and check them
+      --tag            create a BSD-style checksum
+  -t, --text           read in text mode (default)
+  -z, --zero           end each output line with NUL, not newline,
+                         and disable file name escaping
+
+The following five options are useful only when verifying checksums:
+      --quiet          don't print OK for each successfully verified file
+      --status         don't output anything, status code shows success
+  -w, --warn           warn about improperly formatted checksum lines
+      --help           display this help and exit
+      --version        output version information and exit
+`
+
+const versionText = `sha256sum (go-unix-utils) dev
+`
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -21,6 +45,10 @@ func main() {
 		NewHash:   sha256.New,
 		DigestLen: 32,
 	}
+	var stdout io.Writer = os.Stdout
+	if opts.zero {
+		stdout = &nulWriter{w: os.Stdout}
+	}
 	if opts.check {
 		checkOpts := hashutil.CheckOptions{
 			Warn:   opts.warn,
@@ -29,7 +57,7 @@ func main() {
 		}
 		exitCode := 0
 		for _, f := range files {
-			ok, err := hashutil.VerifyChecksums(f, cfg, checkOpts, os.Stdout, os.Stderr)
+			ok, err := hashutil.VerifyChecksums(f, cfg, checkOpts, stdout, os.Stderr)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "sha256sum: %s\n", err)
 				exitCode = 1
@@ -39,7 +67,20 @@ func main() {
 		}
 		os.Exit(exitCode)
 	}
-	os.Exit(hashutil.DigestFiles(files, cfg, opts.binary, opts.tag, os.Stdout, os.Stderr))
+	os.Exit(hashutil.DigestFiles(files, cfg, opts.binary, opts.tag, stdout, os.Stderr))
+}
+
+type nulWriter struct {
+	w io.Writer
+}
+
+func (n *nulWriter) Write(p []byte) (int, error) {
+	replaced := bytes.ReplaceAll(p, []byte{'\n'}, []byte{0})
+	nn, err := n.w.Write(replaced)
+	if nn > len(p) {
+		nn = len(p)
+	}
+	return nn, err
 }
 
 type options struct {
@@ -49,6 +90,7 @@ type options struct {
 	warn   bool
 	quiet  bool
 	status bool
+	zero   bool
 }
 
 func parseArgs(args []string) (options, []string) {
@@ -80,6 +122,14 @@ func parseLongFlag(arg string, opts *options) (bool, int) {
 		return false, 0
 	}
 	switch arg {
+	case "--help":
+		fmt.Fprint(os.Stdout, helpText)
+		os.Exit(0)
+		return true, 1
+	case "--version":
+		fmt.Fprint(os.Stdout, versionText)
+		os.Exit(0)
+		return true, 1
 	case "--binary":
 		opts.binary = true
 	case "--text":
@@ -94,6 +144,8 @@ func parseLongFlag(arg string, opts *options) (bool, int) {
 		opts.quiet = true
 	case "--status":
 		opts.status = true
+	case "--zero":
+		opts.zero = true
 	default:
 		return false, 0
 	}
@@ -111,6 +163,8 @@ func parseShortFlags(flags string, opts *options) int {
 			opts.check = true
 		case 'w':
 			opts.warn = true
+		case 'z':
+			opts.zero = true
 		}
 	}
 	return 1
