@@ -2111,16 +2111,16 @@ requirements:
             issue: 5311
             weight: 1
         R3.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.3:
-            status: proposed
+            status: in_progress
             weight: 1
     srd033-sha512sum:
         R1.1:

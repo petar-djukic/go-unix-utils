@@ -142,3 +142,13 @@
 [2026-05-19T19:23:38-04:00] [generation-run44] [stitch +2m54s] closeStitchTask: closing #5311 "[stitch] cmd/sha256sum check mode and tag format (srd032 R2.1, R2.2, R2.3, R3.1)"
 [2026-05-19T19:23:40-04:00] [generation-run44] [stitch +2m55s] commentCobblerIssue: posted comment on #5311
 [2026-05-19T19:23:40-04:00] [generation-run44] [stitch +2m55s] updateRequirementsFile: marked 4 R-items as complete for issue #5311
+[2026-05-19T19:23:42-04:00] [generation-run44] [stitch +2m57s] closeCobblerIssue: closed #5311
+[2026-05-19T19:23:44-04:00] [generation-run44] [stitch +2m59s] closeStitchTask: #5311 closed
+[2026-05-19T19:23:44-04:00] [generation-run44] [stitch +2m59s] sweepCompletedTasks: all R-items for #5311 already complete, closing
+[2026-05-19T19:23:45-04:00] [generation-run44] [stitch +3m0s] commentCobblerIssue: posted comment on #5311
+[2026-05-19T19:23:47-04:00] [generation-run44] [stitch +3m2s] closeCobblerIssue: closed #5311
+[2026-05-19T19:23:48-04:00] [generation-run44] [stitch +3m4s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-19T19:23:48-04:00] [generation-run44] [stitch +3m4s] doOneTask: task 5311 finished in 2m58s
+[2026-05-19T19:23:48-04:00] [generation-run44] [stitch +3m4s] task 5311 completed in 2m58s
+[2026-05-19T19:23:48-04:00] [generation-run44] [stitch +3m4s] reached per-cycle limit (1), pausing for measure
+[2026-05-19T19:23:48-04:00] [generation-run44] [stitch +3m4s] completed 1 task(s) in 3m4s
