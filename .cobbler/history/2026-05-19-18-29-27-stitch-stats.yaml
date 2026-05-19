@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5305"
+task_title: '[stitch] cmd/md5sum -- srd030 R4.1-R4.3'
+status: success
+started_at: "2026-05-19T22:29:27Z"
+duration: 2m59s
+duration_s: 178
+tokens:
+    input: 510146
+    output: 3495
+    cache_creation: 197937
+    cache_read: 312196
+cost_usd: 1.8820054
+num_turns: 28
+rate_limit_wait_s: 2
+loc_before:
+    production: 8830
+    test: 7776
+loc_after:
+    production: 8830
+    test: 7844
+diff:
+    files: 2
+    insertions: 196
+    deletions: 0
