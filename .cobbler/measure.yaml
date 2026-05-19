@@ -8481,3 +8481,200 @@
       - id: AC6
         text: "go test ./cmd/uniq/... -count=1 passes (or skips if guniq not in PATH)"
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/uniq -- srd028 R4.1-R4.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd028-uniq.yaml (requirement group R4 for remaining uniq functionality)
+      - cmd/uniq/main.go (existing implementation -- extend, do not rewrite)
+      - cmd/uniq/uniq_test.go (existing differential tests -- add new test cases)
+      - CLAUDE.md (project patterns, build instructions, SIGPIPE, differential testing)
+
+    files:
+      - path: cmd/uniq/main.go
+        action: modify
+        note: Add functionality for srd028 requirements R4.1 through R4.4
+      - path: cmd/uniq/uniq_test.go
+        action: modify
+        note: Add differential test cases covering R4.1 through R4.4
+
+    requirements:
+      - id: R1
+        text: Implement srd028-uniq requirement R4.1 as specified in the SRD
+      - id: R2
+        text: Implement srd028-uniq requirement R4.2 as specified in the SRD
+      - id: R3
+        text: Implement srd028-uniq requirement R4.3 as specified in the SRD
+      - id: R4
+        text: Implement srd028-uniq requirement R4.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/uniq implementation. Do not rewrite or restructure existing code that already implements R1.x through R3.x.
+      - id: D2
+        text: Follow the differential testing pattern using pkg/testutils.RunDiffTests against the guniq reference binary.
+      - id: D3
+        text: The reference binary is guniq, located via exec.LookPath("guniq"). Skip tests if not found.
+
+    acceptance_criteria:
+      - id: AC1
+        text: All four requirements R4.1-R4.4 from srd028-uniq are implemented in cmd/uniq/main.go
+      - id: AC2
+        text: Differential test cases are added to cmd/uniq/uniq_test.go for each new requirement
+      - id: AC3
+        text: go build ./cmd/uniq/ succeeds with no errors
+      - id: AC4
+        text: go test ./cmd/uniq/ -count=1 passes (or skips gracefully if guniq is not installed)
+      - id: AC5
+        text: Existing functionality from R1.x through R3.x is not broken
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/comm -- srd029 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd029-comm.yaml (full SRD -- focus on requirement group R1)
+      - CLAUDE.md (project patterns, build instructions, SIGPIPE, differential testing)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function signature)
+
+    files:
+      - path: cmd/comm/main.go
+        action: create
+        note: Initial comm implementation covering srd029 R1.1-R1.4
+      - path: cmd/comm/comm_test.go
+        action: create
+        note: Differential tests for R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: Implement srd029-comm requirement R1.1 as specified in the SRD
+      - id: R2
+        text: Implement srd029-comm requirement R1.2 as specified in the SRD
+      - id: R3
+        text: Implement srd029-comm requirement R1.3 as specified in the SRD
+      - id: R4
+        text: Implement srd029-comm requirement R1.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Create cmd/comm/main.go with a main function that calls sys.InstallSIGPIPEHandler() at the start, per project SIGPIPE convention.
+      - id: D2
+        text: Use the differential testing pattern with pkg/testutils.RunDiffTests against the gcomm reference binary (exec.LookPath("gcomm")). Skip tests if not found.
+      - id: D3
+        text: Build the binary in tests using testutils.BuildBinary(t, "."). Build output goes to bin/ directory.
+      - id: D4
+        text: Structure the implementation to accept later extension for R2.x through R4.x requirements without rewriting core logic.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/comm/main.go exists and implements R1.1-R1.4 from srd029-comm
+      - id: AC2
+        text: cmd/comm/comm_test.go exists with differential test cases for each implemented requirement
+      - id: AC3
+        text: go build ./cmd/comm/ succeeds with no errors
+      - id: AC4
+        text: go test ./cmd/comm/ -count=1 passes (or skips gracefully if gcomm is not installed)
+      - id: AC5
+        text: sys.InstallSIGPIPEHandler() is called at the start of main()
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/comm -- srd029 R2.1-R2.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd029-comm.yaml (full SRD -- focus on requirement group R2)
+      - cmd/comm/main.go (existing implementation from prior task -- extend, do not rewrite)
+      - cmd/comm/comm_test.go (existing tests -- add new test cases)
+      - CLAUDE.md (project patterns, build instructions, differential testing)
+
+    files:
+      - path: cmd/comm/main.go
+        action: modify
+        note: Add functionality for srd029 requirements R2.1 through R2.4
+      - path: cmd/comm/comm_test.go
+        action: modify
+        note: Add differential test cases covering R2.1 through R2.4
+
+    requirements:
+      - id: R1
+        text: Implement srd029-comm requirement R2.1 as specified in the SRD
+      - id: R2
+        text: Implement srd029-comm requirement R2.2 as specified in the SRD
+      - id: R3
+        text: Implement srd029-comm requirement R2.3 as specified in the SRD
+      - id: R4
+        text: Implement srd029-comm requirement R2.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/comm implementation. Do not rewrite or restructure existing code that already implements R1.x.
+      - id: D2
+        text: Follow the differential testing pattern using pkg/testutils.RunDiffTests against the gcomm reference binary.
+      - id: D3
+        text: The reference binary is gcomm, located via exec.LookPath("gcomm"). Skip tests if not found.
+
+    acceptance_criteria:
+      - id: AC1
+        text: All four requirements R2.1-R2.4 from srd029-comm are implemented in cmd/comm/main.go
+      - id: AC2
+        text: Differential test cases are added to cmd/comm/comm_test.go for each new requirement
+      - id: AC3
+        text: go build ./cmd/comm/ succeeds with no errors
+      - id: AC4
+        text: go test ./cmd/comm/ -count=1 passes (or skips gracefully if gcomm is not installed)
+      - id: AC5
+        text: Existing functionality from R1.x is not broken
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/comm -- srd029 R3.1-R3.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd029-comm.yaml (full SRD -- focus on requirement group R3)
+      - cmd/comm/main.go (existing implementation from prior tasks -- extend, do not rewrite)
+      - cmd/comm/comm_test.go (existing tests -- add new test cases)
+      - CLAUDE.md (project patterns, build instructions, differential testing)
+
+    files:
+      - path: cmd/comm/main.go
+        action: modify
+        note: Add functionality for srd029 requirements R3.1 through R3.4
+      - path: cmd/comm/comm_test.go
+        action: modify
+        note: Add differential test cases covering R3.1 through R3.4
+
+    requirements:
+      - id: R1
+        text: Implement srd029-comm requirement R3.1 as specified in the SRD
+      - id: R2
+        text: Implement srd029-comm requirement R3.2 as specified in the SRD
+      - id: R3
+        text: Implement srd029-comm requirement R3.3 as specified in the SRD
+      - id: R4
+        text: Implement srd029-comm requirement R3.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/comm implementation. Do not rewrite or restructure existing code that already implements R1.x and R2.x.
+      - id: D2
+        text: Follow the differential testing pattern using pkg/testutils.RunDiffTests against the gcomm reference binary.
+      - id: D3
+        text: The reference binary is gcomm, located via exec.LookPath("gcomm"). Skip tests if not found.
+
+    acceptance_criteria:
+      - id: AC1
+        text: All four requirements R3.1-R3.4 from srd029-comm are implemented in cmd/comm/main.go
+      - id: AC2
+        text: Differential test cases are added to cmd/comm/comm_test.go for each new requirement
+      - id: AC3
+        text: go build ./cmd/comm/ succeeds with no errors
+      - id: AC4
+        text: go test ./cmd/comm/ -count=1 passes (or skips gracefully if gcomm is not installed)
+      - id: AC5
+        text: Existing functionality from R1.x and R2.x is not broken
+  dependency: 2
