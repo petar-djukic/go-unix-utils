@@ -10,20 +10,25 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+type options struct {
+	suppress [3]bool
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	w := bufio.NewWriter(os.Stdout)
-	args := os.Args[1:]
-	if len(args) != 2 {
+	opts, file1, file2, ok := parseArgs(os.Args[1:])
+	if !ok {
 		fmt.Fprintf(os.Stderr, "comm: missing operand\n")
 		os.Exit(1)
 	}
-	exitCode := run(w, args[0], args[1])
+	exitCode := run(w, &opts, file1, file2)
 	if err := w.Flush(); err != nil {
 		if errors.Is(err, syscall.EPIPE) {
 			os.Exit(0)
@@ -33,7 +38,35 @@ func main() {
 	os.Exit(exitCode)
 }
 
-func run(w *bufio.Writer, path1, path2 string) int {
+func parseArgs(args []string) (options, string, string, bool) {
+	var opts options
+	var files []string
+	for _, arg := range args {
+		if arg == "--" {
+			continue
+		}
+		if strings.HasPrefix(arg, "-") && arg != "-" && !strings.HasPrefix(arg, "--") {
+			for _, ch := range arg[1:] {
+				switch ch {
+				case '1':
+					opts.suppress[0] = true
+				case '2':
+					opts.suppress[1] = true
+				case '3':
+					opts.suppress[2] = true
+				}
+			}
+			continue
+		}
+		files = append(files, arg)
+	}
+	if len(files) != 2 {
+		return opts, "", "", false
+	}
+	return opts, files[0], files[1], true
+}
+
+func run(w *bufio.Writer, opts *options, path1, path2 string) int {
 	r1, c1, err := openInput(path1)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "comm: %s\n", err)
@@ -50,7 +83,7 @@ func run(w *bufio.Writer, path1, path2 string) int {
 	if c2 != nil {
 		defer c2.Close()
 	}
-	return compare(w, r1, r2)
+	return compare(w, opts, r1, r2)
 }
 
 func openInput(name string) (io.Reader, io.Closer, error) {
@@ -64,7 +97,7 @@ func openInput(name string) (io.Reader, io.Closer, error) {
 	return f, f, nil
 }
 
-func compare(w *bufio.Writer, r1, r2 io.Reader) int {
+func compare(w *bufio.Writer, opts *options, r1, r2 io.Reader) int {
 	s1 := bufio.NewScanner(r1)
 	s2 := bufio.NewScanner(r2)
 	have1 := s1.Scan()
@@ -74,13 +107,13 @@ func compare(w *bufio.Writer, r1, r2 io.Reader) int {
 		line2 := s2.Text()
 		var err error
 		if line1 < line2 {
-			err = writeLine(w, 1, line1)
+			err = writeLine(w, opts, 1, line1)
 			have1 = s1.Scan()
 		} else if line2 < line1 {
-			err = writeLine(w, 2, line2)
+			err = writeLine(w, opts, 2, line2)
 			have2 = s2.Scan()
 		} else {
-			err = writeLine(w, 3, line1)
+			err = writeLine(w, opts, 3, line1)
 			have1 = s1.Scan()
 			have2 = s2.Scan()
 		}
@@ -88,18 +121,18 @@ func compare(w *bufio.Writer, r1, r2 io.Reader) int {
 			return epipeOr1(err)
 		}
 	}
-	return drain(w, s1, s2, have1, have2)
+	return drain(w, opts, s1, s2, have1, have2)
 }
 
-func drain(w *bufio.Writer, s1, s2 *bufio.Scanner, have1, have2 bool) int {
+func drain(w *bufio.Writer, opts *options, s1, s2 *bufio.Scanner, have1, have2 bool) int {
 	for have1 {
-		if err := writeLine(w, 1, s1.Text()); err != nil {
+		if err := writeLine(w, opts, 1, s1.Text()); err != nil {
 			return epipeOr1(err)
 		}
 		have1 = s1.Scan()
 	}
 	for have2 {
-		if err := writeLine(w, 2, s2.Text()); err != nil {
+		if err := writeLine(w, opts, 2, s2.Text()); err != nil {
 			return epipeOr1(err)
 		}
 		have2 = s2.Scan()
@@ -107,14 +140,18 @@ func drain(w *bufio.Writer, s1, s2 *bufio.Scanner, have1, have2 bool) int {
 	return 0
 }
 
-func writeLine(w *bufio.Writer, col int, line string) error {
-	switch col {
-	case 2:
-		if _, err := w.WriteString("\t"); err != nil {
-			return err
+func writeLine(w *bufio.Writer, opts *options, col int, line string) error {
+	if opts.suppress[col-1] {
+		return nil
+	}
+	tabs := 0
+	for i := 0; i < col-1; i++ {
+		if !opts.suppress[i] {
+			tabs++
 		}
-	case 3:
-		if _, err := w.WriteString("\t\t"); err != nil {
+	}
+	for i := 0; i < tabs; i++ {
+		if _, err := w.WriteString("\t"); err != nil {
 			return err
 		}
 	}

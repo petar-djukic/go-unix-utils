@@ -161,6 +161,90 @@ func TestDiff(t *testing.T) {
 			WorkDir: dir,
 			Env:     env,
 		},
+		{
+			Name:    "r2_1_suppress_col1",
+			Args:    []string{"-1", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_1_suppress_col1_interleaved",
+			Args:    []string{"-1", "abc.txt", "bdf.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_2_suppress_col2",
+			Args:    []string{"-2", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_2_suppress_col2_disjoint",
+			Args:    []string{"-2", "disjoint1.txt", "disjoint2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_3_suppress_col3",
+			Args:    []string{"-3", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_3_suppress_col3_identical",
+			Args:    []string{"-3", "all_same.txt", "all_same.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_4_suppress_12",
+			Args:    []string{"-12", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_4_suppress_13",
+			Args:    []string{"-13", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_4_suppress_23",
+			Args:    []string{"-23", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_4_suppress_123",
+			Args:    []string{"-123", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_4_suppress_separate_flags",
+			Args:    []string{"-1", "-2", "file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_4_suppress_12_empty_file1",
+			Args:    []string{"-12", "empty.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_4_suppress_1_noeol",
+			Args:    []string{"-1", "noeol.txt", "noeol2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r2_1_suppress_col1_duplicates",
+			Args:    []string{"-1", "multi.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
