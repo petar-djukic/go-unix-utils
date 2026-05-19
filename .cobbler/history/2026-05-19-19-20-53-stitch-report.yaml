@@ -1,0 +1,23 @@
+task_id: "5311"
+task_title: '[stitch] cmd/sha256sum check mode and tag format (srd032 R2.1, R2.2, R2.3, R3.1)'
+status: success
+branch: task/generation-run44-5311
+diff:
+    files: 2
+    insertions: 424
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-19-19-20-45-stitch-orchestrator.log
+      status: M
+      insertions: 110
+      deletions: 0
+    - path: cmd/sha256sum/sha256sum_test.go
+      status: A
+      insertions: 315
+      deletions: 0
+loc_before:
+    production: 9064
+    test: 8159
+loc_after:
+    production: 9064
+    test: 8474
