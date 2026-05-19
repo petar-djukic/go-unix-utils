@@ -124,3 +124,13 @@
 [2026-05-19T17:21:57-04:00] [generation-run44] [stitch +5m14s] closeStitchTask: closing #5293 "[stitch] cmd/uniq -- srd028 R3.1-R3.4"
 [2026-05-19T17:21:58-04:00] [generation-run44] [stitch +5m15s] commentCobblerIssue: posted comment on #5293
 [2026-05-19T17:21:58-04:00] [generation-run44] [stitch +5m15s] updateRequirementsFile: marked 4 R-items as complete for issue #5293
+[2026-05-19T17:22:01-04:00] [generation-run44] [stitch +5m18s] closeCobblerIssue: closed #5293
+[2026-05-19T17:22:03-04:00] [generation-run44] [stitch +5m19s] closeStitchTask: #5293 closed
+[2026-05-19T17:22:03-04:00] [generation-run44] [stitch +5m20s] sweepCompletedTasks: all R-items for #5293 already complete, closing
+[2026-05-19T17:22:04-04:00] [generation-run44] [stitch +5m21s] commentCobblerIssue: posted comment on #5293
+[2026-05-19T17:22:05-04:00] [generation-run44] [stitch +5m22s] closeCobblerIssue: closed #5293
+[2026-05-19T17:22:06-04:00] [generation-run44] [stitch +5m22s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-19T17:22:06-04:00] [generation-run44] [stitch +5m22s] doOneTask: task 5293 finished in 5m15s
+[2026-05-19T17:22:06-04:00] [generation-run44] [stitch +5m22s] task 5293 completed in 5m15s
+[2026-05-19T17:22:06-04:00] [generation-run44] [stitch +5m22s] reached per-cycle limit (1), pausing for measure
+[2026-05-19T17:22:06-04:00] [generation-run44] [stitch +5m22s] completed 1 task(s) in 5m22s
