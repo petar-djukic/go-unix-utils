@@ -1,0 +1,217 @@
+- index: 0
+  title: "[stitch] cmd/paste -- srd027 R4.1-R4.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd027-paste.yaml (R4.1-R4.4 requirements and acceptance criteria)
+      - cmd/paste/main.go (existing implementation covering R1-R3 groups)
+      - cmd/paste/paste_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest pattern)
+
+    files:
+      - path: cmd/paste/main.go
+        action: modify
+        note: Extend paste implementation to cover srd027 R4.1-R4.4
+      - path: cmd/paste/paste_test.go
+        action: modify
+        note: Add differential tests for R4.1-R4.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd027 R4.1 per the SRD acceptance criteria"
+      - id: R2
+        text: "Implement srd027 R4.2 per the SRD acceptance criteria"
+      - id: R3
+        text: "Implement srd027 R4.3 per the SRD acceptance criteria"
+      - id: R4
+        text: "Implement srd027 R4.4 per the SRD acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing paste implementation style in cmd/paste/main.go -- extend, do not rewrite"
+      - id: D2
+        text: "Differential tests use testutils.RunDiffTests comparing against gpaste from Homebrew coreutils"
+      - id: D3
+        text: "Reference binary lookup uses exec.LookPath(\"gpaste\") with t.Skip if not found"
+      - id: D4
+        text: "All differential tests set LC_ALL=C in the Env field"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd027 R4.1 acceptance criteria pass"
+      - id: AC2
+        text: "srd027 R4.2 acceptance criteria pass"
+      - id: AC3
+        text: "srd027 R4.3 acceptance criteria pass"
+      - id: AC4
+        text: "srd027 R4.4 acceptance criteria pass"
+      - id: AC5
+        text: "go build ./cmd/paste/ compiles without errors"
+      - id: AC6
+        text: "go test ./cmd/paste/... -count=1 passes (or skips if gpaste not in PATH)"
+
+- index: 1
+  title: "[stitch] cmd/uniq -- srd028 R1.1-R1.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd028-uniq.yaml (full SRD, focus on R1.1-R1.4)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler)
+      - cmd/comm/main.go or cmd/paste/main.go (reference for cmd/ package structure if either exists)
+
+    files:
+      - path: cmd/uniq/main.go
+        action: create
+        note: Initial uniq implementation covering srd028 R1.1-R1.4
+      - path: cmd/uniq/uniq_test.go
+        action: create
+        note: Differential tests for R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd028 R1.1 per the SRD acceptance criteria"
+      - id: R2
+        text: "Implement srd028 R1.2 per the SRD acceptance criteria"
+      - id: R3
+        text: "Implement srd028 R1.3 per the SRD acceptance criteria"
+      - id: R4
+        text: "Implement srd028 R1.4 per the SRD acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main()"
+      - id: D2
+        text: "Differential tests use testutils.RunDiffTests comparing against guniq from Homebrew coreutils"
+      - id: D3
+        text: "Reference binary lookup uses exec.LookPath(\"guniq\") with t.Skip if not found"
+      - id: D4
+        text: "All differential tests set LC_ALL=C in the Env field"
+      - id: D5
+        text: "Build binary with testutils.BuildBinary(t, \".\") from within cmd/uniq/"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd028 R1.1 acceptance criteria pass"
+      - id: AC2
+        text: "srd028 R1.2 acceptance criteria pass"
+      - id: AC3
+        text: "srd028 R1.3 acceptance criteria pass"
+      - id: AC4
+        text: "srd028 R1.4 acceptance criteria pass"
+      - id: AC5
+        text: "go build ./cmd/uniq/ compiles without errors"
+      - id: AC6
+        text: "go test ./cmd/uniq/... -count=1 passes (or skips if guniq not in PATH)"
+
+- index: 2
+  title: "[stitch] cmd/uniq -- srd028 R2.1-R2.4"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd028-uniq.yaml (full SRD, focus on R2.1-R2.4)
+      - cmd/uniq/main.go (existing implementation covering R1.1-R1.4)
+      - cmd/uniq/uniq_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest pattern)
+
+    files:
+      - path: cmd/uniq/main.go
+        action: modify
+        note: Extend uniq implementation to cover srd028 R2.1-R2.4
+      - path: cmd/uniq/uniq_test.go
+        action: modify
+        note: Add differential tests for R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd028 R2.1 per the SRD acceptance criteria"
+      - id: R2
+        text: "Implement srd028 R2.2 per the SRD acceptance criteria"
+      - id: R3
+        text: "Implement srd028 R2.3 per the SRD acceptance criteria"
+      - id: R4
+        text: "Implement srd028 R2.4 per the SRD acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing uniq implementation style in cmd/uniq/main.go -- extend, do not rewrite"
+      - id: D2
+        text: "Differential tests use testutils.RunDiffTests comparing against guniq from Homebrew coreutils"
+      - id: D3
+        text: "Reference binary lookup uses exec.LookPath(\"guniq\") with t.Skip if not found"
+      - id: D4
+        text: "All differential tests set LC_ALL=C in the Env field"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd028 R2.1 acceptance criteria pass"
+      - id: AC2
+        text: "srd028 R2.2 acceptance criteria pass"
+      - id: AC3
+        text: "srd028 R2.3 acceptance criteria pass"
+      - id: AC4
+        text: "srd028 R2.4 acceptance criteria pass"
+      - id: AC5
+        text: "go build ./cmd/uniq/ compiles without errors"
+      - id: AC6
+        text: "go test ./cmd/uniq/... -count=1 passes (or skips if guniq not in PATH)"
+
+- index: 3
+  title: "[stitch] cmd/uniq -- srd028 R3.1-R3.4"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd028-uniq.yaml (full SRD, focus on R3.1-R3.4)
+      - cmd/uniq/main.go (existing implementation covering R1.1-R2.4)
+      - cmd/uniq/uniq_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest pattern)
+
+    files:
+      - path: cmd/uniq/main.go
+        action: modify
+        note: Extend uniq implementation to cover srd028 R3.1-R3.4
+      - path: cmd/uniq/uniq_test.go
+        action: modify
+        note: Add differential tests for R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd028 R3.1 per the SRD acceptance criteria"
+      - id: R2
+        text: "Implement srd028 R3.2 per the SRD acceptance criteria"
+      - id: R3
+        text: "Implement srd028 R3.3 per the SRD acceptance criteria"
+      - id: R4
+        text: "Implement srd028 R3.4 per the SRD acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing uniq implementation style in cmd/uniq/main.go -- extend, do not rewrite"
+      - id: D2
+        text: "Differential tests use testutils.RunDiffTests comparing against guniq from Homebrew coreutils"
+      - id: D3
+        text: "Reference binary lookup uses exec.LookPath(\"guniq\") with t.Skip if not found"
+      - id: D4
+        text: "All differential tests set LC_ALL=C in the Env field"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd028 R3.1 acceptance criteria pass"
+      - id: AC2
+        text: "srd028 R3.2 acceptance criteria pass"
+      - id: AC3
+        text: "srd028 R3.3 acceptance criteria pass"
+      - id: AC4
+        text: "srd028 R3.4 acceptance criteria pass"
+      - id: AC5
+        text: "go build ./cmd/uniq/ compiles without errors"
+      - id: AC6
+        text: "go test ./cmd/uniq/... -count=1 passes (or skips if guniq not in PATH)"
