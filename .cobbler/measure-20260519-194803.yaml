@@ -1,0 +1,210 @@
+- index: 0
+  title: "[stitch] cmd/sha512sum basic file hashing (srd033 R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd033-sha512sum.yaml (SRD for sha512sum -- full requirements)
+      - pkg/hashutil/ (shared hash utility library -- HashConfig, DigestFiles, ComputeDigest, FormatGNU)
+      - cmd/sha256sum/main.go (reference implementation for checksum utility pattern)
+      - cmd/sha256sum/sha256sum_test.go (reference differential test pattern for checksum utilities)
+
+    files:
+      - path: cmd/sha512sum/main.go
+        action: create
+        note: SHA-512 checksum utility -- flag parsing, HashConfig setup, file digesting via pkg/hashutil
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: create
+        note: Differential tests against gsha512sum reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd033 R1.1 -- compute SHA-512 digest for files listed on the command line using pkg/hashutil.DigestFiles with crypto/sha512.New as the hash constructor"
+      - id: R2
+        text: "Implement srd033 R1.2 -- read from stdin when no file arguments are given or when - is specified as a filename"
+      - id: R3
+        text: "Implement srd033 R1.3 -- output digest in GNU coreutils two-space format (128-char hex digest, two spaces, filename) via pkg/hashutil.FormatGNU"
+      - id: R4
+        text: "Implement srd033 R1.4 -- support --binary (-b) and --text (-t) mode flags affecting the output format indicator character"
+
+    design_decisions:
+      - id: D1
+        text: "Create a hashutil.HashConfig with Algorithm set to SHA512, NewHash set to sha512.New, and DigestLen set to 64 -- delegate all hashing to pkg/hashutil.DigestFiles"
+      - id: D2
+        text: "Follow the same main structure as cmd/sha256sum -- parse flags with the flag package, build HashConfig, call DigestFiles or VerifyChecksums based on mode"
+      - id: D3
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the project SIGPIPE protocol"
+      - id: D4
+        text: "Reference binary for differential tests is gsha512sum from Homebrew coreutils -- call exec.LookPath and t.Skip if not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/sha512sum/main.go compiles with go build -o bin/sha512sum ./cmd/sha512sum/"
+      - id: AC2
+        text: "sha512sum computes correct SHA-512 digests for one or more files passed as arguments"
+      - id: AC3
+        text: "sha512sum reads from stdin when invoked with no arguments or with - as filename"
+      - id: AC4
+        text: "Output format is 128-character hex digest followed by two spaces (text) or space-asterisk (binary) then filename"
+      - id: AC5
+        text: "Differential tests pass against gsha512sum for basic file hashing and stdin scenarios"
+      - id: AC6
+        text: "go vet ./cmd/sha512sum/... passes with no warnings"
+
+- index: 1
+  title: "[stitch] cmd/sha512sum check mode and tag output (srd033 R2.1, R2.2, R2.3, R3.1)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd033-sha512sum.yaml (SRD for sha512sum -- full requirements)
+      - cmd/sha512sum/main.go (existing implementation with basic hashing from previous task)
+      - cmd/sha512sum/sha512sum_test.go (existing differential tests to extend)
+      - pkg/hashutil/ (VerifyChecksums, ParseChecksumLine, CheckOptions, FormatBSDTag)
+
+    files:
+      - path: cmd/sha512sum/main.go
+        action: modify
+        note: Add --check mode with --warn/--quiet/--status flags and --tag BSD output format
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: modify
+        note: Add differential tests for check mode verification and BSD tag format output
+
+    requirements:
+      - id: R1
+        text: "Implement srd033 R2.1 -- support --check (-c) flag to read checksums from a file and verify each entry against the actual file digest via pkg/hashutil.VerifyChecksums"
+      - id: R2
+        text: "Implement srd033 R2.2 -- in check mode, report each file as 'filename: OK' or 'filename: FAILED' to stdout, with a summary of failures to stderr"
+      - id: R3
+        text: "Implement srd033 R2.3 -- support --warn (-w), --quiet, and --status flags to control check mode output verbosity via hashutil.CheckOptions"
+      - id: R4
+        text: "Implement srd033 R3.1 -- support --tag flag for BSD-style tagged output format via pkg/hashutil.FormatBSDTag with algorithm string SHA512"
+
+    design_decisions:
+      - id: D1
+        text: "Wire the --check flag to hashutil.VerifyChecksums, constructing CheckOptions from the parsed --warn, --quiet, and --status flags"
+      - id: D2
+        text: "Wire the --tag flag to switch output from FormatGNU to FormatBSDTag with algorithm name SHA512"
+      - id: D3
+        text: "Follow the same flag naming and check-mode behavior as cmd/sha256sum for consistency across checksum utilities"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "sha512sum --check reads a checksum file and verifies each listed file"
+      - id: AC2
+        text: "Check mode prints 'filename: OK' or 'filename: FAILED' matching GNU output format"
+      - id: AC3
+        text: "--warn prints warnings for improperly formatted lines, --quiet suppresses OK lines, --status suppresses all output and uses exit code only"
+      - id: AC4
+        text: "--tag produces BSD-style output in the form SHA512 (filename) = hexdigest"
+      - id: AC5
+        text: "Differential tests pass against gsha512sum for check mode and tag format scenarios"
+      - id: AC6
+        text: "go vet ./cmd/sha512sum/... passes with no warnings"
+
+- index: 2
+  title: "[stitch] cmd/sha512sum completion (srd033 R3.2, R4.1, R4.2, R4.3)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd033-sha512sum.yaml (SRD for sha512sum -- full requirements)
+      - cmd/sha512sum/main.go (existing implementation with hashing and check mode from previous tasks)
+      - cmd/sha512sum/sha512sum_test.go (existing differential tests to extend)
+      - pkg/hashutil/ (shared hash utility library)
+
+    files:
+      - path: cmd/sha512sum/main.go
+        action: modify
+        note: Add --strict flag, error handling for missing and unreadable files, --version and --help output
+      - path: cmd/sha512sum/sha512sum_test.go
+        action: modify
+        note: Add differential tests for strict mode, error cases, and edge cases
+
+    requirements:
+      - id: R1
+        text: "Implement srd033 R3.2 -- support --strict flag to treat improperly formatted checksum lines as errors during --check mode, causing non-zero exit"
+      - id: R2
+        text: "Implement srd033 R4.1 -- exit with code 0 on success, exit with code 1 on any verification failure or operational error"
+      - id: R3
+        text: "Implement srd033 R4.2 -- print diagnostic messages to stderr for missing or unreadable files and continue processing remaining files"
+      - id: R4
+        text: "Implement srd033 R4.3 -- support --version and --help flags with GNU-standard output format"
+
+    design_decisions:
+      - id: D1
+        text: "Exit code 1 when any file fails to hash or any checksum fails to verify, matching GNU coreutils behavior"
+      - id: D2
+        text: "Error messages to stderr in GNU format -- 'sha512sum: FILENAME: REASON' -- continue processing remaining arguments after errors"
+      - id: D3
+        text: "--version output follows GNU pattern -- 'sha512sum (go-unix-utils) version'"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "--strict causes non-zero exit when improperly formatted lines are encountered during --check"
+      - id: AC2
+        text: "Exit codes match GNU sha512sum -- 0 for success, 1 for verification failure or operational error"
+      - id: AC3
+        text: "Error messages for missing or unreadable files go to stderr in GNU format, remaining files are still processed"
+      - id: AC4
+        text: "--version and --help produce correct output and exit with code 0"
+      - id: AC5
+        text: "Differential tests pass against gsha512sum for error cases, strict mode, and edge cases"
+      - id: AC6
+        text: "go vet ./cmd/sha512sum/... passes with no warnings"
+
+- index: 3
+  title: "[stitch] cmd/mkdir basic directory creation (srd034 R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd034-mkdir.yaml (SRD for mkdir -- full requirements)
+      - pkg/sys/ (InstallSIGPIPEHandler for SIGPIPE handling)
+      - pkg/testutils/ (BuildBinary, RunDiffTests, DiffTest for differential testing pattern)
+
+    files:
+      - path: cmd/mkdir/main.go
+        action: create
+        note: mkdir utility -- create directories with verbose and help/version flag support
+      - path: cmd/mkdir/mkdir_test.go
+        action: create
+        note: Differential tests against gmkdir reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd034 R1.1 -- create one or more directories specified as command-line arguments using os.Mkdir with default permissions"
+      - id: R2
+        text: "Implement srd034 R1.2 -- report an error to stderr and set non-zero exit code when a directory already exists or the path is invalid"
+      - id: R3
+        text: "Implement srd034 R1.3 -- support --verbose (-v) flag to print a diagnostic message for each directory created"
+      - id: R4
+        text: "Implement srd034 R1.4 -- support --help and --version flags with GNU-standard output format"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the project SIGPIPE protocol"
+      - id: D2
+        text: "Reference binary for differential tests is gmkdir from Homebrew coreutils -- call exec.LookPath and t.Skip if not found"
+      - id: D3
+        text: "Use os.Mkdir (not os.MkdirAll) for basic directory creation -- os.MkdirAll is reserved for the -p flag which is covered by later requirements"
+      - id: D4
+        text: "Error messages to stderr in GNU format -- 'mkdir: cannot create directory 'NAME': REASON'"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/mkdir/main.go compiles with go build -o bin/mkdir ./cmd/mkdir/"
+      - id: AC2
+        text: "mkdir creates each directory specified as a command-line argument"
+      - id: AC3
+        text: "mkdir prints an error to stderr and exits non-zero when a directory already exists or the path is invalid"
+      - id: AC4
+        text: "--verbose prints a diagnostic message for each created directory"
+      - id: AC5
+        text: "Differential tests pass against gmkdir for basic directory creation scenarios"
+      - id: AC6
+        text: "go vet ./cmd/mkdir/... passes with no warnings"
