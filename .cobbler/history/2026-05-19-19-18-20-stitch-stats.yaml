@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5310"
+task_title: '[stitch] cmd/sha256sum core hashing implementation (srd032 R1.1, R1.2, R1.3, R1.4)'
+status: success
+started_at: "2026-05-19T23:18:20Z"
+duration: 2m10s
+duration_s: 129
+tokens:
+    input: 410159
+    output: 2302
+    cache_creation: 183777
+    cache_read: 226369
+cost_usd: 1.6623502499999998
+num_turns: 15
+loc_before:
+    production: 8947
+    test: 8159
+loc_after:
+    production: 9064
+    test: 8159
+diff:
+    files: 2
+    insertions: 212
+    deletions: 0
