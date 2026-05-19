@@ -1,0 +1,204 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"context"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+func TestDiff(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gcomm")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	dir := t.TempDir()
+	writeFile(t, dir, "file1.txt", "a\nb\nc\n")
+	writeFile(t, dir, "file2.txt", "b\nc\nd\n")
+	writeFile(t, dir, "empty.txt", "")
+	writeFile(t, dir, "single.txt", "x\n")
+	writeFile(t, dir, "abc.txt", "a\nb\nc\nd\ne\n")
+	writeFile(t, dir, "bdf.txt", "b\nd\nf\n")
+	writeFile(t, dir, "all_same.txt", "a\nb\nc\n")
+	writeFile(t, dir, "disjoint1.txt", "a\nc\ne\n")
+	writeFile(t, dir, "disjoint2.txt", "b\nd\nf\n")
+	writeFile(t, dir, "one_line_a.txt", "a\n")
+	writeFile(t, dir, "one_line_b.txt", "b\n")
+	writeFile(t, dir, "one_line_a_same.txt", "a\n")
+	writeFile(t, dir, "caps.txt", "A\nB\nC\n")
+	writeFile(t, dir, "lower.txt", "a\nb\nc\n")
+	writeFile(t, dir, "multi.txt", "a\na\nb\nc\n")
+	writeFile(t, dir, "multi2.txt", "a\nb\nb\nc\n")
+	writeFile(t, dir, "noeol.txt", "a\nb\nc")
+	writeFile(t, dir, "noeol2.txt", "b\nc\nd")
+
+	env := []string{"LC_ALL=C"}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:    "r1_1_basic_three_columns",
+			Args:    []string{"file1.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_1_identical_files",
+			Args:    []string{"all_same.txt", "all_same.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_2_interleaved",
+			Args:    []string{"abc.txt", "bdf.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_2_disjoint_files",
+			Args:    []string{"disjoint1.txt", "disjoint2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_2_case_sensitive",
+			Args:    []string{"caps.txt", "lower.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_3_file1_empty",
+			Args:    []string{"empty.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_3_file2_empty",
+			Args:    []string{"file1.txt", "empty.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_3_both_empty",
+			Args:    []string{"empty.txt", "empty.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_3_file1_exhausted_first",
+			Args:    []string{"one_line_a.txt", "abc.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_3_file2_exhausted_first",
+			Args:    []string{"abc.txt", "one_line_a.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_3_single_line_files",
+			Args:    []string{"one_line_a.txt", "one_line_b.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_3_single_line_same",
+			Args:    []string{"one_line_a.txt", "one_line_a_same.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_4_no_trailing_newline",
+			Args:    []string{"noeol.txt", "noeol2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_4_mixed_eol",
+			Args:    []string{"noeol.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_1_duplicate_lines_file1",
+			Args:    []string{"multi.txt", "file2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_1_duplicate_lines_file2",
+			Args:    []string{"file1.txt", "multi2.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_2_single_vs_many",
+			Args:    []string{"single.txt", "abc.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_1_stdin_as_file1",
+			Args:    []string{"-", "file2.txt"},
+			Stdin:   []byte("a\nb\nc\n"),
+			WorkDir: dir,
+			Env:     env,
+		},
+		{
+			Name:    "r1_3_file1_longer",
+			Args:    []string{"abc.txt", "single.txt"},
+			WorkDir: dir,
+			Env:     env,
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	lines := strings.Repeat("line\n", 500000)
+	writeFile(t, dir, "big1.txt", lines)
+	writeFile(t, dir, "big2.txt", lines)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, goBin, filepath.Join(dir, "big1.txt"), filepath.Join(dir, "big2.txt"))
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(stdout, buf); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Close()
+	err = cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatal("comm timed out; SIGPIPE handler may not be installed")
+	}
+	if err != nil {
+		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
+}
+
+func writeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
