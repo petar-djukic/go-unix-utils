@@ -7,6 +7,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -85,11 +86,72 @@ func parseDelimiters(_ string) string {
 	panic("not implemented")
 }
 
-func pasteParallel(_ *bufio.Writer, _ options, _ []string) int {
-	panic("not implemented")
+func pasteParallel(w *bufio.Writer, opts options, files []string) int {
+	scanners, closers, err := openInputs(files)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "paste: %s\n", err)
+		return 1
+	}
+	defer closeAll(closers)
+	done := make([]bool, len(scanners))
+	for {
+		fields := make([]string, len(scanners))
+		anyActive := false
+		for i, s := range scanners {
+			if !done[i] && s.Scan() {
+				fields[i] = s.Text()
+				anyActive = true
+			} else {
+				done[i] = true
+			}
+		}
+		if !anyActive {
+			break
+		}
+		writeFields(w, opts.delimiters, fields)
+	}
+	return 0
+}
+
+func writeFields(w *bufio.Writer, delims string, fields []string) {
+	for i, f := range fields {
+		if i > 0 && len(delims) > 0 {
+			w.WriteByte(delims[(i-1)%len(delims)])
+		}
+		w.WriteString(f)
+	}
+	w.WriteByte('\n')
+}
+
+func openInputs(files []string) ([]*bufio.Scanner, []io.Closer, error) {
+	scanners := make([]*bufio.Scanner, 0, len(files))
+	var closers []io.Closer
+	var stdinScanner *bufio.Scanner
+	for _, name := range files {
+		if name == "-" {
+			if stdinScanner == nil {
+				stdinScanner = bufio.NewScanner(os.Stdin)
+			}
+			scanners = append(scanners, stdinScanner)
+			continue
+		}
+		f, err := os.Open(name)
+		if err != nil {
+			closeAll(closers)
+			return nil, nil, err
+		}
+		closers = append(closers, f)
+		scanners = append(scanners, bufio.NewScanner(f))
+	}
+	return scanners, closers, nil
+}
+
+func closeAll(closers []io.Closer) {
+	for _, c := range closers {
+		c.Close()
+	}
 }
 
 func pasteSerial(_ *bufio.Writer, _ options, _ []string) int {
 	panic("not implemented")
 }
-
