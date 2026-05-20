@@ -4,11 +4,25 @@
 package main
 
 import (
+	"bytes"
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+var binaryNameRe = regexp.MustCompile(`(/\S+/)?g?tr\b`)
+
+func normalizeBinaryName(b []byte) []byte {
+	return binaryNameRe.ReplaceAll(b, []byte("tr"))
+}
+
+var usageHintRe = regexp.MustCompile(`(?m)^(Two strings must be given when translating\.|Try '.*' for more information\.)\n`)
+
+func normalizeUsageHints(b []byte) []byte {
+	return bytes.TrimRight(usageHintRe.ReplaceAll(b, nil), "\n")
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -16,6 +30,7 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skip("reference binary gtr not found")
 	}
+	errNorm := []testutils.NormalizeFunc{normalizeBinaryName, normalizeUsageHints}
 	tests := []testutils.DiffTest{
 		{Name: "basic_translate", Args: []string{"abc", "xyz"}, Stdin: []byte("abcabc\n")},
 		{Name: "case_upper", Args: []string{"a-z", "A-Z"}, Stdin: []byte("hello world\n")},
@@ -54,6 +69,26 @@ func TestDiff(t *testing.T) {
 		{Name: "complement_squeeze", Args: []string{"-cs", "a-z", "\\n"}, Stdin: []byte("hello 123 world\n")},
 		{Name: "complement_upper_C", Args: []string{"-Cd", "a-z\\n"}, Stdin: []byte("hello 123\n")},
 		{Name: "complement_long", Args: []string{"--complement", "-d", "a-z\\n"}, Stdin: []byte("hello 123\n")},
+
+		// R3.1: Character class translation pairs
+		{Name: "r3_lower_to_upper_mixed", Args: []string{"[:lower:]", "[:upper:]"}, Stdin: []byte("Hello World 123\n")},
+		{Name: "r3_upper_to_lower_mixed", Args: []string{"[:upper:]", "[:lower:]"}, Stdin: []byte("Hello World 123\n")},
+		{Name: "r3_lower_upper_all_alpha", Args: []string{"[:lower:]", "[:upper:]"}, Stdin: []byte("abcdefghijklmnopqrstuvwxyz\n")},
+		{Name: "r3_upper_lower_all_alpha", Args: []string{"[:upper:]", "[:lower:]"}, Stdin: []byte("ABCDEFGHIJKLMNOPQRSTUVWXYZ\n")},
+		{Name: "r3_lower_upper_empty", Args: []string{"[:lower:]", "[:upper:]"}, Stdin: []byte("")},
+		{Name: "r3_lower_upper_no_alpha", Args: []string{"[:lower:]", "[:upper:]"}, Stdin: []byte("12345!@#$%\n")},
+
+		// R3.2: SET2 must not be empty when translating
+		{Name: "r3_empty_set2", Args: []string{"a-z", ""}, Stdin: []byte("hello\n"), ExitCode: 1, Normalize: errNorm},
+		{Name: "r3_missing_operand", Args: []string{}, Stdin: []byte("hello\n"), ExitCode: 1, Normalize: errNorm},
+		{Name: "r3_missing_set2", Args: []string{"abc"}, Stdin: []byte("hello\n"), ExitCode: 1, Normalize: errNorm},
+
+		// R3.3: Equivalence classes [=CHAR=]
+		{Name: "r3_equiv_set1", Args: []string{"[=a=]", "b"}, Stdin: []byte("abcabc\n")},
+		{Name: "r3_equiv_delete", Args: []string{"-d", "[=l=]"}, Stdin: []byte("hello\n")},
+		{Name: "r3_equiv_squeeze", Args: []string{"-s", "[=l=]"}, Stdin: []byte("hello\n")},
+		{Name: "r3_equiv_set2_translate_err", Args: []string{"a", "[=b=]"}, Stdin: []byte("aaa\n"), ExitCode: 1, Normalize: errNorm},
+		{Name: "r3_equiv_set2_ds_ok", Args: []string{"-ds", "[:digit:]", "[=a=]"}, Stdin: []byte("aa11bb\n")},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }

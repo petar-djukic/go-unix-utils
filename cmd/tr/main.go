@@ -136,6 +136,9 @@ func run(cfg config) error {
 	if cfg.squeeze && len(cfg.operands) == 1 {
 		return process(nil, nil, &set1Members)
 	}
+	if hasEquivClass(cfg.operands[1]) {
+		return fmt.Errorf("[=c=] expressions may not appear in string2 when translating")
+	}
 	set2, err := expandSet(cfg.operands[1])
 	if err != nil {
 		return err
@@ -343,6 +346,15 @@ func isAlnum(b byte) bool {
 	return (b >= '0' && b <= '9') ||
 		(b >= 'A' && b <= 'Z') ||
 		(b >= 'a' && b <= 'z')
+}
+
+func hasEquivClass(spec string) bool {
+	for i := 0; i < len(spec); i++ {
+		if strings.HasPrefix(spec[i:], "[=") && strings.Contains(spec[i:], "=]") {
+			return true
+		}
+	}
+	return false
 }
 
 func parseEquivClass(spec string, i int) (int, []byte, error) {
