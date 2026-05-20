@@ -100,6 +100,43 @@ func TestDiff(t *testing.T) {
 		verifyCreated(t, tmpdir, "my", 6, 0o700, true)
 	})
 
+	t.Run("directory_p_flag", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "d_p",
+				Args:      []string{"-d", "-p", tmpdir},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("tmp.", 10)},
+			},
+		})
+		verifyCreated(t, tmpdir, "tmp.", 10, 0o700, true)
+	})
+
+	t.Run("directory_tmpdir_eq", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "d_tmpdir_eq",
+				Args:      []string{"-d", "--tmpdir=" + tmpdir},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("tmp.", 10)},
+			},
+		})
+		verifyCreated(t, tmpdir, "tmp.", 10, 0o700, true)
+	})
+
+	t.Run("directory_tmpdir_no_value", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "d_tmpdir_nv",
+				Args:      []string{"-d", "--tmpdir"},
+				Env:       []string{"TMPDIR=" + tmpdir},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("tmp.", 10)},
+			},
+		})
+		verifyCreated(t, tmpdir, "tmp.", 10, 0o700, true)
+	})
+
 	t.Run("p_flag_explicit_dir", func(t *testing.T) {
 		tmpdir := t.TempDir()
 		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
