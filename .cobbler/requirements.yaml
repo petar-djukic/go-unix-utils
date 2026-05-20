@@ -3121,16 +3121,20 @@ requirements:
             issue: 5375
             weight: 1
         R2.2:
-            status: in_progress
+            status: complete
+            issue: 5376
             weight: 1
         R2.3:
-            status: in_progress
+            status: complete
+            issue: 5376
             weight: 1
         R2.4:
-            status: in_progress
+            status: complete
+            issue: 5376
             weight: 1
         R3.1:
-            status: in_progress
+            status: complete
+            issue: 5376
             weight: 1
         R3.2:
             status: proposed

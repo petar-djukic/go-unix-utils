@@ -1,0 +1,23 @@
+task_id: "5376"
+task_title: '[stitch] cmd/sort: key-based sorting and first numeric mode -- srd053 R2.2-R2.4, R3.1'
+status: success
+branch: task/generation-run44-5376
+diff:
+    files: 2
+    insertions: 346
+    deletions: 37
+files:
+    - path: .cobbler/history/2026-05-20-11-06-59-stitch-orchestrator.log
+      status: M
+      insertions: 133
+      deletions: 0
+    - path: cmd/sort/main.go
+      status: M
+      insertions: 214
+      deletions: 37
+loc_before:
+    production: 11884
+    test: 11568
+loc_after:
+    production: 12061
+    test: 11568
