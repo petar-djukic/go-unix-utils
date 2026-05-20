@@ -2339,16 +2339,20 @@ requirements:
             issue: 5348
             weight: 1
         R3.5:
-            status: in_progress
+            status: complete
+            issue: 5350
             weight: 1
         R3.6:
-            status: in_progress
+            status: complete
+            issue: 5350
             weight: 1
         R4.1:
-            status: in_progress
+            status: complete
+            issue: 5350
             weight: 1
         R4.2:
-            status: in_progress
+            status: complete
+            issue: 5350
             weight: 1
         R4.3:
             status: proposed

@@ -1,0 +1,27 @@
+task_id: "5350"
+task_title: '[stitch] srd036-mktemp R3.5, R3.6, R4.1, R4.2 (implementation)'
+status: success
+branch: task/generation-run44-5350
+diff:
+    files: 3
+    insertions: 292
+    deletions: 2
+files:
+    - path: .cobbler/history/2026-05-20-08-39-07-stitch-orchestrator.log
+      status: M
+      insertions: 166
+      deletions: 0
+    - path: cmd/mktemp/main.go
+      status: M
+      insertions: 36
+      deletions: 2
+    - path: cmd/mktemp/mktemp_test.go
+      status: M
+      insertions: 91
+      deletions: 0
+loc_before:
+    production: 10761
+    test: 10882
+loc_after:
+    production: 10795
+    test: 10973
