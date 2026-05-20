@@ -2160,16 +2160,20 @@ requirements:
             issue: 5321
             weight: 1
         R3.2:
-            status: in_progress
+            status: complete
+            issue: 5322
             weight: 1
         R4.1:
-            status: in_progress
+            status: complete
+            issue: 5322
             weight: 1
         R4.2:
-            status: in_progress
+            status: complete
+            issue: 5322
             weight: 1
         R4.3:
-            status: in_progress
+            status: complete
+            issue: 5322
             weight: 1
     srd034-mkdir:
         R1.1:
