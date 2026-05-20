@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5380"
+task_title: '[stitch] cmd/tail: basic tail output -- srd055 R1.1-R1.4'
+status: success
+started_at: "2026-05-20T22:51:22Z"
+duration: 6m24s
+duration_s: 384
+tokens:
+    input: 605626
+    output: 19374
+    cache_creation: 237250
+    cache_read: 368363
+cost_usd: 2.5789519000000007
+num_turns: 35
+rate_limit_wait_s: 2
+loc_before:
+    production: 12541
+    test: 11846
+loc_after:
+    production: 12751
+    test: 12030
+diff:
+    files: 3
+    insertions: 545
+    deletions: 0
