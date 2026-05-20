@@ -1,0 +1,152 @@
+- index: 0
+  title: "cmd/ln implementation -- core link creation (srd037-ln R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd037-ln.yaml (full SRD for ln -- read all requirements before starting)
+      - cmd/mkdir/main.go (reference example of a file operation utility in this project)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler implementation for SIGPIPE protocol)
+
+    files:
+      - path: cmd/ln/main.go
+        action: create
+        note: "ln utility -- core hard link creation, argument parsing, program structure"
+
+    requirements:
+      - id: R1
+        text: "Implement srd037-ln R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd037-ln R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd037-ln R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd037-ln R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the project shared SIGPIPE protocol"
+      - id: D2
+        text: "Import sys as github.com/petar-djukic/go-unix-utils/pkg/sys"
+      - id: D3
+        text: "Build with go build -o bin/ln ./cmd/ln/ -- the bin/ directory is gitignored"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/ln ./cmd/ln/ succeeds without errors"
+      - id: AC2
+        text: "go vet ./cmd/ln/ reports no warnings"
+      - id: AC3
+        text: "All four SRD requirements R1.1 through R1.4 are implemented as specified"
+      - id: AC4
+        text: "Program structure follows the pattern of other cmd/ packages in the project"
+
+- index: 1
+  title: "cmd/ln implementation -- symbolic links and overwrite flags (srd037-ln R2.1, R2.2, R2.3, R2.4)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd037-ln.yaml (full SRD for ln -- read all requirements before starting)
+      - cmd/ln/main.go (existing implementation from previous task -- core link creation)
+
+    files:
+      - path: cmd/ln/main.go
+        action: modify
+        note: "Add symbolic link creation and overwrite/interactive flag handling"
+
+    requirements:
+      - id: R1
+        text: "Implement srd037-ln R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd037-ln R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd037-ln R2.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd037-ln R2.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Use os.Symlink for symbolic link creation when the corresponding flag is specified"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/ln ./cmd/ln/ succeeds without errors"
+      - id: AC2
+        text: "go vet ./cmd/ln/ reports no warnings"
+      - id: AC3
+        text: "All four SRD requirements R2.1 through R2.4 are implemented as specified"
+      - id: AC4
+        text: "Previously implemented R1.x functionality still works correctly"
+
+- index: 2
+  title: "cmd/ln implementation -- backup and target directory modes (srd037-ln R3.1, R3.2, R3.3, R3.4)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd037-ln.yaml (full SRD for ln -- read all requirements before starting)
+      - cmd/ln/main.go (existing implementation from previous tasks -- core links and symbolic/overwrite flags)
+
+    files:
+      - path: cmd/ln/main.go
+        action: modify
+        note: "Add backup mode, custom suffix, target directory, and no-target-directory handling"
+
+    requirements:
+      - id: R1
+        text: "Implement srd037-ln R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd037-ln R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd037-ln R3.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd037-ln R3.4 as specified in the SRD"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/ln ./cmd/ln/ succeeds without errors"
+      - id: AC2
+        text: "go vet ./cmd/ln/ reports no warnings"
+      - id: AC3
+        text: "All four SRD requirements R3.1 through R3.4 are implemented as specified"
+      - id: AC4
+        text: "Previously implemented R1.x and R2.x functionality still works correctly"
+
+- index: 3
+  title: "cmd/ln implementation -- remaining features and error handling (srd037-ln R3.5, R3.6, R4.1, R4.2)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd037-ln.yaml (full SRD for ln -- read all requirements before starting)
+      - cmd/ln/main.go (existing implementation from previous tasks -- core links, flags, backup, target directory)
+
+    files:
+      - path: cmd/ln/main.go
+        action: modify
+        note: "Add verbose output, remaining features, and error handling with exit codes"
+
+    requirements:
+      - id: R1
+        text: "Implement srd037-ln R3.5 as specified in the SRD"
+      - id: R2
+        text: "Implement srd037-ln R3.6 as specified in the SRD"
+      - id: R3
+        text: "Implement srd037-ln R4.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd037-ln R4.2 as specified in the SRD"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/ln ./cmd/ln/ succeeds without errors"
+      - id: AC2
+        text: "go vet ./cmd/ln/ reports no warnings"
+      - id: AC3
+        text: "All four SRD requirements R3.5, R3.6, R4.1, R4.2 are implemented as specified"
+      - id: AC4
+        text: "All previously implemented requirements R1.x through R3.4 still work correctly"
