@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2.
+// Implements srd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 import (
@@ -44,6 +44,7 @@ func main() {
 			i++
 			if i >= len(args) {
 				fmt.Fprintf(os.Stderr, "env: option requires an argument -- 'u'\n")
+				fmt.Fprintf(os.Stderr, "Try 'env --help' for more information.\n")
 				os.Exit(125)
 			}
 			unsets = append(unsets, args[i])
@@ -58,15 +59,22 @@ func main() {
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
 			break
 		}
-		consumed, ok := parseShortFlags(arg, &ignoreEnv, &nullTerm)
+		if strings.HasPrefix(arg, "--") {
+			fmt.Fprintf(os.Stderr, "env: unrecognized option '%s'\n", arg)
+			fmt.Fprintf(os.Stderr, "Try 'env --help' for more information.\n")
+			os.Exit(125)
+		}
+		consumed, badChar, ok := parseShortFlags(arg, &ignoreEnv, &nullTerm)
 		if !ok {
-			fmt.Fprintf(os.Stderr, "env: invalid option -- '%s'\n", arg)
+			fmt.Fprintf(os.Stderr, "env: invalid option -- '%c'\n", badChar)
+			fmt.Fprintf(os.Stderr, "Try 'env --help' for more information.\n")
 			os.Exit(125)
 		}
 		if consumed != "" {
 			i++
 			if i >= len(args) {
 				fmt.Fprintf(os.Stderr, "env: option requires an argument -- 'u'\n")
+				fmt.Fprintf(os.Stderr, "Try 'env --help' for more information.\n")
 				os.Exit(125)
 			}
 			unsets = append(unsets, args[i])
@@ -85,21 +93,20 @@ func main() {
 	execCommand(args[i:], env)
 }
 
-func parseShortFlags(arg string, ignoreEnv *bool, nullTerm *bool) (consumed string, ok bool) {
-	for j, ch := range arg[1:] {
+func parseShortFlags(arg string, ignoreEnv *bool, nullTerm *bool) (consumed string, badChar rune, ok bool) {
+	for _, ch := range arg[1:] {
 		switch ch {
 		case 'i':
 			*ignoreEnv = true
 		case '0':
 			*nullTerm = true
 		case 'u':
-			return "u", true
+			return "u", 0, true
 		default:
-			_ = j
-			return "", false
+			return "", ch, false
 		}
 	}
-	return "", true
+	return "", 0, true
 }
 
 func buildEnv(ignoreEnv bool, unsets []string, rest []string) []string {

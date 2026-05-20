@@ -5,6 +5,7 @@ package main
 
 import (
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -186,6 +187,27 @@ func TestDiff(t *testing.T) {
 			Args:     []string{"FOO=bar", "sh", "-c", "exit 7"},
 			ExitCode: 7,
 		},
+		// R3.3 + R4.3: invalid short option
+		{
+			Name:      "invalid_short_option",
+			Args:      []string{"-z"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R3.3 + R4.3: invalid long option
+		{
+			Name:      "invalid_long_option",
+			Args:      []string{"--bogus"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		// R3.3 + R4.3: -u missing argument
+		{
+			Name:      "unset_missing_argument",
+			Args:      []string{"-u"},
+			ExitCode:  125,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -200,9 +222,10 @@ func findEnvBin(t *testing.T) string {
 	return path
 }
 
+var binaryNameRe = regexp.MustCompile(`(?:/[^ ']+/)?g?env([:' ])`)
+
 func normalizeBinaryName(b []byte) []byte {
-	s := strings.Replace(string(b), "genv:", "env:", 1)
-	return []byte(s)
+	return binaryNameRe.ReplaceAll(b, []byte("env$1"))
 }
 
 func sortLines(b []byte) []byte {
