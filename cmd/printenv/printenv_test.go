@@ -57,6 +57,16 @@ func TestDiff(t *testing.T) {
 			Name: "long flag null",
 			Args: []string{"--null", "HOME"},
 		},
+		{
+			Name:     "multiple missing variables",
+			Args:     []string{"NONEXISTENT_VAR_FOR_PRINTENV_TEST", "ANOTHER_NONEXISTENT_VAR_TEST"},
+			ExitCode: 1,
+		},
+		{
+			Name: "null terminated mix of existing and missing",
+			Args: []string{"-0", "HOME", "NONEXISTENT_VAR_FOR_PRINTENV_TEST"},
+			ExitCode: 1,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
