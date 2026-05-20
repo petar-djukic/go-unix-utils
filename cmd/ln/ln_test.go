@@ -177,6 +177,9 @@ func TestDiff(t *testing.T) {
 		runLinkTestV(t, goBin, refBin,
 			map[string]string{"src": "data"},
 			[]string{"-v", "src", "vlink"},
+			func(t *testing.T, dir string) {
+				verifyHardLink(t, dir, "src", "vlink")
+			},
 		)
 	})
 
@@ -184,6 +187,9 @@ func TestDiff(t *testing.T) {
 		runLinkTestV(t, goBin, refBin,
 			map[string]string{"target": "data"},
 			[]string{"-sv", "target", "vslink"},
+			func(t *testing.T, dir string) {
+				verifySymlink(t, dir, "vslink", "target")
+			},
 		)
 	})
 
@@ -191,6 +197,9 @@ func TestDiff(t *testing.T) {
 		runLinkTestV(t, goBin, refBin,
 			map[string]string{"src": "new", "dest": "old"},
 			[]string{"-fv", "src", "dest"},
+			func(t *testing.T, dir string) {
+				verifyHardLink(t, dir, "src", "dest")
+			},
 		)
 	})
 
@@ -208,6 +217,9 @@ func TestDiff(t *testing.T) {
 		runLinkTestV(t, goBin, refBin,
 			map[string]string{"target": "data"},
 			[]string{"-srv", "target", "rlink"},
+			func(t *testing.T, dir string) {
+				verifySymlink(t, dir, "rlink", "target")
+			},
 		)
 	})
 
@@ -330,6 +342,9 @@ func TestDiff(t *testing.T) {
 		runLinkTestV(t, goBin, refBin,
 			map[string]string{"src": "new", "dest": "old"},
 			[]string{"-bv", "src", "dest"},
+			func(t *testing.T, dir string) {
+				verifyHardLink(t, dir, "src", "dest")
+			},
 		)
 	})
 
@@ -337,6 +352,9 @@ func TestDiff(t *testing.T) {
 		runLinkTestV(t, goBin, refBin,
 			map[string]string{"dest": "old"},
 			[]string{"-sbv", "newtarget", "dest"},
+			func(t *testing.T, dir string) {
+				verifySymlink(t, dir, "dest", "newtarget")
+			},
 		)
 	})
 
@@ -482,6 +500,7 @@ func runLinkTestV(
 	t *testing.T, goBin, refBin string,
 	files map[string]string,
 	args []string,
+	verify ...func(t *testing.T, dir string),
 ) {
 	t.Helper()
 	goDir := t.TempDir()
@@ -491,6 +510,11 @@ func runLinkTestV(
 	goRes := runBin(t, goBin, args, goDir)
 	refRes := runBin(t, refBin, args, refDir)
 	compareResults(t, args, goRes, refRes)
+
+	if len(verify) > 0 && verify[0] != nil {
+		t.Run("verify_go", func(t *testing.T) { verify[0](t, goDir) })
+		t.Run("verify_ref", func(t *testing.T) { verify[0](t, refDir) })
+	}
 }
 
 func runLinkTestN(
