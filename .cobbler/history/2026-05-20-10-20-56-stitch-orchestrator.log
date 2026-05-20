@@ -172,3 +172,13 @@
 [2026-05-20T10:23:36-04:00] [generation-run44] [stitch +2m40s] closeStitchTask: closing #5366 "[stitch] srd040-printenv R2.2, R2.3, R2.4, R3.1 (implementation continued)"
 [2026-05-20T10:23:37-04:00] [generation-run44] [stitch +2m41s] commentCobblerIssue: posted comment on #5366
 [2026-05-20T10:23:37-04:00] [generation-run44] [stitch +2m41s] updateRequirementsFile: marked 4 R-items as complete for issue #5366
+[2026-05-20T10:23:41-04:00] [generation-run44] [stitch +2m45s] closeCobblerIssue: closed #5366
+[2026-05-20T10:23:44-04:00] [generation-run44] [stitch +2m48s] closeStitchTask: #5366 closed
+[2026-05-20T10:23:45-04:00] [generation-run44] [stitch +2m49s] sweepCompletedTasks: all R-items for #5366 already complete, closing
+[2026-05-20T10:23:46-04:00] [generation-run44] [stitch +2m50s] commentCobblerIssue: posted comment on #5366
+[2026-05-20T10:23:48-04:00] [generation-run44] [stitch +2m52s] closeCobblerIssue: closed #5366
+[2026-05-20T10:23:51-04:00] [generation-run44] [stitch +2m55s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-20T10:23:51-04:00] [generation-run44] [stitch +2m55s] doOneTask: task 5366 finished in 2m46s
+[2026-05-20T10:23:51-04:00] [generation-run44] [stitch +2m55s] task 5366 completed in 2m46s
+[2026-05-20T10:23:51-04:00] [generation-run44] [stitch +2m55s] reached per-cycle limit (1), pausing for measure
+[2026-05-20T10:23:51-04:00] [generation-run44] [stitch +2m55s] completed 1 task(s) in 2m55s

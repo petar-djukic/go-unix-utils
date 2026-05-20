@@ -348,7 +348,7 @@ code_status:
               testfiles: 0
             - id: rel06.1-uc002-printenv
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel06.1-uc003-id

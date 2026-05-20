@@ -2555,10 +2555,10 @@ requirements:
             issue: 5366
             weight: 1
         R3.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.3:
-            status: proposed
+            status: in_progress
             weight: 1
     srd041-id:
         R1.1:
