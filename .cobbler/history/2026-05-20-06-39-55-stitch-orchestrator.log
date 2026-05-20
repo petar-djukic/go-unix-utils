@@ -135,3 +135,13 @@
 [2026-05-20T06:45:49-04:00] [generation-run44] [stitch +5m55s] closeStitchTask: closing #5330 "[stitch] cmd/mkdir error diagnostics and version/help (srd034 R4.1, R4.2, R4.3)"
 [2026-05-20T06:45:50-04:00] [generation-run44] [stitch +5m56s] commentCobblerIssue: posted comment on #5330
 [2026-05-20T06:45:50-04:00] [generation-run44] [stitch +5m56s] updateRequirementsFile: marked 3 R-items as complete for issue #5330
+[2026-05-20T06:45:53-04:00] [generation-run44] [stitch +5m59s] closeCobblerIssue: closed #5330
+[2026-05-20T06:45:55-04:00] [generation-run44] [stitch +6m1s] closeStitchTask: #5330 closed
+[2026-05-20T06:45:56-04:00] [generation-run44] [stitch +6m2s] sweepCompletedTasks: all R-items for #5330 already complete, closing
+[2026-05-20T06:45:57-04:00] [generation-run44] [stitch +6m2s] commentCobblerIssue: posted comment on #5330
+[2026-05-20T06:45:59-04:00] [generation-run44] [stitch +6m4s] closeCobblerIssue: closed #5330
+[2026-05-20T06:45:59-04:00] [generation-run44] [stitch +6m5s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-20T06:45:59-04:00] [generation-run44] [stitch +6m5s] doOneTask: task 5330 finished in 5m59s
+[2026-05-20T06:45:59-04:00] [generation-run44] [stitch +6m5s] task 5330 completed in 5m59s
+[2026-05-20T06:45:59-04:00] [generation-run44] [stitch +6m5s] reached per-cycle limit (1), pausing for measure
+[2026-05-20T06:45:59-04:00] [generation-run44] [stitch +6m5s] completed 1 task(s) in 6m5s
