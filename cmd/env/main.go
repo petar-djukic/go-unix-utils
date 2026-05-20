@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd039-env R1.1, R1.2, R1.3, R2.1.
+// Implements srd039-env R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2.
 package main
 
 import (
@@ -20,6 +20,8 @@ func main() {
 
 	args := os.Args[1:]
 	ignoreEnv := false
+	nullTerm := false
+	var unsets []string
 
 	i := 0
 	for i < len(args) {
@@ -33,42 +35,80 @@ func main() {
 			i++
 			continue
 		}
+		if arg == "-0" || arg == "--null" {
+			nullTerm = true
+			i++
+			continue
+		}
+		if arg == "-u" {
+			i++
+			if i >= len(args) {
+				fmt.Fprintf(os.Stderr, "env: option requires an argument -- 'u'\n")
+				os.Exit(125)
+			}
+			unsets = append(unsets, args[i])
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, "--unset=") {
+			unsets = append(unsets, arg[len("--unset="):])
+			i++
+			continue
+		}
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
 			break
 		}
-		if !parseShortFlags(arg, &ignoreEnv) {
+		consumed, ok := parseShortFlags(arg, &ignoreEnv, &nullTerm)
+		if !ok {
 			fmt.Fprintf(os.Stderr, "env: invalid option -- '%s'\n", arg)
 			os.Exit(125)
+		}
+		if consumed != "" {
+			i++
+			if i >= len(args) {
+				fmt.Fprintf(os.Stderr, "env: option requires an argument -- 'u'\n")
+				os.Exit(125)
+			}
+			unsets = append(unsets, args[i])
 		}
 		i++
 	}
 
-	env := buildEnv(ignoreEnv, args[i:])
+	env := buildEnv(ignoreEnv, unsets, args[i:])
 	i += countAssignments(args[i:])
 
 	if i >= len(args) {
-		printEnv(env)
+		printEnv(env, nullTerm)
 		return
 	}
 
 	execCommand(args[i:], env)
 }
 
-func parseShortFlags(arg string, ignoreEnv *bool) bool {
-	for _, ch := range arg[1:] {
-		if ch == 'i' {
+func parseShortFlags(arg string, ignoreEnv *bool, nullTerm *bool) (consumed string, ok bool) {
+	for j, ch := range arg[1:] {
+		switch ch {
+		case 'i':
 			*ignoreEnv = true
-		} else {
-			return false
+		case '0':
+			*nullTerm = true
+		case 'u':
+			return "u", true
+		default:
+			_ = j
+			return "", false
 		}
 	}
-	return true
+	return "", true
 }
 
-func buildEnv(ignoreEnv bool, rest []string) []string {
+func buildEnv(ignoreEnv bool, unsets []string, rest []string) []string {
 	var env []string
 	if !ignoreEnv {
 		env = os.Environ()
+	}
+	for _, name := range unsets {
+		env = removeVar(env, name)
 	}
 	for _, arg := range rest {
 		if !strings.Contains(arg, "=") {
@@ -77,6 +117,18 @@ func buildEnv(ignoreEnv bool, rest []string) []string {
 		env = append(env, arg)
 	}
 	return env
+}
+
+func removeVar(env []string, name string) []string {
+	prefix := name + "="
+	n := 0
+	for _, e := range env {
+		if !strings.HasPrefix(e, prefix) {
+			env[n] = e
+			n++
+		}
+	}
+	return env[:n]
 }
 
 func countAssignments(args []string) int {
@@ -90,9 +142,13 @@ func countAssignments(args []string) int {
 	return n
 }
 
-func printEnv(env []string) {
+func printEnv(env []string, nullTerm bool) {
 	for _, e := range env {
-		fmt.Println(e)
+		if nullTerm {
+			fmt.Print(e + "\x00")
+		} else {
+			fmt.Println(e)
+		}
 	}
 }
 

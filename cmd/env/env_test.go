@@ -120,6 +120,72 @@ func TestDiff(t *testing.T) {
 			Name: "ignore_env_empty",
 			Args: []string{"-i"},
 		},
+		// R2.2: -u removes a variable
+		{
+			Name:      "unset_single",
+			Args:      []string{"-u", "HOME", envBin},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.2: --unset=NAME long form
+		{
+			Name:      "unset_long_form",
+			Args:      []string{"--unset=HOME", envBin},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.2: multiple -u flags
+		{
+			Name:      "unset_multiple",
+			Args:      []string{"-u", "HOME", "-u", "USER", envBin},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.2: -u with -i (unset from empty env is a no-op)
+		{
+			Name:      "unset_with_ignore_env",
+			Args:      []string{"-i", "-u", "HOME", "FOO=bar", envBin},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.2: -u variable that doesn't exist
+		{
+			Name:      "unset_nonexistent",
+			Args:      []string{"-u", "NONEXISTENT_VAR_XYZ_12345", envBin},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R2.2: combined -iu flags
+		{
+			Name:      "combined_iu_flags",
+			Args:      []string{"-iu", "HOME", "FOO=bar", envBin},
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		// R3.1: -0 NUL-delimited output
+		{
+			Name:      "null_terminated_short",
+			Args:      []string{"-i", "-0", "A=1", "B=2"},
+			Normalize: []testutils.NormalizeFunc{sortNulLines},
+		},
+		// R3.1: --null NUL-delimited output
+		{
+			Name:      "null_terminated_long",
+			Args:      []string{"-i", "--null", "A=1", "B=2"},
+			Normalize: []testutils.NormalizeFunc{sortNulLines},
+		},
+		// R3.1: combined -i0 flags
+		{
+			Name:      "null_combined_i0",
+			Args:      []string{"-i0", "X=hello", "Y=world"},
+			Normalize: []testutils.NormalizeFunc{sortNulLines},
+		},
+		// R3.1: -0 with inherited environment
+		{
+			Name:      "null_with_inherited_env",
+			Args:      []string{"-0"},
+			Normalize: []testutils.NormalizeFunc{sortNulLines},
+		},
+		// R3.2: exit code passthrough with modified env
+		{
+			Name:     "exit_code_with_env_mod",
+			Args:     []string{"FOO=bar", "sh", "-c", "exit 7"},
+			ExitCode: 7,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -147,4 +213,15 @@ func sortLines(b []byte) []byte {
 	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 	sort.Strings(lines)
 	return []byte(strings.Join(lines, "\n") + "\n")
+}
+
+func sortNulLines(b []byte) []byte {
+	s := string(b)
+	if s == "" {
+		return b
+	}
+	s = strings.TrimSuffix(s, "\x00")
+	lines := strings.Split(s, "\x00")
+	sort.Strings(lines)
+	return []byte(strings.Join(lines, "\x00") + "\x00")
 }
