@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd035-rmdir R4.1, R4.2, R4.3 (partial — R1 test coverage).
+// Implements srd035-rmdir R4.1, R4.2, R4.3 (partial — R1, R2 test coverage).
 package main
 
 import (
@@ -121,6 +121,56 @@ func TestDiff(t *testing.T) {
 			{
 				Name:     "two_missing",
 				Args:     []string{"nope1", "nope2"},
+				ExitCode: 1,
+				Normalize: []testutils.NormalizeFunc{
+					normalizeBinaryName,
+				},
+			},
+		})
+	})
+
+	t.Run("parents_nested_empty", func(t *testing.T) {
+		runRemovalTest(t, goBin, refBin, []string{"-p", "a/b/c"},
+			func(dir string) {
+				os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755)
+			})
+	})
+
+	t.Run("parents_stop_at_nonempty", func(t *testing.T) {
+		setup := func(dir string) {
+			os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755)
+			os.WriteFile(filepath.Join(dir, "a", "other"), []byte("x"), 0o644)
+		}
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		setup(goDir)
+		setup(refDir)
+		args := []string{"-p", "a/b/c"}
+		goRes := runBin(t, goBin, args, goDir)
+		refRes := runBin(t, refBin, args, refDir)
+		compareResults(t, args, goRes, refRes)
+	})
+
+	t.Run("parents_multiple_args", func(t *testing.T) {
+		runRemovalTest(t, goBin, refBin, []string{"-p", "x/y", "p/q"},
+			func(dir string) {
+				os.MkdirAll(filepath.Join(dir, "x", "y"), 0o755)
+				os.MkdirAll(filepath.Join(dir, "p", "q"), 0o755)
+			})
+	})
+
+	t.Run("parents_single_dir", func(t *testing.T) {
+		runRemovalTest(t, goBin, refBin, []string{"-p", "lonely"},
+			func(dir string) {
+				os.Mkdir(filepath.Join(dir, "lonely"), 0o755)
+			})
+	})
+
+	t.Run("parents_nonexistent", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:     "parents_no_such_dir",
+				Args:     []string{"-p", "no_such_dir"},
 				ExitCode: 1,
 				Normalize: []testutils.NormalizeFunc{
 					normalizeBinaryName,

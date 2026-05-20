@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd035-rmdir R1.1, R1.2, R1.3, R1.4.
+// Implements srd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -48,13 +49,24 @@ func main() {
 	os.Exit(run(opts, dirs))
 }
 
-func run(_ options, dirs []string) int {
+func run(opts options, dirs []string) int {
 	exitCode := 0
 	for _, dir := range dirs {
 		if err := syscall.Rmdir(dir); err != nil {
 			fmt.Fprintf(os.Stderr, "rmdir: failed to remove '%s': %s\n",
 				dir, sysErrMsg(err))
 			exitCode = 1
+			continue
+		}
+		if opts.parents {
+			for parent := filepath.Dir(filepath.Clean(dir)); parent != "." && parent != "/"; parent = filepath.Dir(parent) {
+				if err := syscall.Rmdir(parent); err != nil {
+					fmt.Fprintf(os.Stderr, "rmdir: failed to remove directory '%s': %s\n",
+						parent, sysErrMsg(err))
+					exitCode = 1
+					break
+				}
+			}
 		}
 	}
 	return exitCode
