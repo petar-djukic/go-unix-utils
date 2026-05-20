@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5336"
+task_title: '[stitch] cmd/unlink error handling and options (srd038 R2.2, R2.3, R2.4, R3.1)'
+status: success
+started_at: "2026-05-20T11:09:32Z"
+duration: 4m31s
+duration_s: 270
+tokens:
+    input: 1127426
+    output: 11818
+    cache_creation: 212502
+    cache_read: 914895
+cost_usd: 2.4438727499999993
+num_turns: 69
+rate_limit_wait_s: 3
+loc_before:
+    production: 10208
+    test: 9665
+loc_after:
+    production: 10230
+    test: 9854
+diff:
+    files: 3
+    insertions: 424
+    deletions: 0
