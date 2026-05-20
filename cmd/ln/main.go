@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd037-ln R1.1, R1.2, R1.3, R1.4.
+// Implements srd037-ln R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -22,6 +22,7 @@ In the 2nd form, create a link to TARGET in the current directory.
 In the 3rd form, create links to each TARGET in DIRECTORY.
 
   -s, --symbolic  make symbolic links instead of hard links
+  -r, --relative  create symbolic links relative to link location
       --help      display this help and exit
       --version   output version information and exit
 `
@@ -31,6 +32,7 @@ const versionText = `ln (go-unix-utils) dev
 
 type options struct {
 	symbolic bool
+	relative bool
 }
 
 func main() {
@@ -81,13 +83,38 @@ func run(opts options, targets []string) int {
 
 func createLink(target, linkName string, opts options) error {
 	if opts.symbolic {
-		if err := os.Symlink(target, linkName); err != nil {
+		t := target
+		if opts.relative {
+			rel, err := computeRelative(target, linkName)
+			if err != nil {
+				return err
+			}
+			t = rel
+		}
+		if err := os.Symlink(t, linkName); err != nil {
 			return fmt.Errorf("failed to create symbolic link '%s': %s",
 				linkName, sysErrMsg(err))
 		}
 		return nil
 	}
 	return createHardLink(target, linkName)
+}
+
+func computeRelative(target, linkName string) (string, error) {
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return "", fmt.Errorf("failed to access '%s': %s", target, sysErrMsg(err))
+	}
+	linkDir := filepath.Dir(linkName)
+	absLinkDir, err := filepath.Abs(linkDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to access '%s': %s", linkDir, sysErrMsg(err))
+	}
+	rel, err := filepath.Rel(absLinkDir, absTarget)
+	if err != nil {
+		return "", fmt.Errorf("failed to compute relative path: %s", err)
+	}
+	return rel, nil
 }
 
 func createHardLink(target, linkName string) error {
@@ -206,6 +233,9 @@ func parseLongFlag(flag string, opts *options) (int, error) {
 	case "--symbolic":
 		opts.symbolic = true
 		return 1, nil
+	case "--relative":
+		opts.relative = true
+		return 1, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
@@ -216,6 +246,8 @@ func parseShortFlags(flags string, opts *options) error {
 		switch flags[j] {
 		case 's':
 			opts.symbolic = true
+		case 'r':
+			opts.relative = true
 		default:
 			return fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
