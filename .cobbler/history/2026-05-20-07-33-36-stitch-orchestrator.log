@@ -253,3 +253,13 @@
 [2026-05-20T07:40:49-04:00] [generation-run44] [stitch +7m13s] closeStitchTask: closing #5342 "[stitch] cmd/ln implementation -- backup and target directory modes (srd037-ln R3.1, R3.2, R3.3, R3.4)"
 [2026-05-20T07:40:50-04:00] [generation-run44] [stitch +7m14s] commentCobblerIssue: posted comment on #5342
 [2026-05-20T07:40:50-04:00] [generation-run44] [stitch +7m14s] updateRequirementsFile: marked 4 R-items as complete for issue #5342
+[2026-05-20T07:40:53-04:00] [generation-run44] [stitch +7m17s] closeCobblerIssue: closed #5342
+[2026-05-20T07:40:55-04:00] [generation-run44] [stitch +7m19s] closeStitchTask: #5342 closed
+[2026-05-20T07:40:56-04:00] [generation-run44] [stitch +7m20s] sweepCompletedTasks: all R-items for #5342 already complete, closing
+[2026-05-20T07:40:57-04:00] [generation-run44] [stitch +7m21s] commentCobblerIssue: posted comment on #5342
+[2026-05-20T07:40:59-04:00] [generation-run44] [stitch +7m22s] closeCobblerIssue: closed #5342
+[2026-05-20T07:41:01-04:00] [generation-run44] [stitch +7m25s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-20T07:41:01-04:00] [generation-run44] [stitch +7m25s] doOneTask: task 5342 finished in 7m17s
+[2026-05-20T07:41:01-04:00] [generation-run44] [stitch +7m25s] task 5342 completed in 7m17s
+[2026-05-20T07:41:01-04:00] [generation-run44] [stitch +7m25s] reached per-cycle limit (1), pausing for measure
+[2026-05-20T07:41:01-04:00] [generation-run44] [stitch +7m25s] completed 1 task(s) in 7m25s
