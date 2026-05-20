@@ -148,3 +148,13 @@
 [2026-05-19T20:22:59-04:00] [generation-run44] [stitch +5m40s] closeStitchTask: closing #5325 "[stitch] cmd/mkdir parent directory creation (srd034 R2.1, R2.2, R2.3)"
 [2026-05-19T20:23:00-04:00] [generation-run44] [stitch +5m41s] commentCobblerIssue: posted comment on #5325
 [2026-05-19T20:23:00-04:00] [generation-run44] [stitch +5m41s] updateRequirementsFile: marked 3 R-items as complete for issue #5325
+[2026-05-19T20:23:03-04:00] [generation-run44] [stitch +5m43s] closeCobblerIssue: closed #5325
+[2026-05-19T20:23:05-04:00] [generation-run44] [stitch +5m45s] closeStitchTask: #5325 closed
+[2026-05-19T20:23:05-04:00] [generation-run44] [stitch +5m46s] sweepCompletedTasks: all R-items for #5325 already complete, closing
+[2026-05-19T20:23:06-04:00] [generation-run44] [stitch +5m47s] commentCobblerIssue: posted comment on #5325
+[2026-05-19T20:23:08-04:00] [generation-run44] [stitch +5m48s] closeCobblerIssue: closed #5325
+[2026-05-19T20:23:09-04:00] [generation-run44] [stitch +5m50s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-19T20:23:09-04:00] [generation-run44] [stitch +5m50s] doOneTask: task 5325 finished in 5m44s
+[2026-05-19T20:23:09-04:00] [generation-run44] [stitch +5m50s] task 5325 completed in 5m44s
+[2026-05-19T20:23:09-04:00] [generation-run44] [stitch +5m50s] reached per-cycle limit (1), pausing for measure
+[2026-05-19T20:23:09-04:00] [generation-run44] [stitch +5m50s] completed 1 task(s) in 5m50s
