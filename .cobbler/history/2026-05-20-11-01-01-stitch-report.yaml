@@ -1,0 +1,23 @@
+task_id: "5375"
+task_title: '[stitch] cmd/sort: sorting options and field separator -- srd053 R1.5-R1.7, R2.1'
+status: success
+branch: task/generation-run44-5375
+diff:
+    files: 2
+    insertions: 270
+    deletions: 15
+files:
+    - path: .cobbler/history/2026-05-20-11-00-48-stitch-orchestrator.log
+      status: M
+      insertions: 113
+      deletions: 0
+    - path: cmd/sort/main.go
+      status: M
+      insertions: 158
+      deletions: 15
+loc_before:
+    production: 11741
+    test: 11568
+loc_after:
+    production: 11884
+    test: 11568
