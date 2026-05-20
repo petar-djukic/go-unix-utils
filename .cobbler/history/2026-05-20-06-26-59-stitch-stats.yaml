@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5328"
+task_title: '[stitch] cmd/rmdir basic directory removal (srd035 R1.1, R1.2, R1.3, R1.4)'
+status: success
+started_at: "2026-05-20T10:26:59Z"
+duration: 6m1s
+duration_s: 360
+tokens:
+    input: 490290
+    output: 16541
+    cache_creation: 211164
+    cache_read: 279115
+cost_usd: 2.3002045499999997
+num_turns: 25
+rate_limit_wait_s: 4
+loc_before:
+    production: 9979
+    test: 9294
+loc_after:
+    production: 10132
+    test: 9495
+diff:
+    files: 3
+    insertions: 474
+    deletions: 0
