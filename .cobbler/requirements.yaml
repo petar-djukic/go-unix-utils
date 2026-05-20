@@ -2355,10 +2355,12 @@ requirements:
             issue: 5350
             weight: 1
         R4.3:
-            status: in_progress
+            status: uncertain
+            issue: 5351
             weight: 1
         R4.4:
-            status: in_progress
+            status: uncertain
+            issue: 5351
             weight: 1
     srd037-ln:
         R1.1:
