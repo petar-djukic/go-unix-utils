@@ -132,3 +132,9 @@
 [2026-05-20T09:31:30-04:00] [generation-run44] [stitch +4m57s] doOneTask: closing task 5353
 [2026-05-20T09:31:30-04:00] [generation-run44] [stitch +4m57s] closeStitchTask: closing #5353 "[stitch] srd036-mktemp R4.3, R4.4 (tests)"
 [2026-05-20T09:31:31-04:00] [generation-run44] [stitch +4m58s] commentCobblerIssue: posted comment on #5353
+[2026-05-20T09:31:34-04:00] [generation-run44] [stitch +5m1s] closeCobblerIssue: closed #5353
+[2026-05-20T09:31:37-04:00] [generation-run44] [stitch +5m4s] closeStitchTask: #5353 closed
+[2026-05-20T09:31:38-04:00] [generation-run44] [stitch +5m5s] doOneTask: task 5353 finished in 4m56s
+[2026-05-20T09:31:38-04:00] [generation-run44] [stitch +5m5s] task 5353 completed in 4m56s
+[2026-05-20T09:31:38-04:00] [generation-run44] [stitch +5m5s] reached per-cycle limit (1), pausing for measure
+[2026-05-20T09:31:38-04:00] [generation-run44] [stitch +5m5s] completed 1 task(s) in 5m5s

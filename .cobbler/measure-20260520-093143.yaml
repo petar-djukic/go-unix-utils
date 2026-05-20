@@ -1,0 +1,163 @@
+- index: 0
+  title: "[stitch] srd042-whoami R1.1, R1.2, R2.1, R2.2 (implementation)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd042-whoami.yaml
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- SIGPIPE handling pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+
+    files:
+      - path: cmd/whoami/main.go
+        action: create
+        note: whoami utility implementation
+
+    requirements:
+      - id: R1
+        text: "Implement srd042-whoami R1.1 -- print the effective username to stdout followed by a newline, matching gwhoami output"
+      - id: R2
+        text: "Implement srd042-whoami R1.2 -- exit 0 on success, exit non-zero on failure to determine username"
+      - id: R3
+        text: "Implement srd042-whoami R2.1 -- support --help flag that prints usage information to stdout and exits 0"
+      - id: R4
+        text: "Implement srd042-whoami R2.2 -- support --version flag that prints version information to stdout and exits 0"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the project SIGPIPE protocol in ARCHITECTURE.yaml shared_protocols"
+      - id: D2
+        text: "Write output to os.Stdout and errors to os.Stderr"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/whoami/main.go compiles with: go build -o bin/whoami ./cmd/whoami/"
+      - id: AC2
+        text: "bin/whoami prints the current effective username followed by a newline and exits 0"
+      - id: AC3
+        text: "bin/whoami --help prints usage to stdout and exits 0"
+      - id: AC4
+        text: "bin/whoami --version prints version to stdout and exits 0"
+      - id: AC5
+        text: "go vet ./cmd/whoami/... reports no issues"
+
+- index: 1
+  title: "[stitch] srd042-whoami R3.1, R3.2, R3.3 (tests)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd042-whoami.yaml
+      - cmd/whoami/main.go (implementation to be tested)
+      - pkg/testutils/ (DiffTest struct, RunDiffTests, BuildBinary functions)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- differential testing pattern and graceful skip pattern)
+
+    files:
+      - path: cmd/whoami/whoami_test.go
+        action: create
+        note: differential tests for whoami against gwhoami
+
+    requirements:
+      - id: R1
+        text: "Implement srd042-whoami R3.1 -- differential test comparing Go binary output against gwhoami for default invocation (no arguments)"
+      - id: R2
+        text: "Implement srd042-whoami R3.2 -- differential tests for --help and --version flags against gwhoami"
+      - id: R3
+        text: "Implement srd042-whoami R3.3 -- differential tests for error cases such as extra operands"
+
+    design_decisions:
+      - id: D1
+        text: "Use testutils.BuildBinary(t, \".\") to compile the Go binary under test"
+      - id: D2
+        text: "Use exec.LookPath(\"gwhoami\") and call t.Skip if the reference binary is not found, per the graceful skip protocol in ARCHITECTURE.yaml"
+      - id: D3
+        text: "Define tests as []testutils.DiffTest and call testutils.RunDiffTests(t, goBin, refBin, tests)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/whoami/whoami_test.go compiles with: go vet ./cmd/whoami/..."
+      - id: AC2
+        text: "go test ./cmd/whoami/... -count=1 passes (or skips if gwhoami is not installed)"
+      - id: AC3
+        text: "Tests cover default invocation, --help, --version, and at least one error case"
+
+- index: 2
+  title: "[stitch] srd043-groups R1.1, R1.2, R1.3, R2.1 (implementation)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd043-groups.yaml
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- SIGPIPE handling pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+
+    files:
+      - path: cmd/groups/main.go
+        action: create
+        note: groups utility implementation (core functionality)
+
+    requirements:
+      - id: R1
+        text: "Implement srd043-groups R1.1 -- with no arguments, print the group memberships of the current user to stdout"
+      - id: R2
+        text: "Implement srd043-groups R1.2 -- with username arguments, print group memberships for each specified user"
+      - id: R3
+        text: "Implement srd043-groups R1.3 -- exit 0 on success, exit non-zero if any specified user does not exist"
+      - id: R4
+        text: "Implement srd043-groups R2.1 -- support --help flag that prints usage information to stdout and exits 0"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the project SIGPIPE protocol in ARCHITECTURE.yaml shared_protocols"
+      - id: D2
+        text: "Write output to os.Stdout and errors to os.Stderr"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/groups/main.go compiles with: go build -o bin/groups ./cmd/groups/"
+      - id: AC2
+        text: "bin/groups with no arguments prints group memberships of the current user"
+      - id: AC3
+        text: "bin/groups root prints group memberships of the root user"
+      - id: AC4
+        text: "bin/groups --help prints usage to stdout and exits 0"
+      - id: AC5
+        text: "go vet ./cmd/groups/... reports no issues"
+
+- index: 3
+  title: "[stitch] srd043-groups R2.2, R2.3 (implementation continued)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd043-groups.yaml
+      - cmd/groups/main.go (existing implementation from prior task)
+
+    files:
+      - path: cmd/groups/main.go
+        action: modify
+        note: add --version flag and error handling
+
+    requirements:
+      - id: R1
+        text: "Implement srd043-groups R2.2 -- support --version flag that prints version information to stdout and exits 0"
+      - id: R2
+        text: "Implement srd043-groups R2.3 -- print error to stderr and exit non-zero when a specified username does not exist"
+
+    design_decisions:
+      - id: D1
+        text: "Add --version handling to the existing flag parsing logic in main.go"
+      - id: D2
+        text: "Match GNU groups error message format for nonexistent users"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "bin/groups --version prints version to stdout and exits 0"
+      - id: AC2
+        text: "bin/groups nonexistentuser prints an error to stderr and exits non-zero"
+      - id: AC3
+        text: "go vet ./cmd/groups/... reports no issues"
