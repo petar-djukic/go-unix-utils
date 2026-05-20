@@ -318,7 +318,7 @@ code_status:
               testfiles: 0
             - id: rel06.0-uc002-rmdir
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel06.0-uc003-mktemp

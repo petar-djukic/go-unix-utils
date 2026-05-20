@@ -138,3 +138,13 @@
 [2026-05-20T06:54:49-04:00] [generation-run44] [stitch +3m17s] closeStitchTask: closing #5332 "[stitch] cmd/rmdir non-empty tolerance and error handling (srd035 R3.1, R3.2, R3.3, R3.4)"
 [2026-05-20T06:54:51-04:00] [generation-run44] [stitch +3m18s] commentCobblerIssue: posted comment on #5332
 [2026-05-20T06:54:51-04:00] [generation-run44] [stitch +3m18s] updateRequirementsFile: marked 4 R-items as complete for issue #5332
+[2026-05-20T06:54:53-04:00] [generation-run44] [stitch +3m21s] closeCobblerIssue: closed #5332
+[2026-05-20T06:54:55-04:00] [generation-run44] [stitch +3m23s] closeStitchTask: #5332 closed
+[2026-05-20T06:54:56-04:00] [generation-run44] [stitch +3m24s] sweepCompletedTasks: all R-items for #5332 already complete, closing
+[2026-05-20T06:54:57-04:00] [generation-run44] [stitch +3m25s] commentCobblerIssue: posted comment on #5332
+[2026-05-20T06:54:59-04:00] [generation-run44] [stitch +3m27s] closeCobblerIssue: closed #5332
+[2026-05-20T06:55:01-04:00] [generation-run44] [stitch +3m28s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-20T06:55:01-04:00] [generation-run44] [stitch +3m28s] doOneTask: task 5332 finished in 3m21s
+[2026-05-20T06:55:01-04:00] [generation-run44] [stitch +3m28s] task 5332 completed in 3m21s
+[2026-05-20T06:55:01-04:00] [generation-run44] [stitch +3m28s] reached per-cycle limit (1), pausing for measure
+[2026-05-20T06:55:01-04:00] [generation-run44] [stitch +3m28s] completed 1 task(s) in 3m28s
