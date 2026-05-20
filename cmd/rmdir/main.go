@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
+// Implements srd035-rmdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -53,23 +53,43 @@ func run(opts options, dirs []string) int {
 	exitCode := 0
 	for _, dir := range dirs {
 		if err := syscall.Rmdir(dir); err != nil {
+			if opts.ignoreFailOnNonEmpty && isNonEmptyError(err) {
+				if opts.verbose {
+					fmt.Fprintf(os.Stdout, "rmdir: removing directory, '%s'\n", dir)
+				}
+				continue
+			}
 			fmt.Fprintf(os.Stderr, "rmdir: failed to remove '%s': %s\n",
 				dir, sysErrMsg(err))
 			exitCode = 1
 			continue
 		}
+		if opts.verbose {
+			fmt.Fprintf(os.Stdout, "rmdir: removing directory, '%s'\n", dir)
+		}
 		if opts.parents {
 			for parent := filepath.Dir(filepath.Clean(dir)); parent != "." && parent != "/"; parent = filepath.Dir(parent) {
 				if err := syscall.Rmdir(parent); err != nil {
+					if opts.ignoreFailOnNonEmpty && isNonEmptyError(err) {
+						break
+					}
 					fmt.Fprintf(os.Stderr, "rmdir: failed to remove directory '%s': %s\n",
 						parent, sysErrMsg(err))
 					exitCode = 1
 					break
 				}
+				if opts.verbose {
+					fmt.Fprintf(os.Stdout, "rmdir: removing directory, '%s'\n", parent)
+				}
 			}
 		}
 	}
 	return exitCode
+}
+
+func isNonEmptyError(err error) bool {
+	errno, ok := err.(syscall.Errno)
+	return ok && errno == syscall.ENOTEMPTY
 }
 
 func sysErrMsg(err error) string {
