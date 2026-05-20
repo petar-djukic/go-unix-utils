@@ -333,7 +333,7 @@ code_status:
               testfiles: 0
             - id: rel06.0-uc005-unlink
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "06.1"
