@@ -2339,22 +2339,22 @@ requirements:
             issue: 5348
             weight: 1
         R3.5:
-            status: ready
+            status: proposed
             weight: 1
         R3.6:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
         R4.4:
-            status: ready
+            status: proposed
             weight: 1
     srd037-ln:
         R1.1:
