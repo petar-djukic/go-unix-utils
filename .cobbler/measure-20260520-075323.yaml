@@ -1,0 +1,190 @@
+- index: 0
+  title: "[stitch] cmd/ln implementation -- version and help output (srd037-ln R4.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd037-ln.yaml (R4.3 requirement only)
+      - cmd/ln/main.go (existing implementation -- modify, do not rewrite)
+      - cmd/ln/ln_test.go (existing differential tests -- add new cases)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests pattern)
+
+    files:
+      - path: cmd/ln/main.go
+        action: modify
+        note: Add R4.3 functionality to existing implementation
+      - path: cmd/ln/ln_test.go
+        action: modify
+        note: Add differential test cases for R4.3 scenarios
+
+    requirements:
+      - id: R1
+        text: "Implement srd037-ln R4.3 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code structure and patterns in cmd/ln/main.go -- this is a modification, not a rewrite"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests to compare against gln reference binary"
+      - id: D3
+        text: "Add new DiffTest entries to the existing tests slice in ln_test.go"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "R4.3 functionality implemented in cmd/ln/main.go"
+      - id: AC2
+        text: "Differential test cases added for R4.3 scenarios"
+      - id: AC3
+        text: "go build -o bin/ln ./cmd/ln/ succeeds"
+      - id: AC4
+        text: "go test ./cmd/ln/ -count=1 passes"
+
+- index: 1
+  title: "[stitch] cmd/mktemp implementation -- basic template and file creation (srd036-mktemp R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd036-mktemp.yaml (R1.1 through R1.4)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler -- call at start of main)
+      - pkg/testutils/difftest.go (DiffTest struct, RunDiffTests, BuildBinary)
+      - cmd/ln/main.go (reference for cmd/ package structure and flag parsing patterns)
+      - cmd/ln/ln_test.go (reference for differential test structure)
+
+    files:
+      - path: cmd/mktemp/main.go
+        action: create
+        note: "mktemp implementation covering R1.1-R1.4 -- the cmd/mktemp/ directory may already contain collision.* test fixture files which are not source code"
+      - path: cmd/mktemp/mktemp_test.go
+        action: create
+        note: Differential tests for R1.1-R1.4 using RunDiffTests against gmktemp
+
+    requirements:
+      - id: R1
+        text: "Implement srd036-mktemp R1.1"
+      - id: R2
+        text: "Implement srd036-mktemp R1.2"
+      - id: R3
+        text: "Implement srd036-mktemp R1.3"
+      - id: R4
+        text: "Implement srd036-mktemp R1.4"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project convention"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests to compare output against gmktemp reference binary"
+      - id: D3
+        text: "Call exec.LookPath('gmktemp') and t.Skip if reference binary not found"
+      - id: D4
+        text: "Set LC_ALL=C in differential test environment"
+      - id: D5
+        text: "The cmd/mktemp/ directory may already contain collision.* fixture files -- these are not source code and must not be modified or removed"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/mktemp/main.go created with R1.1-R1.4 functionality per SRD"
+      - id: AC2
+        text: "cmd/mktemp/mktemp_test.go created with differential tests for R1.1-R1.4"
+      - id: AC3
+        text: "go build -o bin/mktemp ./cmd/mktemp/ succeeds"
+      - id: AC4
+        text: "go test ./cmd/mktemp/ -count=1 passes"
+      - id: AC5
+        text: "Existing collision.* files in cmd/mktemp/ are untouched"
+
+- index: 2
+  title: "[stitch] cmd/mktemp implementation -- suffix and directory mode (srd036-mktemp R1.5, R2.1, R2.2, R2.3)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd036-mktemp.yaml (R1.5, R2.1 through R2.3)
+      - cmd/mktemp/main.go (existing implementation from prior task -- modify, do not rewrite)
+      - cmd/mktemp/mktemp_test.go (existing tests from prior task -- add new cases)
+
+    files:
+      - path: cmd/mktemp/main.go
+        action: modify
+        note: Add R1.5 and R2.1-R2.3 functionality to existing implementation
+      - path: cmd/mktemp/mktemp_test.go
+        action: modify
+        note: Add differential test cases for R1.5 and R2.1-R2.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd036-mktemp R1.5"
+      - id: R2
+        text: "Implement srd036-mktemp R2.1"
+      - id: R3
+        text: "Implement srd036-mktemp R2.2"
+      - id: R4
+        text: "Implement srd036-mktemp R2.3"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code structure and patterns in cmd/mktemp/main.go -- this is a modification, not a rewrite"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in mktemp_test.go"
+      - id: D3
+        text: "Use pkg/testutils.RunDiffTests to compare against gmktemp reference binary"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "R1.5 and R2.1-R2.3 functionality implemented in cmd/mktemp/main.go per SRD"
+      - id: AC2
+        text: "Differential test cases added for R1.5 and R2.1-R2.3 scenarios"
+      - id: AC3
+        text: "go build -o bin/mktemp ./cmd/mktemp/ succeeds"
+      - id: AC4
+        text: "go test ./cmd/mktemp/ -count=1 passes"
+
+- index: 3
+  title: "[stitch] cmd/mktemp implementation -- tmpdir and quiet mode (srd036-mktemp R3.1, R3.2, R3.3, R3.4)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd036-mktemp.yaml (R3.1 through R3.4)
+      - cmd/mktemp/main.go (existing implementation from prior tasks -- modify, do not rewrite)
+      - cmd/mktemp/mktemp_test.go (existing tests from prior tasks -- add new cases)
+
+    files:
+      - path: cmd/mktemp/main.go
+        action: modify
+        note: Add R3.1-R3.4 functionality to existing implementation
+      - path: cmd/mktemp/mktemp_test.go
+        action: modify
+        note: Add differential test cases for R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd036-mktemp R3.1"
+      - id: R2
+        text: "Implement srd036-mktemp R3.2"
+      - id: R3
+        text: "Implement srd036-mktemp R3.3"
+      - id: R4
+        text: "Implement srd036-mktemp R3.4"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code structure and patterns in cmd/mktemp/main.go -- this is a modification, not a rewrite"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in mktemp_test.go"
+      - id: D3
+        text: "Use pkg/testutils.RunDiffTests to compare against gmktemp reference binary"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "R3.1 through R3.4 functionality implemented in cmd/mktemp/main.go per SRD"
+      - id: AC2
+        text: "Differential test cases added for R3.1-R3.4 scenarios"
+      - id: AC3
+        text: "go build -o bin/mktemp ./cmd/mktemp/ succeeds"
+      - id: AC4
+        text: "go test ./cmd/mktemp/ -count=1 passes"
