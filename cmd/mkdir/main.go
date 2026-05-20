@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd034-mkdir R1.1, R1.2, R1.3, R1.4.
+// Implements srd034-mkdir R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3.
 package main
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -33,6 +34,7 @@ const versionText = `mkdir (go-unix-utils) dev
 `
 
 type options struct {
+	parents bool
 	verbose bool
 }
 
@@ -52,6 +54,18 @@ func main() {
 func run(opts options, dirs []string) int {
 	exitCode := 0
 	for _, dir := range dirs {
+		if opts.parents {
+			if err := mkdirParents(dir, opts.verbose); err != nil {
+				failPath := dir
+				if pe, ok := err.(*os.PathError); ok {
+					failPath = pe.Path
+				}
+				fmt.Fprintf(os.Stderr, "mkdir: cannot create directory '%s': %s\n",
+					failPath, sysErrMsg(err))
+				exitCode = 1
+			}
+			continue
+		}
 		if err := os.Mkdir(dir, 0o777); err != nil {
 			fmt.Fprintf(os.Stderr, "mkdir: cannot create directory '%s': %s\n",
 				dir, sysErrMsg(err))
@@ -63,6 +77,41 @@ func run(opts options, dirs []string) int {
 		}
 	}
 	return exitCode
+}
+
+func mkdirParents(dir string, verbose bool) error {
+	if !verbose {
+		return os.MkdirAll(dir, 0o777)
+	}
+	return mkdirAllVerbose(dir)
+}
+
+func mkdirAllVerbose(dir string) error {
+	fi, err := os.Stat(dir)
+	if err == nil {
+		if fi.IsDir() {
+			return nil
+		}
+		return &os.PathError{Op: "mkdir", Path: dir, Err: syscall.ENOTDIR}
+	}
+	parent := filepath.Dir(dir)
+	if parent != dir {
+		if fi, err := os.Stat(parent); err != nil {
+			if err := mkdirAllVerbose(parent); err != nil {
+				return err
+			}
+		} else if !fi.IsDir() {
+			return &os.PathError{Op: "mkdir", Path: parent, Err: syscall.ENOTDIR}
+		}
+	}
+	if err := os.Mkdir(dir, 0o777); err != nil {
+		if os.IsExist(err) {
+			return nil
+		}
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "mkdir: created directory '%s'\n", dir)
+	return nil
 }
 
 func sysErrMsg(err error) string {
@@ -135,6 +184,9 @@ func parseLongFlag(flag string, opts *options) (int, error) {
 		fmt.Fprint(os.Stdout, versionText)
 		os.Exit(0)
 		return 0, nil
+	case "--parents":
+		opts.parents = true
+		return 1, nil
 	case "--verbose":
 		opts.verbose = true
 		return 1, nil
@@ -146,6 +198,8 @@ func parseLongFlag(flag string, opts *options) (int, error) {
 func parseShortFlags(flags string, opts *options) error {
 	for j := 0; j < len(flags); j++ {
 		switch flags[j] {
+		case 'p':
+			opts.parents = true
 		case 'v':
 			opts.verbose = true
 		default:

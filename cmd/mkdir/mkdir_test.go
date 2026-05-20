@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd034-mkdir R4.1, R4.2, R4.3.
+// Implements srd034-mkdir R2.1, R2.2, R2.3, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -101,6 +101,48 @@ func TestDiff(t *testing.T) {
 
 	t.Run("verbose_long", func(t *testing.T) {
 		runCreationTest(t, goBin, refBin, []string{"--verbose", "longvdir"})
+	})
+
+	t.Run("parents_nested", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-p", "a/b/c"})
+	})
+
+	t.Run("parents_existing_target", func(t *testing.T) {
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		os.Mkdir(filepath.Join(goDir, "existdir"), 0o755)
+		os.Mkdir(filepath.Join(refDir, "existdir"), 0o755)
+		args := []string{"-p", "existdir"}
+		goRes := runBin(t, goBin, args, goDir)
+		refRes := runBin(t, refBin, args, refDir)
+		compareResults(t, args, goRes, refRes)
+	})
+
+	t.Run("parents_partial_existing", func(t *testing.T) {
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		os.Mkdir(filepath.Join(goDir, "a"), 0o755)
+		os.Mkdir(filepath.Join(refDir, "a"), 0o755)
+		args := []string{"-p", "a/b/c"}
+		goRes := runBin(t, goBin, args, goDir)
+		refRes := runBin(t, refBin, args, refDir)
+		compareResults(t, args, goRes, refRes)
+	})
+
+	t.Run("parents_long_flag", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"--parents", "x/y/z"})
+	})
+
+	t.Run("parents_verbose", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-p", "-v", "d/e/f"})
+	})
+
+	t.Run("parents_verbose_combined", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-pv", "g/h/i"})
+	})
+
+	t.Run("parents_multiple", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-p", "m1/m2", "n1/n2"})
 	})
 
 	t.Run("verbose_partial_failure", func(t *testing.T) {
@@ -208,6 +250,35 @@ var binaryNameRe = regexp.MustCompile(`(/\S+/)?g?mkdir\b`)
 
 func normalizeBinaryName(b []byte) []byte {
 	return binaryNameRe.ReplaceAll(b, []byte("mkdir"))
+}
+
+func TestParentsPermissions(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+	args := []string{"-p", "a/b/c"}
+	runBin(t, goBin, args, goDir)
+	runBin(t, refBin, args, refDir)
+
+	for _, sub := range []string{"a", "a/b", "a/b/c"} {
+		goInfo, err := os.Stat(filepath.Join(goDir, sub))
+		if err != nil {
+			t.Fatalf("go binary did not create %s: %v", sub, err)
+		}
+		refInfo, err := os.Stat(filepath.Join(refDir, sub))
+		if err != nil {
+			t.Fatalf("ref binary did not create %s: %v", sub, err)
+		}
+		if goInfo.Mode().Perm() != refInfo.Mode().Perm() {
+			t.Fatalf("permission mismatch on %s: go=%v ref=%v",
+				sub, goInfo.Mode().Perm(), refInfo.Mode().Perm())
+		}
+	}
 }
 
 func TestUnrecognizedOption(t *testing.T) {
