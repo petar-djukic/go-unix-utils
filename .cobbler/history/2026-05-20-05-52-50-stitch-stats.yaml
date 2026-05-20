@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5328"
+task_title: '[stitch] cmd/rmdir basic directory removal (srd035 R1.1, R1.2, R1.3, R1.4)'
+status: failed
+error: 'claude failure: signal: killed'
+started_at: "2026-05-20T09:52:50Z"
+duration: 1m8s
+duration_s: 68
+tokens:
+    input: 0
+    output: 0
+    cache_creation: 0
+    cache_read: 0
+cost_usd: 0
+rate_limit_wait_s: 5
+loc_before:
+    production: 9979
+    test: 9294
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0
