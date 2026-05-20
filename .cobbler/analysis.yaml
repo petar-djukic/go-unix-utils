@@ -339,7 +339,7 @@ code_status:
         - version: "06.1"
           name: Batch 6.1 — environment and identity (env, printenv, id, whoami, groups)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel06.1-uc001-env
               specstatus: spec_complete
@@ -358,7 +358,7 @@ code_status:
               testfiles: 0
             - id: rel06.1-uc004-whoami
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel06.1-uc005-groups
