@@ -1,0 +1,23 @@
+task_id: "5335"
+task_title: '[stitch] cmd/unlink core implementation (srd038 R1.1, R1.2, R1.3, R2.1)'
+status: success
+branch: task/generation-run44-5335
+diff:
+    files: 2
+    insertions: 207
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-20-07-05-47-stitch-orchestrator.log
+      status: M
+      insertions: 164
+      deletions: 0
+    - path: cmd/unlink/main.go
+      status: A
+      insertions: 44
+      deletions: 0
+loc_before:
+    production: 10164
+    test: 9665
+loc_after:
+    production: 10208
+    test: 9665

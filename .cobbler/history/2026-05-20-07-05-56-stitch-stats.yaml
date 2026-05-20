@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5335"
+task_title: '[stitch] cmd/unlink core implementation (srd038 R1.1, R1.2, R1.3, R2.1)'
+status: success
+started_at: "2026-05-20T11:05:56Z"
+duration: 3m13s
+duration_s: 193
+tokens:
+    input: 919589
+    output: 7000
+    cache_creation: 199601
+    cache_read: 719961
+cost_usd: 2.12351725
+num_turns: 45
+rate_limit_wait_s: 2
+loc_before:
+    production: 10164
+    test: 9665
+loc_after:
+    production: 10208
+    test: 9665
+diff:
+    files: 2
+    insertions: 207
+    deletions: 0
