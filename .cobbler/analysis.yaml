@@ -369,7 +369,7 @@ code_status:
         - version: "07.0"
           name: Batch 7.0 — text processing pipeline (sort, tr, tail)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel07.0-uc001-sort
               specstatus: spec_complete
@@ -378,7 +378,7 @@ code_status:
               testfiles: 0
             - id: rel07.0-uc002-tr
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel07.0-uc003-tail
