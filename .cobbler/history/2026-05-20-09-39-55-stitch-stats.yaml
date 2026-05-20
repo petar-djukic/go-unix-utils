@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5356"
+task_title: '[stitch] srd042-whoami R3.1, R3.2, R3.3 (tests)'
+status: success
+started_at: "2026-05-20T13:39:55Z"
+duration: 2m46s
+duration_s: 165
+tokens:
+    input: 503935
+    output: 2938
+    cache_creation: 191772
+    cache_read: 312147
+cost_usd: 1.779306
+num_turns: 21
+rate_limit_wait_s: 9
+loc_before:
+    production: 10865
+    test: 11024
+loc_after:
+    production: 10865
+    test: 11082
+diff:
+    files: 2
+    insertions: 165
+    deletions: 0
