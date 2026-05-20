@@ -331,6 +331,46 @@ func TestDiffFile(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardStderr},
 		},
+		// R4.2+R4.4: nonexistent file between valid files still outputs valid files with headers
+		{
+			Name:      "error-mixed-valid-invalid",
+			Args:      []string{"a.txt", "nonexistent.txt", "b.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R4.2+R4.4: nonexistent first, valid file still processed
+		{
+			Name:      "error-first-nonexistent",
+			Args:      []string{"nonexistent.txt", "a.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R4.2+R4.4: valid file then nonexistent, valid output still appears
+		{
+			Name:      "error-last-nonexistent",
+			Args:      []string{"a.txt", "nonexistent.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R4.2: multiple nonexistent files
+		{
+			Name:      "error-all-nonexistent",
+			Args:      []string{"no1.txt", "no2.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R4.2+R3.4: -v with error still shows headers for valid files
+		{
+			Name:      "verbose-with-error",
+			Args:      []string{"-v", "a.txt", "nonexistent.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
