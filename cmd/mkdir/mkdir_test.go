@@ -225,6 +225,45 @@ func TestDiff(t *testing.T) {
 			},
 		})
 	})
+
+	t.Run("invalid_short_option", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:     "bad_short_option",
+				Args:     []string{"-x"},
+				ExitCode: 1,
+				Normalize: []testutils.NormalizeFunc{
+					normalizeBinaryName,
+				},
+			},
+		})
+	})
+
+	t.Run("double_dash_separator", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"--", "-dirname"})
+	})
+
+	t.Run("help_flag", func(t *testing.T) {
+		goRes := runBin(t, goBin, []string{"--help"}, t.TempDir())
+		refRes := runBin(t, refBin, []string{"--help"}, t.TempDir())
+		if goRes.exitCode != refRes.exitCode {
+			t.Fatalf("exit code: go=%d ref=%d", goRes.exitCode, refRes.exitCode)
+		}
+		if len(goRes.stdout) == 0 {
+			t.Fatal("--help produced no stdout")
+		}
+	})
+
+	t.Run("version_flag", func(t *testing.T) {
+		goRes := runBin(t, goBin, []string{"--version"}, t.TempDir())
+		refRes := runBin(t, refBin, []string{"--version"}, t.TempDir())
+		if goRes.exitCode != refRes.exitCode {
+			t.Fatalf("exit code: go=%d ref=%d", goRes.exitCode, refRes.exitCode)
+		}
+		if len(goRes.stdout) == 0 {
+			t.Fatal("--version produced no stdout")
+		}
+	})
 }
 
 func TestCreationPermissions(t *testing.T) {
