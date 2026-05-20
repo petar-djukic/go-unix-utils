@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd041-id R1.1, R1.2, R1.3, R2.1.
+// Implements srd041-id R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -20,6 +20,8 @@ Print user and group information for each specified USER,
 or (when USER omitted) for the current user.
 
   -u, --user             print only the effective user ID
+  -g, --group            print only the effective group ID
+  -G, --groups           print all group IDs
       --help     display this help and exit
       --version  output version information and exit
 `
@@ -27,10 +29,18 @@ or (when USER omitted) for the current user.
 const versionText = `id (go-unix-utils) dev
 `
 
+type flags struct {
+	user   bool
+	group  bool
+	groups bool
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	args := os.Args[1:]
-	remaining, flagUser := parseFlags(args)
+	remaining, f := parseFlags(args)
+
+	checkConflictingFlags(f)
 
 	if len(remaining) > 0 {
 		fmt.Fprintf(os.Stderr, "id: extra operand '%s'\n", remaining[0])
@@ -38,16 +48,58 @@ func main() {
 		os.Exit(1)
 	}
 
-	if flagUser {
+	switch {
+	case f.user:
 		printEffectiveUID()
-		return
+	case f.group:
+		printEffectiveGID()
+	case f.groups:
+		printGroups()
+	default:
+		printDefaultOutput()
 	}
+}
 
-	printDefaultOutput()
+func checkConflictingFlags(f flags) {
+	count := 0
+	if f.user {
+		count++
+	}
+	if f.group {
+		count++
+	}
+	if f.groups {
+		count++
+	}
+	if count > 1 {
+		fmt.Fprintln(os.Stderr, "id: cannot print \"only\" of more than one choice")
+		os.Exit(1)
+	}
 }
 
 func printEffectiveUID() {
 	if _, err := fmt.Fprintln(os.Stdout, os.Getuid()); err != nil {
+		os.Exit(1)
+	}
+}
+
+func printEffectiveGID() {
+	if _, err := fmt.Fprintln(os.Stdout, os.Getgid()); err != nil {
+		os.Exit(1)
+	}
+}
+
+func printGroups() {
+	gids, err := syscall.Getgroups()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "id: %v\n", err)
+		os.Exit(1)
+	}
+	parts := make([]string, len(gids))
+	for i, g := range gids {
+		parts[i] = strconv.Itoa(g)
+	}
+	if _, err := fmt.Fprintln(os.Stdout, strings.Join(parts, " ")); err != nil {
 		os.Exit(1)
 	}
 }
@@ -100,16 +152,26 @@ func lookupGroupName(gid int) string {
 	return g.Name
 }
 
-func parseFlags(args []string) ([]string, bool) {
-	flagUser := false
+func parseFlags(args []string) ([]string, flags) {
+	f := flags{}
 	i := 0
 	for i < len(args) {
 		arg := args[i]
 		if arg == "--" {
-			return args[i+1:], flagUser
+			return args[i+1:], f
 		}
 		if arg == "--user" {
-			flagUser = true
+			f.user = true
+			i++
+			continue
+		}
+		if arg == "--group" {
+			f.group = true
+			i++
+			continue
+		}
+		if arg == "--groups" {
+			f.groups = true
 			i++
 			continue
 		}
@@ -127,20 +189,24 @@ func parseFlags(args []string) ([]string, bool) {
 			os.Exit(1)
 		}
 		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-			parseShortFlags(arg[1:], &flagUser)
+			parseShortFlags(arg[1:], &f)
 			i++
 			continue
 		}
-		return args[i:], flagUser
+		return args[i:], f
 	}
-	return nil, flagUser
+	return nil, f
 }
 
-func parseShortFlags(flags string, flagUser *bool) {
-	for _, ch := range flags {
+func parseShortFlags(s string, f *flags) {
+	for _, ch := range s {
 		switch ch {
 		case 'u':
-			*flagUser = true
+			f.user = true
+		case 'g':
+			f.group = true
+		case 'G':
+			f.groups = true
 		default:
 			fmt.Fprintf(os.Stderr, "id: invalid option -- '%c'\n", ch)
 			fmt.Fprintln(os.Stderr, "Try 'id --help' for more information.")
