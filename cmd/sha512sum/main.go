@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha512"
 	"fmt"
@@ -26,9 +27,10 @@ With no FILE, or when FILE is -, read standard input.
   -z, --zero           end each output line with NUL, not newline,
                          and disable file name escaping
 
-The following five options are useful only when verifying checksums:
+The following six options are useful only when verifying checksums:
       --quiet          don't print OK for each successfully verified file
       --status         don't output anything, status code shows success
+      --strict         exit non-zero for improperly formatted checksum lines
   -w, --warn           warn about improperly formatted checksum lines
       --help           display this help and exit
       --version        output version information and exit
@@ -57,7 +59,7 @@ func main() {
 		}
 		exitCode := 0
 		for _, f := range files {
-			ok, err := hashutil.VerifyChecksums(f, cfg, checkOpts, stdout, os.Stderr)
+			ok, err := runCheck(f, cfg, checkOpts, opts.strict, stdout, os.Stderr)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "sha512sum: %s\n", err)
 				exitCode = 1
@@ -90,6 +92,7 @@ type options struct {
 	warn   bool
 	quiet  bool
 	status bool
+	strict bool
 	zero   bool
 }
 
@@ -144,6 +147,8 @@ func parseLongFlag(arg string, opts *options) (bool, int) {
 		opts.quiet = true
 	case "--status":
 		opts.status = true
+	case "--strict":
+		opts.strict = true
 	case "--zero":
 		opts.zero = true
 	default:
@@ -168,4 +173,77 @@ func parseShortFlags(flags string, opts *options) int {
 		}
 	}
 	return 1
+}
+
+func runCheck(file string, cfg hashutil.HashConfig, opts hashutil.CheckOptions, strict bool, stdout, stderr io.Writer) (bool, error) {
+	if strict {
+		return verifyStrict(file, cfg, opts, stdout, stderr)
+	}
+	return hashutil.VerifyChecksums(file, cfg, opts, stdout, stderr)
+}
+
+func verifyStrict(file string, cfg hashutil.HashConfig, opts hashutil.CheckOptions, stdout, stderr io.Writer) (bool, error) {
+	r, err := openCheckInput(file)
+	if err != nil {
+		return false, fmt.Errorf("opening checksum file: %w", err)
+	}
+	defer r.Close()
+	return scanStrict(r, cfg, opts, stdout, stderr)
+}
+
+func openCheckInput(file string) (io.ReadCloser, error) {
+	if file == "-" {
+		return io.NopCloser(os.Stdin), nil
+	}
+	return os.Open(file)
+}
+
+func scanStrict(r io.Reader, cfg hashutil.HashConfig, opts hashutil.CheckOptions, stdout, stderr io.Writer) (bool, error) {
+	scanner := bufio.NewScanner(r)
+	allOK := true
+	for scanner.Scan() {
+		if !checkOneLine(scanner.Text(), cfg, opts, stdout, stderr) {
+			allOK = false
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return false, fmt.Errorf("reading checksum input: %w", err)
+	}
+	return allOK, nil
+}
+
+func checkOneLine(line string, cfg hashutil.HashConfig, opts hashutil.CheckOptions, stdout, stderr io.Writer) bool {
+	filename, expected, _, err := hashutil.ParseChecksumLine(line, cfg)
+	if err != nil {
+		if opts.Warn && !opts.Status {
+			fmt.Fprintf(stderr, "WARNING: improperly formatted checksum line\n")
+		}
+		return false
+	}
+	actual, err := fileDigest(filename, cfg)
+	if err != nil {
+		if !opts.Status {
+			fmt.Fprintf(stdout, "%s: FAILED open or read\n", filename)
+		}
+		return false
+	}
+	if actual != expected {
+		if !opts.Status {
+			fmt.Fprintf(stdout, "%s: FAILED\n", filename)
+		}
+		return false
+	}
+	if !opts.Status && !opts.Quiet {
+		fmt.Fprintf(stdout, "%s: OK\n", filename)
+	}
+	return true
+}
+
+func fileDigest(filename string, cfg hashutil.HashConfig) (string, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	return hashutil.ComputeDigest(f, cfg)
 }

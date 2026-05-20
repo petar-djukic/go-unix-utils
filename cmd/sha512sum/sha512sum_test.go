@@ -268,9 +268,68 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardStderr},
 		},
+		// R3.2: --strict with valid checksum file exits 0
+		{
+			Name:      "strict-valid",
+			Args:      []string{"--strict", "--check", validChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R3.2: --strict with malformed lines exits 1
+		{
+			Name:      "strict-malformed",
+			Args:      []string{"--strict", "--check", malformedChecksum},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R3.2: --strict --warn with malformed lines exits 1
+		{
+			Name:      "strict-warn-malformed",
+			Args:      []string{"--strict", "--check", "--warn", malformedChecksum},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R3.2: --strict --status with malformed lines exits 1
+		{
+			Name:      "strict-status-malformed",
+			Args:      []string{"--strict", "--check", "--status", malformedChecksum},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R3.2: --strict with all valid entries
+		{
+			Name:      "strict-multi-valid",
+			Args:      []string{"--strict", "--check", multiChecksum},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestHelp(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--help")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--help failed: %v", err)
+	}
+	if !strings.Contains(string(out), "Usage: sha512sum") {
+		t.Error("--help output missing usage line")
+	}
+}
+
+func TestVersion(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "--version")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("--version failed: %v", err)
+	}
+	if !strings.Contains(string(out), "sha512sum") {
+		t.Error("--version output missing program name")
+	}
 }
 
 func TestSIGPIPE(t *testing.T) {
