@@ -153,3 +153,9 @@
 [2026-05-20T06:36:05-04:00] [generation-run44] [stitch +6m12s] closeStitchTask: closing #5328 "[stitch] cmd/rmdir basic directory removal (srd035 R1.1, R1.2, R1.3, R1.4)"
 [2026-05-20T06:36:06-04:00] [generation-run44] [stitch +6m13s] commentCobblerIssue: posted comment on #5328
 [2026-05-20T06:36:06-04:00] [generation-run44] [stitch +6m13s] updateRequirementsFile: marked 4 R-items as complete for issue #5328
+[2026-05-20T06:36:09-04:00] [generation-run44] [stitch +6m16s] closeCobblerIssue: closed #5328
+[2026-05-20T06:36:11-04:00] [generation-run44] [stitch +6m18s] closeStitchTask: #5328 closed
+[2026-05-20T06:36:12-04:00] [generation-run44] [stitch +6m19s] doOneTask: task 5328 finished in 6m7s
+[2026-05-20T06:36:12-04:00] [generation-run44] [stitch +6m19s] task 5328 completed in 6m7s
+[2026-05-20T06:36:12-04:00] [generation-run44] [stitch +6m19s] reached per-cycle limit (1), pausing for measure
+[2026-05-20T06:36:12-04:00] [generation-run44] [stitch +6m19s] completed 1 task(s) in 6m19s

@@ -2221,13 +2221,13 @@ requirements:
             issue: 5326
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
     srd035-rmdir:
         R1.1:
@@ -2247,34 +2247,34 @@ requirements:
             issue: 5328
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
     srd036-mktemp:
         R1.1:
