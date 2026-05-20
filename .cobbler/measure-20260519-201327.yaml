@@ -1,0 +1,198 @@
+- index: 0
+  title: "[stitch] cmd/mkdir parent directory creation (srd034 R2.1, R2.2, R2.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd034-mkdir.yaml (requirement group R2 -- parent directory creation)
+      - cmd/mkdir/main.go (existing implementation covering R1.1-R1.4 basic directory creation)
+      - cmd/mkdir/mkdir_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests and BuildBinary pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler)
+
+    files:
+      - path: cmd/mkdir/main.go
+        action: modify
+        note: Add -p flag support for creating parent directories
+      - path: cmd/mkdir/mkdir_test.go
+        action: modify
+        note: Add differential tests for -p parent creation behavior
+
+    requirements:
+      - id: R1
+        text: Implement srd034 R2.1 as specified in the SRD -- add the -p / --parents flag that creates intermediate parent directories as needed
+      - id: R2
+        text: Implement srd034 R2.2 as specified in the SRD -- when -p is given and the target directory already exists, do not report an error
+      - id: R3
+        text: Implement srd034 R2.3 as specified in the SRD -- handle -p interaction with other flags and multi-argument invocations
+
+    design_decisions:
+      - id: D1
+        text: Follow the differential testing pattern -- compare Go mkdir against gmkdir from Homebrew coreutils using testutils.RunDiffTests
+      - id: D2
+        text: Maintain the existing SIGPIPE handler call (sys.InstallSIGPIPEHandler) at the start of main
+      - id: D3
+        text: Read srd034-mkdir.yaml for exact flag semantics and error behavior -- the SRD is the source of truth for -p behavior
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/mkdir ./cmd/mkdir/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/mkdir/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/mkdir/ -count=1 passes -- all existing tests continue to pass and new -p tests pass against gmkdir reference binary"
+      - id: AC4
+        text: "mkdir -p creates intermediate directories and does not error when the target already exists"
+
+- index: 1
+  title: "[stitch] cmd/mkdir mode and permissions (srd034 R3.1, R3.2, R3.3, R3.4)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd034-mkdir.yaml (requirement group R3 -- mode setting)
+      - cmd/mkdir/main.go (existing implementation covering R1.x basic creation and R2.x parent creation)
+      - cmd/mkdir/mkdir_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests and BuildBinary pattern)
+
+    files:
+      - path: cmd/mkdir/main.go
+        action: modify
+        note: Add -m / --mode flag for setting directory permissions
+      - path: cmd/mkdir/mkdir_test.go
+        action: modify
+        note: Add differential tests for -m mode setting and -m combined with -p
+
+    requirements:
+      - id: R1
+        text: Implement srd034 R3.1 as specified in the SRD -- add the -m / --mode flag that sets file mode bits on the created directory
+      - id: R2
+        text: Implement srd034 R3.2 as specified in the SRD -- support octal and symbolic mode specifications
+      - id: R3
+        text: Implement srd034 R3.3 as specified in the SRD -- handle the interaction between -m and -p for intermediate versus final directory modes
+      - id: R4
+        text: Implement srd034 R3.4 as specified in the SRD -- match GNU mkdir mode parsing and umask interaction behavior
+
+    design_decisions:
+      - id: D1
+        text: Follow the differential testing pattern -- compare Go mkdir against gmkdir from Homebrew coreutils using testutils.RunDiffTests
+      - id: D2
+        text: Read srd034-mkdir.yaml for exact mode parsing semantics and -m/-p interaction -- the SRD is the source of truth
+      - id: D3
+        text: All differential tests must set LC_ALL=C in the test environment
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/mkdir ./cmd/mkdir/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/mkdir/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/mkdir/ -count=1 passes -- all existing tests continue to pass and new -m tests pass against gmkdir reference binary"
+      - id: AC4
+        text: "mkdir -m 0755 creates directories with the specified mode bits"
+      - id: AC5
+        text: "mkdir -p -m handles intermediate directory permissions correctly per GNU behavior"
+
+- index: 2
+  title: "[stitch] cmd/mkdir error handling and diagnostics (srd034 R4.1, R4.2, R4.3)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd034-mkdir.yaml (requirement group R4 -- error handling and diagnostics)
+      - cmd/mkdir/main.go (existing implementation covering R1.x, R2.x, R3.x)
+      - cmd/mkdir/mkdir_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests and BuildBinary pattern)
+
+    files:
+      - path: cmd/mkdir/main.go
+        action: modify
+        note: Add error handling, --version, --help, and exit code behavior
+      - path: cmd/mkdir/mkdir_test.go
+        action: modify
+        note: Add differential tests for error cases, --version, and --help
+
+    requirements:
+      - id: R1
+        text: Implement srd034 R4.1 as specified in the SRD -- handle error conditions (permission denied, path component not a directory, etc.) with correct stderr messages and exit codes
+      - id: R2
+        text: Implement srd034 R4.2 as specified in the SRD -- implement --version output matching GNU coreutils format
+      - id: R3
+        text: Implement srd034 R4.3 as specified in the SRD -- implement --help output matching GNU coreutils format
+
+    design_decisions:
+      - id: D1
+        text: Follow the differential testing pattern -- compare Go mkdir against gmkdir from Homebrew coreutils using testutils.RunDiffTests
+      - id: D2
+        text: Read srd034-mkdir.yaml for exact error message formats and exit code values -- the SRD is the source of truth
+      - id: D3
+        text: Error messages must go to stderr; exit code 1 for errors, 0 for success, matching GNU behavior
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/mkdir ./cmd/mkdir/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/mkdir/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/mkdir/ -count=1 passes -- all tests pass against gmkdir reference binary"
+      - id: AC4
+        text: "mkdir on a path with permission denied writes an error to stderr and exits with code 1"
+      - id: AC5
+        text: "mkdir --version and mkdir --help produce output and exit 0"
+
+- index: 3
+  title: "[stitch] cmd/rmdir basic directory removal (srd035 R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd035-rmdir.yaml (requirement group R1 -- basic directory removal)
+      - cmd/mkdir/main.go (reference for directory utility structure and flag parsing pattern)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler)
+
+    files:
+      - path: cmd/rmdir/main.go
+        action: create
+        note: rmdir implementation -- basic empty directory removal with argument handling
+      - path: cmd/rmdir/rmdir_test.go
+        action: create
+        note: Differential tests comparing Go rmdir against grmdir reference binary
+
+    requirements:
+      - id: R1
+        text: Implement srd035 R1.1 as specified in the SRD -- remove each directory argument that is empty, reporting an error for non-empty directories
+      - id: R2
+        text: Implement srd035 R1.2 as specified in the SRD -- support multiple directory arguments, processing each in order and continuing after errors
+      - id: R3
+        text: Implement srd035 R1.3 as specified in the SRD -- match GNU rmdir error messages and exit codes (exit 0 on all success, exit 1 if any removal fails)
+      - id: R4
+        text: Implement srd035 R1.4 as specified in the SRD -- handle edge cases such as non-existent directories, paths that are files, and permission denied
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main to match GNU coreutils SIGPIPE behavior
+      - id: D2
+        text: Use the differential testing pattern -- BuildBinary for Go binary, exec.LookPath for grmdir reference, t.Skip if reference not found
+      - id: D3
+        text: Set LC_ALL=C in all differential test environments
+      - id: D4
+        text: Read srd035-rmdir.yaml for exact error message format and flag semantics -- the SRD is the source of truth
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/rmdir ./cmd/rmdir/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/rmdir/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/rmdir/ -count=1 passes -- differential tests pass against grmdir reference binary"
+      - id: AC4
+        text: "rmdir removes an empty directory and exits 0"
+      - id: AC5
+        text: "rmdir on a non-empty directory writes an error to stderr and exits 1"
+      - id: AC6
+        text: "rmdir with multiple arguments processes all arguments, continuing after errors"
