@@ -244,3 +244,13 @@
 [2026-05-19T20:34:13-04:00] [generation-run44] [stitch +11m0s] closeStitchTask: closing #5326 "[stitch] cmd/mkdir mode and permissions (srd034 R3.1, R3.2, R3.3, R3.4)"
 [2026-05-19T20:34:14-04:00] [generation-run44] [stitch +11m1s] commentCobblerIssue: posted comment on #5326
 [2026-05-19T20:34:14-04:00] [generation-run44] [stitch +11m1s] updateRequirementsFile: marked 4 R-items as complete for issue #5326
+[2026-05-19T20:34:16-04:00] [generation-run44] [stitch +11m3s] closeCobblerIssue: closed #5326
+[2026-05-19T20:34:18-04:00] [generation-run44] [stitch +11m5s] closeStitchTask: #5326 closed
+[2026-05-19T20:34:19-04:00] [generation-run44] [stitch +11m6s] sweepCompletedTasks: all R-items for #5326 already complete, closing
+[2026-05-19T20:34:19-04:00] [generation-run44] [stitch +11m6s] commentCobblerIssue: posted comment on #5326
+[2026-05-19T20:34:21-04:00] [generation-run44] [stitch +11m8s] closeCobblerIssue: closed #5326
+[2026-05-19T20:34:23-04:00] [generation-run44] [stitch +11m10s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-19T20:34:23-04:00] [generation-run44] [stitch +11m10s] doOneTask: task 5326 finished in 11m4s
+[2026-05-19T20:34:23-04:00] [generation-run44] [stitch +11m10s] task 5326 completed in 11m4s
+[2026-05-19T20:34:23-04:00] [generation-run44] [stitch +11m10s] reached per-cycle limit (1), pausing for measure
+[2026-05-19T20:34:23-04:00] [generation-run44] [stitch +11m10s] completed 1 task(s) in 11m10s

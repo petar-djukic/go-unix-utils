@@ -309,11 +309,11 @@ code_status:
         - version: "06.0"
           name: Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel06.0-uc001-mkdir
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel06.0-uc002-rmdir
