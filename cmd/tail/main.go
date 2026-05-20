@@ -11,12 +11,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/petar-djukic/go-unix-utils/pkg/sizeparse"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
 type options struct {
 	count     int64
 	fromStart bool
+	byteMode  bool
 }
 
 func main() {
@@ -41,7 +43,16 @@ func main() {
 			exitCode = 1
 			continue
 		}
-		if err := tailLines(r, os.Stdout, opts); err != nil {
+		var processErr error
+		if opts.byteMode {
+			processErr = tailBytes(r, os.Stdout, opts)
+		} else {
+			processErr = tailLines(r, os.Stdout, opts)
+		}
+		if processErr != nil {
+			err = processErr
+		}
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "tail: %s\n", err)
 			exitCode = 1
 		}
@@ -63,6 +74,43 @@ func openInput(name string) (io.Reader, io.Closer, error) {
 		return nil, nil, err
 	}
 	return f, f, nil
+}
+
+func tailBytes(r io.Reader, w io.Writer, opts options) error {
+	if opts.fromStart {
+		return tailBytesFromStart(r, w, opts.count)
+	}
+	return tailBytesFromEnd(r, w, opts.count)
+}
+
+func tailBytesFromEnd(r io.Reader, w io.Writer, n int64) error {
+	if n <= 0 {
+		return nil
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	start := int64(len(data)) - n
+	if start < 0 {
+		start = 0
+	}
+	_, werr := w.Write(data[start:])
+	return werr
+}
+
+func tailBytesFromStart(r io.Reader, w io.Writer, n int64) error {
+	if n > 1 {
+		_, err := io.CopyN(io.Discard, r, n-1)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+	_, err := io.Copy(w, r)
+	return err
 }
 
 func tailLines(r io.Reader, w io.Writer, opts options) error {
@@ -157,6 +205,13 @@ func parseLongFlag(flag string, remaining []string, opts *options) (int, error) 
 		return 2, applyLineCount(remaining[1], opts)
 	case strings.HasPrefix(flag, "--lines="):
 		return 1, applyLineCount(flag[len("--lines="):], opts)
+	case flag == "--bytes":
+		if len(remaining) < 2 {
+			return 0, fmt.Errorf("option '--bytes' requires an argument")
+		}
+		return 2, applyByteCount(remaining[1], opts)
+	case strings.HasPrefix(flag, "--bytes="):
+		return 1, applyByteCount(flag[len("--bytes="):], opts)
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
@@ -177,6 +232,17 @@ func parseShortFlags(flags string, remaining []string, opts *options) (int, erro
 				return 0, fmt.Errorf("option requires an argument -- 'n'")
 			}
 			return consumed, applyLineCount(val, opts)
+		case 'c':
+			var val string
+			if rest := flags[j+1:]; rest != "" {
+				val = rest
+			} else if len(remaining) > consumed {
+				val = remaining[consumed]
+				consumed++
+			} else {
+				return 0, fmt.Errorf("option requires an argument -- 'c'")
+			}
+			return consumed, applyByteCount(val, opts)
 		default:
 			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
@@ -191,6 +257,22 @@ func applyLineCount(s string, opts *options) error {
 	}
 	opts.count = count
 	opts.fromStart = fromStart
+	opts.byteMode = false
+	return nil
+}
+
+func applyByteCount(s string, opts *options) error {
+	fromStart := strings.HasPrefix(s, "+")
+	n, err := sizeparse.ParseWithOptions(s, sizeparse.ParseOptions{AllowSign: true})
+	if err != nil {
+		return fmt.Errorf("invalid number of bytes: '%s'", s)
+	}
+	if n < 0 {
+		n = -n
+	}
+	opts.count = n
+	opts.fromStart = fromStart
+	opts.byteMode = true
 	return nil
 }
 

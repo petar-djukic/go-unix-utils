@@ -121,6 +121,97 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardStderr},
 		},
+		// R2.1: -c NUM last N bytes
+		{
+			Name:  "bytes-last-5",
+			Args:  []string{"-c", "5"},
+			Stdin: []byte("abcdefghij"),
+		},
+		// R2.1: -c with attached value
+		{
+			Name:  "bytes-attached-value",
+			Args:  []string{"-c5"},
+			Stdin: []byte("abcdefghij"),
+		},
+		// R2.1: --bytes= long form
+		{
+			Name:  "bytes-equals",
+			Args:  []string{"--bytes=5"},
+			Stdin: []byte("abcdefghij"),
+		},
+		// R2.1: --bytes separate argument
+		{
+			Name:  "bytes-separate",
+			Args:  []string{"--bytes", "5"},
+			Stdin: []byte("abcdefghij"),
+		},
+		// R2.1: -c exceeds input length
+		{
+			Name:  "bytes-exceeds-input",
+			Args:  []string{"-c", "100"},
+			Stdin: []byte("short"),
+		},
+		// R2.1: -c 0 outputs nothing
+		{
+			Name:  "bytes-zero",
+			Args:  []string{"-c", "0"},
+			Stdin: []byte("abcdefghij"),
+		},
+		// R2.1: -c on empty input
+		{
+			Name:  "bytes-empty-input",
+			Args:  []string{"-c", "5"},
+			Stdin: []byte{},
+		},
+		// R2.1: last option wins (-n then -c)
+		{
+			Name:  "bytes-last-wins-c",
+			Args:  []string{"-n", "2", "-c", "3"},
+			Stdin: []byte("abcdefghij\nklmnopqrst\n"),
+		},
+		// R2.1: last option wins (-c then -n)
+		{
+			Name:  "bytes-last-wins-n",
+			Args:  []string{"-c", "3", "-n", "1"},
+			Stdin: []byte("abcdefghij\nklmnopqrst\n"),
+		},
+		// R2.2: -c +N from byte N
+		{
+			Name:  "bytes-plus-offset",
+			Args:  []string{"-c", "+5"},
+			Stdin: []byte("abcdefghij"),
+		},
+		// R2.2: -c +1 outputs everything
+		{
+			Name:  "bytes-plus-1",
+			Args:  []string{"-c", "+1"},
+			Stdin: []byte("abcdefghij"),
+		},
+		// R2.2: -c +N exceeds input
+		{
+			Name:  "bytes-plus-exceeds",
+			Args:  []string{"-c", "+100"},
+			Stdin: []byte("short"),
+		},
+		// R2.3: multiplier suffix K
+		{
+			Name:  "bytes-suffix-K",
+			Args:  []string{"-c", "1K"},
+			Stdin: seq(1, 200),
+		},
+		// R2.3: multiplier suffix b (512-byte blocks)
+		{
+			Name:  "bytes-suffix-b",
+			Args:  []string{"-c", "1b"},
+			Stdin: seq(1, 200),
+		},
+		// Error: invalid byte count
+		{
+			Name:      "invalid-byte-count",
+			Args:      []string{"-c", "abc"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -154,6 +245,18 @@ func TestDiffFile(t *testing.T) {
 		{
 			Name:    "file-plus-offset",
 			Args:    []string{"-n", "+5", "input.txt"},
+			WorkDir: dir,
+		},
+		// R2.1: byte mode from file
+		{
+			Name:    "file-bytes-5",
+			Args:    []string{"-c", "5", "input.txt"},
+			WorkDir: dir,
+		},
+		// R2.2: byte +offset from file
+		{
+			Name:    "file-bytes-plus-offset",
+			Args:    []string{"-c", "+10", "input.txt"},
 			WorkDir: dir,
 		},
 		// R4.2, R4.4: nonexistent file
