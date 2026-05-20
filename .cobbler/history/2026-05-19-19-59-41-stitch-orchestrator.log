@@ -153,3 +153,13 @@
 [2026-05-19T20:06:50-04:00] [generation-run44] [stitch +7m8s] closeStitchTask: closing #5322 "[stitch] cmd/sha512sum completion (srd033 R3.2, R4.1, R4.2, R4.3)"
 [2026-05-19T20:06:51-04:00] [generation-run44] [stitch +7m9s] commentCobblerIssue: posted comment on #5322
 [2026-05-19T20:06:51-04:00] [generation-run44] [stitch +7m9s] updateRequirementsFile: marked 4 R-items as complete for issue #5322
+[2026-05-19T20:06:53-04:00] [generation-run44] [stitch +7m12s] closeCobblerIssue: closed #5322
+[2026-05-19T20:06:56-04:00] [generation-run44] [stitch +7m14s] closeStitchTask: #5322 closed
+[2026-05-19T20:06:56-04:00] [generation-run44] [stitch +7m15s] sweepCompletedTasks: all R-items for #5322 already complete, closing
+[2026-05-19T20:06:57-04:00] [generation-run44] [stitch +7m16s] commentCobblerIssue: posted comment on #5322
+[2026-05-19T20:06:59-04:00] [generation-run44] [stitch +7m17s] closeCobblerIssue: closed #5322
+[2026-05-19T20:06:59-04:00] [generation-run44] [stitch +7m18s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-19T20:06:59-04:00] [generation-run44] [stitch +7m18s] doOneTask: task 5322 finished in 7m11s
+[2026-05-19T20:06:59-04:00] [generation-run44] [stitch +7m18s] task 5322 completed in 7m11s
+[2026-05-19T20:06:59-04:00] [generation-run44] [stitch +7m18s] reached per-cycle limit (1), pausing for measure
+[2026-05-19T20:06:59-04:00] [generation-run44] [stitch +7m18s] completed 1 task(s) in 7m18s
