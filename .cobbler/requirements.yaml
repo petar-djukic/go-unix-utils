@@ -2398,34 +2398,34 @@ requirements:
             weight: 1
     srd038-unlink:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R1.2:
-            status: ready
+            status: proposed
             weight: 1
         R1.3:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R2.4:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
     srd039-env:
         R1.1:
