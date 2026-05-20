@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -22,7 +23,15 @@ With no FILE, or when FILE is -, read standard input.
 Mandatory arguments to long options are mandatory for short options too.
 Ordering options:
 
+  -n, --numeric-sort          compare according to string numerical value
   -r, --reverse               reverse the result of comparisons
+
+Other options:
+
+  -o, --output=FILE           write result to FILE instead of standard output
+  -s, --stable                stabilize sort by disabling last-resort comparison
+  -u, --unique                with -c, check for strict ordering;
+                                without -c, output only the first of an equal run
       --help        display this help and exit
       --version     output version information and exit
 `
@@ -31,7 +40,11 @@ const versionText = `sort (go-unix-utils) dev
 `
 
 type options struct {
-	reverse bool
+	reverse     bool
+	unique      bool
+	stable      bool
+	numericSort bool
+	outputFile  string
 }
 
 func main() {
@@ -54,8 +67,19 @@ func main() {
 		os.Exit(2)
 	}
 
-	sortLines(lines, opts)
-	writeLines(lines, os.Stdout)
+	lines = sortAndFilter(lines, opts)
+
+	var w io.Writer = os.Stdout
+	if opts.outputFile != "" {
+		f, err := os.Create(opts.outputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "sort: %s\n", err)
+			os.Exit(2)
+		}
+		defer f.Close()
+		w = f
+	}
+	writeLines(lines, w)
 }
 
 func parseArgs(args []string) (options, []string, error) {
@@ -70,7 +94,7 @@ func parseArgs(args []string) (options, []string, error) {
 			break
 		}
 		if strings.HasPrefix(arg, "--") {
-			n, err := parseLongFlag(arg, &opts)
+			n, err := parseLongFlag(arg, &opts, args[i+1:])
 			if err != nil {
 				return opts, nil, err
 			}
@@ -78,10 +102,11 @@ func parseArgs(args []string) (options, []string, error) {
 			continue
 		}
 		if len(arg) > 1 && arg[0] == '-' {
-			if err := parseShortFlags(arg[1:], &opts); err != nil {
+			extra, err := parseShortFlags(arg[1:], &opts, args[i+1:])
+			if err != nil {
 				return opts, nil, err
 			}
-			i++
+			i += 1 + extra
 			continue
 		}
 		files = append(files, arg)
@@ -91,7 +116,12 @@ func parseArgs(args []string) (options, []string, error) {
 	return opts, files, nil
 }
 
-func parseLongFlag(flag string, opts *options) (int, error) {
+func parseLongFlag(flag string, opts *options, remaining []string) (int, error) {
+	if strings.HasPrefix(flag, "--output=") {
+		opts.outputFile = flag[len("--output="):]
+		return 1, nil
+	}
+
 	switch flag {
 	case "--help":
 		fmt.Fprint(os.Stdout, helpText)
@@ -104,21 +134,53 @@ func parseLongFlag(flag string, opts *options) (int, error) {
 	case "--reverse":
 		opts.reverse = true
 		return 1, nil
+	case "--unique":
+		opts.unique = true
+		return 1, nil
+	case "--stable":
+		opts.stable = true
+		return 1, nil
+	case "--numeric-sort":
+		opts.numericSort = true
+		return 1, nil
+	case "--output":
+		if len(remaining) == 0 {
+			return 0, fmt.Errorf("option '--output' requires an argument")
+		}
+		opts.outputFile = remaining[0]
+		return 2, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
 }
 
-func parseShortFlags(flags string, opts *options) error {
-	for _, ch := range flags {
-		switch ch {
+func parseShortFlags(flags string, opts *options, remaining []string) (int, error) {
+	for idx := 0; idx < len(flags); idx++ {
+		switch flags[idx] {
 		case 'r':
 			opts.reverse = true
+		case 'u':
+			opts.unique = true
+		case 's':
+			opts.stable = true
+		case 'n':
+			opts.numericSort = true
+		case 'o':
+			rest := flags[idx+1:]
+			if rest != "" {
+				opts.outputFile = rest
+				return 0, nil
+			}
+			if len(remaining) == 0 {
+				return 0, fmt.Errorf("option requires an argument -- 'o'")
+			}
+			opts.outputFile = remaining[0]
+			return 1, nil
 		default:
-			return fmt.Errorf("invalid option -- '%c'", ch)
+			return 0, fmt.Errorf("invalid option -- '%c'", flags[idx])
 		}
 	}
-	return nil
+	return 0, nil
 }
 
 func readAllLines(files []string) ([]string, error) {
@@ -163,11 +225,92 @@ func readLines(r io.Reader) ([]string, error) {
 	return lines, nil
 }
 
-func sortLines(lines []string, opts options) {
-	slices.Sort(lines)
-	if opts.reverse {
-		slices.Reverse(lines)
+func sortAndFilter(lines []string, opts options) []string {
+	keyCmp := buildKeyCmp(opts)
+
+	fullCmp := keyCmp
+	if opts.numericSort && !opts.stable {
+		fullCmp = func(a, b string) int {
+			if r := keyCmp(a, b); r != 0 {
+				return r
+			}
+			return strings.Compare(a, b)
+		}
 	}
+
+	sortCmp := fullCmp
+	if opts.reverse {
+		sortCmp = func(a, b string) int { return fullCmp(b, a) }
+	}
+
+	if opts.stable {
+		slices.SortStableFunc(lines, sortCmp)
+	} else {
+		slices.SortFunc(lines, sortCmp)
+	}
+
+	if opts.unique {
+		lines = dedup(lines, keyCmp)
+	}
+
+	return lines
+}
+
+func buildKeyCmp(opts options) func(string, string) int {
+	if opts.numericSort {
+		return func(a, b string) int {
+			na, nb := parseNumeric(a), parseNumeric(b)
+			if na < nb {
+				return -1
+			}
+			if na > nb {
+				return 1
+			}
+			return 0
+		}
+	}
+	return strings.Compare
+}
+
+func parseNumeric(s string) float64 {
+	i := 0
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+		i++
+	}
+	start := i
+	if i < len(s) && (s[i] == '-' || s[i] == '+') {
+		i++
+	}
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i < len(s) && s[i] == '.' {
+		i++
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+	}
+	if i == start || (i == start+1 && (s[start] == '-' || s[start] == '+')) {
+		return 0
+	}
+	val, err := strconv.ParseFloat(s[start:i], 64)
+	if err != nil {
+		return 0
+	}
+	return val
+}
+
+func dedup(lines []string, cmp func(string, string) int) []string {
+	if len(lines) == 0 {
+		return lines
+	}
+	result := []string{lines[0]}
+	for _, line := range lines[1:] {
+		if cmp(line, result[len(result)-1]) != 0 {
+			result = append(result, line)
+		}
+	}
+	return result
 }
 
 func writeLines(lines []string, w io.Writer) {
