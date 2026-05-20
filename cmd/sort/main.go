@@ -31,6 +31,8 @@ Ordering options:
 
 Other options:
 
+  -c, --check, --check=diagnose-first  check for sorted input; do not sort
+  -C, --check=quiet, --check=silent  like -c, but do not report first bad line
   -k, --key=KEYDEF             sort via a key; KEYDEF gives location and type
   -o, --output=FILE            write result to FILE instead of standard output
   -s, --stable                 stabilize sort by disabling last-resort comparison
@@ -54,11 +56,20 @@ const (
 	sortVersion
 )
 
+type checkMode int
+
+const (
+	checkNone checkMode = iota
+	checkDiagnose
+	checkQuiet
+)
+
 type options struct {
 	reverse        bool
 	unique         bool
 	stable         bool
 	ignoreBlanks   bool
+	check          checkMode
 	mode           sortMode
 	outputFile     string
 	fieldSeparator string
@@ -83,6 +94,10 @@ func main() {
 
 	if len(files) == 0 {
 		files = []string{"-"}
+	}
+
+	if opts.check != checkNone {
+		os.Exit(runCheck(files, opts))
 	}
 
 	lines, err := readAllLines(files)
@@ -160,6 +175,17 @@ func parseLongPrefix(flag string, opts *options) (int, bool, error) {
 		opts.keys = append(opts.keys, key)
 		return 1, true, nil
 	}
+	if v, ok := strings.CutPrefix(flag, "--check="); ok {
+		switch v {
+		case "diagnose-first":
+			opts.check = checkDiagnose
+		case "quiet", "silent":
+			opts.check = checkQuiet
+		default:
+			return 0, true, fmt.Errorf("invalid argument '%s' for '--check'", v)
+		}
+		return 1, true, nil
+	}
 	return 0, false, nil
 }
 
@@ -190,6 +216,8 @@ func parseLongFlag(flag string, opts *options, remaining []string) (int, error) 
 		opts.mode = sortMonth
 	case "--version-sort":
 		opts.mode = sortVersion
+	case "--check":
+		opts.check = checkDiagnose
 	case "--output", "--field-separator", "--key":
 		return parseLongWithArg(flag, opts, remaining)
 	default:
@@ -239,6 +267,10 @@ func parseShortFlags(flags string, opts *options, remaining []string) (int, erro
 			opts.mode = sortMonth
 		case 'V':
 			opts.mode = sortVersion
+		case 'c':
+			opts.check = checkDiagnose
+		case 'C':
+			opts.check = checkQuiet
 		case 'o':
 			rest := flags[idx+1:]
 			if rest != "" {
