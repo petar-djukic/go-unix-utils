@@ -19,6 +19,8 @@ type options struct {
 	count     int64
 	fromStart bool
 	byteMode  bool
+	quiet     bool
+	verbose   bool
 }
 
 func main() {
@@ -35,8 +37,16 @@ func main() {
 		files = []string{"-"}
 	}
 
+	showHeaders := (len(files) > 1 && !opts.quiet) || (opts.verbose && !opts.quiet)
+
 	exitCode := 0
-	for _, file := range files {
+	for i, file := range files {
+		if showHeaders {
+			if i > 0 {
+				fmt.Fprintln(os.Stdout)
+			}
+			printHeader(os.Stdout, displayName(file))
+		}
 		r, closer, err := openInput(file)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "tail: %s\n", err)
@@ -74,6 +84,17 @@ func openInput(name string) (io.Reader, io.Closer, error) {
 		return nil, nil, err
 	}
 	return f, f, nil
+}
+
+func printHeader(w io.Writer, name string) {
+	fmt.Fprintf(w, "==> %s <==\n", name)
+}
+
+func displayName(file string) string {
+	if file == "-" {
+		return "standard input"
+	}
+	return file
 }
 
 func tailBytes(r io.Reader, w io.Writer, opts options) error {
@@ -212,6 +233,14 @@ func parseLongFlag(flag string, remaining []string, opts *options) (int, error) 
 		return 2, applyByteCount(remaining[1], opts)
 	case strings.HasPrefix(flag, "--bytes="):
 		return 1, applyByteCount(flag[len("--bytes="):], opts)
+	case flag == "--quiet", flag == "--silent":
+		opts.quiet = true
+		opts.verbose = false
+		return 1, nil
+	case flag == "--verbose":
+		opts.verbose = true
+		opts.quiet = false
+		return 1, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
@@ -243,6 +272,12 @@ func parseShortFlags(flags string, remaining []string, opts *options) (int, erro
 				return 0, fmt.Errorf("option requires an argument -- 'c'")
 			}
 			return consumed, applyByteCount(val, opts)
+		case 'q':
+			opts.quiet = true
+			opts.verbose = false
+		case 'v':
+			opts.verbose = true
+			opts.quiet = false
 		default:
 			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}

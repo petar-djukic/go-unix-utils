@@ -227,6 +227,8 @@ func TestDiffFile(t *testing.T) {
 
 	dir := t.TempDir()
 	writeFixture(t, dir, "input.txt", string(seq(1, 20)))
+	writeFixture(t, dir, "a.txt", string(seq(1, 5)))
+	writeFixture(t, dir, "b.txt", string(seq(6, 10)))
 
 	tests := []testutils.DiffTest{
 		// R1.1: default from file
@@ -263,6 +265,68 @@ func TestDiffFile(t *testing.T) {
 		{
 			Name:      "nonexistent-file",
 			Args:      []string{"nonexistent.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		// R3.1: multi-file headers
+		{
+			Name:    "multi-file-headers",
+			Args:    []string{"a.txt", "b.txt"},
+			WorkDir: dir,
+		},
+		// R3.1: multi-file with -n
+		{
+			Name:    "multi-file-n",
+			Args:    []string{"-n", "3", "a.txt", "b.txt"},
+			WorkDir: dir,
+		},
+		// R3.2: single file no header
+		{
+			Name:    "single-file-no-header",
+			Args:    []string{"a.txt"},
+			WorkDir: dir,
+		},
+		// R3.3: -q suppresses headers for multiple files
+		{
+			Name:    "quiet-multi-file",
+			Args:    []string{"-q", "a.txt", "b.txt"},
+			WorkDir: dir,
+		},
+		// R3.3: --quiet suppresses headers
+		{
+			Name:    "quiet-long-multi-file",
+			Args:    []string{"--quiet", "a.txt", "b.txt"},
+			WorkDir: dir,
+		},
+		// R3.3: --silent suppresses headers
+		{
+			Name:    "silent-multi-file",
+			Args:    []string{"--silent", "a.txt", "b.txt"},
+			WorkDir: dir,
+		},
+		// R3.4: -v shows header for single file
+		{
+			Name:    "verbose-single-file",
+			Args:    []string{"-v", "a.txt"},
+			WorkDir: dir,
+		},
+		// R3.4: --verbose shows header for single file
+		{
+			Name:    "verbose-long-single-file",
+			Args:    []string{"--verbose", "a.txt"},
+			WorkDir: dir,
+		},
+		// R3.4: -v with multiple files
+		{
+			Name:    "verbose-multi-file",
+			Args:    []string{"-v", "a.txt", "b.txt"},
+			WorkDir: dir,
+		},
+		// R3.3+R4.2: -q with nonexistent file among valid files
+		{
+			Name:      "quiet-with-error",
+			Args:      []string{"-q", "a.txt", "nonexistent.txt", "b.txt"},
 			WorkDir:   dir,
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardStderr},
