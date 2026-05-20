@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5325"
+task_title: '[stitch] cmd/mkdir parent directory creation (srd034 R2.1, R2.2, R2.3)'
+status: success
+started_at: "2026-05-20T00:17:28Z"
+duration: 5m34s
+duration_s: 333
+tokens:
+    input: 693817
+    output: 16829
+    cache_creation: 205550
+    cache_read: 488251
+cost_usd: 2.343469249999999
+num_turns: 22
+rate_limit_wait_s: 7
+loc_before:
+    production: 9709
+    test: 9080
+loc_after:
+    production: 9763
+    test: 9151
+diff:
+    files: 3
+    insertions: 242
+    deletions: 2
