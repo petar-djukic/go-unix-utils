@@ -11712,3 +11712,211 @@
       - id: AC4
         text: "All four SRD requirements (R2.1, R2.2, R2.3, R2.4) are implemented and exercised by differential test cases"
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/sort: srd053 R4.2-R4.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd053-sort.yaml (requirement group R4 -- R4.2, R4.3, R4.4)
+      - cmd/sort/main.go (existing implementation from earlier requirement groups R1-R4.1)
+      - cmd/sort/sort_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests pattern and DiffTest struct)
+      - CLAUDE.md (project rules, build commands, differential testing pattern)
+
+    files:
+      - path: cmd/sort/main.go
+        action: modify
+        note: Add functionality for srd053 requirements R4.2, R4.3, R4.4
+      - path: cmd/sort/sort_test.go
+        action: modify
+        note: Add differential test cases covering R4.2, R4.3, R4.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd053-sort requirement R4.2 per the SRD specification"
+      - id: R2
+        text: "Implement srd053-sort requirement R4.3 per the SRD specification"
+      - id: R3
+        text: "Implement srd053-sort requirement R4.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project convention"
+      - id: D2
+        text: "Use testutils.RunDiffTests with gsort as the reference binary for differential testing"
+      - id: D3
+        text: "Skip tests with t.Skip if gsort is not found via exec.LookPath"
+      - id: D4
+        text: "Set LC_ALL=C in test environment to match GNU reference binary collation behavior"
+      - id: D5
+        text: "Build binary with testutils.BuildBinary(t, \".\") -- do not create temporary Go programs outside the module"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd053 R4.2 behavior implemented and matching gsort output"
+      - id: AC2
+        text: "srd053 R4.3 behavior implemented and matching gsort output"
+      - id: AC3
+        text: "srd053 R4.4 behavior implemented and matching gsort output"
+      - id: AC4
+        text: "go build ./cmd/sort/ compiles without errors"
+      - id: AC5
+        text: "go test ./cmd/sort/ -count=1 passes (or skips gracefully if gsort not installed)"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/tail: srd055 R2.1-R2.3'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd055-tail.yaml (requirement group R2 -- R2.1, R2.2, R2.3)
+      - cmd/tail/main.go (existing implementation from earlier requirement group R1)
+      - cmd/tail/tail_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests pattern and DiffTest struct)
+      - CLAUDE.md (project rules, build commands, differential testing pattern)
+
+    files:
+      - path: cmd/tail/main.go
+        action: modify
+        note: Add functionality for srd055 requirements R2.1, R2.2, R2.3
+      - path: cmd/tail/tail_test.go
+        action: modify
+        note: Add differential test cases covering R2.1, R2.2, R2.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd055-tail requirement R2.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd055-tail requirement R2.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd055-tail requirement R2.3 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project convention"
+      - id: D2
+        text: "Use testutils.RunDiffTests with gtail as the reference binary for differential testing"
+      - id: D3
+        text: "Skip tests with t.Skip if gtail is not found via exec.LookPath"
+      - id: D4
+        text: "Set LC_ALL=C in test environment"
+      - id: D5
+        text: "Build binary with testutils.BuildBinary(t, \".\") -- do not create temporary Go programs outside the module"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd055 R2.1 behavior implemented and matching gtail output"
+      - id: AC2
+        text: "srd055 R2.2 behavior implemented and matching gtail output"
+      - id: AC3
+        text: "srd055 R2.3 behavior implemented and matching gtail output"
+      - id: AC4
+        text: "go build ./cmd/tail/ compiles without errors"
+      - id: AC5
+        text: "go test ./cmd/tail/ -count=1 passes (or skips gracefully if gtail not installed)"
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/tr: srd054 R3.1-R3.3'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd054-tr.yaml (requirement group R3 -- R3.1, R3.2, R3.3)
+      - cmd/tr/main.go (existing implementation from earlier requirement groups R1.1-R1.4, R2.1-R2.4)
+      - cmd/tr/tr_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests pattern and DiffTest struct)
+      - CLAUDE.md (project rules, build commands, differential testing pattern)
+
+    files:
+      - path: cmd/tr/main.go
+        action: modify
+        note: Add functionality for srd054 requirements R3.1, R3.2, R3.3
+      - path: cmd/tr/tr_test.go
+        action: modify
+        note: Add differential test cases covering R3.1, R3.2, R3.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd054-tr requirement R3.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd054-tr requirement R3.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd054-tr requirement R3.3 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project convention"
+      - id: D2
+        text: "Use testutils.RunDiffTests with gtr as the reference binary for differential testing"
+      - id: D3
+        text: "Skip tests with t.Skip if gtr is not found via exec.LookPath"
+      - id: D4
+        text: "Set LC_ALL=C in test environment"
+      - id: D5
+        text: "Build binary with testutils.BuildBinary(t, \".\") -- do not create temporary Go programs outside the module"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd054 R3.1 behavior implemented and matching gtr output"
+      - id: AC2
+        text: "srd054 R3.2 behavior implemented and matching gtr output"
+      - id: AC3
+        text: "srd054 R3.3 behavior implemented and matching gtr output"
+      - id: AC4
+        text: "go build ./cmd/tr/ compiles without errors"
+      - id: AC5
+        text: "go test ./cmd/tr/ -count=1 passes (or skips gracefully if gtr not installed)"
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/tr: srd054 R4.1-R4.3'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd054-tr.yaml (requirement group R4 -- R4.1, R4.2, R4.3)
+      - cmd/tr/main.go (existing implementation including R1.1-R1.4, R2.1-R2.4, and R3.1-R3.3 from prior tasks)
+      - cmd/tr/tr_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests pattern and DiffTest struct)
+      - CLAUDE.md (project rules, build commands, differential testing pattern)
+
+    files:
+      - path: cmd/tr/main.go
+        action: modify
+        note: Add functionality for srd054 requirements R4.1, R4.2, R4.3
+      - path: cmd/tr/tr_test.go
+        action: modify
+        note: Add differential test cases covering R4.1, R4.2, R4.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd054-tr requirement R4.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd054-tr requirement R4.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd054-tr requirement R4.3 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project convention"
+      - id: D2
+        text: "Use testutils.RunDiffTests with gtr as the reference binary for differential testing"
+      - id: D3
+        text: "Skip tests with t.Skip if gtr is not found via exec.LookPath"
+      - id: D4
+        text: "Set LC_ALL=C in test environment"
+      - id: D5
+        text: "Build binary with testutils.BuildBinary(t, \".\") -- do not create temporary Go programs outside the module"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd054 R4.1 behavior implemented and matching gtr output"
+      - id: AC2
+        text: "srd054 R4.2 behavior implemented and matching gtr output"
+      - id: AC3
+        text: "srd054 R4.3 behavior implemented and matching gtr output"
+      - id: AC4
+        text: "go build ./cmd/tr/ compiles without errors"
+      - id: AC5
+        text: "go test ./cmd/tr/ -count=1 passes (or skips gracefully if gtr not installed)"
+  dependency: 2
