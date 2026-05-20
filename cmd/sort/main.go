@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -23,19 +22,21 @@ With no FILE, or when FILE is -, read standard input.
 Mandatory arguments to long options are mandatory for short options too.
 Ordering options:
 
-  -h, --human-numeric-sort    compare human readable numbers (e.g., 2K 1G)
-  -M, --month-sort            compare (unknown) < 'JAN' < ... < 'DEC'
-  -n, --numeric-sort          compare according to string numerical value
-  -V, --version-sort          natural sort of (version) numbers within text
-  -r, --reverse               reverse the result of comparisons
+  -b, --ignore-leading-blanks  ignore leading blanks
+  -h, --human-numeric-sort     compare human readable numbers (e.g., 2K 1G)
+  -M, --month-sort             compare (unknown) < 'JAN' < ... < 'DEC'
+  -n, --numeric-sort           compare according to string numerical value
+  -V, --version-sort           natural sort of (version) numbers within text
+  -r, --reverse                reverse the result of comparisons
 
 Other options:
 
-  -o, --output=FILE           write result to FILE instead of standard output
-  -s, --stable                stabilize sort by disabling last-resort comparison
-  -t, --field-separator=SEP   use SEP instead of non-blank to blank transition
-  -u, --unique                with -c, check for strict ordering;
-                                without -c, output only the first of an equal run
+  -k, --key=KEYDEF             sort via a key; KEYDEF gives location and type
+  -o, --output=FILE            write result to FILE instead of standard output
+  -s, --stable                 stabilize sort by disabling last-resort comparison
+  -t, --field-separator=SEP    use SEP instead of non-blank to blank transition
+  -u, --unique                 with -c, check for strict ordering;
+                                 without -c, output only the first of an equal run
       --help        display this help and exit
       --version     output version information and exit
 `
@@ -57,9 +58,11 @@ type options struct {
 	reverse        bool
 	unique         bool
 	stable         bool
+	ignoreBlanks   bool
 	mode           sortMode
 	outputFile     string
 	fieldSeparator string
+	keys           []keyDef
 }
 
 var monthMap = map[string]int{
@@ -137,17 +140,32 @@ func parseArgs(args []string) (options, []string, error) {
 	return opts, files, nil
 }
 
-func parseLongFlag(flag string, opts *options, remaining []string) (int, error) {
+func parseLongPrefix(flag string, opts *options) (int, bool, error) {
 	if v, ok := strings.CutPrefix(flag, "--output="); ok {
 		opts.outputFile = v
-		return 1, nil
+		return 1, true, nil
 	}
 	if v, ok := strings.CutPrefix(flag, "--field-separator="); ok {
 		if len(v) != 1 {
-			return 0, fmt.Errorf("multi-character tab '%s'", v)
+			return 0, true, fmt.Errorf("multi-character tab '%s'", v)
 		}
 		opts.fieldSeparator = v
-		return 1, nil
+		return 1, true, nil
+	}
+	if v, ok := strings.CutPrefix(flag, "--key="); ok {
+		key, err := parseKeyDef(v)
+		if err != nil {
+			return 0, true, err
+		}
+		opts.keys = append(opts.keys, key)
+		return 1, true, nil
+	}
+	return 0, false, nil
+}
+
+func parseLongFlag(flag string, opts *options, remaining []string) (int, error) {
+	if n, handled, err := parseLongPrefix(flag, opts); handled {
+		return n, err
 	}
 	switch flag {
 	case "--help":
@@ -162,6 +180,8 @@ func parseLongFlag(flag string, opts *options, remaining []string) (int, error) 
 		opts.unique = true
 	case "--stable":
 		opts.stable = true
+	case "--ignore-leading-blanks":
+		opts.ignoreBlanks = true
 	case "--numeric-sort":
 		opts.mode = sortNumeric
 	case "--human-numeric-sort":
@@ -170,7 +190,7 @@ func parseLongFlag(flag string, opts *options, remaining []string) (int, error) 
 		opts.mode = sortMonth
 	case "--version-sort":
 		opts.mode = sortVersion
-	case "--output", "--field-separator":
+	case "--output", "--field-separator", "--key":
 		return parseLongWithArg(flag, opts, remaining)
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
@@ -190,6 +210,12 @@ func parseLongWithArg(flag string, opts *options, remaining []string) (int, erro
 			return 0, fmt.Errorf("multi-character tab '%s'", remaining[0])
 		}
 		opts.fieldSeparator = remaining[0]
+	case "--key":
+		key, err := parseKeyDef(remaining[0])
+		if err != nil {
+			return 0, err
+		}
+		opts.keys = append(opts.keys, key)
 	}
 	return 2, nil
 }
@@ -203,6 +229,8 @@ func parseShortFlags(flags string, opts *options, remaining []string) (int, erro
 			opts.unique = true
 		case 's':
 			opts.stable = true
+		case 'b':
+			opts.ignoreBlanks = true
 		case 'n':
 			opts.mode = sortNumeric
 		case 'h':
@@ -224,6 +252,8 @@ func parseShortFlags(flags string, opts *options, remaining []string) (int, erro
 			return 1, nil
 		case 't':
 			return parseFieldSep(flags[idx+1:], remaining, opts)
+		case 'k':
+			return parseKeyArg(flags[idx+1:], remaining, opts)
 		default:
 			return 0, fmt.Errorf("invalid option -- '%c'", flags[idx])
 		}
@@ -246,6 +276,26 @@ func parseFieldSep(rest string, remaining []string, opts *options) (int, error) 
 		return 0, fmt.Errorf("multi-character tab '%s'", remaining[0])
 	}
 	opts.fieldSeparator = remaining[0]
+	return 1, nil
+}
+
+func parseKeyArg(rest string, remaining []string, opts *options) (int, error) {
+	if rest != "" {
+		key, err := parseKeyDef(rest)
+		if err != nil {
+			return 0, err
+		}
+		opts.keys = append(opts.keys, key)
+		return 0, nil
+	}
+	if len(remaining) == 0 {
+		return 0, fmt.Errorf("option requires an argument -- 'k'")
+	}
+	key, err := parseKeyDef(remaining[0])
+	if err != nil {
+		return 0, err
+	}
+	opts.keys = append(opts.keys, key)
 	return 1, nil
 }
 
@@ -293,37 +343,65 @@ func readLines(r io.Reader) ([]string, error) {
 
 func sortAndFilter(lines []string, opts options) []string {
 	keyCmp := buildKeyCmp(opts)
-
-	fullCmp := keyCmp
-	if opts.mode != sortDefault && !opts.stable {
-		fullCmp = func(a, b string) int {
-			if r := keyCmp(a, b); r != 0 {
-				return r
-			}
-			return strings.Compare(a, b)
-		}
-	}
-
-	sortCmp := fullCmp
-	if opts.reverse {
-		sortCmp = func(a, b string) int { return fullCmp(b, a) }
-	}
+	hasKeys := len(opts.keys) > 0
+	sortCmp := buildSortCmp(keyCmp, opts, hasKeys)
 
 	if opts.stable {
 		slices.SortStableFunc(lines, sortCmp)
 	} else {
 		slices.SortFunc(lines, sortCmp)
 	}
-
 	if opts.unique {
 		lines = dedup(lines, keyCmp)
 	}
-
 	return lines
 }
 
+func buildSortCmp(
+	keyCmp func(string, string) int, opts options, hasKeys bool,
+) func(string, string) int {
+	cmp := keyCmp
+	if !opts.stable && (hasKeys || opts.mode != sortDefault) {
+		rev := opts.reverse && hasKeys
+		cmp = withLastResort(keyCmp, rev)
+	}
+	if opts.reverse && !hasKeys {
+		inner := cmp
+		cmp = func(a, b string) int { return inner(b, a) }
+	}
+	return cmp
+}
+
+func withLastResort(
+	keyCmp func(string, string) int, rev bool,
+) func(string, string) int {
+	return func(a, b string) int {
+		if r := keyCmp(a, b); r != 0 {
+			return r
+		}
+		r := strings.Compare(a, b)
+		if rev {
+			return -r
+		}
+		return r
+	}
+}
+
 func buildKeyCmp(opts options) func(string, string) int {
-	switch opts.mode {
+	if len(opts.keys) > 0 {
+		return buildKeysCmp(opts)
+	}
+	cmp := buildModeCmp(opts.mode)
+	if opts.ignoreBlanks {
+		return func(a, b string) int {
+			return cmp(strings.TrimLeft(a, " \t"), strings.TrimLeft(b, " \t"))
+		}
+	}
+	return cmp
+}
+
+func buildModeCmp(mode sortMode) func(string, string) int {
+	switch mode {
 	case sortHumanNumeric:
 		return cmpFloat(parseHumanNumeric)
 	case sortMonth:
@@ -335,146 +413,6 @@ func buildKeyCmp(opts options) func(string, string) int {
 	default:
 		return strings.Compare
 	}
-}
-
-func cmpFloat(parse func(string) float64) func(string, string) int {
-	return func(a, b string) int {
-		na, nb := parse(a), parse(b)
-		if na < nb {
-			return -1
-		}
-		if na > nb {
-			return 1
-		}
-		return 0
-	}
-}
-
-func parseNumericEnd(s string) (float64, int) {
-	i := 0
-	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
-		i++
-	}
-	start := i
-	if i < len(s) && (s[i] == '-' || s[i] == '+') {
-		i++
-	}
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	if i < len(s) && s[i] == '.' {
-		i++
-		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-			i++
-		}
-	}
-	if i == start || (i == start+1 && (s[start] == '-' || s[start] == '+')) {
-		return 0, i
-	}
-	val, err := strconv.ParseFloat(s[start:i], 64)
-	if err != nil {
-		return 0, i
-	}
-	return val, i
-}
-
-func parseNumeric(s string) float64 {
-	val, _ := parseNumericEnd(s)
-	return val
-}
-
-func parseHumanNumeric(s string) float64 {
-	val, end := parseNumericEnd(s)
-	if end < len(s) {
-		if m := suffixMultiplier(s[end]); m > 0 {
-			return val * m
-		}
-	}
-	return val
-}
-
-func suffixMultiplier(c byte) float64 {
-	switch c {
-	case 'K', 'k':
-		return 1 << 10
-	case 'M':
-		return 1 << 20
-	case 'G':
-		return 1 << 30
-	case 'T':
-		return 1 << 40
-	case 'P':
-		return 1 << 50
-	case 'E':
-		return 1 << 60
-	case 'Z':
-		return 1 << 70
-	case 'Y':
-		return 1 << 80
-	default:
-		return 0
-	}
-}
-
-func monthRank(s string) int {
-	i := 0
-	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
-		i++
-	}
-	end := min(i+3, len(s))
-	return monthMap[strings.ToUpper(s[i:end])]
-}
-
-func compareVersion(a, b string) int {
-	ia, ib := 0, 0
-	for ia < len(a) && ib < len(b) {
-		da := a[ia] >= '0' && a[ia] <= '9'
-		db := b[ib] >= '0' && b[ib] <= '9'
-		if da && db {
-			r := cmpNumSegments(a, b, &ia, &ib)
-			if r != 0 {
-				return r
-			}
-			continue
-		}
-		if a[ia] != b[ib] {
-			return int(a[ia]) - int(b[ib])
-		}
-		ia++
-		ib++
-	}
-	return len(a) - len(b)
-}
-
-func cmpNumSegments(a, b string, ia, ib *int) int {
-	startA, startB := *ia, *ib
-	for *ia < len(a) && a[*ia] == '0' {
-		*ia++
-	}
-	for *ib < len(b) && b[*ib] == '0' {
-		*ib++
-	}
-	sigA, sigB := *ia, *ib
-	endA := sigA
-	for endA < len(a) && a[endA] >= '0' && a[endA] <= '9' {
-		endA++
-	}
-	endB := sigB
-	for endB < len(b) && b[endB] >= '0' && b[endB] <= '9' {
-		endB++
-	}
-	lenA, lenB := endA-sigA, endB-sigB
-	*ia = endA
-	*ib = endB
-	if lenA != lenB {
-		return lenA - lenB
-	}
-	for k := range lenA {
-		if a[sigA+k] != b[sigB+k] {
-			return int(a[sigA+k]) - int(b[sigB+k])
-		}
-	}
-	return (sigB - startB) - (sigA - startA)
 }
 
 func dedup(lines []string, cmp func(string, string) int) []string {
