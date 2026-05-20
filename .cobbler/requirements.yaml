@@ -2323,16 +2323,20 @@ requirements:
             issue: 5347
             weight: 1
         R3.1:
-            status: in_progress
+            status: uncertain
+            issue: 5348
             weight: 1
         R3.2:
-            status: in_progress
+            status: uncertain
+            issue: 5348
             weight: 1
         R3.3:
-            status: in_progress
+            status: uncertain
+            issue: 5348
             weight: 1
         R3.4:
-            status: in_progress
+            status: uncertain
+            issue: 5348
             weight: 1
         R3.5:
             status: ready
