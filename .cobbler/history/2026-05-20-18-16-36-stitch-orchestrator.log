@@ -173,3 +173,13 @@ diff <(printf 'banana\napple\ncherry\n...
 [2026-05-20T18:32:13-04:00] [generation-run44] [stitch +15m37s] closeStitchTask: closing #5377 "[stitch] cmd/sort: remaining numeric modes and check mode -- srd053 R3.2-R3.4, R4.1"
 [2026-05-20T18:32:14-04:00] [generation-run44] [stitch +15m38s] commentCobblerIssue: posted comment on #5377
 [2026-05-20T18:32:14-04:00] [generation-run44] [stitch +15m38s] updateRequirementsFile: marked 4 R-items as complete for issue #5377
+[2026-05-20T18:32:17-04:00] [generation-run44] [stitch +15m40s] closeCobblerIssue: closed #5377
+[2026-05-20T18:32:19-04:00] [generation-run44] [stitch +15m42s] closeStitchTask: #5377 closed
+[2026-05-20T18:32:19-04:00] [generation-run44] [stitch +15m43s] sweepCompletedTasks: all R-items for #5377 already complete, closing
+[2026-05-20T18:32:20-04:00] [generation-run44] [stitch +15m44s] commentCobblerIssue: posted comment on #5377
+[2026-05-20T18:32:22-04:00] [generation-run44] [stitch +15m45s] closeCobblerIssue: closed #5377
+[2026-05-20T18:32:22-04:00] [generation-run44] [stitch +15m46s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-20T18:32:22-04:00] [generation-run44] [stitch +15m46s] doOneTask: task 5377 finished in 15m38s
+[2026-05-20T18:32:22-04:00] [generation-run44] [stitch +15m46s] task 5377 completed in 15m38s
+[2026-05-20T18:32:22-04:00] [generation-run44] [stitch +15m46s] reached per-cycle limit (1), pausing for measure
+[2026-05-20T18:32:22-04:00] [generation-run44] [stitch +15m46s] completed 1 task(s) in 15m46s
