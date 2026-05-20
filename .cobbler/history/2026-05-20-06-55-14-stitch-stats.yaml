@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5333"
+task_title: '[stitch] cmd/rmdir edge cases and diagnostics (srd035 R4.1, R4.2, R4.3)'
+status: success
+started_at: "2026-05-20T10:55:14Z"
+duration: 1m36s
+duration_s: 96
+tokens:
+    input: 277803
+    output: 1194
+    cache_creation: 192384
+    cache_read: 85412
+cost_usd: 1.66412975
+num_turns: 11
+rate_limit_wait_s: 2
+loc_before:
+    production: 10164
+    test: 9665
+loc_after:
+    production: 10164
+    test: 9665
+diff:
+    files: 1
+    insertions: 82
+    deletions: 0
