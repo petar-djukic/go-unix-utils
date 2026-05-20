@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd034-mkdir R2.1, R2.2, R2.3, R4.1, R4.2, R4.3.
+// Implements srd034-mkdir R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3.
 package main
 
 import (
@@ -155,6 +155,76 @@ func TestDiff(t *testing.T) {
 		refRes := runBin(t, refBin, args, refDir)
 		compareResults(t, args, goRes, refRes)
 	})
+
+	t.Run("mode_octal", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-m", "0755", "mdir"})
+	})
+
+	t.Run("mode_octal_no_leading_zero", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-m", "755", "mdir2"})
+	})
+
+	t.Run("mode_octal_restrictive", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-m", "0700", "mdir3"})
+	})
+
+	t.Run("mode_long_flag", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"--mode=0755", "mdir4"})
+	})
+
+	t.Run("mode_long_flag_separate", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"--mode", "0755", "mdir5"})
+	})
+
+	t.Run("mode_combined_short", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-m0755", "mdir6"})
+	})
+
+	t.Run("mode_verbose", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-v", "-m", "0700", "mvdir"})
+	})
+
+	t.Run("mode_combined_vm", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-vm", "0700", "vmdir"})
+	})
+
+	t.Run("mode_parents_nested", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-p", "-m", "0700", "pm/pn/po"})
+	})
+
+	t.Run("mode_parents_verbose", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-pvm", "0700", "pvm/pvn/pvo"})
+	})
+
+	t.Run("mode_symbolic_urwx", func(t *testing.T) {
+		runCreationTest(t, goBin, refBin, []string{"-m", "u=rwx,go=rx", "sdir"})
+	})
+
+	t.Run("mode_invalid", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:     "bogus_mode",
+				Args:     []string{"-m", "bogus", "dir"},
+				ExitCode: 1,
+				Normalize: []testutils.NormalizeFunc{
+					normalizeBinaryName,
+				},
+			},
+		})
+	})
+
+	t.Run("mode_missing_arg", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:     "m_no_arg",
+				Args:     []string{"-m"},
+				ExitCode: 1,
+				Normalize: []testutils.NormalizeFunc{
+					normalizeBinaryName,
+				},
+			},
+		})
+	})
 }
 
 func TestCreationPermissions(t *testing.T) {
@@ -181,6 +251,79 @@ func TestCreationPermissions(t *testing.T) {
 	if goInfo.Mode().Perm() != refInfo.Mode().Perm() {
 		t.Fatalf("permission mismatch: go=%v ref=%v",
 			goInfo.Mode().Perm(), refInfo.Mode().Perm())
+	}
+}
+
+func TestModePermissions(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	tests := []struct {
+		name string
+		args []string
+		dirs []string
+	}{
+		{"octal_0755", []string{"-m", "0755", "d1"}, []string{"d1"}},
+		{"octal_0700", []string{"-m", "0700", "d2"}, []string{"d2"}},
+		{"octal_0777", []string{"-m", "0777", "d3"}, []string{"d3"}},
+		{"octal_0750", []string{"-m", "0750", "d4"}, []string{"d4"}},
+		{"symbolic_urwx_gorx", []string{"-m", "u=rwx,go=rx", "d5"}, []string{"d5"}},
+		{"symbolic_arwx", []string{"-m", "a=rwx", "d6"}, []string{"d6"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			goDir := t.TempDir()
+			refDir := t.TempDir()
+			runBin(t, goBin, tt.args, goDir)
+			runBin(t, refBin, tt.args, refDir)
+			for _, sub := range tt.dirs {
+				goInfo, err := os.Stat(filepath.Join(goDir, sub))
+				if err != nil {
+					t.Fatalf("go binary did not create %s: %v", sub, err)
+				}
+				refInfo, err := os.Stat(filepath.Join(refDir, sub))
+				if err != nil {
+					t.Fatalf("ref binary did not create %s: %v", sub, err)
+				}
+				if goInfo.Mode().Perm() != refInfo.Mode().Perm() {
+					t.Fatalf("permission mismatch on %s: go=%v ref=%v",
+						sub, goInfo.Mode().Perm(), refInfo.Mode().Perm())
+				}
+			}
+		})
+	}
+}
+
+func TestModeParentsPermissions(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gmkdir")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+	args := []string{"-p", "-m", "0700", "a/b/c"}
+	runBin(t, goBin, args, goDir)
+	runBin(t, refBin, args, refDir)
+
+	for _, sub := range []string{"a", "a/b", "a/b/c"} {
+		goInfo, err := os.Stat(filepath.Join(goDir, sub))
+		if err != nil {
+			t.Fatalf("go binary did not create %s: %v", sub, err)
+		}
+		refInfo, err := os.Stat(filepath.Join(refDir, sub))
+		if err != nil {
+			t.Fatalf("ref binary did not create %s: %v", sub, err)
+		}
+		if goInfo.Mode().Perm() != refInfo.Mode().Perm() {
+			t.Fatalf("permission mismatch on %s: go=%v ref=%v",
+				sub, goInfo.Mode().Perm(), refInfo.Mode().Perm())
+		}
 	}
 }
 
