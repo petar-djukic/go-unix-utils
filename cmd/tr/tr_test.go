@@ -18,7 +18,7 @@ func normalizeBinaryName(b []byte) []byte {
 	return binaryNameRe.ReplaceAll(b, []byte("tr"))
 }
 
-var usageHintRe = regexp.MustCompile(`(?m)^(Two strings must be given when translating\.|Try '.*' for more information\.)\n`)
+var usageHintRe = regexp.MustCompile(`(?m)^(Two strings must be given when translating\.|Only one string may be given when deleting without squeezing repeats\.|Try '.*' for more information\.)\n`)
 
 func normalizeUsageHints(b []byte) []byte {
 	return bytes.TrimRight(usageHintRe.ReplaceAll(b, nil), "\n")
@@ -89,6 +89,30 @@ func TestDiff(t *testing.T) {
 		{Name: "r3_equiv_squeeze", Args: []string{"-s", "[=l=]"}, Stdin: []byte("hello\n")},
 		{Name: "r3_equiv_set2_translate_err", Args: []string{"a", "[=b=]"}, Stdin: []byte("aaa\n"), ExitCode: 1, Normalize: errNorm},
 		{Name: "r3_equiv_set2_ds_ok", Args: []string{"-ds", "[:digit:]", "[=a=]"}, Stdin: []byte("aa11bb\n")},
+
+		// R4.1: Exit 0 on successful translation/deletion
+		{Name: "r4_exit0_translate", Args: []string{"a", "b"}, Stdin: []byte("a\n"), ExitCode: 0},
+		{Name: "r4_exit0_delete", Args: []string{"-d", "a"}, Stdin: []byte("abc\n"), ExitCode: 0},
+		{Name: "r4_exit0_squeeze", Args: []string{"-s", "a"}, Stdin: []byte("aaa\n"), ExitCode: 0},
+		{Name: "r4_exit0_complement", Args: []string{"-cd", "a-z\\n"}, Stdin: []byte("hello 123\n"), ExitCode: 0},
+		{Name: "r4_exit0_ds_combined", Args: []string{"-ds", "[:digit:]", " "}, Stdin: []byte("a1 b2\n"), ExitCode: 0},
+
+		// R4.2: Exit 1 on usage errors
+		{Name: "r4_exit1_invalid_class", Args: []string{"[:bogus:]", "x"}, Stdin: []byte("a\n"), ExitCode: 1, Normalize: errNorm},
+		{Name: "r4_exit1_invalid_option", Args: []string{"-z", "a", "b"}, Stdin: []byte("a\n"), ExitCode: 1, Normalize: errNorm},
+		{Name: "r4_exit1_no_args", Args: []string{}, Stdin: []byte("a\n"), ExitCode: 1, Normalize: errNorm},
+				{Name: "r4_exit1_delete_extra", Args: []string{"-d", "a", "b"}, Stdin: []byte("a\n"), ExitCode: 1, Normalize: errNorm},
+		{Name: "r4_exit1_reverse_range", Args: []string{"z-a", "A-Z"}, Stdin: []byte("a\n"), ExitCode: 1, Normalize: errNorm},
+
+		// R4.3: Comprehensive differential coverage
+		{Name: "r4_diff_basic", Args: []string{"aeiou", "AEIOU"}, Stdin: []byte("the quick brown fox\n")},
+		{Name: "r4_diff_delete_class", Args: []string{"-d", "[:space:]"}, Stdin: []byte("hello world\n")},
+		{Name: "r4_diff_squeeze_class", Args: []string{"-s", "[:space:]"}, Stdin: []byte("hello   world\n")},
+		{Name: "r4_diff_complement_class", Args: []string{"-cd", "[:alpha:]\\n"}, Stdin: []byte("abc 123 def\n")},
+		{Name: "r4_diff_ds_class", Args: []string{"-ds", "[:upper:]", "[:lower:]"}, Stdin: []byte("HeLLo WoRLD\n")},
+		{Name: "r4_diff_range_octal", Args: []string{"\\141-\\172", "A-Z"}, Stdin: []byte("hello\n")},
+		{Name: "r4_diff_case_class", Args: []string{"[:lower:]", "[:upper:]"}, Stdin: []byte("mixed Case 123\n")},
+		{Name: "r4_diff_escape_all", Args: []string{"\\a\\b\\f\\n\\r\\t\\v", "ABCDEFG"}, Stdin: []byte{'\a', '\b', '\f', '\n', '\r', '\t', '\v'}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
