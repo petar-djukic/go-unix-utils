@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Implements srd036-mktemp R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R3.5, R3.6.
 package main
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
+
+var errQuiet = errors.New("")
 
 const defaultTemplate = "tmp.XXXXXXXXXX"
 const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
@@ -23,6 +26,8 @@ type options struct {
 	parentDir string
 	useTmpdir bool
 	suffix    string
+	dryRun    bool
+	quiet     bool
 }
 
 func main() {
@@ -36,7 +41,9 @@ func main() {
 	}
 
 	if err := run(opts, template, useDefaultDir); err != nil {
-		fmt.Fprintf(os.Stderr, "mktemp: %s\n", err)
+		if err != errQuiet {
+			fmt.Fprintf(os.Stderr, "mktemp: %s\n", err)
+		}
 		os.Exit(1)
 	}
 }
@@ -87,6 +94,12 @@ func parseLongFlag(flag string, remaining []string, opts *options) (int, error) 
 	case flag == "--directory":
 		opts.directory = true
 		return 1, nil
+	case flag == "--dry-run":
+		opts.dryRun = true
+		return 1, nil
+	case flag == "--quiet":
+		opts.quiet = true
+		return 1, nil
 	case flag == "--tmpdir":
 		opts.useTmpdir = true
 		return 1, nil
@@ -113,6 +126,10 @@ func parseShortFlags(flags string, remaining []string, opts *options) (int, erro
 		switch flags[j] {
 		case 'd':
 			opts.directory = true
+		case 'u':
+			opts.dryRun = true
+		case 'q':
+			opts.quiet = true
 		case 't':
 			opts.useTmpdir = true
 		case 'p':
@@ -146,6 +163,17 @@ func run(opts options, template string, useDefaultDir bool) error {
 
 	prefix := fullTemplate[:len(fullTemplate)-xCount]
 
+	if opts.dryRun {
+		suffix, err := randomString(xCount)
+		if err != nil {
+			return err
+		}
+		path := prefix + suffix + opts.suffix
+		fmt.Println(path)
+		fmt.Fprintln(os.Stderr, "mktemp: warning: --dry-run is discouraged")
+		return nil
+	}
+
 	for range 100 {
 		suffix, err := randomString(xCount)
 		if err != nil {
@@ -165,6 +193,9 @@ func run(opts options, template string, useDefaultDir bool) error {
 			if os.IsExist(err) {
 				continue
 			}
+			if opts.quiet {
+				return errQuiet
+			}
 			return fmt.Errorf("failed to create %s via template '%s': %s",
 				entityKind(opts.directory), fullTemplate, unwrapErr(err))
 		}
@@ -172,6 +203,9 @@ func run(opts options, template string, useDefaultDir bool) error {
 		return nil
 	}
 
+	if opts.quiet {
+		return errQuiet
+	}
 	return fmt.Errorf("failed to create %s via template '%s': too many collisions",
 		entityKind(opts.directory), fullTemplate)
 }

@@ -257,6 +257,76 @@ func TestDiff(t *testing.T) {
 			},
 		})
 	})
+
+	t.Run("dry_run_short_flag", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "u_flag",
+				Args:      []string{"-u"},
+				Env:       []string{"TMPDIR=" + tmpdir},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("tmp.", 10), normalizeDryRunWarning},
+			},
+		})
+		verifyNotCreated(t, tmpdir)
+	})
+
+	t.Run("dry_run_long_flag", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "dry_run",
+				Args:      []string{"--dry-run"},
+				Env:       []string{"TMPDIR=" + tmpdir},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("tmp.", 10), normalizeDryRunWarning},
+			},
+		})
+		verifyNotCreated(t, tmpdir)
+	})
+
+	t.Run("dry_run_directory", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "u_d",
+				Args:      []string{"-u", "-d"},
+				Env:       []string{"TMPDIR=" + tmpdir},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("tmp.", 10), normalizeDryRunWarning},
+			},
+		})
+		verifyNotCreated(t, tmpdir)
+	})
+
+	t.Run("quiet_creation_error", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:     "q_flag",
+				Args:     []string{"-q", "-p", "/nonexistent_mktemp_test_dir", "testXXXXXX"},
+				ExitCode: 1,
+			},
+		})
+	})
+
+	t.Run("quiet_long_creation_error", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:     "quiet_flag",
+				Args:     []string{"--quiet", "-p", "/nonexistent_mktemp_test_dir", "testXXXXXX"},
+				ExitCode: 1,
+			},
+		})
+	})
+
+	t.Run("quiet_validation_error", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "q_validation",
+				Args:      []string{"-q", "fooXX"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			},
+		})
+	})
 }
 
 func makeTemplateNormalizer(prefix string, xCount int) testutils.NormalizeFunc {
@@ -267,6 +337,12 @@ func makeTemplateNormalizer(prefix string, xCount int) testutils.NormalizeFunc {
 	return func(b []byte) []byte {
 		return pattern.ReplaceAll(b, replacement)
 	}
+}
+
+var dryRunWarningRe = regexp.MustCompile(`(?m)^[^\n]*warning:[^\n]*\n?`)
+
+func normalizeDryRunWarning(b []byte) []byte {
+	return dryRunWarningRe.ReplaceAll(b, nil)
 }
 
 var binaryNameRe = regexp.MustCompile(`(/\S+/)?g?mktemp\b`)
@@ -369,6 +445,21 @@ func verifySuffix(t *testing.T, dir, expectedSuffix string) {
 		}
 	}
 	t.Fatalf("no entry with suffix %q found in %s", expectedSuffix, dir)
+}
+
+func verifyNotCreated(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, len(entries))
+		for i, e := range entries {
+			names[i] = e.Name()
+		}
+		t.Errorf("expected no files in %s, found: %v", dir, names)
+	}
 }
 
 func isAlphanumeric(c rune) bool {
