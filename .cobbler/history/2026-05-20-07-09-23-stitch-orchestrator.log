@@ -246,3 +246,13 @@
 [2026-05-20T07:14:00-04:00] [generation-run44] [stitch +4m37s] closeStitchTask: closing #5336 "[stitch] cmd/unlink error handling and options (srd038 R2.2, R2.3, R2.4, R3.1)"
 [2026-05-20T07:14:01-04:00] [generation-run44] [stitch +4m38s] commentCobblerIssue: posted comment on #5336
 [2026-05-20T07:14:01-04:00] [generation-run44] [stitch +4m38s] updateRequirementsFile: marked 4 R-items as complete for issue #5336
+[2026-05-20T07:14:04-04:00] [generation-run44] [stitch +4m41s] closeCobblerIssue: closed #5336
+[2026-05-20T07:14:06-04:00] [generation-run44] [stitch +4m43s] closeStitchTask: #5336 closed
+[2026-05-20T07:14:07-04:00] [generation-run44] [stitch +4m44s] sweepCompletedTasks: all R-items for #5336 already complete, closing
+[2026-05-20T07:14:08-04:00] [generation-run44] [stitch +4m45s] commentCobblerIssue: posted comment on #5336
+[2026-05-20T07:14:10-04:00] [generation-run44] [stitch +4m47s] closeCobblerIssue: closed #5336
+[2026-05-20T07:14:12-04:00] [generation-run44] [stitch +4m49s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-20T07:14:12-04:00] [generation-run44] [stitch +4m49s] doOneTask: task 5336 finished in 4m42s
+[2026-05-20T07:14:12-04:00] [generation-run44] [stitch +4m49s] task 5336 completed in 4m42s
+[2026-05-20T07:14:12-04:00] [generation-run44] [stitch +4m49s] reached per-cycle limit (1), pausing for measure
+[2026-05-20T07:14:12-04:00] [generation-run44] [stitch +4m49s] completed 1 task(s) in 4m49s
