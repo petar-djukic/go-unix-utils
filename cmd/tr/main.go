@@ -15,41 +15,128 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+type config struct {
+	delete     bool
+	squeeze    bool
+	complement bool
+	operands   []string
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	args := parseArgs(os.Args[1:])
-	if err := run(args); err != nil {
+	cfg, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tr: %s\n", err)
+		os.Exit(1)
+	}
+	if err := run(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "tr: %s\n", err)
 		os.Exit(1)
 	}
 }
 
-func parseArgs(args []string) []string {
-	var operands []string
+func parseArgs(args []string) (config, error) {
+	var cfg config
 	endOfFlags := false
 	for _, arg := range args {
-		if !endOfFlags && arg == "--" {
+		if endOfFlags || arg == "-" {
+			cfg.operands = append(cfg.operands, arg)
+			continue
+		}
+		if arg == "--" {
 			endOfFlags = true
 			continue
 		}
-		operands = append(operands, arg)
+		if arg == "--delete" {
+			cfg.delete = true
+			continue
+		}
+		if arg == "--squeeze-repeats" {
+			cfg.squeeze = true
+			continue
+		}
+		if arg == "--complement" {
+			cfg.complement = true
+			continue
+		}
+		if len(arg) > 1 && arg[0] == '-' {
+			if arg[1] == '-' {
+				return cfg, fmt.Errorf("unrecognized option '%s'", arg)
+			}
+			if err := parseShortFlags(&cfg, arg[1:]); err != nil {
+				return cfg, err
+			}
+			continue
+		}
+		cfg.operands = append(cfg.operands, arg)
 	}
-	return operands
+	return cfg, nil
 }
 
-func run(args []string) error {
-	if len(args) == 0 {
+func parseShortFlags(cfg *config, flags string) error {
+	for _, c := range flags {
+		switch c {
+		case 'd':
+			cfg.delete = true
+		case 's':
+			cfg.squeeze = true
+		case 'c', 'C':
+			cfg.complement = true
+		default:
+			return fmt.Errorf("invalid option -- '%c'", c)
+		}
+	}
+	return nil
+}
+
+func validateOperands(cfg config) error {
+	n := len(cfg.operands)
+	if n == 0 {
 		return fmt.Errorf("missing operand")
 	}
-	if len(args) < 2 {
-		return fmt.Errorf("missing operand after '%s'", args[0])
+	if cfg.delete && !cfg.squeeze {
+		if n > 1 {
+			return fmt.Errorf("extra operand '%s'", cfg.operands[1])
+		}
+		return nil
 	}
-	set1, err := expandSet(args[0])
+	if cfg.squeeze && !cfg.delete && n == 1 {
+		return nil
+	}
+	if n < 2 {
+		return fmt.Errorf("missing operand after '%s'", cfg.operands[0])
+	}
+	return nil
+}
+
+func run(cfg config) error {
+	if err := validateOperands(cfg); err != nil {
+		return err
+	}
+	set1, err := expandSet(cfg.operands[0])
 	if err != nil {
 		return err
 	}
-	set2, err := expandSet(args[1])
+	if cfg.complement {
+		set1 = complementSet(set1)
+	}
+	set1Members := memberSet(set1)
+	if cfg.delete {
+		if !cfg.squeeze {
+			return process(nil, &set1Members, nil)
+		}
+		set2, err := expandSet(cfg.operands[1])
+		if err != nil {
+			return err
+		}
+		sqSet := memberSet(set2)
+		return process(nil, &set1Members, &sqSet)
+	}
+	if cfg.squeeze && len(cfg.operands) == 1 {
+		return process(nil, nil, &set1Members)
+	}
+	set2, err := expandSet(cfg.operands[1])
 	if err != nil {
 		return err
 	}
@@ -57,7 +144,33 @@ func run(args []string) error {
 		return fmt.Errorf("when not truncating set1, string2 must be non-empty")
 	}
 	table := buildTable(set1, set2)
-	return translate(table)
+	if cfg.squeeze {
+		sqSet := memberSet(set2)
+		return process(&table, nil, &sqSet)
+	}
+	return process(&table, nil, nil)
+}
+
+func complementSet(set []byte) []byte {
+	var present [256]bool
+	for _, b := range set {
+		present[b] = true
+	}
+	var result []byte
+	for i := range 256 {
+		if !present[byte(i)] {
+			result = append(result, byte(i))
+		}
+	}
+	return result
+}
+
+func memberSet(set []byte) [256]bool {
+	var m [256]bool
+	for _, b := range set {
+		m[b] = true
+	}
+	return m
 }
 
 func buildTable(set1, set2 []byte) [256]byte {
@@ -75,17 +188,28 @@ func buildTable(set1, set2 []byte) [256]byte {
 	return table
 }
 
-func translate(table [256]byte) error {
+func process(table *[256]byte, deleteSet, squeezeSet *[256]bool) error {
 	r := bufio.NewReader(os.Stdin)
 	w := bufio.NewWriter(os.Stdout)
+	prev := -1
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := r.Read(buf)
 		for i := range n {
-			buf[i] = table[buf[i]]
-		}
-		if _, werr := w.Write(buf[:n]); werr != nil {
-			return werr
+			b := buf[i]
+			if deleteSet != nil && deleteSet[b] {
+				continue
+			}
+			if table != nil {
+				b = table[b]
+			}
+			if squeezeSet != nil && squeezeSet[b] && int(b) == prev {
+				continue
+			}
+			prev = int(b)
+			if werr := w.WriteByte(b); werr != nil {
+				return werr
+			}
 		}
 		if err != nil {
 			if err != io.EOF {

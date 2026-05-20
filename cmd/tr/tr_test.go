@@ -39,6 +39,21 @@ func TestDiff(t *testing.T) {
 		{Name: "repeat_set2", Args: []string{"abcde", "[x*]"}, Stdin: []byte("abcde\n")},
 		{Name: "repeat_count", Args: []string{"abcde", "[x*5]"}, Stdin: []byte("abcde\n")},
 		{Name: "mixed_range_literal", Args: []string{"a-zA-Z", "A-Za-z"}, Stdin: []byte("Hello World\n")},
+		{Name: "delete_char", Args: []string{"-d", "l"}, Stdin: []byte("hello\n")},
+		{Name: "delete_range", Args: []string{"-d", "a-c"}, Stdin: []byte("abcdefg\n")},
+		{Name: "delete_class_digit", Args: []string{"-d", "[:digit:]"}, Stdin: []byte("hello 123\n")},
+		{Name: "delete_long", Args: []string{"--delete", "l"}, Stdin: []byte("hello\n")},
+		{Name: "squeeze_single_set", Args: []string{"-s", "a-c"}, Stdin: []byte("aabbcc\n")},
+		{Name: "squeeze_spaces", Args: []string{"-s", " "}, Stdin: []byte("hello   world\n")},
+		{Name: "squeeze_with_translate", Args: []string{"-s", "a-z", "A-Z"}, Stdin: []byte("aabbcc\n")},
+		{Name: "squeeze_long", Args: []string{"--squeeze-repeats", "o"}, Stdin: []byte("fooood\n")},
+		{Name: "delete_squeeze_ds", Args: []string{"-ds", "[:digit:]", " "}, Stdin: []byte("1 2  3  hello\n")},
+		{Name: "delete_squeeze_separate", Args: []string{"-d", "-s", "0-9", "a-z"}, Stdin: []byte("aa11bb22cc\n")},
+		{Name: "complement_translate", Args: []string{"-c", "a-z\\n", "*"}, Stdin: []byte("hello world\n")},
+		{Name: "complement_delete", Args: []string{"-cd", "a-z\\n"}, Stdin: []byte("hello 123 world\n")},
+		{Name: "complement_squeeze", Args: []string{"-cs", "a-z", "\\n"}, Stdin: []byte("hello 123 world\n")},
+		{Name: "complement_upper_C", Args: []string{"-Cd", "a-z\\n"}, Stdin: []byte("hello 123\n")},
+		{Name: "complement_long", Args: []string{"--complement", "-d", "a-z\\n"}, Stdin: []byte("hello 123\n")},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
