@@ -327,6 +327,57 @@ func TestDiff(t *testing.T) {
 			},
 		})
 	})
+
+	t.Run("t_legacy_directory", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "t_d_flag",
+				Args:      []string{"-t", "-d", "myXXXXXX"},
+				Env:       []string{"TMPDIR=" + tmpdir},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("my", 6)},
+			},
+		})
+		verifyCreated(t, tmpdir, "my", 6, 0o700, true)
+	})
+
+	t.Run("dry_run_custom_template", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		template := filepath.Join(tmpdir, "testXXXXXX")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "u_custom",
+				Args:      []string{"-u", template},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("test", 6), normalizeDryRunWarning},
+			},
+		})
+		verifyNotCreated(t, tmpdir)
+	})
+
+	t.Run("dry_run_with_suffix", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "u_suffix",
+				Args:      []string{"-u", "--suffix=.txt"},
+				Env:       []string{"TMPDIR=" + tmpdir},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("tmp.", 10), normalizeDryRunWarning},
+			},
+		})
+		verifyNotCreated(t, tmpdir)
+	})
+
+	t.Run("p_flag_default_template", func(t *testing.T) {
+		tmpdir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "p_default",
+				Args:      []string{"-p", tmpdir},
+				Normalize: []testutils.NormalizeFunc{makeTemplateNormalizer("tmp.", 10)},
+			},
+		})
+		verifyCreated(t, tmpdir, "tmp.", 10, 0o600, false)
+	})
 }
 
 func makeTemplateNormalizer(prefix string, xCount int) testutils.NormalizeFunc {
