@@ -1,10 +1,12 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd037-ln R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd037-ln R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
+// R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,18 +23,27 @@ In the 1st form, create a link to TARGET with the name LINK_NAME.
 In the 2nd form, create a link to TARGET in the current directory.
 In the 3rd form, create links to each TARGET in DIRECTORY.
 
-  -s, --symbolic  make symbolic links instead of hard links
-  -r, --relative  create symbolic links relative to link location
-      --help      display this help and exit
-      --version   output version information and exit
+  -f, --force           remove existing destination files
+  -i, --interactive     prompt whether to remove destinations
+  -n, --no-dereference  treat LINK_NAME as a normal file if
+                         it is a symbolic link to a directory
+  -s, --symbolic        make symbolic links instead of hard links
+  -r, --relative        create symbolic links relative to link location
+  -v, --verbose         print name of each linked file
+      --help            display this help and exit
+      --version         output version information and exit
 `
 
 const versionText = `ln (go-unix-utils) dev
 `
 
 type options struct {
-	symbolic bool
-	relative bool
+	symbolic      bool
+	relative      bool
+	force         bool
+	interactive   bool
+	noDereference bool
+	verbose       bool
 }
 
 func main() {
@@ -55,23 +66,14 @@ func run(opts options, targets []string) int {
 	switch {
 	case len(targets) == 1:
 		linkName := "./" + filepath.Base(targets[0])
-		if err := createLink(targets[0], linkName, opts); err != nil {
-			fmt.Fprintf(os.Stderr, "ln: %s\n", err)
-			exitCode = 1
-		}
-	case isDirectory(last):
+		exitCode = doLink(targets[0], linkName, opts, exitCode)
+	case isDirDest(last, opts.noDereference):
 		for _, target := range targets[:len(targets)-1] {
 			linkName := filepath.Join(last, filepath.Base(target))
-			if err := createLink(target, linkName, opts); err != nil {
-				fmt.Fprintf(os.Stderr, "ln: %s\n", err)
-				exitCode = 1
-			}
+			exitCode = doLink(target, linkName, opts, exitCode)
 		}
 	case len(targets) == 2:
-		if err := createLink(targets[0], targets[1], opts); err != nil {
-			fmt.Fprintf(os.Stderr, "ln: %s\n", err)
-			exitCode = 1
-		}
+		exitCode = doLink(targets[0], targets[1], opts, exitCode)
 	default:
 		fmt.Fprintf(os.Stderr, "ln: target '%s': %s\n",
 			last, targetDirError(last))
@@ -81,23 +83,102 @@ func run(opts options, targets []string) int {
 	return exitCode
 }
 
-func createLink(target, linkName string, opts options) error {
-	if opts.symbolic {
-		t := target
-		if opts.relative {
-			rel, err := computeRelative(target, linkName)
-			if err != nil {
-				return err
-			}
-			t = rel
-		}
-		if err := os.Symlink(t, linkName); err != nil {
-			return fmt.Errorf("failed to create symbolic link '%s': %s",
-				linkName, sysErrMsg(err))
-		}
-		return nil
+func doLink(target, linkName string, opts options, code int) int {
+	ok, err := createLink(target, linkName, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ln: %s\n", err)
+		return 1
 	}
-	return createHardLink(target, linkName)
+	if !ok {
+		return 1
+	}
+	return code
+}
+
+func createLink(target, linkName string, opts options) (bool, error) {
+	proceed, err := handleExisting(linkName, opts)
+	if err != nil {
+		return false, err
+	}
+	if !proceed {
+		return false, nil
+	}
+
+	if opts.symbolic {
+		return true, createSymLink(target, linkName, opts)
+	}
+	return true, createHardLink(target, linkName, opts)
+}
+
+func createSymLink(target, linkName string, opts options) error {
+	t := target
+	if opts.relative {
+		rel, err := computeRelative(target, linkName)
+		if err != nil {
+			return err
+		}
+		t = rel
+	}
+	if err := os.Symlink(t, linkName); err != nil {
+		return fmt.Errorf("failed to create symbolic link '%s': %s",
+			linkName, sysErrMsg(err))
+	}
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "'%s' -> '%s'\n", linkName, t)
+	}
+	return nil
+}
+
+func createHardLink(target, linkName string, opts options) error {
+	fi, err := os.Stat(target)
+	if err != nil {
+		return fmt.Errorf("failed to access '%s': %s", target, sysErrMsg(err))
+	}
+	if fi.IsDir() {
+		return fmt.Errorf("%s: hard link not allowed for directory", target)
+	}
+	if err := os.Link(target, linkName); err != nil {
+		return fmt.Errorf("failed to create hard link '%s': %s",
+			linkName, sysErrMsg(err))
+	}
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "'%s' => '%s'\n", linkName, target)
+	}
+	return nil
+}
+
+func handleExisting(linkName string, opts options) (bool, error) {
+	_, err := os.Lstat(linkName)
+	if err != nil {
+		return true, nil
+	}
+
+	if opts.interactive {
+		if !confirmReplace(linkName) {
+			return false, nil
+		}
+	} else if !opts.force {
+		return true, nil
+	}
+
+	if err := os.Remove(linkName); err != nil {
+		return false, fmt.Errorf("cannot remove '%s': %s",
+			linkName, sysErrMsg(err))
+	}
+	return true, nil
+}
+
+func confirmReplace(dest string) bool {
+	if !sys.IsTerminal(os.Stdin.Fd()) {
+		return false
+	}
+	fmt.Fprintf(os.Stderr, "ln: replace '%s'? ", dest)
+	scanner := bufio.NewScanner(os.Stdin)
+	if !scanner.Scan() {
+		return false
+	}
+	line := scanner.Text()
+	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
 }
 
 func computeRelative(target, linkName string) (string, error) {
@@ -117,23 +198,14 @@ func computeRelative(target, linkName string) (string, error) {
 	return rel, nil
 }
 
-func createHardLink(target, linkName string) error {
-	fi, err := os.Stat(target)
-	if err != nil {
-		return fmt.Errorf("failed to access '%s': %s", target, sysErrMsg(err))
+func isDirDest(path string, noDereference bool) bool {
+	var fi os.FileInfo
+	var err error
+	if noDereference {
+		fi, err = os.Lstat(path)
+	} else {
+		fi, err = os.Stat(path)
 	}
-	if fi.IsDir() {
-		return fmt.Errorf("%s: hard link not allowed for directory", target)
-	}
-	if err := os.Link(target, linkName); err != nil {
-		return fmt.Errorf("failed to create hard link '%s': %s",
-			linkName, sysErrMsg(err))
-	}
-	return nil
-}
-
-func isDirectory(path string) bool {
-	fi, err := os.Stat(path)
 	if err != nil {
 		return false
 	}
@@ -236,6 +308,20 @@ func parseLongFlag(flag string, opts *options) (int, error) {
 	case "--relative":
 		opts.relative = true
 		return 1, nil
+	case "--force":
+		opts.force = true
+		opts.interactive = false
+		return 1, nil
+	case "--interactive":
+		opts.interactive = true
+		opts.force = false
+		return 1, nil
+	case "--no-dereference":
+		opts.noDereference = true
+		return 1, nil
+	case "--verbose":
+		opts.verbose = true
+		return 1, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
@@ -248,6 +334,16 @@ func parseShortFlags(flags string, opts *options) error {
 			opts.symbolic = true
 		case 'r':
 			opts.relative = true
+		case 'f':
+			opts.force = true
+			opts.interactive = false
+		case 'i':
+			opts.interactive = true
+			opts.force = false
+		case 'n':
+			opts.noDereference = true
+		case 'v':
+			opts.verbose = true
 		default:
 			return fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
