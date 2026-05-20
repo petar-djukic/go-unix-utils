@@ -1,0 +1,27 @@
+task_id: "5332"
+task_title: '[stitch] cmd/rmdir non-empty tolerance and error handling (srd035 R3.1, R3.2, R3.3, R3.4)'
+status: success
+branch: task/generation-run44-5332
+diff:
+    files: 3
+    insertions: 208
+    deletions: 2
+files:
+    - path: .cobbler/history/2026-05-20-06-51-32-stitch-orchestrator.log
+      status: M
+      insertions: 106
+      deletions: 0
+    - path: cmd/rmdir/main.go
+      status: M
+      insertions: 21
+      deletions: 1
+    - path: cmd/rmdir/rmdir_test.go
+      status: M
+      insertions: 82
+      deletions: 1
+loc_before:
+    production: 10144
+    test: 9584
+loc_after:
+    production: 10164
+    test: 9665
