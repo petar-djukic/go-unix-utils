@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd043-groups R1.1, R1.2, R1.3, R2.1.
+// Implements srd043-groups R1.1, R1.2, R1.3, R2.1, R2.2, R2.3.
 package main
 
 import (
