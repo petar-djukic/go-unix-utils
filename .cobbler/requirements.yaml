@@ -2506,16 +2506,16 @@ requirements:
             issue: 5361
             weight: 1
         R3.3:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.3:
-            status: proposed
+            status: in_progress
             weight: 1
     srd040-printenv:
         R1.1:
