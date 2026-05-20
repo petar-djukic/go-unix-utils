@@ -131,3 +131,13 @@
 [2026-05-20T10:26:23-04:00] [generation-run44] [stitch +2m28s] closeStitchTask: closing #5367 "[stitch] srd040-printenv R3.2, R3.3 (implementation continued)"
 [2026-05-20T10:26:25-04:00] [generation-run44] [stitch +2m30s] commentCobblerIssue: posted comment on #5367
 [2026-05-20T10:26:25-04:00] [generation-run44] [stitch +2m30s] updateRequirementsFile: marked 2 R-items as complete for issue #5367
+[2026-05-20T10:26:28-04:00] [generation-run44] [stitch +2m33s] closeCobblerIssue: closed #5367
+[2026-05-20T10:26:31-04:00] [generation-run44] [stitch +2m36s] closeStitchTask: #5367 closed
+[2026-05-20T10:26:32-04:00] [generation-run44] [stitch +2m37s] sweepCompletedTasks: all R-items for #5367 already complete, closing
+[2026-05-20T10:26:33-04:00] [generation-run44] [stitch +2m38s] commentCobblerIssue: posted comment on #5367
+[2026-05-20T10:26:35-04:00] [generation-run44] [stitch +2m40s] closeCobblerIssue: closed #5367
+[2026-05-20T10:26:35-04:00] [generation-run44] [stitch +2m40s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-20T10:26:35-04:00] [generation-run44] [stitch +2m40s] doOneTask: task 5367 finished in 2m31s
+[2026-05-20T10:26:35-04:00] [generation-run44] [stitch +2m40s] task 5367 completed in 2m31s
+[2026-05-20T10:26:35-04:00] [generation-run44] [stitch +2m40s] reached per-cycle limit (1), pausing for measure
+[2026-05-20T10:26:35-04:00] [generation-run44] [stitch +2m40s] completed 1 task(s) in 2m40s
