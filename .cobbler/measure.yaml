@@ -11524,3 +11524,191 @@
       - id: AC4
         text: Previously implemented functionality from R1.1-R2.4 and R3.1 is preserved
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/sort: final features -- srd053 R4.2-R4.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd053-sort.yaml (full SRD -- read requirements R4.2, R4.3, R4.4)
+      - cmd/sort/main.go (existing implementation -- R1.1 through R4.1 are already implemented)
+      - cmd/sort/sort_test.go (existing differential tests to extend)
+      - pkg/testutils/ (differential testing harness -- BuildBinary and RunDiffTests usage)
+
+    files:
+      - path: cmd/sort/main.go
+        action: modify
+        note: Add features for R4.2, R4.3, R4.4
+      - path: cmd/sort/sort_test.go
+        action: modify
+        note: Add differential test cases for R4.2, R4.3, R4.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd053 R4.2 as specified in the SRD"
+      - id: R2
+        text: "Implement srd053 R4.3 as specified in the SRD"
+      - id: R3
+        text: "Implement srd053 R4.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/sort implementation. Requirements R1.1 through R4.1 are already implemented in main.go. Read the existing code to understand the current structure before adding features."
+      - id: D2
+        text: "All differential tests must set LC_ALL=C in the Env field of each DiffTest."
+      - id: D3
+        text: "Use gsort as the reference binary name for exec.LookPath. Call t.Skip if gsort is not found."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/sort/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/sort/ -count=1 passes (or skips gracefully if gsort is not in PATH)"
+      - id: AC3
+        text: "go vet ./cmd/sort/ reports no issues"
+      - id: AC4
+        text: "All three SRD requirements (R4.2, R4.3, R4.4) are implemented and exercised by differential test cases"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/tail: basic tail output -- srd055 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd055-tail.yaml (full SRD -- read requirements R1.1, R1.2, R1.3, R1.4)
+      - pkg/testutils/ (differential testing harness -- BuildBinary and RunDiffTests usage pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler function)
+
+    files:
+      - path: cmd/tail/main.go
+        action: create
+        note: "tail implementation covering R1.1-R1.4: basic last-N-lines output from stdin and files"
+      - path: cmd/tail/tail_test.go
+        action: create
+        note: Differential tests comparing Go binary against gtail reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd055 R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd055 R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd055 R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd055 R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main to match GNU coreutils behavior when piped to consumers that close stdin early."
+      - id: D2
+        text: "Use the differential testing pattern: testutils.BuildBinary(t, \".\") for the Go binary, exec.LookPath(\"gtail\") for the reference binary, t.Skip if reference not found."
+      - id: D3
+        text: "All differential tests must set LC_ALL=C in the Env field of each DiffTest."
+      - id: D4
+        text: "This is the initial implementation. Later tasks will add R2.x-R4.x features. Structure the code so flag parsing and core logic are separable for future extension."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/tail/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/tail/ -count=1 passes (or skips gracefully if gtail is not in PATH)"
+      - id: AC3
+        text: "go vet ./cmd/tail/ reports no issues"
+      - id: AC4
+        text: "All four SRD requirements (R1.1, R1.2, R1.3, R1.4) are implemented and exercised by differential test cases"
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/tr: character translation fundamentals -- srd054 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd054-tr.yaml (full SRD -- read requirements R1.1, R1.2, R1.3, R1.4)
+      - pkg/testutils/ (differential testing harness -- BuildBinary and RunDiffTests usage pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler function)
+
+    files:
+      - path: cmd/tr/main.go
+        action: create
+        note: "tr implementation covering R1.1-R1.4: fundamental character-by-character translation"
+      - path: cmd/tr/tr_test.go
+        action: create
+        note: Differential tests comparing Go binary against gtr reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd054 R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd054 R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd054 R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd054 R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main to match GNU coreutils behavior when piped to consumers that close stdin early."
+      - id: D2
+        text: "Use the differential testing pattern: testutils.BuildBinary(t, \".\") for the Go binary, exec.LookPath(\"gtr\") for the reference binary, t.Skip if reference not found."
+      - id: D3
+        text: "All differential tests must set LC_ALL=C in the Env field of each DiffTest."
+      - id: D4
+        text: "This is the initial implementation. Later tasks will add R2.x-R4.x features (character classes, delete/squeeze modes, complement). Structure the code so SET parsing and translation logic are separable for future extension."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/tr/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/tr/ -count=1 passes (or skips gracefully if gtr is not in PATH)"
+      - id: AC3
+        text: "go vet ./cmd/tr/ reports no issues"
+      - id: AC4
+        text: "All four SRD requirements (R1.1, R1.2, R1.3, R1.4) are implemented and exercised by differential test cases"
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/tr: character classes and SET extensions -- srd054 R2.1-R2.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd054-tr.yaml (full SRD -- read requirements R2.1, R2.2, R2.3, R2.4)
+      - cmd/tr/main.go (existing implementation -- R1.1 through R1.4 are already implemented)
+      - cmd/tr/tr_test.go (existing differential tests to extend)
+      - pkg/testutils/ (differential testing harness -- BuildBinary and RunDiffTests usage)
+
+    files:
+      - path: cmd/tr/main.go
+        action: modify
+        note: Extend tr with R2.1-R2.4 features
+      - path: cmd/tr/tr_test.go
+        action: modify
+        note: Add differential test cases for R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd054 R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd054 R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd054 R2.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd054 R2.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/tr implementation. Requirements R1.1 through R1.4 are already implemented in main.go. Read the existing code to understand the current SET parsing and translation structure before adding features."
+      - id: D2
+        text: "All differential tests must set LC_ALL=C in the Env field of each DiffTest."
+      - id: D3
+        text: "Use gtr as the reference binary name for exec.LookPath. Call t.Skip if gtr is not found."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/tr/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/tr/ -count=1 passes (or skips gracefully if gtr is not in PATH)"
+      - id: AC3
+        text: "go vet ./cmd/tr/ reports no issues"
+      - id: AC4
+        text: "All four SRD requirements (R2.1, R2.2, R2.3, R2.4) are implemented and exercised by differential test cases"
+  dependency: 2
