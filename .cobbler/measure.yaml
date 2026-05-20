@@ -11051,3 +11051,171 @@
       - id: AC5
         text: "The complete groups utility is functional with all SRD requirements R1.1-R3.3 implemented"
   dependency: -1
+- index: 0
+  title: '[stitch] srd040-printenv R1.1, R1.2, R1.3, R2.1'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd040-printenv.yaml (full SRD -- implement only R1.1, R1.2, R1.3, R2.1)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing and SIGPIPE patterns)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+      - pkg/testutils/ (BuildBinary and RunDiffTests API for differential tests)
+
+    files:
+      - path: cmd/printenv/main.go
+        action: create
+        note: printenv utility -- core variable printing and initial flag parsing
+      - path: cmd/printenv/printenv_test.go
+        action: create
+        note: differential tests against gprintenv for R1.1, R1.2, R1.3, R2.1
+
+    requirements:
+      - id: R1
+        text: "Implement srd040-printenv R1.1 per the SRD"
+      - id: R2
+        text: "Implement srd040-printenv R1.2 per the SRD"
+      - id: R3
+        text: "Implement srd040-printenv R1.3 per the SRD"
+      - id: R4
+        text: "Implement srd040-printenv R2.1 per the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the SIGPIPE shared protocol in ARCHITECTURE.yaml"
+      - id: D2
+        text: "Use gprintenv as the reference binary name in differential tests (Homebrew g-prefix convention)"
+      - id: D3
+        text: "Use exec.LookPath for gprintenv and t.Skip if not found, per the graceful-skip shared protocol"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/printenv/main.go compiles with go build -o bin/printenv ./cmd/printenv/"
+      - id: AC2
+        text: "go vet ./cmd/printenv/... passes with no warnings"
+      - id: AC3
+        text: "Differential tests for R1.1, R1.2, R1.3, R2.1 pass against gprintenv when the reference binary is available"
+      - id: AC4
+        text: "Tests skip gracefully when gprintenv is not in PATH"
+  dependency: -1
+- index: 1
+  title: '[stitch] srd040-printenv R2.2, R2.3, R2.4, R3.1 (implementation continued)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd040-printenv.yaml (full SRD -- implement only R2.2, R2.3, R2.4, R3.1)
+      - cmd/printenv/main.go (existing implementation from previous task)
+      - cmd/printenv/printenv_test.go (existing tests from previous task)
+
+    files:
+      - path: cmd/printenv/main.go
+        action: modify
+        note: add functionality for R2.2, R2.3, R2.4, R3.1
+      - path: cmd/printenv/printenv_test.go
+        action: modify
+        note: add differential test cases for R2.2, R2.3, R2.4, R3.1
+
+    requirements:
+      - id: R1
+        text: "Implement srd040-printenv R2.2 per the SRD"
+      - id: R2
+        text: "Implement srd040-printenv R2.3 per the SRD"
+      - id: R3
+        text: "Implement srd040-printenv R2.4 per the SRD"
+      - id: R4
+        text: "Implement srd040-printenv R3.1 per the SRD"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/printenv/main.go compiles with go build -o bin/printenv ./cmd/printenv/"
+      - id: AC2
+        text: "go vet ./cmd/printenv/... passes with no warnings"
+      - id: AC3
+        text: "Differential tests for R2.2, R2.3, R2.4, R3.1 pass against gprintenv when the reference binary is available"
+      - id: AC4
+        text: "All previously passing tests for R1.1, R1.2, R1.3, R2.1 continue to pass"
+  dependency: 0
+- index: 2
+  title: '[stitch] srd040-printenv R3.2, R3.3 (implementation continued)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd040-printenv.yaml (full SRD -- implement only R3.2, R3.3)
+      - cmd/printenv/main.go (existing implementation from previous tasks)
+      - cmd/printenv/printenv_test.go (existing tests from previous tasks)
+
+    files:
+      - path: cmd/printenv/main.go
+        action: modify
+        note: add functionality for R3.2, R3.3 to complete printenv
+      - path: cmd/printenv/printenv_test.go
+        action: modify
+        note: add differential test cases for R3.2, R3.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd040-printenv R3.2 per the SRD"
+      - id: R2
+        text: "Implement srd040-printenv R3.3 per the SRD"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/printenv/main.go compiles with go build -o bin/printenv ./cmd/printenv/"
+      - id: AC2
+        text: "go vet ./cmd/printenv/... passes with no warnings"
+      - id: AC3
+        text: "Differential tests for R3.2, R3.3 pass against gprintenv when the reference binary is available"
+      - id: AC4
+        text: "All previously passing tests for R1.1 through R3.1 continue to pass"
+      - id: AC5
+        text: "All 10 srd040-printenv requirements (R1.1-R1.3, R2.1-R2.4, R3.1-R3.3) are now implemented"
+  dependency: 1
+- index: 3
+  title: '[stitch] srd041-id R1.1, R1.2, R1.3, R2.1'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd041-id.yaml (full SRD -- implement only R1.1, R1.2, R1.3, R2.1)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing and SIGPIPE patterns)
+      - pkg/sys/ (InstallSIGPIPEHandler usage)
+      - pkg/testutils/ (BuildBinary and RunDiffTests API for differential tests)
+
+    files:
+      - path: cmd/id/main.go
+        action: create
+        note: id utility -- core user and group identity printing
+      - path: cmd/id/id_test.go
+        action: create
+        note: differential tests against gid for R1.1, R1.2, R1.3, R2.1
+
+    requirements:
+      - id: R1
+        text: "Implement srd041-id R1.1 per the SRD"
+      - id: R2
+        text: "Implement srd041-id R1.2 per the SRD"
+      - id: R3
+        text: "Implement srd041-id R1.3 per the SRD"
+      - id: R4
+        text: "Implement srd041-id R2.1 per the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the SIGPIPE shared protocol in ARCHITECTURE.yaml"
+      - id: D2
+        text: "Use gid as the reference binary name in differential tests (Homebrew g-prefix convention)"
+      - id: D3
+        text: "Use exec.LookPath for gid and t.Skip if not found, per the graceful-skip shared protocol"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/id/main.go compiles with go build -o bin/id ./cmd/id/"
+      - id: AC2
+        text: "go vet ./cmd/id/... passes with no warnings"
+      - id: AC3
+        text: "Differential tests for R1.1, R1.2, R1.3, R2.1 pass against gid when the reference binary is available"
+      - id: AC4
+        text: "Tests skip gracefully when gid is not in PATH"
+  dependency: -1
