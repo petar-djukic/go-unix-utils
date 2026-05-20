@@ -1,0 +1,31 @@
+task_id: "5377"
+task_title: '[stitch] cmd/sort: remaining numeric modes and check mode -- srd053 R3.2-R3.4, R4.1'
+status: success
+branch: task/generation-run44-5377
+diff:
+    files: 4
+    insertions: 698
+    deletions: 170
+files:
+    - path: .cobbler/history/2026-05-20-18-16-36-stitch-orchestrator.log
+      status: M
+      insertions: 141
+      deletions: 0
+    - path: cmd/sort/compare.go
+      status: A
+      insertions: 174
+      deletions: 0
+    - path: cmd/sort/keys.go
+      status: A
+      insertions: 276
+      deletions: 0
+    - path: cmd/sort/main.go
+      status: M
+      insertions: 108
+      deletions: 170
+loc_before:
+    production: 12061
+    test: 11568
+loc_after:
+    production: 12449
+    test: 11568
