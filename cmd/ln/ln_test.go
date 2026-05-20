@@ -550,9 +550,12 @@ func verifyHardLink(t *testing.T, dir, orig, link string) {
 	if err != nil {
 		t.Fatalf("stat original %s: %v", orig, err)
 	}
-	linkInfo, err := os.Stat(linkPath)
+	linkInfo, err := os.Lstat(linkPath)
 	if err != nil {
-		t.Fatalf("stat link %s: %v", link, err)
+		t.Fatalf("lstat link %s: %v", link, err)
+	}
+	if linkInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("%s is a symlink, expected hard link", link)
 	}
 	if !os.SameFile(origInfo, linkInfo) {
 		t.Fatalf("%s and %s do not share the same inode", orig, link)
@@ -562,6 +565,13 @@ func verifyHardLink(t *testing.T, dir, orig, link string) {
 func verifySymlink(t *testing.T, dir, link, expectedTarget string) {
 	t.Helper()
 	linkPath := filepath.Join(dir, link)
+	fi, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("lstat %s: %v", link, err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("%s is not a symlink, expected symbolic link", link)
+	}
 	target, err := os.Readlink(linkPath)
 	if err != nil {
 		t.Fatalf("readlink %s: %v", link, err)
