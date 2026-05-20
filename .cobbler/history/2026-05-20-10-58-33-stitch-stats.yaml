@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5374"
+task_title: '[stitch] cmd/sort: core I/O and basic sorting -- srd053 R1.1-R1.4'
+status: success
+started_at: "2026-05-20T14:58:33Z"
+duration: 2m6s
+duration_s: 125
+tokens:
+    input: 390233
+    output: 3250
+    cache_creation: 194918
+    cache_read: 195304
+cost_usd: 1.7593277500000002
+num_turns: 22
+rate_limit_wait_s: 3
+loc_before:
+    production: 11562
+    test: 11568
+loc_after:
+    production: 11741
+    test: 11568
+diff:
+    files: 2
+    insertions: 291
+    deletions: 0
