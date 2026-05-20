@@ -1,0 +1,23 @@
+task_id: "5342"
+task_title: '[stitch] cmd/ln implementation -- backup and target directory modes (srd037-ln R3.1, R3.2, R3.3, R3.4)'
+status: success
+branch: task/generation-run44-5342
+diff:
+    files: 2
+    insertions: 365
+    deletions: 49
+files:
+    - path: .cobbler/history/2026-05-20-07-33-36-stitch-orchestrator.log
+      status: M
+      insertions: 221
+      deletions: 0
+    - path: cmd/ln/main.go
+      status: M
+      insertions: 145
+      deletions: 49
+loc_before:
+    production: 10300
+    test: 9854
+loc_after:
+    production: 10396
+    test: 9854
