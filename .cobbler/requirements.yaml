@@ -2506,16 +2506,20 @@ requirements:
             issue: 5361
             weight: 1
         R3.3:
-            status: in_progress
+            status: complete
+            issue: 5362
             weight: 1
         R4.1:
-            status: in_progress
+            status: complete
+            issue: 5362
             weight: 1
         R4.2:
-            status: in_progress
+            status: complete
+            issue: 5362
             weight: 1
         R4.3:
-            status: in_progress
+            status: complete
+            issue: 5362
             weight: 1
     srd040-printenv:
         R1.1:
