@@ -1,0 +1,31 @@
+task_id: "5379"
+task_title: '[stitch] cmd/sort: final features -- srd053 R4.2-R4.4'
+status: success
+branch: task/generation-run44-5379
+diff:
+    files: 4
+    insertions: 608
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-20-18-37-15-stitch-orchestrator.log
+      status: M
+      insertions: 239
+      deletions: 0
+    - path: cmd/sort/check.go
+      status: A
+      insertions: 60
+      deletions: 0
+    - path: cmd/sort/main.go
+      status: M
+      insertions: 32
+      deletions: 0
+    - path: cmd/sort/sort_test.go
+      status: A
+      insertions: 278
+      deletions: 0
+loc_before:
+    production: 12449
+    test: 11568
+loc_after:
+    production: 12541
+    test: 11846
