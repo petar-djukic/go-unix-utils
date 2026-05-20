@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5389"
+task_title: '[stitch] cmd/tail: srd055 R3.1-R3.4'
+status: success
+started_at: "2026-05-20T23:47:16Z"
+duration: 2m31s
+duration_s: 151
+tokens:
+    input: 506580
+    output: 4175
+    cache_creation: 201622
+    cache_read: 304944
+cost_usd: 1.8889772499999997
+num_turns: 22
+rate_limit_wait_s: 3
+loc_before:
+    production: 13297
+    test: 12251
+loc_after:
+    production: 13332
+    test: 12315
+diff:
+    files: 3
+    insertions: 208
+    deletions: 1
