@@ -1,0 +1,27 @@
+[2026-05-19T21:57:51-04:00] [generation-run44] [stitch +0s] starting (limit=1)
+[2026-05-19T21:57:51-04:00] [generation-run44] [stitch +0s] stitch config: silence=true stitchTotal=0 stitchPerCycle=1 measure=4 generationBranch=""
+[2026-05-19T21:57:51-04:00] [generation-run44] [stitch +0s] resolved branch=generation-run44
+[2026-05-19T21:57:51-04:00] [generation-run44] [stitch +0s] repoRoot=/Users/pdiddy/COBBLER/generation-run44
+[2026-05-19T21:57:51-04:00] [generation-run44] [stitch +0s] using GitHub repo petar-djukic/go-unix-utils generation generation-run44 for issues
+[2026-05-19T22:14:28-04:00] [generation-run44] [stitch +2s] ensureCobblerLabels: could not create label "cobbler-ready": exit status 1 (output: {"message":"Validation Failed","errors":[{"resource":"Label","code":"already_exists","field":"name"}],"documentation_url":"https://docs.github.com/rest/issues/labels#create-a-label","status":"422"})
+[2026-05-19T22:14:29-04:00] [generation-run44] [stitch +2s] ensureCobblerLabels: could not create label "cobbler-in-progress": exit status 1 (output: {"message":"Validation Failed","errors":[{"resource":"Label","code":"already_exists","field":"name"}],"documentation_url":"https://docs.github.com/rest/issues/labels#create-a-label","status":"422"})
+[2026-05-19T22:14:29-04:00] [generation-run44] [stitch +3s] ensureCobblerLabels: could not create label "cobbler-skipped": exit status 1 (output: {"message":"Validation Failed","errors":[{"resource":"Label","code":"already_exists","field":"name"}],"documentation_url":"https://docs.github.com/rest/issues/labels#create-a-label","status":"422"})
+[2026-05-19T22:14:29-04:00] [generation-run44] [stitch +3s] worktreeBase=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees
+[2026-05-19T22:14:29-04:00] [generation-run44] [stitch +3s] baseBranch=generation-run44
+[2026-05-19T22:14:29-04:00] [generation-run44] [stitch +3s] recovering stale tasks
+[2026-05-19T22:14:29-04:00] [generation-run44] [stitch +3s] recoverStaleTasks: checking for stale branches with pattern task/generation-run44-*
+[2026-05-19T22:14:29-04:00] [generation-run44] [stitch +3s] recoverStaleBranches: no stale branches found
+[2026-05-19T22:14:29-04:00] [generation-run44] [stitch +3s] recoverStaleTasks: checking for orphaned in_progress issues
+[2026-05-19T22:14:29-04:00] [generation-run44] [stitch +3s] resetOrphanedIssues: orphaned issue #5327 (no branch task/generation-run44-5327), removing in-progress label
+[2026-05-19T22:14:31-04:00] [generation-run44] [stitch +5s] recoverStaleTasks: pruning worktrees
+[2026-05-19T22:14:31-04:00] [generation-run44] [stitch +5s] recoverStaleTasks: recovered stale state (branches=false orphans=true)
+[2026-05-19T22:14:31-04:00] [generation-run44] [stitch +5s] looking for next ready task (completed 0 so far)
+[2026-05-19T22:14:31-04:00] [generation-run44] [stitch +5s] pickTask: calling pickReadyIssue repo=petar-djukic/go-unix-utils generation=generation-run44
+[2026-05-19T22:36:54-04:00] [generation-run44] [stitch +36s] pickReadyIssue: add in-progress label to #5327: exit status 1
+[2026-05-19T22:36:56-04:00] [generation-run44] [stitch +38s] pickReadyIssue: picked #5327 "[stitch] cmd/mkdir error handling and diagnostics (srd034 R4.1, R4.2, R4.3)" gen=generation-run44
+[2026-05-19T22:36:56-04:00] [generation-run44] [stitch +38s] pickTask: picked #5327 id=5327 branch=task/generation-run44-5327 worktree=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5327
+[2026-05-19T22:36:56-04:00] [generation-run44] [stitch +38s] pickTask: title="[stitch] cmd/mkdir error handling and diagnostics (srd034 R4.1, R4.2, R4.3)"
+[2026-05-19T22:36:56-04:00] [generation-run44] [stitch +38s] pickTask: descriptionLen=1945
+[2026-05-19T22:36:56-04:00] [generation-run44] [stitch +38s] executing task 1: id=5327 title="[stitch] cmd/mkdir error handling and diagnostics (srd034 R4.1, R4.2, R4.3)"
+[2026-05-19T22:36:56-04:00] [generation-run44] [stitch +38s] doOneTask: starting task 5327 ([stitch] cmd/mkdir error handling and diagnostics (srd034 R4.1, R4.2, R4.3))
+[2026-05-19T22:36:56-04:00] [generation-run44] [stitch +38s] doOneTask: task #5327 claimed via pickReadyIssue label
