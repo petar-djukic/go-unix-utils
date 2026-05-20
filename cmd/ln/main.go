@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Implements srd037-ln R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4,
-// R3.1, R3.2, R3.3, R3.4.
+// R3.1, R3.2, R3.3, R3.4, R3.5, R3.6.
 package main
 
 import (
@@ -23,15 +23,18 @@ In the 1st form, create a link to TARGET with the name LINK_NAME.
 In the 2nd form, create a link to TARGET in the current directory.
 In the 3rd form, create links to each TARGET in DIRECTORY.
 
-  -f, --force           remove existing destination files
-  -i, --interactive     prompt whether to remove destinations
-  -n, --no-dereference  treat LINK_NAME as a normal file if
-                         it is a symbolic link to a directory
-  -s, --symbolic        make symbolic links instead of hard links
-  -r, --relative        create symbolic links relative to link location
-  -v, --verbose         print name of each linked file
-      --help            display this help and exit
-      --version         output version information and exit
+  -b                         like --backup but does not accept an argument
+  -f, --force                remove existing destination files
+  -i, --interactive          prompt whether to remove destinations
+  -n, --no-dereference       treat LINK_NAME as a normal file if
+                              it is a symbolic link to a directory
+  -r, --relative             create symbolic links relative to link location
+  -s, --symbolic             make symbolic links instead of hard links
+  -S, --suffix=SUFFIX        override the usual backup suffix
+  -v, --verbose              print name of each linked file
+      --backup[=CONTROL]     make a backup of each existing destination file
+      --help                 display this help and exit
+      --version              output version information and exit
 `
 
 const versionText = `ln (go-unix-utils) dev
@@ -44,6 +47,8 @@ type options struct {
 	interactive   bool
 	noDereference bool
 	verbose       bool
+	backupMethod  string
+	suffix        string
 }
 
 func main() {
@@ -96,7 +101,7 @@ func doLink(target, linkName string, opts options, code int) int {
 }
 
 func createLink(target, linkName string, opts options) (bool, error) {
-	proceed, err := handleExisting(linkName, opts)
+	proceed, backupPath, err := handleExisting(linkName, opts)
 	if err != nil {
 		return false, err
 	}
@@ -105,12 +110,12 @@ func createLink(target, linkName string, opts options) (bool, error) {
 	}
 
 	if opts.symbolic {
-		return true, createSymLink(target, linkName, opts)
+		return true, createSymLink(target, linkName, opts, backupPath)
 	}
-	return true, createHardLink(target, linkName, opts)
+	return true, createHardLink(target, linkName, opts, backupPath)
 }
 
-func createSymLink(target, linkName string, opts options) error {
+func createSymLink(target, linkName string, opts options, backupPath string) error {
 	t := target
 	if opts.relative {
 		rel, err := computeRelative(target, linkName)
@@ -124,12 +129,12 @@ func createSymLink(target, linkName string, opts options) error {
 			linkName, sysErrMsg(err))
 	}
 	if opts.verbose {
-		fmt.Fprintf(os.Stdout, "'%s' -> '%s'\n", linkName, t)
+		printVerbose(backupPath, linkName, "->", t)
 	}
 	return nil
 }
 
-func createHardLink(target, linkName string, opts options) error {
+func createHardLink(target, linkName string, opts options, backupPath string) error {
 	fi, err := os.Stat(target)
 	if err != nil {
 		return fmt.Errorf("failed to access '%s': %s", target, sysErrMsg(err))
@@ -142,30 +147,107 @@ func createHardLink(target, linkName string, opts options) error {
 			linkName, sysErrMsg(err))
 	}
 	if opts.verbose {
-		fmt.Fprintf(os.Stdout, "'%s' => '%s'\n", linkName, target)
+		printVerbose(backupPath, linkName, "=>", target)
 	}
 	return nil
 }
 
-func handleExisting(linkName string, opts options) (bool, error) {
+func printVerbose(backupPath, linkName, arrow, target string) {
+	if backupPath != "" {
+		fmt.Fprintf(os.Stdout, "'%s' ~ '%s' %s '%s'\n", backupPath, linkName, arrow, target)
+	} else {
+		fmt.Fprintf(os.Stdout, "'%s' %s '%s'\n", linkName, arrow, target)
+	}
+}
+
+func handleExisting(linkName string, opts options) (bool, string, error) {
 	_, err := os.Lstat(linkName)
 	if err != nil {
-		return true, nil
+		return true, "", nil
 	}
 
 	if opts.interactive {
 		if !confirmReplace(linkName) {
-			return false, nil
+			return false, "", nil
 		}
-	} else if !opts.force {
-		return true, nil
+	} else if !opts.force && opts.backupMethod == "" {
+		return true, "", nil
 	}
 
-	if err := os.Remove(linkName); err != nil {
-		return false, fmt.Errorf("cannot remove '%s': %s",
-			linkName, sysErrMsg(err))
+	var backupPath string
+	if opts.backupMethod != "" {
+		backupPath, err = makeBackup(linkName, opts)
+		if err != nil {
+			return false, "", err
+		}
+	} else {
+		if err := os.Remove(linkName); err != nil {
+			return false, "", fmt.Errorf("cannot remove '%s': %s",
+				linkName, sysErrMsg(err))
+		}
 	}
-	return true, nil
+
+	return true, backupPath, nil
+}
+
+func makeBackup(path string, opts options) (string, error) {
+	var backupPath string
+	switch opts.backupMethod {
+	case "numbered":
+		backupPath = nextNumberedBackup(path)
+	case "existing":
+		if hasNumberedBackups(path) {
+			backupPath = nextNumberedBackup(path)
+		} else {
+			backupPath = path + opts.suffix
+		}
+	default:
+		backupPath = path + opts.suffix
+	}
+
+	if err := os.Rename(path, backupPath); err != nil {
+		return "", fmt.Errorf("cannot backup '%s' to '%s': %s",
+			path, backupPath, sysErrMsg(err))
+	}
+	return backupPath, nil
+}
+
+func nextNumberedBackup(path string) string {
+	for i := 1; ; i++ {
+		bp := fmt.Sprintf("%s.~%d~", path, i)
+		if _, err := os.Lstat(bp); err != nil {
+			return bp
+		}
+	}
+}
+
+func hasNumberedBackups(path string) bool {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	prefix := base + ".~"
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, "~") {
+			middle := name[len(prefix) : len(name)-1]
+			if len(middle) > 0 && isAllDigits(middle) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isAllDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func confirmReplace(dest string) bool {
@@ -267,7 +349,7 @@ func parseArgs(args []string) (options, []string, error) {
 			break
 		}
 		if strings.HasPrefix(arg, "--") {
-			n, err := parseLongFlag(arg, &opts)
+			n, err := parseLongFlag(arg, args[i+1:], &opts)
 			if err != nil {
 				return opts, nil, err
 			}
@@ -275,10 +357,11 @@ func parseArgs(args []string) (options, []string, error) {
 			continue
 		}
 		if len(arg) > 1 && arg[0] == '-' {
-			if err := parseShortFlags(arg[1:], &opts); err != nil {
+			consumed, err := parseShortFlags(arg[1:], args[i+1:], &opts)
+			if err != nil {
 				return opts, nil, err
 			}
-			i++
+			i += 1 + consumed
 			continue
 		}
 		targets = append(targets, arg)
@@ -289,45 +372,70 @@ func parseArgs(args []string) (options, []string, error) {
 		return opts, nil, fmt.Errorf("missing file operand")
 	}
 
+	if opts.suffix == "" {
+		opts.suffix = "~"
+	}
+
 	return opts, targets, nil
 }
 
-func parseLongFlag(flag string, opts *options) (int, error) {
-	switch flag {
-	case "--help":
+func parseLongFlag(flag string, remaining []string, opts *options) (int, error) {
+	switch {
+	case flag == "--help":
 		fmt.Fprint(os.Stdout, helpText)
 		os.Exit(0)
 		return 0, nil
-	case "--version":
+	case flag == "--version":
 		fmt.Fprint(os.Stdout, versionText)
 		os.Exit(0)
 		return 0, nil
-	case "--symbolic":
+	case flag == "--symbolic":
 		opts.symbolic = true
 		return 1, nil
-	case "--relative":
+	case flag == "--relative":
 		opts.relative = true
 		return 1, nil
-	case "--force":
+	case flag == "--force":
 		opts.force = true
 		opts.interactive = false
 		return 1, nil
-	case "--interactive":
+	case flag == "--interactive":
 		opts.interactive = true
 		opts.force = false
 		return 1, nil
-	case "--no-dereference":
+	case flag == "--no-dereference":
 		opts.noDereference = true
 		return 1, nil
-	case "--verbose":
+	case flag == "--verbose":
 		opts.verbose = true
+		return 1, nil
+	case flag == "--backup":
+		opts.backupMethod = "existing"
+		return 1, nil
+	case strings.HasPrefix(flag, "--backup="):
+		method := flag[len("--backup="):]
+		normalized, err := normalizeBackupMethod(method)
+		if err != nil {
+			return 0, err
+		}
+		opts.backupMethod = normalized
+		return 1, nil
+	case flag == "--suffix":
+		if len(remaining) == 0 {
+			return 0, fmt.Errorf("option '--suffix' requires an argument")
+		}
+		opts.suffix = remaining[0]
+		return 2, nil
+	case strings.HasPrefix(flag, "--suffix="):
+		opts.suffix = flag[len("--suffix="):]
 		return 1, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
 }
 
-func parseShortFlags(flags string, opts *options) error {
+func parseShortFlags(flags string, remaining []string, opts *options) (int, error) {
+	consumed := 0
 	for j := 0; j < len(flags); j++ {
 		switch flags[j] {
 		case 's':
@@ -344,9 +452,36 @@ func parseShortFlags(flags string, opts *options) error {
 			opts.noDereference = true
 		case 'v':
 			opts.verbose = true
+		case 'b':
+			opts.backupMethod = "existing"
+		case 'S':
+			if rest := flags[j+1:]; rest != "" {
+				opts.suffix = rest
+			} else if len(remaining) > consumed {
+				opts.suffix = remaining[consumed]
+				consumed++
+			} else {
+				return 0, fmt.Errorf("option requires an argument -- 'S'")
+			}
+			return consumed, nil
 		default:
-			return fmt.Errorf("invalid option -- '%c'", flags[j])
+			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
 	}
-	return nil
+	return consumed, nil
+}
+
+func normalizeBackupMethod(method string) (string, error) {
+	switch method {
+	case "none", "off":
+		return "", nil
+	case "numbered", "t":
+		return "numbered", nil
+	case "existing", "nil":
+		return "existing", nil
+	case "simple", "never":
+		return "simple", nil
+	default:
+		return "", fmt.Errorf("invalid backup type '%s'", method)
+	}
 }
