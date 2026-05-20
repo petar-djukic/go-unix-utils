@@ -10531,3 +10531,166 @@
       - id: AC4
         text: "go test ./cmd/mktemp/ -count=1 passes"
   dependency: 2
+- index: 0
+  title: srd036-mktemp R3.5, R3.6, R4.1, R4.2 (implementation)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd036-mktemp.yaml (requirements R3.5, R3.6, R4.1, R4.2 -- read these specific requirements and their acceptance criteria)
+      - cmd/mktemp/main.go (existing implementation -- extend without breaking existing functionality)
+      - pkg/sys/sys.go (SIGPIPE handler convention)
+
+    files:
+      - path: cmd/mktemp/main.go
+        action: modify
+        note: Add functionality for srd036-mktemp R3.5, R3.6, R4.1, R4.2
+
+    requirements:
+      - id: R1
+        text: "Implement srd036-mktemp requirement R3.5 exactly as specified in the SRD"
+      - id: R2
+        text: "Implement srd036-mktemp requirement R3.6 exactly as specified in the SRD"
+      - id: R3
+        text: "Implement srd036-mktemp requirement R4.1 exactly as specified in the SRD"
+      - id: R4
+        text: "Implement srd036-mktemp requirement R4.2 exactly as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the patterns already established in cmd/mktemp/main.go -- extend the existing flag parsing, template handling, and error reporting rather than restructuring"
+      - id: D2
+        text: "Ensure sys.InstallSIGPIPEHandler() is called at the start of main per project convention"
+      - id: D3
+        text: "The cmd/mktemp/collision.* files are hash-collision test fixtures, not source code -- do not modify them"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/mktemp/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/mktemp/ reports no issues"
+      - id: AC3
+        text: "All behaviors specified in srd036-mktemp R3.5, R3.6, R4.1, R4.2 are implemented"
+      - id: AC4
+        text: "Existing functionality from previously implemented requirements (R1.x, R2.x, R3.1-R3.4) is not broken"
+  dependency: -1
+- index: 1
+  title: srd036-mktemp R4.3, R4.4 (implementation)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd036-mktemp.yaml (requirements R4.3, R4.4 -- read these specific requirements and their acceptance criteria)
+      - cmd/mktemp/main.go (existing implementation including changes from the prior task that added R3.5, R3.6, R4.1, R4.2)
+
+    files:
+      - path: cmd/mktemp/main.go
+        action: modify
+        note: Add functionality for srd036-mktemp R4.3, R4.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd036-mktemp requirement R4.3 exactly as specified in the SRD"
+      - id: R2
+        text: "Implement srd036-mktemp requirement R4.4 exactly as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the patterns already established in cmd/mktemp/main.go -- extend the existing structure rather than restructuring"
+      - id: D2
+        text: "The cmd/mktemp/collision.* files are hash-collision test fixtures, not source code -- do not modify them"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/mktemp/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/mktemp/ reports no issues"
+      - id: AC3
+        text: "All behaviors specified in srd036-mktemp R4.3, R4.4 are implemented"
+      - id: AC4
+        text: "Existing functionality from all previously implemented requirements is not broken"
+  dependency: 0
+- index: 2
+  title: srd036-mktemp R3.5, R3.6, R4.1, R4.2 (tests)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd036-mktemp.yaml (requirements R3.5, R3.6, R4.1, R4.2 -- read acceptance criteria to derive test inputs and expected behaviors)
+      - cmd/mktemp/main.go (implementation to test)
+      - cmd/mktemp/mktemp_test.go (existing test file -- extend with new DiffTest entries)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/mktemp/mktemp_test.go
+        action: modify
+        note: Add differential test cases for srd036-mktemp R3.5, R3.6, R4.1, R4.2
+
+    requirements:
+      - id: R1
+        text: "Add differential test cases that verify srd036-mktemp R3.5 behavior against gmktemp"
+      - id: R2
+        text: "Add differential test cases that verify srd036-mktemp R3.6 behavior against gmktemp"
+      - id: R3
+        text: "Add differential test cases that verify srd036-mktemp R4.1 behavior against gmktemp"
+      - id: R4
+        text: "Add differential test cases that verify srd036-mktemp R4.2 behavior against gmktemp"
+
+    design_decisions:
+      - id: D1
+        text: "Use the existing TestDiff function and []testutils.DiffTest pattern already in mktemp_test.go -- add new DiffTest entries to the existing slice"
+      - id: D2
+        text: "Use exec.LookPath(\"gmktemp\") and t.Skip if not found, following the graceful-skip pattern from pkg/testutils"
+      - id: D3
+        text: "Set LC_ALL=C in the test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/mktemp/ -count=1 passes (or skips gracefully if gmktemp is not installed)"
+      - id: AC2
+        text: "Each of R3.5, R3.6, R4.1, R4.2 has at least one DiffTest entry exercising its specified behavior"
+      - id: AC3
+        text: "Existing test cases are not modified or removed"
+      - id: AC4
+        text: "go vet ./cmd/mktemp/ reports no issues"
+  dependency: 1
+- index: 3
+  title: srd036-mktemp R4.3, R4.4 (tests)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd036-mktemp.yaml (requirements R4.3, R4.4 -- read acceptance criteria to derive test inputs and expected behaviors)
+      - cmd/mktemp/main.go (implementation to test)
+      - cmd/mktemp/mktemp_test.go (existing test file -- extend with new DiffTest entries, including entries added by the prior test task for R3.5, R3.6, R4.1, R4.2)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/mktemp/mktemp_test.go
+        action: modify
+        note: Add differential test cases for srd036-mktemp R4.3, R4.4
+
+    requirements:
+      - id: R1
+        text: "Add differential test cases that verify srd036-mktemp R4.3 behavior against gmktemp"
+      - id: R2
+        text: "Add differential test cases that verify srd036-mktemp R4.4 behavior against gmktemp"
+
+    design_decisions:
+      - id: D1
+        text: "Use the existing TestDiff function and []testutils.DiffTest pattern already in mktemp_test.go -- add new DiffTest entries to the existing slice"
+      - id: D2
+        text: "Use exec.LookPath(\"gmktemp\") and t.Skip if not found, following the graceful-skip pattern from pkg/testutils"
+      - id: D3
+        text: "Set LC_ALL=C in the test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/mktemp/ -count=1 passes (or skips gracefully if gmktemp is not installed)"
+      - id: AC2
+        text: "Each of R4.3, R4.4 has at least one DiffTest entry exercising its specified behavior"
+      - id: AC3
+        text: "Existing test cases (including those added by the prior test task) are not modified or removed"
+      - id: AC4
+        text: "go vet ./cmd/mktemp/ reports no issues"
+  dependency: 2
