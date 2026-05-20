@@ -1,14 +1,15 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
+// Implements srd037-ln R1.1, R1.2, R1.3, R1.4.
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -51,7 +52,7 @@ func run(opts options, targets []string) int {
 
 	switch {
 	case len(targets) == 1:
-		linkName := filepath.Base(targets[0])
+		linkName := "./" + filepath.Base(targets[0])
 		if err := createLink(targets[0], linkName, opts); err != nil {
 			fmt.Fprintf(os.Stderr, "ln: %s\n", err)
 			exitCode = 1
@@ -70,7 +71,8 @@ func run(opts options, targets []string) int {
 			exitCode = 1
 		}
 	default:
-		fmt.Fprintf(os.Stderr, "ln: target '%s' is not a directory\n", last)
+		fmt.Fprintf(os.Stderr, "ln: target '%s': %s\n",
+			last, targetDirError(last))
 		exitCode = 1
 	}
 
@@ -81,7 +83,7 @@ func createLink(target, linkName string, opts options) error {
 	if opts.symbolic {
 		if err := os.Symlink(target, linkName); err != nil {
 			return fmt.Errorf("failed to create symbolic link '%s': %s",
-				linkName, sysError(err))
+				linkName, sysErrMsg(err))
 		}
 		return nil
 	}
@@ -91,14 +93,14 @@ func createLink(target, linkName string, opts options) error {
 func createHardLink(target, linkName string) error {
 	fi, err := os.Stat(target)
 	if err != nil {
-		return fmt.Errorf("failed to access '%s': %s", target, sysError(err))
+		return fmt.Errorf("failed to access '%s': %s", target, sysErrMsg(err))
 	}
 	if fi.IsDir() {
-		return fmt.Errorf("'%s': hard link not allowed for directory", target)
+		return fmt.Errorf("%s: hard link not allowed for directory", target)
 	}
 	if err := os.Link(target, linkName); err != nil {
 		return fmt.Errorf("failed to create hard link '%s': %s",
-			linkName, sysError(err))
+			linkName, sysErrMsg(err))
 	}
 	return nil
 }
@@ -111,11 +113,47 @@ func isDirectory(path string) bool {
 	return fi.IsDir()
 }
 
-func sysError(err error) string {
-	for u := errors.Unwrap(err); u != nil; u = errors.Unwrap(err) {
-		err = u
+func targetDirError(path string) string {
+	_, err := os.Stat(path)
+	if err != nil {
+		return "No such file or directory"
 	}
-	return err.Error()
+	return "Not a directory"
+}
+
+func sysErrMsg(err error) string {
+	pe, ok := err.(*os.PathError)
+	if !ok {
+		le, ok := err.(*os.LinkError)
+		if !ok {
+			return err.Error()
+		}
+		return errnoMsg(le.Err)
+	}
+	return errnoMsg(pe.Err)
+}
+
+func errnoMsg(err error) string {
+	se, ok := err.(syscall.Errno)
+	if !ok {
+		return err.Error()
+	}
+	switch se {
+	case syscall.EEXIST:
+		return "File exists"
+	case syscall.ENOENT:
+		return "No such file or directory"
+	case syscall.EACCES:
+		return "Permission denied"
+	case syscall.ENOTDIR:
+		return "Not a directory"
+	case syscall.EPERM:
+		return "Operation not permitted"
+	case syscall.EXDEV:
+		return "Invalid cross-device link"
+	default:
+		return se.Error()
+	}
 }
 
 func parseArgs(args []string) (options, []string, error) {
