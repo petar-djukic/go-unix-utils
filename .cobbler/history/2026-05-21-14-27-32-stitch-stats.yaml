@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5433"
+task_title: '[stitch] cmd/expr: srd066 R2.1-R2.4'
+status: success
+started_at: "2026-05-21T18:27:32Z"
+duration: 3m11s
+duration_s: 191
+tokens:
+    input: 440157
+    output: 5457
+    cache_creation: 214713
+    cache_read: 225433
+cost_usd: 1.98770525
+num_turns: 18
+rate_limit_wait_s: 2
+loc_before:
+    production: 16295
+    test: 15660
+loc_after:
+    production: 16295
+    test: 15704
+diff:
+    files: 3
+    insertions: 165
+    deletions: 23
