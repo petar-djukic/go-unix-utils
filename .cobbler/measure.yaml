@@ -13666,3 +13666,202 @@
       - id: AC5
         text: go test ./cmd/touch/... -count=1 passes (or skips gracefully if gtouch not in PATH)
   dependency: -1
+- index: 0
+  title: '[stitch] cmd/expr: srd066 R2.1-R2.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd066-expr.yaml (requirement group R2 -- the requirements to implement)
+      - cmd/expr/main.go (existing implementation from earlier requirement groups R1.1-R1.4)
+      - cmd/expr/expr_test.go (existing differential tests)
+      - docs/ARCHITECTURE.yaml (shared protocols section -- differential testing pattern and SIGPIPE handling)
+
+    files:
+      - path: cmd/expr/main.go
+        action: modify
+        note: Add functionality for srd066-expr requirements R2.1, R2.2, R2.3, R2.4
+      - path: cmd/expr/expr_test.go
+        action: modify
+        note: Add differential test cases covering R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: Implement srd066-expr requirement R2.1 per the SRD specification
+      - id: R2
+        text: Implement srd066-expr requirement R2.2 per the SRD specification
+      - id: R3
+        text: Implement srd066-expr requirement R2.3 per the SRD specification
+      - id: R4
+        text: Implement srd066-expr requirement R2.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: "Follow the differential testing pattern: use testutils.BuildBinary(t, \".\") for the Go binary and exec.LookPath(\"gexpr\") for the GNU reference binary. Skip with t.Skip if reference binary not found."
+      - id: D2
+        text: "Preserve all existing functionality from R1.1-R1.4. Do not remove or alter behavior implemented by earlier requirement groups."
+      - id: D3
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/expr ./cmd/expr/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/expr/... reports no issues"
+      - id: AC3
+        text: "go test ./cmd/expr/... -count=1 passes (including new tests for R2.1-R2.4)"
+      - id: AC4
+        text: "All four requirements R2.1, R2.2, R2.3, R2.4 from srd066-expr are implemented"
+      - id: AC5
+        text: "Existing tests from earlier requirement groups continue to pass"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/factor: srd065 R3.1-R3.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd065-factor.yaml (requirement group R3 -- the requirements to implement)
+      - cmd/factor/main.go (existing implementation from earlier requirement groups R1.1-R1.4, R2.1-R2.4)
+      - cmd/factor/factor_test.go (existing differential tests)
+      - docs/ARCHITECTURE.yaml (shared protocols section -- differential testing pattern and SIGPIPE handling)
+
+    files:
+      - path: cmd/factor/main.go
+        action: modify
+        note: Add functionality for srd065-factor requirements R3.1, R3.2, R3.3, R3.4
+      - path: cmd/factor/factor_test.go
+        action: modify
+        note: Add differential test cases covering R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: Implement srd065-factor requirement R3.1 per the SRD specification
+      - id: R2
+        text: Implement srd065-factor requirement R3.2 per the SRD specification
+      - id: R3
+        text: Implement srd065-factor requirement R3.3 per the SRD specification
+      - id: R4
+        text: Implement srd065-factor requirement R3.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: "Follow the differential testing pattern: use testutils.BuildBinary(t, \".\") for the Go binary and exec.LookPath(\"gfactor\") for the GNU reference binary. Skip with t.Skip if reference binary not found."
+      - id: D2
+        text: "Preserve all existing functionality from R1.1-R1.4 and R2.1-R2.4. Do not remove or alter behavior implemented by earlier requirement groups."
+      - id: D3
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/factor ./cmd/factor/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/factor/... reports no issues"
+      - id: AC3
+        text: "go test ./cmd/factor/... -count=1 passes (including new tests for R3.1-R3.4)"
+      - id: AC4
+        text: "All four requirements R3.1, R3.2, R3.3, R3.4 from srd065-factor are implemented"
+      - id: AC5
+        text: "Existing tests from earlier requirement groups continue to pass"
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/shuf: srd064 R4.1-R4.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd064-shuf.yaml (requirement group R4 -- the requirements to implement)
+      - cmd/shuf/main.go (existing implementation from earlier requirement groups R1.1-R1.4, R2.1-R2.4, R3.1-R3.4)
+      - cmd/shuf/shuf_test.go (existing differential tests)
+      - docs/ARCHITECTURE.yaml (shared protocols section -- differential testing pattern and SIGPIPE handling)
+
+    files:
+      - path: cmd/shuf/main.go
+        action: modify
+        note: Add functionality for srd064-shuf requirements R4.1, R4.2, R4.3, R4.4
+      - path: cmd/shuf/shuf_test.go
+        action: modify
+        note: Add differential test cases covering R4.1-R4.4
+
+    requirements:
+      - id: R1
+        text: Implement srd064-shuf requirement R4.1 per the SRD specification
+      - id: R2
+        text: Implement srd064-shuf requirement R4.2 per the SRD specification
+      - id: R3
+        text: Implement srd064-shuf requirement R4.3 per the SRD specification
+      - id: R4
+        text: Implement srd064-shuf requirement R4.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: "Follow the differential testing pattern: use testutils.BuildBinary(t, \".\") for the Go binary and exec.LookPath(\"gshuf\") for the GNU reference binary. Skip with t.Skip if reference binary not found."
+      - id: D2
+        text: "Preserve all existing functionality from R1.1-R3.4. Do not remove or alter behavior implemented by earlier requirement groups."
+      - id: D3
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/shuf ./cmd/shuf/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/shuf/... reports no issues"
+      - id: AC3
+        text: "go test ./cmd/shuf/... -count=1 passes (including new tests for R4.1-R4.4)"
+      - id: AC4
+        text: "All four requirements R4.1, R4.2, R4.3, R4.4 from srd064-shuf are implemented"
+      - id: AC5
+        text: "Existing tests from earlier requirement groups continue to pass"
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/timeout: srd063 R4.1-R4.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd063-timeout.yaml (requirement group R4 -- the requirements to implement)
+      - cmd/timeout/main.go (existing implementation from earlier requirement groups R1.1-R1.4, R2.1-R2.4, R3.1-R3.4)
+      - cmd/timeout/timeout_test.go (existing differential tests)
+      - docs/ARCHITECTURE.yaml (shared protocols section -- differential testing pattern and SIGPIPE handling)
+      - pkg/sys/ (process group management -- setpgid, killpg -- may be needed for signal escalation)
+
+    files:
+      - path: cmd/timeout/main.go
+        action: modify
+        note: Add functionality for srd063-timeout requirements R4.1, R4.2, R4.3, R4.4
+      - path: cmd/timeout/timeout_test.go
+        action: modify
+        note: Add differential test cases covering R4.1-R4.4
+
+    requirements:
+      - id: R1
+        text: Implement srd063-timeout requirement R4.1 per the SRD specification
+      - id: R2
+        text: Implement srd063-timeout requirement R4.2 per the SRD specification
+      - id: R3
+        text: Implement srd063-timeout requirement R4.3 per the SRD specification
+      - id: R4
+        text: Implement srd063-timeout requirement R4.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: "Follow the differential testing pattern: use testutils.BuildBinary(t, \".\") for the Go binary and exec.LookPath(\"gtimeout\") for the GNU reference binary. Skip with t.Skip if reference binary not found."
+      - id: D2
+        text: "Preserve all existing functionality from R1.1-R3.4. Do not remove or alter behavior implemented by earlier requirement groups."
+      - id: D3
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol."
+      - id: D4
+        text: "Use pkg/sys for process group management (setpgid, killpg) if signal escalation or foreground process group behavior is required by the SRD requirements."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/timeout ./cmd/timeout/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/timeout/... reports no issues"
+      - id: AC3
+        text: "go test ./cmd/timeout/... -count=1 passes (including new tests for R4.1-R4.4)"
+      - id: AC4
+        text: "All four requirements R4.1, R4.2, R4.3, R4.4 from srd063-timeout are implemented"
+      - id: AC5
+        text: "Existing tests from earlier requirement groups continue to pass"
+  dependency: -1
