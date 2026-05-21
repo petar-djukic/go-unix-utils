@@ -335,26 +335,34 @@ func breToGoRegex(pattern string) string {
 	return b.String()
 }
 
-func parseMatch() string {
-	advance()
-	if pos+1 >= len(args) {
+func readOperand() string {
+	if pos >= len(args) {
 		fmt.Fprintln(os.Stderr, "expr: syntax error: missing argument")
 		os.Exit(2)
 	}
-	str := advance()
-	pattern := advance()
+	tok := peek()
+	if tok == "+" {
+		advance()
+		if pos >= len(args) {
+			return "+"
+		}
+		return advance()
+	}
+	return advance()
+}
+
+func parseMatch() string {
+	advance()
+	str := readOperand()
+	pattern := readOperand()
 	return evalMatch(str, pattern)
 }
 
 func parseSubstr() string {
 	advance()
-	if pos+2 >= len(args) {
-		fmt.Fprintln(os.Stderr, "expr: syntax error: missing argument")
-		os.Exit(2)
-	}
-	str := advance()
-	posStr := advance()
-	lenStr := advance()
+	str := readOperand()
+	posStr := readOperand()
+	lenStr := readOperand()
 
 	p, err := strconv.Atoi(posStr)
 	if err != nil {
@@ -377,12 +385,8 @@ func parseSubstr() string {
 
 func parseIndex() string {
 	advance()
-	if pos+1 >= len(args) {
-		fmt.Fprintln(os.Stderr, "expr: syntax error: missing argument")
-		os.Exit(2)
-	}
-	str := advance()
-	chars := advance()
+	str := readOperand()
+	chars := readOperand()
 
 	for i, ch := range str {
 		if strings.ContainsRune(chars, ch) {
@@ -394,10 +398,6 @@ func parseIndex() string {
 
 func parseLength() string {
 	advance()
-	if pos >= len(args) {
-		fmt.Fprintln(os.Stderr, "expr: syntax error: missing argument")
-		os.Exit(2)
-	}
-	str := advance()
+	str := readOperand()
 	return strconv.Itoa(len([]rune(str)))
 }

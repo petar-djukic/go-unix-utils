@@ -107,6 +107,50 @@ func TestDiff(t *testing.T) {
 		{Name: "precedence_cmp_over_and", Args: []string{"1", "=", "1", "&", "2", "=", "2"}},
 		// Precedence: verify or binds looser than and
 		{Name: "precedence_and_over_or", Args: []string{"0", "&", "1", "|", "3"}},
+
+		// R2.1: match / : operator
+		{Name: "match_group", Args: []string{"match", "abcdef", `abc\(.*\)`}},
+		{Name: "match_no_group", Args: []string{"match", "abcdef", "abc"}},
+		{Name: "match_no_match_group", Args: []string{"match", "xyz", `abc\(.*\)`}},
+		{Name: "match_no_match_no_group", Args: []string{"match", "xyz", "abc"}},
+		{Name: "match_full_string", Args: []string{"match", "hello", `\(hello\)`}},
+		{Name: "match_empty_group", Args: []string{"match", "abc", `abc\(\)`}},
+		{Name: "match_digits", Args: []string{"match", "abc123", `[a-z]*\([0-9]*\)`}},
+		{Name: "colon_group", Args: []string{"abcdef", ":", `abc\(.*\)`}},
+		{Name: "colon_no_group", Args: []string{"abcdef", ":", "abc"}},
+		{Name: "colon_no_match", Args: []string{"xyz", ":", "abc"}},
+		{Name: "colon_dot_star", Args: []string{"hello", ":", ".*"}},
+		{Name: "colon_anchored", Args: []string{"hello", ":", "ell"}},
+
+		// R2.2: substr
+		{Name: "substr_basic", Args: []string{"substr", "hello", "2", "3"}},
+		{Name: "substr_start", Args: []string{"substr", "hello", "1", "3"}},
+		{Name: "substr_full", Args: []string{"substr", "hello", "1", "5"}},
+		{Name: "substr_beyond", Args: []string{"substr", "hello", "1", "100"}},
+		{Name: "substr_pos_at_end", Args: []string{"substr", "hello", "5", "1"}},
+		{Name: "substr_pos_beyond", Args: []string{"substr", "hello", "6", "1"}},
+		{Name: "substr_zero_len", Args: []string{"substr", "hello", "2", "0"}},
+		{Name: "substr_pos_zero", Args: []string{"substr", "hello", "0", "3"}, Normalize: []testutils.NormalizeFunc{normBinName}},
+
+		// R2.3: index
+		{Name: "index_basic", Args: []string{"index", "hello", "el"}},
+		{Name: "index_first_char", Args: []string{"index", "hello", "h"}},
+		{Name: "index_last_char", Args: []string{"index", "hello", "o"}},
+		{Name: "index_no_match", Args: []string{"index", "hello", "xyz"}},
+		{Name: "index_multi_chars", Args: []string{"index", "abcdef", "dc"}},
+
+		// R2.4: length
+		{Name: "length_basic", Args: []string{"length", "hello"}},
+		{Name: "length_empty", Args: []string{"length", ""}},
+		{Name: "length_single", Args: []string{"length", "x"}},
+		{Name: "length_spaces", Args: []string{"length", "a b c"}},
+		{Name: "length_digits", Args: []string{"length", "12345"}},
+
+		// R3.1: + escaping with string keywords
+		{Name: "plus_escape_match", Args: []string{"length", "+", "match"}},
+		{Name: "plus_escape_length", Args: []string{"length", "+", "length"}},
+		{Name: "plus_escape_index", Args: []string{"length", "+", "index"}},
+		{Name: "plus_escape_substr", Args: []string{"length", "+", "substr"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
