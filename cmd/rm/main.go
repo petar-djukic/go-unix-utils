@@ -6,9 +6,11 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
@@ -110,38 +112,99 @@ func parseFlags(args []string) ([]string, options) {
 	return files, opts
 }
 
-// removeFiles iterates over paths and removes each. (R1.1, R1.4, R4.1, R4.2)
 func removeFiles(paths []string, opts options) int {
-	fmt.Fprintf(os.Stderr, "rm: not implemented\n")
-	return 1
+	exitCode := 0
+	for _, path := range paths {
+		if err := removePath(path, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "rm: %s\n", err)
+			exitCode = 1
+		}
+	}
+	return exitCode
 }
 
-// removeFile removes a single file via unlink. (R1.1, R1.4)
+func removePath(path string, opts options) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if opts.force && os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("cannot remove '%s': %s", path, sysErrMsg(err))
+	}
+	if info.IsDir() {
+		if opts.recursive {
+			if isDotOrDotDot(path) {
+				return fmt.Errorf(
+					"refusing to remove '.' or '..' directory: skipping '%s'", path)
+			}
+			if err := removeDir(path, opts); err != nil {
+				return fmt.Errorf("cannot remove '%s': %s", path, sysErrMsg(err))
+			}
+			return nil
+		}
+		if opts.dir {
+			if err := removeEmptyDir(path, opts); err != nil {
+				return fmt.Errorf("cannot remove '%s': %s", path, sysErrMsg(err))
+			}
+			return nil
+		}
+		return fmt.Errorf("cannot remove '%s': Is a directory", path)
+	}
+	if err := removeFile(path, opts); err != nil {
+		return fmt.Errorf("cannot remove '%s': %s", path, sysErrMsg(err))
+	}
+	return nil
+}
+
 func removeFile(path string, opts options) error {
-	return fmt.Errorf("not implemented")
+	return os.Remove(path)
 }
 
-// removeDir recursively removes a directory tree. (R2.1, R2.3)
 func removeDir(path string, opts options) error {
 	return fmt.Errorf("not implemented")
 }
 
-// removeEmptyDir removes an empty directory. (R2.4)
 func removeEmptyDir(path string, opts options) error {
 	return fmt.Errorf("not implemented")
 }
 
-// isDotOrDotDot returns true for "." and ".." path components. (R1.3)
 func isDotOrDotDot(path string) bool {
 	return path == "." || path == ".."
 }
 
-// promptRemoval asks the user for confirmation before removal. (R3.1, R3.2)
+func sysErrMsg(err error) string {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return errnoMsg(pe.Err)
+	}
+	return err.Error()
+}
+
+func errnoMsg(err error) string {
+	errno, ok := err.(syscall.Errno)
+	if !ok {
+		return err.Error()
+	}
+	switch errno {
+	case syscall.ENOENT:
+		return "No such file or directory"
+	case syscall.EISDIR:
+		return "Is a directory"
+	case syscall.EACCES:
+		return "Permission denied"
+	case syscall.EPERM:
+		return "Operation not permitted"
+	case syscall.ENOTEMPTY:
+		return "Directory not empty"
+	default:
+		return errno.Error()
+	}
+}
+
 func promptRemoval(path string, isDir bool) bool {
 	return false
 }
 
-// shouldPromptOnce returns true when -I threshold is met. (R3.2)
 func shouldPromptOnce(paths []string, opts options) bool {
 	return false
 }
