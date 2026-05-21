@@ -14252,3 +14252,181 @@
       - id: AC4
         text: "Each of R3.1, R3.2, R3.3, R3.4 from the SRD is covered by at least one differential test case"
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/split: srd067 R4.1-R4.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd067-split.yaml (R4.1-R4.4 requirements and acceptance criteria)
+      - cmd/split/main.go (existing implementation covering R1-R3)
+      - cmd/split/split_test.go (existing differential tests from R1-R3)
+
+    files:
+      - path: cmd/split/main.go
+        action: modify
+        note: Add R4.1-R4.4 functionality to existing split implementation
+      - path: cmd/split/split_test.go
+        action: modify
+        note: Add differential test cases for R4.1-R4.4
+
+    requirements:
+      - id: R1
+        text: Implement srd067 R4.1 per the SRD specification
+      - id: R2
+        text: Implement srd067 R4.2 per the SRD specification
+      - id: R3
+        text: Implement srd067 R4.3 per the SRD specification
+      - id: R4
+        text: Implement srd067 R4.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing split implementation -- do not restructure code from R1-R3
+      - id: D2
+        text: Add differential test cases using the existing RunDiffTests harness and gsplit reference binary
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/split ./cmd/split/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/split/... reports no issues
+      - id: AC3
+        text: go test ./cmd/split/... -count=1 passes (skips if gsplit not in PATH)
+      - id: AC4
+        text: All srd067 R4.1-R4.4 acceptance criteria from the SRD are satisfied
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/csplit: srd068 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd068-csplit.yaml (R1.1-R1.4 requirements and acceptance criteria)
+      - pkg/testutils/ (differential testing framework -- BuildBinary, RunDiffTests, DiffTest)
+      - pkg/sys/ (InstallSIGPIPEHandler)
+
+    files:
+      - path: cmd/csplit/main.go
+        action: create
+        note: Initial csplit implementation covering R1.1-R1.4
+      - path: cmd/csplit/csplit_test.go
+        action: create
+        note: Differential tests for R1.1-R1.4 against gcsplit
+
+    requirements:
+      - id: R1
+        text: Implement srd068 R1.1 per the SRD specification
+      - id: R2
+        text: Implement srd068 R1.2 per the SRD specification
+      - id: R3
+        text: Implement srd068 R1.3 per the SRD specification
+      - id: R4
+        text: Implement srd068 R1.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main per project SIGPIPE protocol
+      - id: D2
+        text: Use testutils.BuildBinary and testutils.RunDiffTests for differential testing against gcsplit
+      - id: D3
+        text: Call exec.LookPath for gcsplit and t.Skip if the reference binary is not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/csplit ./cmd/csplit/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/csplit/... reports no issues
+      - id: AC3
+        text: go test ./cmd/csplit/... -count=1 passes (skips if gcsplit not in PATH)
+      - id: AC4
+        text: All srd068 R1.1-R1.4 acceptance criteria from the SRD are satisfied
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/csplit: srd068 R2.1-R2.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd068-csplit.yaml (R2.1-R2.4 requirements and acceptance criteria)
+      - cmd/csplit/main.go (existing implementation from R1.1-R1.4)
+      - cmd/csplit/csplit_test.go (existing differential tests from R1.1-R1.4)
+
+    files:
+      - path: cmd/csplit/main.go
+        action: modify
+        note: Add R2.1-R2.4 functionality to existing csplit implementation
+      - path: cmd/csplit/csplit_test.go
+        action: modify
+        note: Add differential test cases for R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: Implement srd068 R2.1 per the SRD specification
+      - id: R2
+        text: Implement srd068 R2.2 per the SRD specification
+      - id: R3
+        text: Implement srd068 R2.3 per the SRD specification
+      - id: R4
+        text: Implement srd068 R2.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing csplit implementation -- do not restructure code from R1
+      - id: D2
+        text: Add differential test cases using the existing RunDiffTests harness and gcsplit reference binary
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/csplit ./cmd/csplit/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/csplit/... reports no issues
+      - id: AC3
+        text: go test ./cmd/csplit/... -count=1 passes (skips if gcsplit not in PATH)
+      - id: AC4
+        text: All srd068 R2.1-R2.4 acceptance criteria from the SRD are satisfied
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/csplit: srd068 R3.1-R3.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd068-csplit.yaml (R3.1-R3.4 requirements and acceptance criteria)
+      - cmd/csplit/main.go (existing implementation from R1-R2)
+      - cmd/csplit/csplit_test.go (existing differential tests from R1-R2)
+
+    files:
+      - path: cmd/csplit/main.go
+        action: modify
+        note: Add R3.1-R3.4 functionality to existing csplit implementation
+      - path: cmd/csplit/csplit_test.go
+        action: modify
+        note: Add differential test cases for R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: Implement srd068 R3.1 per the SRD specification
+      - id: R2
+        text: Implement srd068 R3.2 per the SRD specification
+      - id: R3
+        text: Implement srd068 R3.3 per the SRD specification
+      - id: R4
+        text: Implement srd068 R3.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing csplit implementation -- do not restructure code from R1-R2
+      - id: D2
+        text: Add differential test cases using the existing RunDiffTests harness and gcsplit reference binary
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/csplit ./cmd/csplit/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/csplit/... reports no issues
+      - id: AC3
+        text: go test ./cmd/csplit/... -count=1 passes (skips if gcsplit not in PATH)
+      - id: AC4
+        text: All srd068 R3.1-R3.4 acceptance criteria from the SRD are satisfied
+  dependency: 2
