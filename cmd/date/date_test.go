@@ -115,6 +115,19 @@ func TestDiffUTCMode(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+func TestDiffExitCodes(t *testing.T) {
+	goBin, refBin := setupBinaries(t)
+	tests := []testutils.DiffTest{
+		{Name: "exit0_default", Args: []string{"-d", "@0"}, ExitCode: 0, Env: []string{"LC_ALL=C", "TZ=UTC"}},
+		{Name: "exit0_format", Args: []string{"-d", "@0", "+%Y-%m-%d"}, ExitCode: 0, Env: []string{"LC_ALL=C", "TZ=UTC"}},
+		{Name: "exit0_utc", Args: []string{"-u", "-d", "@0", "+%s"}, ExitCode: 0, Env: []string{"LC_ALL=C", "TZ=UTC"}},
+		{Name: "exit1_invalid_date", Args: []string{"-d", "not-a-date"}, ExitCode: 1, Env: []string{"LC_ALL=C", "TZ=UTC"}, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
+		{Name: "exit1_invalid_epoch", Args: []string{"-d", "@notanumber"}, ExitCode: 1, Env: []string{"LC_ALL=C", "TZ=UTC"}, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
+		{Name: "exit1_missing_ref", Args: []string{"-r", "/nonexistent_file_for_date_test"}, ExitCode: 1, Env: []string{"LC_ALL=C", "TZ=UTC"}, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 func TestDiffReferenceFile(t *testing.T) {
 	goBin, refBin := setupBinaries(t)
 	tests := []testutils.DiffTest{
