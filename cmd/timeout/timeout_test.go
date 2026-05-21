@@ -86,6 +86,25 @@ func TestDiff(t *testing.T) {
 			ExitCode:  125,
 			Normalize: []testutils.NormalizeFunc{clearStderr},
 		},
+		// R3.1: command exits with specific non-zero exit code
+		{
+			Name:     "exit_code_42",
+			Args:     []string{"10", "sh", "-c", "exit 42"},
+			ExitCode: 42,
+		},
+		// R3.3: child killed by signal not sent by timeout
+		{
+			Name:     "child_self_signal_hup",
+			Args:     []string{"10", "sh", "-c", "kill -HUP $$"},
+			ExitCode: -1,
+		},
+		// R3.4: command exists but is not executable
+		{
+			Name:      "command_not_executable",
+			Args:      []string{"10", "/dev/null"},
+			ExitCode:  126,
+			Normalize: []testutils.NormalizeFunc{clearStderr},
+		},
 		// R2.1: signal selection with named signal (SIGKILL kills timeout too)
 		{
 			Name:     "signal_kill_named",

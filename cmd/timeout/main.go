@@ -107,6 +107,7 @@ func exitCode(waitErr error, timedOut bool, opts options) int {
 			}
 			return 124
 		}
+		reraiseSignal(status.Signal())
 		return 128 + signum
 	}
 
@@ -119,6 +120,11 @@ func sendSignal(cmd *exec.Cmd, sig syscall.Signal, foreground bool) {
 	} else {
 		_ = syscall.Kill(-cmd.Process.Pid, sig)
 	}
+}
+
+func reraiseSignal(sig syscall.Signal) {
+	syscall.Exec("/bin/sh", []string{"sh", "-c",
+		fmt.Sprintf("kill -%d $$", sig)}, os.Environ())
 }
 
 func parseArgs(args []string) (options, int) {
