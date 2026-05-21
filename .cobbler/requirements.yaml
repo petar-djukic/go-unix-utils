@@ -3393,16 +3393,20 @@ requirements:
             issue: 5399
             weight: 1
         R4.1:
-            status: in_progress
+            status: complete
+            issue: 5400
             weight: 1
         R4.2:
-            status: in_progress
+            status: complete
+            issue: 5400
             weight: 1
         R4.3:
-            status: in_progress
+            status: complete
+            issue: 5400
             weight: 1
         R4.4:
-            status: in_progress
+            status: complete
+            issue: 5400
             weight: 1
     srd058-rm:
         R1.1:

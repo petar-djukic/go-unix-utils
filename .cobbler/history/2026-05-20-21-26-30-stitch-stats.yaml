@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5400"
+task_title: '[stitch] cmd/mv: srd057 R4.1-R4.4'
+status: success
+started_at: "2026-05-21T01:26:30Z"
+duration: 2m43s
+duration_s: 162
+tokens:
+    input: 400712
+    output: 5485
+    cache_creation: 210300
+    cache_read: 190402
+cost_usd: 1.9058168000000004
+num_turns: 17
+rate_limit_wait_s: 3
+loc_before:
+    production: 14106
+    test: 13451
+loc_after:
+    production: 14106
+    test: 13473
+diff:
+    files: 2
+    insertions: 124
+    deletions: 1
