@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5428"
+task_title: '[stitch] cmd/factor: srd065 R3.1-R3.4'
+status: failed
+error: 'claude failure: exit status 1'
+started_at: "2026-05-21T15:56:48Z"
+duration: 1m13s
+duration_s: 73
+tokens:
+    input: 194126
+    output: 318
+    cache_creation: 182283
+    cache_read: 11841
+cost_usd: 1.531076
+rate_limit_wait_s: 11
+loc_before:
+    production: 16051
+    test: 15127
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0
