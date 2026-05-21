@@ -67,6 +67,10 @@ func regexpSplitTests() []testutils.DiffTest {
 			Name:  "r1_2_regex_first_line",
 			Args:  []string{"-", "/a/"},
 			Stdin: []byte("a\nb\nc\n"),
+			ExpectedFiles: map[string][]byte{
+				"xx00": []byte(""),
+				"xx01": []byte("a\nb\nc\n"),
+			},
 		},
 		{
 			Name:  "r1_1_multiple_regex_patterns",
@@ -111,6 +115,10 @@ func skipPatternTests() []testutils.DiffTest {
 			Name:  "r1_3_skip_then_split",
 			Args:  []string{"-", "%c%", "/e/"},
 			Stdin: []byte("a\nb\nc\nd\ne\nf\n"),
+			ExpectedFiles: map[string][]byte{
+				"xx00": []byte("c\nd\n"),
+				"xx01": []byte("e\nf\n"),
+			},
 		},
 		{
 			Name:  "r1_3_skip_to_remainder",
@@ -297,6 +305,18 @@ func errorTests() []testutils.DiffTest {
 			Stdin:     []byte("a\nx\nb\nc\n"),
 			ExitCode:  1,
 			Normalize: norm,
+		},
+		{
+			Name:     "r4_2_invalid_regex",
+			Args:     []string{"-", "/[/"},
+			Stdin:    []byte("a\nb\n"),
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{func(b []byte) []byte {
+				if len(b) == 0 {
+					return b
+				}
+				return []byte("<error>")
+			}},
 		},
 	}
 }
