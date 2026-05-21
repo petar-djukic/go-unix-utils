@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -255,6 +256,10 @@ func TestRangeWithFileError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when combining -i with file args")
 	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Errorf("expected exit code 1, got: %v", err)
+	}
 	if !strings.Contains(string(out), "extra operand") {
 		t.Errorf("expected 'extra operand' error, got: %s", out)
 	}
@@ -459,6 +464,10 @@ func TestInvalidRange(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid range")
 	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Errorf("expected exit code 1, got: %v", err)
+	}
 	if !strings.Contains(string(out), "invalid input range") {
 		t.Errorf("expected 'invalid input range' error, got: %s", out)
 	}
@@ -472,6 +481,10 @@ func TestReversedRange(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatal("expected error for reversed range")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Errorf("expected exit code 1, got: %v", err)
 	}
 	if !strings.Contains(string(out), "invalid input range") {
 		t.Errorf("expected 'invalid input range' error, got: %s", out)
@@ -585,6 +598,10 @@ func TestRandomSourceMissing(t *testing.T) {
 	err := cmd.Run()
 	if err == nil {
 		t.Fatal("expected error for missing random source file")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Errorf("expected exit code 1, got: %v", err)
 	}
 }
 
@@ -743,6 +760,10 @@ func TestEchoWithRangeError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error combining -e and -i")
 	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Errorf("expected exit code 1, got: %v", err)
+	}
 	if !strings.Contains(string(out), "cannot combine") {
 		t.Errorf("expected 'cannot combine' error, got: %s", out)
 	}
@@ -840,6 +861,103 @@ func TestDiffZeroTerminated(t *testing.T) {
 			Args:      []string{"-z", "-i", "1-3"},
 			ExitCode:  0,
 			Normalize: []testutils.NormalizeFunc{sortNulLines},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// R4.1, R4.2: differential test for exit codes
+func TestDiffExitCodes(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshuf")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	discardStderr := testutils.NormalizeFunc(func([]byte) []byte { return nil })
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "exit_0_stdin",
+			Stdin:     []byte("a\nb\nc\n"),
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortLines, discardStderr},
+		},
+		{
+			Name:      "exit_0_range",
+			Args:      []string{"-i", "1-5"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortLines, discardStderr},
+		},
+		{
+			Name:      "exit_0_echo",
+			Args:      []string{"-e", "x", "y"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortLines, discardStderr},
+		},
+		{
+			Name:      "exit_0_empty",
+			Stdin:     []byte(""),
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "exit_1_invalid_range",
+			Args:      []string{"-i", "abc"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "exit_1_reversed_range",
+			Args:      []string{"-i", "10-5"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "exit_1_range_with_echo",
+			Args:      []string{"-e", "-i", "1-5", "foo"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "exit_1_range_with_file",
+			Args:      []string{"-i", "1-5", "somefile"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// R4.4: differential test for repeat mode
+func TestDiffRepeat(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshuf")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "repeat_range",
+			Args:      []string{"-i", "1-3", "-r", "-n", "10"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{lineCount},
+		},
+		{
+			Name:      "repeat_stdin",
+			Args:      []string{"-r", "-n", "5"},
+			Stdin:     []byte("x\ny\n"),
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{lineCount},
+		},
+		{
+			Name:      "repeat_echo",
+			Args:      []string{"-e", "-r", "-n", "8", "alpha", "beta"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{lineCount},
 		},
 	}
 
