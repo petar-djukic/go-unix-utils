@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -26,7 +27,10 @@ const (
 )
 
 type options struct {
-	mode overwriteMode
+	mode        overwriteMode
+	verbose     bool
+	targetDir   string
+	noTargetDir bool
 }
 
 var stdinScanner = bufio.NewScanner(os.Stdin)
@@ -34,6 +38,25 @@ var stdinScanner = bufio.NewScanner(os.Stdin)
 func main() {
 	sys.InstallSIGPIPEHandler()
 	files, opts := parseFlags(os.Args[1:])
+
+	if opts.targetDir != "" && opts.noTargetDir {
+		fmt.Fprintf(os.Stderr,
+			"mv: cannot combine --target-directory (-t) and --no-target-directory (-T)\n")
+		os.Exit(1)
+	}
+
+	if opts.targetDir != "" {
+		if len(files) == 0 {
+			fmt.Fprintf(os.Stderr, "mv: missing file operand\n")
+			os.Exit(1)
+		}
+		code := moveMultiple(files, opts.targetDir, opts)
+		if code != 0 {
+			os.Exit(code)
+		}
+		return
+	}
+
 	if len(files) == 0 {
 		fmt.Fprintf(os.Stderr, "mv: missing file operand\n")
 		os.Exit(1)
@@ -41,6 +64,10 @@ func main() {
 	if len(files) == 1 {
 		fmt.Fprintf(os.Stderr,
 			"mv: missing destination file operand after '%s'\n", files[0])
+		os.Exit(1)
+	}
+	if opts.noTargetDir && len(files) > 2 {
+		fmt.Fprintf(os.Stderr, "mv: extra operand '%s'\n", files[2])
 		os.Exit(1)
 	}
 	dest := files[len(files)-1]
@@ -60,7 +87,8 @@ func parseFlags(args []string) ([]string, options) {
 	var files []string
 	var opts options
 	endOfFlags := false
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if endOfFlags || arg == "" || arg[0] != '-' {
 			files = append(files, arg)
 			continue
@@ -69,25 +97,52 @@ func parseFlags(args []string) ([]string, options) {
 			endOfFlags = true
 			continue
 		}
-		switch arg {
-		case "--interactive":
-			opts.mode = modeInteractive
-			continue
-		case "--force":
-			opts.mode = modeForce
-			continue
-		case "--no-clobber":
-			opts.mode = modeNoClobber
+		if strings.HasPrefix(arg, "--") {
+			switch {
+			case arg == "--interactive":
+				opts.mode = modeInteractive
+			case arg == "--force":
+				opts.mode = modeForce
+			case arg == "--no-clobber":
+				opts.mode = modeNoClobber
+			case arg == "--verbose":
+				opts.verbose = true
+			case arg == "--no-target-directory":
+				opts.noTargetDir = true
+			case arg == "--target-directory":
+				i++
+				if i < len(args) {
+					opts.targetDir = args[i]
+				}
+			case strings.HasPrefix(arg, "--target-directory="):
+				opts.targetDir = arg[len("--target-directory="):]
+			}
 			continue
 		}
-		for _, c := range arg[1:] {
-			switch c {
+		chars := arg[1:]
+		for j := 0; j < len(chars); j++ {
+			switch chars[j] {
 			case 'i':
 				opts.mode = modeInteractive
 			case 'f':
 				opts.mode = modeForce
 			case 'n':
 				opts.mode = modeNoClobber
+			case 'v':
+				opts.verbose = true
+			case 'T':
+				opts.noTargetDir = true
+			case 't':
+				rest := chars[j+1:]
+				if len(rest) > 0 {
+					opts.targetDir = rest
+				} else {
+					i++
+					if i < len(args) {
+						opts.targetDir = args[i]
+					}
+				}
+				j = len(chars)
 			}
 		}
 	}
@@ -95,9 +150,11 @@ func parseFlags(args []string) ([]string, options) {
 }
 
 func moveSingle(src, dest string, opts options) int {
-	info, err := os.Stat(dest)
-	if err == nil && info.IsDir() {
-		dest = filepath.Join(dest, filepath.Base(src))
+	if !opts.noTargetDir {
+		info, err := os.Stat(dest)
+		if err == nil && info.IsDir() {
+			dest = filepath.Join(dest, filepath.Base(src))
+		}
 	}
 	switch checkOverwrite(dest, opts.mode) {
 	case owSkip:
@@ -105,9 +162,13 @@ func moveSingle(src, dest string, opts options) int {
 	case owSkipError:
 		return 1
 	}
-	if err := moveFile(src, dest); err != nil {
+	renamed, err := moveFile(src, dest)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "mv: %s\n", err)
 		return 1
+	}
+	if opts.verbose {
+		printVerbose(src, dest, renamed)
 	}
 	return 0
 }
@@ -128,9 +189,14 @@ func moveMultiple(sources []string, dest string, opts options) int {
 			code = 1
 			continue
 		}
-		if err := moveFile(src, target); err != nil {
+		renamed, err := moveFile(src, target)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "mv: %s\n", err)
 			code = 1
+			continue
+		}
+		if opts.verbose {
+			printVerbose(src, target, renamed)
 		}
 	}
 	return code
@@ -169,23 +235,53 @@ func promptOverwrite(dest string) bool {
 	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
 }
 
-func moveFile(src, dest string) error {
-	if _, err := os.Lstat(src); err != nil {
-		return fmtPathErr("cannot stat", src, err)
+func moveFile(src, dest string) (bool, error) {
+	srcInfo, err := os.Lstat(src)
+	if err != nil {
+		return false, fmtPathErr("cannot stat", src, err)
 	}
-	err := os.Rename(src, dest)
+	err = os.Rename(src, dest)
 	if err == nil {
-		return nil
+		return true, nil
 	}
 	if isCrossDevice(err) {
-		return crossDeviceMove(src, dest)
+		return false, crossDeviceMove(src, dest)
 	}
-	return fmtMoveErr(src, dest, err)
+	if srcInfo.IsDir() && isDirExistsErr(err) {
+		if rmErr := os.Remove(dest); rmErr == nil {
+			if err2 := os.Rename(src, dest); err2 == nil {
+				return true, nil
+			}
+		}
+	}
+	if !srcInfo.IsDir() {
+		if di, derr := os.Lstat(dest); derr == nil && di.IsDir() {
+			return false, fmt.Errorf(
+				"cannot overwrite directory '%s' with non-directory '%s'", dest, src)
+		}
+	}
+	return false, fmtMoveErr(src, dest, err)
+}
+
+func printVerbose(src, dest string, renamed bool) {
+	if renamed {
+		fmt.Printf("renamed '%s' -> '%s'\n", src, dest)
+	} else {
+		fmt.Printf("'%s' -> '%s'\n", src, dest)
+	}
 }
 
 func isCrossDevice(err error) bool {
 	if linkErr, ok := errors.AsType[*os.LinkError](err); ok {
 		return errors.Is(linkErr.Err, syscall.EXDEV)
+	}
+	return false
+}
+
+func isDirExistsErr(err error) bool {
+	if linkErr, ok := errors.AsType[*os.LinkError](err); ok {
+		return errors.Is(linkErr.Err, syscall.EEXIST) ||
+			errors.Is(linkErr.Err, syscall.ENOTEMPTY)
 	}
 	return false
 }

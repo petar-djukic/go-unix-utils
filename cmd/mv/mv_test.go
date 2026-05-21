@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd057-mv R1.1-R1.4, R2.1-R2.4.
+// Implements srd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
@@ -199,6 +199,148 @@ func TestDiff(t *testing.T) {
 		goDir := runMvTest(t, goBin, refBin, setup,
 			[]string{"src.txt", "nowrite/dest.txt"}, errNorm)
 		checkFile(t, goDir, "src.txt", "hello\n")
+	})
+
+	t.Run("r3_1_verbose_rename", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "hello\n")
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-v", "src.txt", "dest.txt"}, nil)
+		checkFile(t, goDir, "dest.txt", "hello\n")
+		checkAbsent(t, goDir, "src.txt")
+	})
+
+	t.Run("r3_1_verbose_into_dir", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "file.txt", "content\n")
+			os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-v", "file.txt", "dest"}, nil)
+		checkFile(t, goDir, "dest/file.txt", "content\n")
+		checkAbsent(t, goDir, "file.txt")
+	})
+
+	t.Run("r3_1_verbose_overwrite", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "new\n")
+			writeFile(t, dir, "dest.txt", "old\n")
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-v", "src.txt", "dest.txt"}, nil)
+		checkFile(t, goDir, "dest.txt", "new\n")
+		checkAbsent(t, goDir, "src.txt")
+	})
+
+	t.Run("r3_1_verbose_long_flag", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "hello\n")
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"--verbose", "src.txt", "dest.txt"}, nil)
+		checkFile(t, goDir, "dest.txt", "hello\n")
+		checkAbsent(t, goDir, "src.txt")
+	})
+
+	t.Run("r3_1_verbose_multi_file", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "a.txt", "aaa\n")
+			writeFile(t, dir, "b.txt", "bbb\n")
+			os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-v", "a.txt", "b.txt", "dest"}, nil)
+		checkFile(t, goDir, "dest/a.txt", "aaa\n")
+		checkFile(t, goDir, "dest/b.txt", "bbb\n")
+	})
+
+	t.Run("r3_2_target_directory_short", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "a.txt", "aaa\n")
+			writeFile(t, dir, "b.txt", "bbb\n")
+			os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-t", "dest", "a.txt", "b.txt"}, nil)
+		checkFile(t, goDir, "dest/a.txt", "aaa\n")
+		checkFile(t, goDir, "dest/b.txt", "bbb\n")
+		checkAbsent(t, goDir, "a.txt")
+		checkAbsent(t, goDir, "b.txt")
+	})
+
+	t.Run("r3_2_target_directory_long", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "file.txt", "content\n")
+			os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"--target-directory=dest", "file.txt"}, nil)
+		checkFile(t, goDir, "dest/file.txt", "content\n")
+		checkAbsent(t, goDir, "file.txt")
+	})
+
+	t.Run("r3_2_target_directory_single", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "file.txt", "hello\n")
+			os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-t", "dest", "file.txt"}, nil)
+		checkFile(t, goDir, "dest/file.txt", "hello\n")
+		checkAbsent(t, goDir, "file.txt")
+	})
+
+	t.Run("r3_2_target_directory_verbose", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "file.txt", "content\n")
+			os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-vt", "dest", "file.txt"}, nil)
+		checkFile(t, goDir, "dest/file.txt", "content\n")
+		checkAbsent(t, goDir, "file.txt")
+	})
+
+	t.Run("r3_3_no_target_dir_rename", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "hello\n")
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-T", "src.txt", "dest.txt"}, nil)
+		checkFile(t, goDir, "dest.txt", "hello\n")
+		checkAbsent(t, goDir, "src.txt")
+	})
+
+	t.Run("r3_3_no_target_dir_replaces_empty_dir", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			os.Mkdir(filepath.Join(dir, "srcdir"), 0o755)
+			writeFile(t, dir, "srcdir/file.txt", "inside\n")
+			os.Mkdir(filepath.Join(dir, "destdir"), 0o755)
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-T", "srcdir", "destdir"}, errNorm)
+		checkFile(t, goDir, "destdir/file.txt", "inside\n")
+		checkAbsent(t, goDir, "srcdir")
+	})
+
+	t.Run("r3_3_no_target_dir_file_to_dir_error", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "file.txt", "content\n")
+			os.Mkdir(filepath.Join(dir, "destdir"), 0o755)
+		}
+		runMvTest(t, goBin, refBin, setup,
+			[]string{"-T", "file.txt", "destdir"}, errNorm)
+	})
+
+	t.Run("r3_3_no_target_dir_long_flag", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "hello\n")
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"--no-target-directory", "src.txt", "dest.txt"}, nil)
+		checkFile(t, goDir, "dest.txt", "hello\n")
+		checkAbsent(t, goDir, "src.txt")
 	})
 }
 
