@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
 package main
 
 import (
@@ -399,6 +399,68 @@ func TestDiff(t *testing.T) {
 				},
 			},
 		})
+	})
+
+	t.Run("r3_1_preserve", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "src.txt", "hello\n")
+		os.Chmod(filepath.Join(dir, "src.txt"), 0o755)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "p_flag",
+			Args:      []string{"-p", "src.txt", "dest.txt"},
+			WorkDir:   dir,
+			Env:       env,
+			Normalize: errNorm,
+			ExpectedFiles: map[string][]byte{
+				"dest.txt": []byte("hello\n"),
+			},
+		}})
+	})
+
+	t.Run("r3_2_archive", func(t *testing.T) {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+		writeFile(t, dir, "src/real.txt", "content\n")
+		os.Symlink("real.txt", filepath.Join(dir, "src", "link.txt"))
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "archive",
+			Args:      []string{"-a", "src", "dest"},
+			WorkDir:   dir,
+			Env:       env,
+			Normalize: errNorm,
+			ExpectedFiles: map[string][]byte{
+				"dest/real.txt": []byte("content\n"),
+			},
+		}})
+	})
+
+	t.Run("r3_3_preserve_attr_list", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "src.txt", "data\n")
+		os.Chmod(filepath.Join(dir, "src.txt"), 0o750)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "mode_timestamps",
+			Args:    []string{"--preserve=mode,timestamps", "src.txt", "dest.txt"},
+			WorkDir: dir,
+			Env:     env,
+			ExpectedFiles: map[string][]byte{
+				"dest.txt": []byte("data\n"),
+			},
+		}})
+	})
+
+	t.Run("r3_4_verbose", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "src.txt", "hello\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "single_file",
+			Args:    []string{"-v", "src.txt", "dest.txt"},
+			WorkDir: dir,
+			Env:     env,
+			ExpectedFiles: map[string][]byte{
+				"dest.txt": []byte("hello\n"),
+			},
+		}})
 	})
 }
 

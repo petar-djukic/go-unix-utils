@@ -39,7 +39,11 @@ var (
 	deref       derefMode
 	stdinReader = bufio.NewReader(os.Stdin)
 	errDeclined = errors.New("declined")
-	errPartial  = errors.New("partial failure")
+	errPartial         = errors.New("partial failure")
+	preserveMode       bool
+	preserveOwnership  bool
+	preserveTimestamps bool
+	verbose            bool
 )
 
 func main() {
@@ -106,10 +110,22 @@ func applyFlag(c rune) {
 		deref = derefAlways
 	case 'P':
 		deref = derefNever
+	case 'p':
+		preserveMode = true
+		preserveOwnership = true
+		preserveTimestamps = true
+	case 'a':
+		applyArchive()
+	case 'v':
+		verbose = true
 	}
 }
 
 func applyLongFlag(name string) {
+	if attr, ok := strings.CutPrefix(name, "preserve="); ok {
+		parsePreserve(attr)
+		return
+	}
 	switch name {
 	case "force":
 		owMode = owDefault
@@ -125,6 +141,37 @@ func applyLongFlag(name string) {
 		deref = derefAlways
 	case "no-dereference":
 		deref = derefNever
+	case "preserve":
+		parsePreserve("mode,ownership,timestamps")
+	case "archive":
+		applyArchive()
+	case "verbose":
+		verbose = true
+	}
+}
+
+func applyArchive() {
+	recursive = true
+	deref = derefNever
+	preserveMode = true
+	preserveOwnership = true
+	preserveTimestamps = true
+}
+
+func parsePreserve(attrList string) {
+	for attr := range strings.SplitSeq(attrList, ",") {
+		switch attr {
+		case "mode":
+			preserveMode = true
+		case "ownership":
+			preserveOwnership = true
+		case "timestamps":
+			preserveTimestamps = true
+		case "all":
+			preserveMode = true
+			preserveOwnership = true
+			preserveTimestamps = true
+		}
 	}
 }
 
@@ -218,6 +265,7 @@ func copyDir(src, dest string) error {
 	if err := os.Mkdir(dest, srcInfo.Mode().Perm()); err != nil && !os.IsExist(err) {
 		return fmtPathErr("cannot create directory", dest, err)
 	}
+	printVerbose(src, dest)
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		return fmtPathErr("cannot read directory", src, err)
@@ -232,6 +280,10 @@ func copyDir(src, dest string) error {
 			}
 			failed = true
 		}
+	}
+	if err := preserveAttrs(src, dest); err != nil {
+		fmt.Fprintf(os.Stderr, "cp: %s\n", err)
+		failed = true
 	}
 	if failed {
 		return errPartial
@@ -248,7 +300,8 @@ func copyLink(src, dest string) error {
 	if err := os.Symlink(target, dest); err != nil {
 		return fmtPathErr("cannot create symlink", dest, err)
 	}
-	return nil
+	printVerbose(src, dest)
+	return preserveAttrs(src, dest)
 }
 
 func doCopy(src, dest string, mode os.FileMode) error {
@@ -269,7 +322,11 @@ func doCopy(src, dest string, mode os.FileMode) error {
 	if _, err := io.Copy(out, in); err != nil {
 		return err
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		return err
+	}
+	printVerbose(src, dest)
+	return preserveAttrs(src, dest)
 }
 
 func confirmOverwrite(dest string) bool {
@@ -283,4 +340,39 @@ func fmtPathErr(verb, path string, err error) error {
 		return fmt.Errorf("%s '%s': %s", verb, path, pe.Err)
 	}
 	return fmt.Errorf("%s '%s': %s", verb, path, err)
+}
+
+func preserveAttrs(src, dest string) error {
+	if !preserveMode && !preserveOwnership && !preserveTimestamps {
+		return nil
+	}
+	fi, err := sys.Lstat(src)
+	if err != nil {
+		return fmtPathErr("cannot stat", src, err)
+	}
+	isLink := fi.Mode&os.ModeSymlink != 0
+	if preserveMode && !isLink {
+		perm := fi.Mode & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+		if err := os.Chmod(dest, perm); err != nil {
+			return fmtPathErr("preserving permissions for", dest, err)
+		}
+	}
+	if preserveTimestamps && !isLink {
+		if err := os.Chtimes(dest, fi.AccessTime, fi.ModTime); err != nil {
+			return fmtPathErr("preserving times for", dest, err)
+		}
+	}
+	if preserveOwnership {
+		if err := os.Lchown(dest, int(fi.Uid), int(fi.Gid)); err != nil {
+			fmt.Fprintf(os.Stderr, "cp: %s\n",
+				fmtPathErr("preserving ownership for", dest, err))
+		}
+	}
+	return nil
+}
+
+func printVerbose(src, dest string) {
+	if verbose {
+		fmt.Printf("'%s' -> '%s'\n", src, dest)
+	}
 }
