@@ -192,6 +192,18 @@ func TestDiff(t *testing.T) {
 				normalizeErrCase,
 			},
 		},
+		{
+			Name:     "error continues processing remaining files",
+			Args:     []string{"nodir/nofile", "goodfile"},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{
+				normalizeBinaryName,
+				normalizeErrCase,
+			},
+			ExpectedFiles: map[string][]byte{
+				"goodfile": {},
+			},
+		},
 	}
 
 	refDir1 := t.TempDir()
