@@ -13072,3 +13072,187 @@
       - id: AC5
         text: Full sleep implementation covers all 16 srd061 requirements (R1.1-R4.4)
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/expr: srd066 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd066-expr.yaml (SRD for expr -- read requirements R1.1 through R1.4)
+      - pkg/sys/ (InstallSIGPIPEHandler usage pattern)
+      - pkg/testutils/ (DiffTest, RunDiffTests, BuildBinary usage pattern)
+
+    files:
+      - path: cmd/expr/main.go
+        action: create
+        note: expr implementation -- expression evaluation with arithmetic, comparison, and string operations
+      - path: cmd/expr/expr_test.go
+        action: create
+        note: differential tests against gexpr reference binary
+
+    requirements:
+      - id: R1
+        text: Implement srd066 requirement R1.1 as specified in the SRD
+      - id: R2
+        text: Implement srd066 requirement R1.2 as specified in the SRD
+      - id: R3
+        text: Implement srd066 requirement R1.3 as specified in the SRD
+      - id: R4
+        text: Implement srd066 requirement R1.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main() to match GNU coreutils behavior when piped to consumers that close stdin early
+      - id: D2
+        text: Use pkg/testutils.RunDiffTests with gexpr as the reference binary for differential testing
+      - id: D3
+        text: Use exec.LookPath("gexpr") and t.Skip if the reference binary is not found -- tests must pass on machines without Homebrew GNU binaries
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/expr ./cmd/expr/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/expr/... passes with no warnings
+      - id: AC3
+        text: go test ./cmd/expr/... -count=1 passes (or skips gracefully if gexpr not in PATH)
+      - id: AC4
+        text: All four SRD requirements R1.1-R1.4 are implemented and exercised by differential tests
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/factor: srd065 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd065-factor.yaml (SRD for factor -- read requirements R1.1 through R1.4)
+      - pkg/sys/ (InstallSIGPIPEHandler usage pattern)
+      - pkg/testutils/ (DiffTest, RunDiffTests, BuildBinary usage pattern)
+
+    files:
+      - path: cmd/factor/main.go
+        action: create
+        note: factor implementation -- prime factorization of integer arguments
+      - path: cmd/factor/factor_test.go
+        action: create
+        note: differential tests against gfactor reference binary
+
+    requirements:
+      - id: R1
+        text: Implement srd065 requirement R1.1 as specified in the SRD
+      - id: R2
+        text: Implement srd065 requirement R1.2 as specified in the SRD
+      - id: R3
+        text: Implement srd065 requirement R1.3 as specified in the SRD
+      - id: R4
+        text: Implement srd065 requirement R1.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main() to match GNU coreutils behavior when piped to consumers that close stdin early
+      - id: D2
+        text: Use pkg/testutils.RunDiffTests with gfactor as the reference binary for differential testing
+      - id: D3
+        text: Use exec.LookPath("gfactor") and t.Skip if the reference binary is not found -- tests must pass on machines without Homebrew GNU binaries
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/factor ./cmd/factor/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/factor/... passes with no warnings
+      - id: AC3
+        text: go test ./cmd/factor/... -count=1 passes (or skips gracefully if gfactor not in PATH)
+      - id: AC4
+        text: All four SRD requirements R1.1-R1.4 are implemented and exercised by differential tests
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/shuf: srd064 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd064-shuf.yaml (SRD for shuf -- read requirements R1.1 through R1.4)
+      - pkg/sys/ (InstallSIGPIPEHandler usage pattern)
+      - pkg/testutils/ (DiffTest, RunDiffTests, BuildBinary usage pattern)
+
+    files:
+      - path: cmd/shuf/main.go
+        action: create
+        note: shuf implementation -- random line permutation and sampling
+      - path: cmd/shuf/shuf_test.go
+        action: create
+        note: differential tests against gshuf reference binary
+
+    requirements:
+      - id: R1
+        text: Implement srd064 requirement R1.1 as specified in the SRD
+      - id: R2
+        text: Implement srd064 requirement R1.2 as specified in the SRD
+      - id: R3
+        text: Implement srd064 requirement R1.3 as specified in the SRD
+      - id: R4
+        text: Implement srd064 requirement R1.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main() to match GNU coreutils behavior when piped to consumers that close stdin early
+      - id: D2
+        text: Use pkg/testutils.RunDiffTests with gshuf as the reference binary for differential testing
+      - id: D3
+        text: Use exec.LookPath("gshuf") and t.Skip if the reference binary is not found -- tests must pass on machines without Homebrew GNU binaries
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/shuf ./cmd/shuf/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/shuf/... passes with no warnings
+      - id: AC3
+        text: go test ./cmd/shuf/... -count=1 passes (or skips gracefully if gshuf not in PATH)
+      - id: AC4
+        text: All four SRD requirements R1.1-R1.4 are implemented and exercised by differential tests
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/timeout: srd063 R1.1-R1.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd063-timeout.yaml (SRD for timeout -- read requirements R1.1 through R1.4)
+      - pkg/sys/ (InstallSIGPIPEHandler usage pattern, signal handling)
+      - pkg/testutils/ (DiffTest, RunDiffTests, BuildBinary usage pattern)
+
+    files:
+      - path: cmd/timeout/main.go
+        action: create
+        note: timeout implementation -- run a command with a time limit and signal escalation
+      - path: cmd/timeout/timeout_test.go
+        action: create
+        note: differential tests against gtimeout reference binary
+
+    requirements:
+      - id: R1
+        text: Implement srd063 requirement R1.1 as specified in the SRD
+      - id: R2
+        text: Implement srd063 requirement R1.2 as specified in the SRD
+      - id: R3
+        text: Implement srd063 requirement R1.3 as specified in the SRD
+      - id: R4
+        text: Implement srd063 requirement R1.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main() to match GNU coreutils behavior when piped to consumers that close stdin early
+      - id: D2
+        text: Use pkg/testutils.RunDiffTests with gtimeout as the reference binary for differential testing
+      - id: D3
+        text: Use exec.LookPath("gtimeout") and t.Skip if the reference binary is not found -- tests must pass on machines without Homebrew GNU binaries
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/timeout ./cmd/timeout/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/timeout/... passes with no warnings
+      - id: AC3
+        text: go test ./cmd/timeout/... -count=1 passes (or skips gracefully if gtimeout not in PATH)
+      - id: AC4
+        text: All four SRD requirements R1.1-R1.4 are implemented and exercised by differential tests
+  dependency: -1
