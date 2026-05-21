@@ -13460,3 +13460,209 @@
       - id: AC5
         text: "Existing R1.1-R1.4 tests continue to pass without modification"
   dependency: -1
+- index: 0
+  title: '[stitch] cmd/factor: srd065 R3.1-R3.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd065-factor.yaml (requirements R3.1-R3.4)
+      - cmd/factor/main.go (existing implementation from R1-R2)
+      - cmd/factor/factor_test.go (existing differential tests from R1-R2)
+      - pkg/testutils/ (differential testing framework -- RunDiffTests, BuildBinary, DiffTest)
+
+    files:
+      - path: cmd/factor/main.go
+        action: modify
+        note: Extend factor implementation for srd065 R3.1-R3.4
+      - path: cmd/factor/factor_test.go
+        action: modify
+        note: Add differential test cases covering R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: Implement srd065-factor requirement R3.1 as specified in the SRD
+      - id: R2
+        text: Implement srd065-factor requirement R3.2 as specified in the SRD
+      - id: R3
+        text: Implement srd065-factor requirement R3.3 as specified in the SRD
+      - id: R4
+        text: Implement srd065-factor requirement R3.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Follow existing implementation patterns established in cmd/factor/main.go from R1-R2 requirement groups
+      - id: D2
+        text: Use differential testing via pkg/testutils.RunDiffTests comparing against gfactor reference binary from Homebrew
+      - id: D3
+        text: Maintain sys.InstallSIGPIPEHandler() call at start of main per project convention
+      - id: D4
+        text: Reference binary lookup uses exec.LookPath("gfactor") with t.Skip if not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R3.1-R3.4 requirements from srd065-factor.yaml are implemented in cmd/factor/main.go
+      - id: AC2
+        text: Differential test cases added to cmd/factor/factor_test.go for each R3.x requirement
+      - id: AC3
+        text: go build -o bin/factor ./cmd/factor/ succeeds with no errors
+      - id: AC4
+        text: go vet ./cmd/factor/ reports no issues
+      - id: AC5
+        text: go test ./cmd/factor/... -count=1 passes (or skips gracefully if gfactor not in PATH)
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/shuf: srd064 R3.1-R3.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd064-shuf.yaml (requirements R3.1-R3.4)
+      - cmd/shuf/main.go (existing implementation from R1-R2)
+      - cmd/shuf/shuf_test.go (existing differential tests from R1-R2)
+      - pkg/testutils/ (differential testing framework -- RunDiffTests, BuildBinary, DiffTest)
+
+    files:
+      - path: cmd/shuf/main.go
+        action: modify
+        note: Extend shuf implementation for srd064 R3.1-R3.4
+      - path: cmd/shuf/shuf_test.go
+        action: modify
+        note: Add differential test cases covering R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: Implement srd064-shuf requirement R3.1 as specified in the SRD
+      - id: R2
+        text: Implement srd064-shuf requirement R3.2 as specified in the SRD
+      - id: R3
+        text: Implement srd064-shuf requirement R3.3 as specified in the SRD
+      - id: R4
+        text: Implement srd064-shuf requirement R3.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Follow existing implementation patterns established in cmd/shuf/main.go from R1-R2 requirement groups
+      - id: D2
+        text: Use differential testing via pkg/testutils.RunDiffTests comparing against gshuf reference binary from Homebrew
+      - id: D3
+        text: Maintain sys.InstallSIGPIPEHandler() call at start of main per project convention
+      - id: D4
+        text: Reference binary lookup uses exec.LookPath("gshuf") with t.Skip if not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R3.1-R3.4 requirements from srd064-shuf.yaml are implemented in cmd/shuf/main.go
+      - id: AC2
+        text: Differential test cases added to cmd/shuf/shuf_test.go for each R3.x requirement
+      - id: AC3
+        text: go build -o bin/shuf ./cmd/shuf/ succeeds with no errors
+      - id: AC4
+        text: go vet ./cmd/shuf/ reports no issues
+      - id: AC5
+        text: go test ./cmd/shuf/... -count=1 passes (or skips gracefully if gshuf not in PATH)
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/timeout: srd063 R3.1-R3.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd063-timeout.yaml (requirements R3.1-R3.4)
+      - cmd/timeout/main.go (existing implementation from R1-R2)
+      - cmd/timeout/timeout_test.go (existing differential tests from R1-R2)
+      - pkg/testutils/ (differential testing framework -- RunDiffTests, BuildBinary, DiffTest)
+      - pkg/sys/ (signal handling -- InstallSIGPIPEHandler and process group management)
+
+    files:
+      - path: cmd/timeout/main.go
+        action: modify
+        note: Extend timeout implementation for srd063 R3.1-R3.4
+      - path: cmd/timeout/timeout_test.go
+        action: modify
+        note: Add differential test cases covering R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: Implement srd063-timeout requirement R3.1 as specified in the SRD
+      - id: R2
+        text: Implement srd063-timeout requirement R3.2 as specified in the SRD
+      - id: R3
+        text: Implement srd063-timeout requirement R3.3 as specified in the SRD
+      - id: R4
+        text: Implement srd063-timeout requirement R3.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Follow existing implementation patterns established in cmd/timeout/main.go from R1-R2 requirement groups
+      - id: D2
+        text: Use differential testing via pkg/testutils.RunDiffTests comparing against gtimeout reference binary from Homebrew
+      - id: D3
+        text: Maintain sys.InstallSIGPIPEHandler() call at start of main per project convention
+      - id: D4
+        text: Reference binary lookup uses exec.LookPath("gtimeout") with t.Skip if not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R3.1-R3.4 requirements from srd063-timeout.yaml are implemented in cmd/timeout/main.go
+      - id: AC2
+        text: Differential test cases added to cmd/timeout/timeout_test.go for each R3.x requirement
+      - id: AC3
+        text: go build -o bin/timeout ./cmd/timeout/ succeeds with no errors
+      - id: AC4
+        text: go vet ./cmd/timeout/ reports no issues
+      - id: AC5
+        text: go test ./cmd/timeout/... -count=1 passes (or skips gracefully if gtimeout not in PATH)
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/touch: srd062 R2.1-R2.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd062-touch.yaml (requirements R2.1-R2.4)
+      - cmd/touch/main.go (existing implementation from R1)
+      - cmd/touch/touch_test.go (existing differential tests from R1)
+      - pkg/testutils/ (differential testing framework -- RunDiffTests, BuildBinary, DiffTest)
+      - pkg/sys/ (file metadata and timestamp operations)
+
+    files:
+      - path: cmd/touch/main.go
+        action: modify
+        note: Extend touch implementation for srd062 R2.1-R2.4
+      - path: cmd/touch/touch_test.go
+        action: modify
+        note: Add differential test cases covering R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: Implement srd062-touch requirement R2.1 as specified in the SRD
+      - id: R2
+        text: Implement srd062-touch requirement R2.2 as specified in the SRD
+      - id: R3
+        text: Implement srd062-touch requirement R2.3 as specified in the SRD
+      - id: R4
+        text: Implement srd062-touch requirement R2.4 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Follow existing implementation patterns established in cmd/touch/main.go from R1 requirement group
+      - id: D2
+        text: Use differential testing via pkg/testutils.RunDiffTests comparing against gtouch reference binary from Homebrew
+      - id: D3
+        text: Maintain sys.InstallSIGPIPEHandler() call at start of main per project convention
+      - id: D4
+        text: Reference binary lookup uses exec.LookPath("gtouch") with t.Skip if not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R2.1-R2.4 requirements from srd062-touch.yaml are implemented in cmd/touch/main.go
+      - id: AC2
+        text: Differential test cases added to cmd/touch/touch_test.go for each R2.x requirement
+      - id: AC3
+        text: go build -o bin/touch ./cmd/touch/ succeeds with no errors
+      - id: AC4
+        text: go vet ./cmd/touch/ reports no issues
+      - id: AC5
+        text: go test ./cmd/touch/... -count=1 passes (or skips gracefully if gtouch not in PATH)
+  dependency: -1
