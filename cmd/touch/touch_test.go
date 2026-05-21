@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,12 @@ var binaryNameRe = regexp.MustCompile(`(/\S+/)?g?touch\b`)
 
 func normalizeBinaryName(b []byte) []byte {
 	return binaryNameRe.ReplaceAll(b, []byte("touch"))
+}
+
+func normalizeErrCase(b []byte) []byte {
+	return bytes.ReplaceAll(b,
+		[]byte("No such file or directory"),
+		[]byte("no such file or directory"))
 }
 
 func TestDiff(t *testing.T) {
@@ -129,7 +136,87 @@ func TestDiff(t *testing.T) {
 				"tsfile": {},
 			},
 		},
+		{
+			Name:     "missing reference file",
+			Args:     []string{"-r", "nosuchref", "target"},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{
+				normalizeBinaryName,
+				normalizeErrCase,
+			},
+		},
+		{
+			Name: "date string ISO",
+			Args: []string{"-d", "2024-01-15 10:30:00", "dfile"},
+			ExpectedFiles: map[string][]byte{
+				"dfile": {},
+			},
+		},
+		{
+			Name: "date string date only",
+			Args: []string{"-d", "2024-01-15", "dfile2"},
+			ExpectedFiles: map[string][]byte{
+				"dfile2": {},
+			},
+		},
+		{
+			Name: "date string T separator",
+			Args: []string{"-d", "2024-01-15T10:30:00", "dfile3"},
+			ExpectedFiles: map[string][]byte{
+				"dfile3": {},
+			},
+		},
+		{
+			Name:     "invalid date string",
+			Args:     []string{"-d", "notadate", "file"},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{
+				normalizeBinaryName,
+			},
+		},
+		{
+			Name:     "no-dereference short flag nonexistent",
+			Args:     []string{"-h", "nosuchfile"},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{
+				normalizeBinaryName,
+				normalizeErrCase,
+			},
+		},
+		{
+			Name:     "no-dereference long flag nonexistent",
+			Args:     []string{"--no-dereference", "nosuchfile"},
+			ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{
+				normalizeBinaryName,
+				normalizeErrCase,
+			},
+		},
 	}
+
+	refDir1 := t.TempDir()
+	os.WriteFile(filepath.Join(refDir1, "existing"), []byte{}, 0644)
+	refDir2 := t.TempDir()
+	os.WriteFile(filepath.Join(refDir2, "existing"), []byte{}, 0644)
+
+	tests = append(tests,
+		testutils.DiffTest{
+			Name:    "reference file short flag",
+			Args:    []string{"-r", "existing", "rfile"},
+			WorkDir: refDir1,
+			ExpectedFiles: map[string][]byte{
+				"rfile": {},
+			},
+		},
+		testutils.DiffTest{
+			Name:    "reference file long flag",
+			Args:    []string{"--reference=existing", "rfile2"},
+			WorkDir: refDir2,
+			ExpectedFiles: map[string][]byte{
+				"rfile2": {},
+			},
+		},
+	)
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -312,5 +399,98 @@ func TestExplicitTimestampModOnly(t *testing.T) {
 	}
 	if !info.ModTime.Equal(wantMod) {
 		t.Errorf("modification time: got %v, want %v", info.ModTime, wantMod)
+	}
+}
+
+func TestReferenceFile(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	ref := filepath.Join(dir, "ref")
+	target := filepath.Join(dir, "target")
+
+	os.WriteFile(ref, []byte{}, 0644)
+	refTime := time.Date(2023, 6, 15, 14, 30, 0, 0, time.Local)
+	os.Chtimes(ref, refTime, refTime)
+
+	cmd := exec.Command(bin, "-r", ref, target)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("touch -r failed: %v", err)
+	}
+
+	info, err := sys.Stat(target)
+	if err != nil {
+		t.Fatalf("stat failed: %v", err)
+	}
+	if !info.ModTime.Equal(refTime) {
+		t.Errorf("mod time: got %v, want %v", info.ModTime, refTime)
+	}
+}
+
+func TestMissingReferenceFile(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+
+	cmd := exec.Command(bin, "-r", filepath.Join(dir, "nosuchref"), target)
+	if err := cmd.Run(); err == nil {
+		t.Fatal("expected error for missing reference file")
+	}
+}
+
+func TestDateString(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dfile")
+
+	cmd := exec.Command(bin, "-d", "2024-01-15 10:30:00", path)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("touch -d failed: %v", err)
+	}
+
+	info, err := sys.Stat(path)
+	if err != nil {
+		t.Fatalf("stat failed: %v", err)
+	}
+	want := time.Date(2024, 1, 15, 10, 30, 0, 0, time.Local)
+	if !info.AccessTime.Equal(want) {
+		t.Errorf("access time: got %v, want %v", info.AccessTime, want)
+	}
+	if !info.ModTime.Equal(want) {
+		t.Errorf("modification time: got %v, want %v", info.ModTime, want)
+	}
+}
+
+func TestNoDereferenceSymlink(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	link := filepath.Join(dir, "link")
+
+	os.WriteFile(target, []byte{}, 0644)
+	past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.Local)
+	os.Chtimes(target, past, past)
+	os.Symlink(target, link)
+
+	stamp := "2024-06-15 12:00:00"
+	cmd := exec.Command(bin, "-h", "-d", stamp, link)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("touch -h -d failed: %v", err)
+	}
+
+	targetInfo, err := sys.Stat(target)
+	if err != nil {
+		t.Fatalf("stat target failed: %v", err)
+	}
+	if !targetInfo.ModTime.Equal(past) {
+		t.Errorf("target mod time changed: got %v, want %v", targetInfo.ModTime, past)
+	}
+
+	linkInfo, err := sys.Lstat(link)
+	if err != nil {
+		t.Fatalf("lstat link failed: %v", err)
+	}
+	want := time.Date(2024, 6, 15, 12, 0, 0, 0, time.Local)
+	if !linkInfo.ModTime.Equal(want) {
+		t.Errorf("link mod time: got %v, want %v", linkInfo.ModTime, want)
 	}
 }

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd062-touch R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
+// Implements srd062-touch R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -12,13 +12,17 @@ import (
 	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+	"golang.org/x/sys/unix"
 )
 
 type options struct {
-	noCreate   bool
-	accessOnly bool
-	modOnly    bool
-	stampStr   string
+	noCreate      bool
+	accessOnly    bool
+	modOnly       bool
+	noDereference bool
+	stampStr      string
+	refFile       string
+	dateStr       string
 }
 
 func main() {
@@ -33,14 +37,10 @@ func main() {
 }
 
 func run(opts options, files []string) int {
-	t := time.Now()
-	if opts.stampStr != "" {
-		var err error
-		t, err = parseTimestamp(opts.stampStr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "touch: %s\n", err)
-			return 1
-		}
+	t, err := resolveTime(opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "touch: %s\n", err)
+		return 1
 	}
 	exitCode := 0
 	for _, path := range files {
@@ -52,24 +52,68 @@ func run(opts options, files []string) int {
 	return exitCode
 }
 
+func resolveTime(opts options) (time.Time, error) {
+	if opts.refFile != "" {
+		return refFileTime(opts.refFile)
+	}
+	if opts.dateStr != "" {
+		return parseDate(opts.dateStr)
+	}
+	if opts.stampStr != "" {
+		return parseTimestamp(opts.stampStr)
+	}
+	return time.Now(), nil
+}
+
+func refFileTime(path string) (time.Time, error) {
+	info, err := sys.Stat(path)
+	if err != nil {
+		return time.Time{}, fmt.Errorf(
+			"failed to get attributes of '%s': %s", path, sysMsg(err))
+	}
+	return info.ModTime, nil
+}
+
 func touchFile(path string, opts options, t time.Time) error {
-	_, statErr := os.Stat(path)
+	statFn := os.Stat
+	if opts.noDereference {
+		statFn = os.Lstat
+	}
+	_, statErr := statFn(path)
 	if os.IsNotExist(statErr) {
 		if opts.noCreate {
 			return nil
 		}
-		f, err := os.Create(path)
-		if err != nil {
-			return fmt.Errorf("cannot touch '%s': %s", path, sysMsg(err))
+		if !opts.noDereference {
+			f, err := os.Create(path)
+			if err != nil {
+				return fmt.Errorf("cannot touch '%s': %s", path, sysMsg(err))
+			}
+			f.Close()
 		}
-		f.Close()
 	}
 	atime, mtime, err := resolveTimestamps(path, opts, t)
 	if err != nil {
 		return err
 	}
+	return setTimestamps(path, opts, atime, mtime)
+}
+
+func setTimestamps(path string, opts options, atime, mtime time.Time) error {
+	if opts.noDereference {
+		ts := []unix.Timespec{
+			unix.NsecToTimespec(atime.UnixNano()),
+			unix.NsecToTimespec(mtime.UnixNano()),
+		}
+		err := unix.UtimesNanoAt(
+			unix.AT_FDCWD, path, ts, unix.AT_SYMLINK_NOFOLLOW)
+		if err != nil {
+			return fmt.Errorf("setting times of '%s': %s", path, err)
+		}
+		return nil
+	}
 	if err := os.Chtimes(path, atime, mtime); err != nil {
-		return fmt.Errorf("cannot touch '%s': %s", path, sysMsg(err))
+		return fmt.Errorf("setting times of '%s': %s", path, sysMsg(err))
 	}
 	return nil
 }
@@ -78,9 +122,16 @@ func resolveTimestamps(path string, opts options, t time.Time) (time.Time, time.
 	if !opts.accessOnly && !opts.modOnly {
 		return t, t, nil
 	}
-	info, err := sys.Stat(path)
+	var info *sys.FileInfo
+	var err error
+	if opts.noDereference {
+		info, err = sys.Lstat(path)
+	} else {
+		info, err = sys.Stat(path)
+	}
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("cannot touch '%s': %s", path, sysMsg(err))
+		return time.Time{}, time.Time{}, fmt.Errorf(
+			"cannot touch '%s': %s", path, sysMsg(err))
 	}
 	atime, mtime := info.AccessTime, info.ModTime
 	if opts.accessOnly {
@@ -117,10 +168,11 @@ func parseArgs(args []string) (options, []string, error) {
 			continue
 		}
 		if strings.HasPrefix(arg, "--") {
-			if err := parseLongFlag(arg, &opts); err != nil {
+			consumed, err := parseLongFlag(arg, args, i, &opts)
+			if err != nil {
 				return options{}, nil, err
 			}
-			i++
+			i += 1 + consumed
 			continue
 		}
 		consumed, err := parseShortFlags(arg[1:], args, i, &opts)
@@ -135,14 +187,35 @@ func parseArgs(args []string) (options, []string, error) {
 	return opts, files, nil
 }
 
-func parseLongFlag(flag string, opts *options) error {
-	switch flag {
-	case "--no-create":
+func parseLongFlag(flag string, args []string, idx int, opts *options) (int, error) {
+	switch {
+	case flag == "--no-create":
 		opts.noCreate = true
+		return 0, nil
+	case flag == "--no-dereference":
+		opts.noDereference = true
+		return 0, nil
+	case flag == "--reference" || strings.HasPrefix(flag, "--reference="):
+		return handleLongValueFlag(
+			flag, "--reference", args, idx, &opts.refFile)
+	case flag == "--date" || strings.HasPrefix(flag, "--date="):
+		return handleLongValueFlag(
+			flag, "--date", args, idx, &opts.dateStr)
 	default:
-		return fmt.Errorf("unrecognized option '%s'", flag)
+		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
-	return nil
+}
+
+func handleLongValueFlag(flag, name string, args []string, idx int, dest *string) (int, error) {
+	if strings.Contains(flag, "=") {
+		*dest = flag[len(name)+1:]
+		return 0, nil
+	}
+	if idx+1 >= len(args) {
+		return 0, fmt.Errorf("option '%s' requires an argument", name)
+	}
+	*dest = args[idx+1]
+	return 1, nil
 }
 
 func parseShortFlags(flags string, args []string, argIdx int, opts *options) (int, error) {
@@ -152,10 +225,16 @@ func parseShortFlags(flags string, args []string, argIdx int, opts *options) (in
 			opts.accessOnly = true
 		case 'c':
 			opts.noCreate = true
+		case 'h':
+			opts.noDereference = true
 		case 'm':
 			opts.modOnly = true
 		case 't':
-			return handleStampFlag(flags[j+1:], args, argIdx, opts)
+			return handleValueFlag(flags[j+1:], args, argIdx, &opts.stampStr, 't')
+		case 'r':
+			return handleValueFlag(flags[j+1:], args, argIdx, &opts.refFile, 'r')
+		case 'd':
+			return handleValueFlag(flags[j+1:], args, argIdx, &opts.dateStr, 'd')
 		default:
 			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
@@ -163,18 +242,54 @@ func parseShortFlags(flags string, args []string, argIdx int, opts *options) (in
 	return 0, nil
 }
 
-func handleStampFlag(remainder string, args []string, argIdx int, opts *options) (int, error) {
-	stamp := remainder
-	extra := 0
-	if stamp == "" {
-		if argIdx+1 >= len(args) {
-			return 0, fmt.Errorf("option requires an argument -- 't'")
-		}
-		stamp = args[argIdx+1]
-		extra = 1
+func handleValueFlag(remainder string, args []string, argIdx int, dest *string, ch byte) (int, error) {
+	if remainder != "" {
+		*dest = remainder
+		return 0, nil
 	}
-	opts.stampStr = stamp
-	return extra, nil
+	if argIdx+1 >= len(args) {
+		return 0, fmt.Errorf("option requires an argument -- '%c'", ch)
+	}
+	*dest = args[argIdx+1]
+	return 1, nil
+}
+
+func parseDate(s string) (time.Time, error) {
+	if strings.HasPrefix(s, "@") {
+		return parseEpoch(s[1:])
+	}
+	formats := []string{
+		"2006-01-02 15:04:05 -0700",
+		"2006-01-02 15:04:05 MST",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02T15:04",
+		"2006-01-02",
+		"02 Jan 2006 15:04:05",
+		"02 Jan 2006 15:04",
+		"02 Jan 2006",
+		"Jan 02 2006 15:04:05",
+		"Jan 02 2006 15:04",
+		"Jan 02, 2006 15:04:05",
+		"Jan 02, 2006 15:04",
+		"Jan 02, 2006",
+	}
+	for _, layout := range formats {
+		t, err := time.ParseInLocation(layout, s, time.Local)
+		if err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid date format '%s'", s)
+}
+
+func parseEpoch(s string) (time.Time, error) {
+	sec, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date format '@%s'", s)
+	}
+	return time.Unix(sec, 0), nil
 }
 
 func parseTimestamp(stamp string) (time.Time, error) {
