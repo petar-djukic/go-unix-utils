@@ -24,6 +24,8 @@ func TestDiff(t *testing.T) {
 	tests := regexpSplitTests()
 	tests = append(tests, lineNumberTests()...)
 	tests = append(tests, skipPatternTests()...)
+	tests = append(tests, repeatTests()...)
+	tests = append(tests, offsetTests()...)
 	tests = append(tests, fileInputTests(t)...)
 	tests = append(tests, errorTests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -117,6 +119,74 @@ func skipPatternTests() []testutils.DiffTest {
 	}
 }
 
+func repeatTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "r2_1_repeat_n",
+			Args:  []string{"-", "/^---$/", "{1}"},
+			Stdin: []byte("a\n---\nb\n---\nc\n---\nd\n"),
+			ExpectedFiles: map[string][]byte{
+				"xx00": []byte("a\n"),
+				"xx01": []byte("---\nb\n"),
+				"xx02": []byte("---\nc\n---\nd\n"),
+			},
+		},
+		{
+			Name:  "r2_2_repeat_star",
+			Args:  []string{"-", "/^---$/", "{*}"},
+			Stdin: []byte("a\n---\nb\n---\nc\n---\nd\n"),
+			ExpectedFiles: map[string][]byte{
+				"xx00": []byte("a\n"),
+				"xx01": []byte("---\nb\n"),
+				"xx02": []byte("---\nc\n"),
+				"xx03": []byte("---\nd\n"),
+			},
+		},
+		{
+			Name:  "r2_1_repeat_line_number",
+			Args:  []string{"-", "3", "{1}"},
+			Stdin: seqBytes(1, 9),
+			ExpectedFiles: map[string][]byte{
+				"xx00": seqBytes(1, 2),
+				"xx01": seqBytes(3, 5),
+				"xx02": seqBytes(6, 9),
+			},
+		},
+	}
+}
+
+func offsetTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "r2_3_offset_plus",
+			Args:  []string{"-", "/c/+1"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
+			ExpectedFiles: map[string][]byte{
+				"xx00": []byte("a\nb\nc\n"),
+				"xx01": []byte("d\ne\n"),
+			},
+		},
+		{
+			Name:  "r2_3_offset_minus",
+			Args:  []string{"-", "/c/-1"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
+			ExpectedFiles: map[string][]byte{
+				"xx00": []byte("a\n"),
+				"xx01": []byte("b\nc\nd\ne\n"),
+			},
+		},
+		{
+			Name:  "r2_3_offset_plus_two",
+			Args:  []string{"-", "/b/+2"},
+			Stdin: []byte("a\nb\nc\nd\ne\n"),
+			ExpectedFiles: map[string][]byte{
+				"xx00": []byte("a\nb\nc\n"),
+				"xx01": []byte("d\ne\n"),
+			},
+		},
+	}
+}
+
 func fileInputTests(t *testing.T) []testutils.DiffTest {
 	t.Helper()
 	dir := t.TempDir()
@@ -144,6 +214,13 @@ func errorTests() []testutils.DiffTest {
 			Name:      "r1_3_skip_no_match",
 			Args:      []string{"-", "%nomatch%"},
 			Stdin:     []byte("a\nb\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "r2_4_repeat_no_match",
+			Args:      []string{"-", "/x/", "{2}"},
+			Stdin:     []byte("a\nx\nb\nc\n"),
 			ExitCode:  1,
 			Normalize: norm,
 		},
