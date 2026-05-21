@@ -428,7 +428,7 @@ code_status:
               testfiles: 0
             - id: rel08.0-uc004-timeout
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel08.0-uc005-shuf

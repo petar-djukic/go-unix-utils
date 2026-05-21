@@ -3658,28 +3658,28 @@ requirements:
             issue: 5431
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
         R4.4:
-            status: ready
+            status: proposed
             weight: 1
     srd063-timeout:
         R1.1:
@@ -3861,16 +3861,16 @@ requirements:
             issue: 5434
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
         R4.4:
-            status: ready
+            status: proposed
             weight: 1
     srd066-expr:
         R1.1:
@@ -3906,16 +3906,16 @@ requirements:
             issue: 5433
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
             status: ready
