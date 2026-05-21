@@ -19,8 +19,13 @@ func TestDiff(t *testing.T) {
 	}
 
 	discardStderr := testutils.NormalizeFunc(func([]byte) []byte { return nil })
+	discardStdout := testutils.NormalizeFunc(func([]byte) []byte { return nil })
 
 	tests := []testutils.DiffTest{
+		// R3.3: --help prints usage to stdout, exit 0
+		{Name: "help", Args: []string{"--help"}, Normalize: []testutils.NormalizeFunc{discardStdout}},
+		// R3.4: --version prints version info to stdout, exit 0
+		{Name: "version", Args: []string{"--version"}, Normalize: []testutils.NormalizeFunc{discardStdout}},
 		// R1.1, R2.1: zero duration returns immediately with exit 0
 		{Name: "zero", Args: []string{"0"}},
 		// R1.1, R1.2: fractional seconds
