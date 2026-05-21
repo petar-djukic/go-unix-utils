@@ -4,6 +4,7 @@
 package main
 
 import (
+	"math"
 	"os/exec"
 	"testing"
 
@@ -48,4 +49,18 @@ func TestDiff(t *testing.T) {
 		{Name: "empty-string", Args: []string{""}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardStderr}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// R2.4: infinity/inf cannot be differentially tested (both binaries block
+// forever), so verify parseDuration directly.
+func TestParseDurationInfinity(t *testing.T) {
+	for _, arg := range []string{"inf", "infinity", "Inf", "INF", "Infinity", "INFINITY"} {
+		val, err := parseDuration(arg)
+		if err != nil {
+			t.Errorf("parseDuration(%q) returned error: %v", arg, err)
+		}
+		if !math.IsInf(val, 1) {
+			t.Errorf("parseDuration(%q) = %v, want +Inf", arg, val)
+		}
+	}
 }
