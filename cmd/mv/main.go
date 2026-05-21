@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -15,33 +16,49 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+type overwriteMode int
+
+const (
+	modeDefault     overwriteMode = iota
+	modeInteractive
+	modeForce
+	modeNoClobber
+)
+
+type options struct {
+	mode overwriteMode
+}
+
+var stdinScanner = bufio.NewScanner(os.Stdin)
+
 func main() {
 	sys.InstallSIGPIPEHandler()
-	args := parseFlags(os.Args[1:])
-	if len(args) == 0 {
+	files, opts := parseFlags(os.Args[1:])
+	if len(files) == 0 {
 		fmt.Fprintf(os.Stderr, "mv: missing file operand\n")
 		os.Exit(1)
 	}
-	if len(args) == 1 {
+	if len(files) == 1 {
 		fmt.Fprintf(os.Stderr,
-			"mv: missing destination file operand after '%s'\n", args[0])
+			"mv: missing destination file operand after '%s'\n", files[0])
 		os.Exit(1)
 	}
-	dest := args[len(args)-1]
-	sources := args[:len(args)-1]
+	dest := files[len(files)-1]
+	sources := files[:len(files)-1]
 	code := 0
 	if len(sources) > 1 {
-		code = moveMultiple(sources, dest)
+		code = moveMultiple(sources, dest, opts)
 	} else {
-		code = moveSingle(sources[0], dest)
+		code = moveSingle(sources[0], dest, opts)
 	}
 	if code != 0 {
 		os.Exit(code)
 	}
 }
 
-func parseFlags(args []string) []string {
+func parseFlags(args []string) ([]string, options) {
 	var files []string
+	var opts options
 	endOfFlags := false
 	for _, arg := range args {
 		if endOfFlags || arg == "" || arg[0] != '-' {
@@ -52,14 +69,41 @@ func parseFlags(args []string) []string {
 			endOfFlags = true
 			continue
 		}
+		switch arg {
+		case "--interactive":
+			opts.mode = modeInteractive
+			continue
+		case "--force":
+			opts.mode = modeForce
+			continue
+		case "--no-clobber":
+			opts.mode = modeNoClobber
+			continue
+		}
+		for _, c := range arg[1:] {
+			switch c {
+			case 'i':
+				opts.mode = modeInteractive
+			case 'f':
+				opts.mode = modeForce
+			case 'n':
+				opts.mode = modeNoClobber
+			}
+		}
 	}
-	return files
+	return files, opts
 }
 
-func moveSingle(src, dest string) int {
+func moveSingle(src, dest string, opts options) int {
 	info, err := os.Stat(dest)
 	if err == nil && info.IsDir() {
 		dest = filepath.Join(dest, filepath.Base(src))
+	}
+	switch checkOverwrite(dest, opts.mode) {
+	case owSkip:
+		return 0
+	case owSkipError:
+		return 1
 	}
 	if err := moveFile(src, dest); err != nil {
 		fmt.Fprintf(os.Stderr, "mv: %s\n", err)
@@ -68,7 +112,7 @@ func moveSingle(src, dest string) int {
 	return 0
 }
 
-func moveMultiple(sources []string, dest string) int {
+func moveMultiple(sources []string, dest string, opts options) int {
 	info, err := os.Stat(dest)
 	if err != nil || !info.IsDir() {
 		fmt.Fprintf(os.Stderr, "mv: target '%s': not a directory\n", dest)
@@ -77,12 +121,52 @@ func moveMultiple(sources []string, dest string) int {
 	code := 0
 	for _, src := range sources {
 		target := filepath.Join(dest, filepath.Base(src))
+		switch checkOverwrite(target, opts.mode) {
+		case owSkip:
+			continue
+		case owSkipError:
+			code = 1
+			continue
+		}
 		if err := moveFile(src, target); err != nil {
 			fmt.Fprintf(os.Stderr, "mv: %s\n", err)
 			code = 1
 		}
 	}
 	return code
+}
+
+type overwriteAction int
+
+const (
+	owProceed   overwriteAction = iota
+	owSkip
+	owSkipError
+)
+
+func checkOverwrite(dest string, mode overwriteMode) overwriteAction {
+	if _, err := os.Lstat(dest); err != nil {
+		return owProceed
+	}
+	switch mode {
+	case modeNoClobber:
+		return owSkip
+	case modeInteractive:
+		if promptOverwrite(dest) {
+			return owProceed
+		}
+		return owSkipError
+	}
+	return owProceed
+}
+
+func promptOverwrite(dest string) bool {
+	fmt.Fprintf(os.Stderr, "mv: overwrite '%s'? ", dest)
+	if !stdinScanner.Scan() {
+		return false
+	}
+	line := stdinScanner.Text()
+	return len(line) > 0 && (line[0] == 'y' || line[0] == 'Y')
 }
 
 func moveFile(src, dest string) error {
@@ -96,7 +180,7 @@ func moveFile(src, dest string) error {
 	if isCrossDevice(err) {
 		return crossDeviceMove(src, dest)
 	}
-	return fmtPathErr("cannot move", src, err)
+	return fmtMoveErr(src, dest, err)
 }
 
 func isCrossDevice(err error) bool {
@@ -178,4 +262,11 @@ func fmtPathErr(verb, path string, err error) error {
 		return fmt.Errorf("%s '%s': %s", verb, path, pe.Err)
 	}
 	return fmt.Errorf("%s '%s': %s", verb, path, err)
+}
+
+func fmtMoveErr(src, dest string, err error) error {
+	if le, ok := errors.AsType[*os.LinkError](err); ok {
+		return fmt.Errorf("cannot move '%s' to '%s': %s", src, dest, le.Err)
+	}
+	return fmt.Errorf("cannot move '%s' to '%s': %s", src, dest, err)
 }

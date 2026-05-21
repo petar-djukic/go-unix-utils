@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd057-mv R1.1, R1.2, R1.3, R1.4.
+// Implements srd057-mv R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -122,6 +122,84 @@ func TestDiff(t *testing.T) {
 		runMvTest(t, goBin, refBin, setup,
 			[]string{"a.txt", "b.txt", "notadir"}, errNorm)
 	})
+
+	t.Run("r2_1_interactive_yes", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "new\n")
+			writeFile(t, dir, "dest.txt", "old\n")
+		}
+		goDir := runMvTestInput(t, goBin, refBin, setup,
+			[]string{"-i", "src.txt", "dest.txt"}, errNorm, "y\n")
+		checkFile(t, goDir, "dest.txt", "new\n")
+		checkAbsent(t, goDir, "src.txt")
+	})
+
+	t.Run("r2_1_interactive_no", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "new\n")
+			writeFile(t, dir, "dest.txt", "old\n")
+		}
+		goDir := runMvTestInput(t, goBin, refBin, setup,
+			[]string{"-i", "src.txt", "dest.txt"}, errNorm, "n\n")
+		checkFile(t, goDir, "dest.txt", "old\n")
+		checkFile(t, goDir, "src.txt", "new\n")
+	})
+
+	t.Run("r2_2_force_overwrite", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "new\n")
+			writeFile(t, dir, "dest.txt", "old\n")
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-f", "src.txt", "dest.txt"}, nil)
+		checkFile(t, goDir, "dest.txt", "new\n")
+		checkAbsent(t, goDir, "src.txt")
+	})
+
+	t.Run("r2_2_force_after_interactive", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "new\n")
+			writeFile(t, dir, "dest.txt", "old\n")
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-i", "-f", "src.txt", "dest.txt"}, nil)
+		checkFile(t, goDir, "dest.txt", "new\n")
+		checkAbsent(t, goDir, "src.txt")
+	})
+
+	t.Run("r2_3_no_clobber", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "new\n")
+			writeFile(t, dir, "dest.txt", "old\n")
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-n", "src.txt", "dest.txt"}, nil)
+		checkFile(t, goDir, "dest.txt", "old\n")
+		checkFile(t, goDir, "src.txt", "new\n")
+	})
+
+	t.Run("r2_3_no_clobber_no_dest", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "hello\n")
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"-n", "src.txt", "dest.txt"}, nil)
+		checkFile(t, goDir, "dest.txt", "hello\n")
+		checkAbsent(t, goDir, "src.txt")
+	})
+
+	t.Run("r2_4_permission_denied", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "src.txt", "hello\n")
+			restricted := filepath.Join(dir, "nowrite")
+			os.Mkdir(restricted, 0o755)
+			os.Chmod(restricted, 0o555)
+			t.Cleanup(func() { os.Chmod(restricted, 0o755) })
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"src.txt", "nowrite/dest.txt"}, errNorm)
+		checkFile(t, goDir, "src.txt", "hello\n")
+	})
 }
 
 func runMvTest(
@@ -131,19 +209,30 @@ func runMvTest(
 	norm []testutils.NormalizeFunc,
 ) string {
 	t.Helper()
+	return runMvTestInput(t, goBin, refBin, setup, args, norm, "")
+}
+
+func runMvTestInput(
+	t *testing.T, goBin, refBin string,
+	setup func(t *testing.T, dir string),
+	args []string,
+	norm []testutils.NormalizeFunc,
+	stdin string,
+) string {
+	t.Helper()
 	goDir := t.TempDir()
 	refDir := t.TempDir()
 	setup(t, goDir)
 	setup(t, refDir)
 	env := buildTestEnv()
-	goRes := runCmd(t, goBin, args, env, goDir)
-	refRes := runCmd(t, refBin, args, env, refDir)
+	goRes := runCmd(t, goBin, args, env, goDir, stdin)
+	refRes := runCmd(t, refBin, args, env, refDir, stdin)
 	compareResults(t, goRes, refRes, norm)
 	return goDir
 }
 
 func runCmd(
-	t *testing.T, bin string, args, env []string, dir string,
+	t *testing.T, bin string, args, env []string, dir, stdin string,
 ) cmdResult {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -151,6 +240,9 @@ func runCmd(
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = env
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
