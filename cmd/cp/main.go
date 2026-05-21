@@ -19,16 +19,27 @@ import (
 type overwriteMode int
 
 const (
-	owDefault  overwriteMode = iota
-	owAskUser                // -i
-	owNoClobber              // -n
+	owDefault   overwriteMode = iota
+	owAskUser                 // -i
+	owNoClobber               // -n
+)
+
+type derefMode int
+
+const (
+	derefDefault derefMode = iota
+	derefAlways
+	derefNever
 )
 
 var (
 	owMode      overwriteMode
 	unlinkDest  bool
+	recursive   bool
+	deref       derefMode
 	stdinReader = bufio.NewReader(os.Stdin)
 	errDeclined = errors.New("declined")
+	errPartial  = errors.New("partial failure")
 )
 
 func main() {
@@ -89,6 +100,12 @@ func applyFlag(c rune) {
 		unlinkDest = false
 	case 'n':
 		owMode = owNoClobber
+	case 'r', 'R':
+		recursive = true
+	case 'L':
+		deref = derefAlways
+	case 'P':
+		deref = derefNever
 	}
 }
 
@@ -102,7 +119,31 @@ func applyLongFlag(name string) {
 		unlinkDest = false
 	case "no-clobber":
 		owMode = owNoClobber
+	case "recursive":
+		recursive = true
+	case "dereference":
+		deref = derefAlways
+	case "no-dereference":
+		deref = derefNever
 	}
+}
+
+func shouldDeref() bool {
+	switch deref {
+	case derefAlways:
+		return true
+	case derefNever:
+		return false
+	default:
+		return !recursive
+	}
+}
+
+func statSource(path string) (os.FileInfo, error) {
+	if shouldDeref() {
+		return os.Stat(path)
+	}
+	return os.Lstat(path)
 }
 
 func copySingle(src, dest string) int {
@@ -111,7 +152,7 @@ func copySingle(src, dest string) int {
 		dest = filepath.Join(dest, filepath.Base(src))
 	}
 	if err := copyFile(src, dest); err != nil {
-		if err != errDeclined {
+		if err != errDeclined && err != errPartial {
 			fmt.Fprintf(os.Stderr, "cp: %s\n", err)
 		}
 		return 1
@@ -129,7 +170,7 @@ func copyMultiple(sources []string, dest string) int {
 	for _, src := range sources {
 		target := filepath.Join(dest, filepath.Base(src))
 		if err := copyFile(src, target); err != nil {
-			if err != errDeclined {
+			if err != errDeclined && err != errPartial {
 				fmt.Fprintf(os.Stderr, "cp: %s\n", err)
 			}
 			code = 1
@@ -139,15 +180,19 @@ func copyMultiple(sources []string, dest string) int {
 }
 
 func copyFile(src, dest string) error {
-	srcInfo, err := os.Stat(src)
+	srcInfo, err := statSource(src)
 	if err != nil {
 		return fmtPathErr("cannot stat", src, err)
 	}
 	if srcInfo.IsDir() {
-		return fmt.Errorf("-r not specified; omitting directory '%s'", src)
+		if !recursive {
+			return fmt.Errorf("-r not specified; omitting directory '%s'", src)
+		}
+		return copyDir(src, dest)
 	}
+	isLink := srcInfo.Mode()&os.ModeSymlink != 0
 	if destInfo, err := os.Stat(dest); err == nil {
-		if os.SameFile(srcInfo, destInfo) {
+		if !isLink && os.SameFile(srcInfo, destInfo) {
 			return fmt.Errorf("'%s' and '%s' are the same file", src, dest)
 		}
 		switch owMode {
@@ -159,7 +204,51 @@ func copyFile(src, dest string) error {
 			}
 		}
 	}
+	if isLink {
+		return copyLink(src, dest)
+	}
 	return doCopy(src, dest, srcInfo.Mode())
+}
+
+func copyDir(src, dest string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return fmtPathErr("cannot stat", src, err)
+	}
+	if err := os.Mkdir(dest, srcInfo.Mode().Perm()); err != nil && !os.IsExist(err) {
+		return fmtPathErr("cannot create directory", dest, err)
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmtPathErr("cannot read directory", src, err)
+	}
+	failed := false
+	for _, e := range entries {
+		s := filepath.Join(src, e.Name())
+		d := filepath.Join(dest, e.Name())
+		if err := copyFile(s, d); err != nil {
+			if err != errDeclined && err != errPartial {
+				fmt.Fprintf(os.Stderr, "cp: %s\n", err)
+			}
+			failed = true
+		}
+	}
+	if failed {
+		return errPartial
+	}
+	return nil
+}
+
+func copyLink(src, dest string) error {
+	target, err := os.Readlink(src)
+	if err != nil {
+		return fmtPathErr("cannot readlink", src, err)
+	}
+	os.Remove(dest)
+	if err := os.Symlink(target, dest); err != nil {
+		return fmtPathErr("cannot create symlink", dest, err)
+	}
+	return nil
 }
 
 func doCopy(src, dest string, mode os.FileMode) error {

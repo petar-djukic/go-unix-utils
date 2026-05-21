@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd056-cp R1.1, R1.2, R1.3, R1.4.
+// Implements srd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4.
 package main
 
 import (
@@ -287,6 +287,115 @@ func TestDiff(t *testing.T) {
 				Env:     env,
 				ExpectedFiles: map[string][]byte{
 					"dest.txt": []byte("original\n"),
+				},
+			},
+		})
+	})
+
+	t.Run("r2_1_recursive", func(t *testing.T) {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "src", "sub"), 0o755)
+		writeFile(t, dir, "src/a.txt", "aaa\n")
+		writeFile(t, dir, "src/sub/b.txt", "bbb\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "nested",
+				Args:    []string{"-r", "src", "dest"},
+				WorkDir: dir,
+				Env:     env,
+				ExpectedFiles: map[string][]byte{
+					"dest/a.txt":     []byte("aaa\n"),
+					"dest/sub/b.txt": []byte("bbb\n"),
+				},
+			},
+		})
+	})
+
+	t.Run("r2_1_recursive_into_dir", func(t *testing.T) {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+		writeFile(t, dir, "src/a.txt", "hello\n")
+		os.Mkdir(filepath.Join(dir, "target"), 0o755)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "into_dir",
+				Args:    []string{"-r", "src", "target"},
+				WorkDir: dir,
+				Env:     env,
+				ExpectedFiles: map[string][]byte{
+					"target/src/a.txt": []byte("hello\n"),
+				},
+			},
+		})
+	})
+
+	t.Run("r2_1_R_flag", func(t *testing.T) {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+		writeFile(t, dir, "src/f.txt", "data\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "R_flag",
+				Args:    []string{"-R", "src", "dest"},
+				WorkDir: dir,
+				Env:     env,
+				ExpectedFiles: map[string][]byte{
+					"dest/f.txt": []byte("data\n"),
+				},
+			},
+		})
+	})
+
+	t.Run("r2_3_deref", func(t *testing.T) {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+		writeFile(t, dir, "src/real.txt", "content\n")
+		os.Symlink("real.txt", filepath.Join(dir, "src", "link.txt"))
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "follow_links",
+				Args:    []string{"-rL", "src", "dest"},
+				WorkDir: dir,
+				Env:     env,
+				ExpectedFiles: map[string][]byte{
+					"dest/real.txt": []byte("content\n"),
+					"dest/link.txt": []byte("content\n"),
+				},
+			},
+		})
+	})
+
+	t.Run("r2_4_preserve_symlink", func(t *testing.T) {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+		writeFile(t, dir, "src/real.txt", "hello\n")
+		os.Symlink("nonexistent", filepath.Join(dir, "src", "broken"))
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "broken_preserved",
+				Args:    []string{"-r", "src", "dest"},
+				WorkDir: dir,
+				Env:     env,
+				ExpectedFiles: map[string][]byte{
+					"dest/real.txt": []byte("hello\n"),
+				},
+			},
+		})
+	})
+
+	t.Run("r2_4_explicit_P", func(t *testing.T) {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+		writeFile(t, dir, "src/real.txt", "content\n")
+		os.Symlink("real.txt", filepath.Join(dir, "src", "link.txt"))
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "explicit_P",
+				Args:    []string{"-rP", "src", "dest"},
+				WorkDir: dir,
+				Env:     env,
+				ExpectedFiles: map[string][]byte{
+					"dest/real.txt": []byte("content\n"),
 				},
 			},
 		})
