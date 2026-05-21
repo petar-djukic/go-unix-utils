@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5402"
+task_title: '[stitch] cmd/rm: srd058 R1.1-R1.4'
+status: success
+started_at: "2026-05-21T12:54:19Z"
+duration: 10m27s
+duration_s: 627
+tokens:
+    input: 1145788
+    output: 27531
+    cache_creation: 240445
+    cache_read: 905321
+cost_usd: 3.187323199999999
+num_turns: 60
+rate_limit_wait_s: 2
+loc_before:
+    production: 14253
+    test: 13495
+loc_after:
+    production: 14316
+    test: 13659
+diff:
+    files: 3
+    insertions: 452
+    deletions: 12
