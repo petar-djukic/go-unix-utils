@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -26,13 +27,17 @@ const (
 )
 
 type options struct {
-	mode      splitMode
-	modeSet   bool
-	lines     int
-	bytesVal  int64
-	lineBytes int64
-	chunks    string
-	prefix    string
+	mode             splitMode
+	modeSet          bool
+	lines            int
+	bytesVal         int64
+	lineBytes        int64
+	chunks           string
+	prefix           string
+	suffixLen        int
+	numeric          bool
+	additionalSuffix string
+	filter           string
 }
 
 func main() {
@@ -60,7 +65,7 @@ func main() {
 }
 
 func parseArgs(args []string) (options, string, error) {
-	opts := options{lines: 1000, prefix: "x"}
+	opts := options{lines: 1000, prefix: "x", suffixLen: 2}
 	var positional []string
 
 	i := 0
@@ -133,6 +138,29 @@ func parseLongFlag(flag string, remaining []string, opts *options) (int, error) 
 			return 0, err
 		}
 		return n, setChunksMode(opts, val)
+	case flag == "--suffix-length" || strings.HasPrefix(flag, "--suffix-length="):
+		val, n, err := longOptValue(flag, "--suffix-length", remaining)
+		if err != nil {
+			return 0, err
+		}
+		return n, setSuffixLen(opts, val)
+	case flag == "--numeric-suffixes":
+		opts.numeric = true
+		return 1, nil
+	case flag == "--additional-suffix" || strings.HasPrefix(flag, "--additional-suffix="):
+		val, n, err := longOptValue(flag, "--additional-suffix", remaining)
+		if err != nil {
+			return 0, err
+		}
+		opts.additionalSuffix = val
+		return n, nil
+	case flag == "--filter" || strings.HasPrefix(flag, "--filter="):
+		val, n, err := longOptValue(flag, "--filter", remaining)
+		if err != nil {
+			return 0, err
+		}
+		opts.filter = val
+		return n, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
@@ -141,6 +169,12 @@ func parseLongFlag(flag string, remaining []string, opts *options) (int, error) 
 func parseShortFlags(flags string, remaining []string, opts *options) (int, error) {
 	consumed := 0
 	for j := 0; j < len(flags); j++ {
+		if isBoolFlag(flags[j]) {
+			if err := setBoolFlag(opts, flags[j]); err != nil {
+				return 0, err
+			}
+			continue
+		}
 		setter, ok := shortFlagSetter(flags[j])
 		if !ok {
 			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
@@ -157,6 +191,16 @@ func parseShortFlags(flags string, remaining []string, opts *options) (int, erro
 	return consumed, nil
 }
 
+func setBoolFlag(opts *options, ch byte) error {
+	switch ch {
+	case 'd':
+		opts.numeric = true
+		return nil
+	default:
+		return fmt.Errorf("invalid option -- '%c'", ch)
+	}
+}
+
 func shortFlagSetter(ch byte) (func(*options, string) error, bool) {
 	switch ch {
 	case 'l':
@@ -167,9 +211,15 @@ func shortFlagSetter(ch byte) (func(*options, string) error, bool) {
 		return setLineBytesMode, true
 	case 'n':
 		return setChunksMode, true
+	case 'a':
+		return setSuffixLen, true
 	default:
 		return nil, false
 	}
+}
+
+func isBoolFlag(ch byte) bool {
+	return ch == 'd'
 }
 
 func extractFlagValue(rest string, remaining []string, consumed int, flag byte) (string, int, error) {
@@ -201,35 +251,35 @@ func openInput(name string) (io.Reader, io.Closer, error) {
 	return f, f, nil
 }
 
-func splitLines(r io.Reader, prefix string, linesPerPiece int) error {
+func splitLines(r io.Reader, so suffixOpts, linesPerPiece int) error {
 	br := bufio.NewReader(r)
 	lineCount := 0
 	pieceIndex := 0
-	var w *os.File
+	var pw *pieceWriter
 
 	for {
 		line, readErr := br.ReadBytes('\n')
 		if len(line) > 0 {
 			if lineCount%linesPerPiece == 0 {
-				if w != nil {
-					w.Close()
+				if pw != nil {
+					pw.Close()
 				}
 				var err error
-				w, err = openPiece(prefix, pieceIndex)
+				pw, err = newPieceWriter(so, pieceIndex)
 				if err != nil {
 					return err
 				}
 				pieceIndex++
 			}
-			if _, err := w.Write(line); err != nil {
-				w.Close()
+			if _, err := pw.Write(line); err != nil {
+				pw.Close()
 				return err
 			}
 			lineCount++
 		}
 		if readErr != nil {
-			if w != nil {
-				w.Close()
+			if pw != nil {
+				pw.Close()
 			}
 			if readErr != io.EOF {
 				return readErr
@@ -239,12 +289,53 @@ func splitLines(r io.Reader, prefix string, linesPerPiece int) error {
 	}
 }
 
-func openPiece(prefix string, index int) (*os.File, error) {
-	suffix, err := alphabeticSuffix(index, 2)
-	if err != nil {
-		return nil, err
+type suffixOpts struct {
+	prefix           string
+	suffixLen        int
+	numeric          bool
+	additionalSuffix string
+	filter           string
+}
+
+func newSuffixOpts(opts options) suffixOpts {
+	return suffixOpts{
+		prefix:           opts.prefix,
+		suffixLen:        opts.suffixLen,
+		numeric:          opts.numeric,
+		additionalSuffix: opts.additionalSuffix,
+		filter:           opts.filter,
 	}
-	return os.Create(prefix + suffix)
+}
+
+func pieceName(so suffixOpts, index int) (string, error) {
+	var suffix string
+	var err error
+	if so.numeric {
+		suffix, err = numericSuffix(index, so.suffixLen)
+	} else {
+		suffix, err = alphabeticSuffix(index, so.suffixLen)
+	}
+	if err != nil {
+		return "", err
+	}
+	return so.prefix + suffix + so.additionalSuffix, nil
+}
+
+func numericSuffix(index, length int) (string, error) {
+	s := strconv.Itoa(index)
+	if len(s) > length {
+		return "", fmt.Errorf("output file suffixes exhausted")
+	}
+	return strings.Repeat("0", length-len(s)) + s, nil
+}
+
+func setSuffixLen(opts *options, val string) error {
+	n, err := strconv.Atoi(val)
+	if err != nil || n <= 0 {
+		return fmt.Errorf("invalid suffix length: '%s'", val)
+	}
+	opts.suffixLen = n
+	return nil
 }
 
 func alphabeticSuffix(index, length int) (string, error) {
@@ -264,15 +355,16 @@ func alphabeticSuffix(index, length int) (string, error) {
 }
 
 func run(r io.Reader, opts options) error {
+	so := newSuffixOpts(opts)
 	switch opts.mode {
 	case modeBytes:
-		return splitBytes(r, opts.prefix, opts.bytesVal)
+		return splitBytes(r, so, opts.bytesVal)
 	case modeLineBytes:
-		return splitLineBytes(r, opts.prefix, opts.lineBytes)
+		return splitLineBytes(r, so, opts.lineBytes)
 	case modeChunks:
-		return splitChunks(r, opts.prefix, opts.chunks)
+		return splitChunks(r, so, opts.chunks)
 	default:
-		return splitLines(r, opts.prefix, opts.lines)
+		return splitLines(r, so, opts.lines)
 	}
 }
 
@@ -347,17 +439,17 @@ func parseByteCount(s string) (int64, error) {
 	return n, nil
 }
 
-func splitBytes(r io.Reader, prefix string, size int64) error {
+func splitBytes(r io.Reader, so suffixOpts, size int64) error {
 	pieceIndex := 0
 	for {
-		w, err := openPiece(prefix, pieceIndex)
+		pw, err := newPieceWriter(so, pieceIndex)
 		if err != nil {
 			return err
 		}
-		written, copyErr := io.CopyN(w, r, size)
-		w.Close()
+		written, copyErr := io.CopyN(pw, r, size)
+		closeErr := pw.Close()
 		if written == 0 {
-			os.Remove(w.Name())
+			pw.Remove()
 		}
 		if copyErr != nil {
 			if copyErr == io.EOF {
@@ -365,11 +457,14 @@ func splitBytes(r io.Reader, prefix string, size int64) error {
 			}
 			return copyErr
 		}
+		if closeErr != nil {
+			return closeErr
+		}
 		pieceIndex++
 	}
 }
 
-func splitLineBytes(r io.Reader, prefix string, maxBytes int64) error {
+func splitLineBytes(r io.Reader, so suffixOpts, maxBytes int64) error {
 	sz := int(maxBytes)
 	br := bufio.NewReaderSize(r, sz)
 	pieceIndex := 0
@@ -377,7 +472,7 @@ func splitLineBytes(r io.Reader, prefix string, maxBytes int64) error {
 	for {
 		data, err := readLineBytesChunk(br, sz)
 		if len(data) > 0 {
-			if werr := writePiece(prefix, pieceIndex, data); werr != nil {
+			if werr := writePiece(so, pieceIndex, data); werr != nil {
 				return werr
 			}
 			pieceIndex++
@@ -407,7 +502,7 @@ func readLineBytesChunk(br *bufio.Reader, sz int) ([]byte, error) {
 	return data, err
 }
 
-func splitChunks(r io.Reader, prefix string, spec string) error {
+func splitChunks(r io.Reader, so suffixOpts, spec string) error {
 	mode, n, err := parseChunkSpec(spec)
 	if err != nil {
 		return err
@@ -418,11 +513,11 @@ func splitChunks(r io.Reader, prefix string, spec string) error {
 	}
 	switch mode {
 	case "":
-		return splitByteChunks(data, prefix, n)
+		return splitByteChunks(data, so, n)
 	case "l":
-		return splitLineChunks(data, prefix, n)
+		return splitLineChunks(data, so, n)
 	case "r":
-		return splitRoundRobin(data, prefix, n)
+		return splitRoundRobin(data, so, n)
 	default:
 		return fmt.Errorf("invalid number of chunks: '%s'", spec)
 	}
@@ -445,7 +540,7 @@ func parseChunkSpec(spec string) (string, int, error) {
 	return mode, n, nil
 }
 
-func splitByteChunks(data []byte, prefix string, n int) error {
+func splitByteChunks(data []byte, so suffixOpts, n int) error {
 	total := len(data)
 	baseSize := total / n
 	remainder := total % n
@@ -455,7 +550,7 @@ func splitByteChunks(data []byte, prefix string, n int) error {
 		if i < remainder {
 			size++
 		}
-		if err := writePiece(prefix, i, data[offset:offset+size]); err != nil {
+		if err := writePiece(so, i, data[offset:offset+size]); err != nil {
 			return err
 		}
 		offset += size
@@ -463,7 +558,7 @@ func splitByteChunks(data []byte, prefix string, n int) error {
 	return nil
 }
 
-func splitLineChunks(data []byte, prefix string, n int) error {
+func splitLineChunks(data []byte, so suffixOpts, n int) error {
 	total := int64(len(data))
 	offset := int64(0)
 	for i := range n {
@@ -472,7 +567,7 @@ func splitLineChunks(data []byte, prefix string, n int) error {
 		if target > offset {
 			end = findLineEnd(data, target)
 		}
-		if err := writePiece(prefix, i, data[offset:end]); err != nil {
+		if err := writePiece(so, i, data[offset:end]); err != nil {
 			return err
 		}
 		offset = end
@@ -497,32 +592,90 @@ func findLineEnd(data []byte, pos int64) int64 {
 	return pos + int64(idx) + 1
 }
 
-func splitRoundRobin(data []byte, prefix string, n int) error {
+func splitRoundRobin(data []byte, so suffixOpts, n int) error {
 	lines := splitIntoLines(data)
 	bufs := make([]bytes.Buffer, n)
 	for i, line := range lines {
 		bufs[i%n].Write(line)
 	}
 	for i := range n {
-		if err := writePiece(prefix, i, bufs[i].Bytes()); err != nil {
+		if err := writePiece(so, i, bufs[i].Bytes()); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writePiece(prefix string, index int, data []byte) error {
-	w, err := openPiece(prefix, index)
+func writePiece(so suffixOpts, index int, data []byte) error {
+	pw, err := newPieceWriter(so, index)
 	if err != nil {
 		return err
 	}
 	if len(data) > 0 {
-		if _, err := w.Write(data); err != nil {
-			w.Close()
+		if _, err := pw.Write(data); err != nil {
+			pw.Close()
 			return err
 		}
 	}
-	return w.Close()
+	return pw.Close()
+}
+
+type pieceWriter struct {
+	file *os.File
+	cmd  *exec.Cmd
+	pipe io.WriteCloser
+	name string
+}
+
+func newPieceWriter(so suffixOpts, index int) (*pieceWriter, error) {
+	name, err := pieceName(so, index)
+	if err != nil {
+		return nil, err
+	}
+	if so.filter != "" {
+		return newFilterWriter(so.filter, name)
+	}
+	f, err := os.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	return &pieceWriter{file: f, name: name}, nil
+}
+
+func newFilterWriter(command, filename string) (*pieceWriter, error) {
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Env = append(os.Environ(), "FILE="+filename)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	pipe, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return &pieceWriter{cmd: cmd, pipe: pipe, name: filename}, nil
+}
+
+func (pw *pieceWriter) Write(p []byte) (int, error) {
+	if pw.pipe != nil {
+		return pw.pipe.Write(p)
+	}
+	return pw.file.Write(p)
+}
+
+func (pw *pieceWriter) Close() error {
+	if pw.pipe != nil {
+		pw.pipe.Close()
+		return pw.cmd.Wait()
+	}
+	return pw.file.Close()
+}
+
+func (pw *pieceWriter) Remove() {
+	if pw.file != nil {
+		os.Remove(pw.name)
+	}
 }
 
 func splitIntoLines(data []byte) [][]byte {

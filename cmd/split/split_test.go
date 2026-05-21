@@ -23,6 +23,10 @@ func TestDiff(t *testing.T) {
 	tests = append(tests, byteSplitTests()...)
 	tests = append(tests, lineByteTests()...)
 	tests = append(tests, chunkTests()...)
+	tests = append(tests, suffixLenTests()...)
+	tests = append(tests, numericSuffixTests()...)
+	tests = append(tests, additionalSuffixTests()...)
+	tests = append(tests, filterTests()...)
 	tests = append(tests, conflictTests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -163,6 +167,111 @@ func chunkTests() []testutils.DiffTest {
 				"xaa": []byte("1\n4\n"),
 				"xab": []byte("2\n5\n"),
 				"xac": []byte("3\n6\n"),
+			},
+		},
+	}
+}
+
+func suffixLenTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "suffix_length_3",
+			Args:  []string{"-a", "3", "-l", "2"},
+			Stdin: generateLines(1, 5),
+			ExpectedFiles: map[string][]byte{
+				"xaaa": generateLines(1, 2),
+				"xaab": generateLines(3, 4),
+				"xaac": generateLines(5, 5),
+			},
+		},
+		{
+			Name:  "suffix_length_long_equals",
+			Args:  []string{"--suffix-length=4", "-l", "3"},
+			Stdin: generateLines(1, 4),
+			ExpectedFiles: map[string][]byte{
+				"xaaaa": generateLines(1, 3),
+				"xaaab": generateLines(4, 4),
+			},
+		},
+	}
+}
+
+func numericSuffixTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "numeric_short",
+			Args:  []string{"-d", "-l", "3"},
+			Stdin: generateLines(1, 7),
+			ExpectedFiles: map[string][]byte{
+				"x00": generateLines(1, 3),
+				"x01": generateLines(4, 6),
+				"x02": generateLines(7, 7),
+			},
+		},
+		{
+			Name:  "numeric_long",
+			Args:  []string{"--numeric-suffixes", "-l", "2"},
+			Stdin: generateLines(1, 5),
+			ExpectedFiles: map[string][]byte{
+				"x00": generateLines(1, 2),
+				"x01": generateLines(3, 4),
+				"x02": generateLines(5, 5),
+			},
+		},
+		{
+			Name:  "numeric_with_suffix_length",
+			Args:  []string{"-d", "-a", "3", "-l", "2", "-", "chunk_"},
+			Stdin: generateLines(1, 5),
+			ExpectedFiles: map[string][]byte{
+				"chunk_000": generateLines(1, 2),
+				"chunk_001": generateLines(3, 4),
+				"chunk_002": generateLines(5, 5),
+			},
+		},
+	}
+}
+
+func additionalSuffixTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "additional_suffix",
+			Args:  []string{"--additional-suffix=.txt", "-l", "3"},
+			Stdin: generateLines(1, 5),
+			ExpectedFiles: map[string][]byte{
+				"xaa.txt": generateLines(1, 3),
+				"xab.txt": generateLines(4, 5),
+			},
+		},
+		{
+			Name:  "additional_suffix_with_numeric",
+			Args:  []string{"-d", "--additional-suffix=.csv", "-l", "2"},
+			Stdin: generateLines(1, 3),
+			ExpectedFiles: map[string][]byte{
+				"x00.csv": generateLines(1, 2),
+				"x01.csv": generateLines(3, 3),
+			},
+		},
+	}
+}
+
+func filterTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "filter_basic",
+			Args:  []string{"-l", "3", "--filter=cat > $FILE"},
+			Stdin: generateLines(1, 5),
+			ExpectedFiles: map[string][]byte{
+				"xaa": generateLines(1, 3),
+				"xab": generateLines(4, 5),
+			},
+		},
+		{
+			Name:  "filter_with_prefix",
+			Args:  []string{"-l", "2", "--filter=cat > $FILE", "-", "out_"},
+			Stdin: generateLines(1, 4),
+			ExpectedFiles: map[string][]byte{
+				"out_aa": generateLines(1, 2),
+				"out_ab": generateLines(3, 4),
 			},
 		},
 	}
