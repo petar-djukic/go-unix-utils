@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
+// Implements srd057-mv R1.1-R1.4, R2.1-R2.4, R3.1-R3.3, R4.1-R4.4.
 package main
 
 import (
@@ -341,6 +341,28 @@ func TestDiff(t *testing.T) {
 			[]string{"--no-target-directory", "src.txt", "dest.txt"}, nil)
 		checkFile(t, goDir, "dest.txt", "hello\n")
 		checkAbsent(t, goDir, "src.txt")
+	})
+
+	t.Run("r4_3_partial_failure_continues", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "good.txt", "ok\n")
+			os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"missing.txt", "good.txt", "dest"}, errNorm)
+		checkFile(t, goDir, "dest/good.txt", "ok\n")
+		checkAbsent(t, goDir, "good.txt")
+	})
+
+	t.Run("r4_3_partial_failure_multi_errors", func(t *testing.T) {
+		setup := func(t *testing.T, dir string) {
+			writeFile(t, dir, "real.txt", "data\n")
+			os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+		}
+		goDir := runMvTest(t, goBin, refBin, setup,
+			[]string{"gone1.txt", "real.txt", "gone2.txt", "dest"}, errNorm)
+		checkFile(t, goDir, "dest/real.txt", "data\n")
+		checkAbsent(t, goDir, "real.txt")
 	})
 }
 
