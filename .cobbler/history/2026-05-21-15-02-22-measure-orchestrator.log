@@ -134,3 +134,22 @@
 [2026-05-21T15:05:03-04:00] [generation-run44] [measure +2m41s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-21T15:05:03-04:00] [generation-run44] [measure +2m41s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-21T15:05:03-04:00] [generation-run44] [measure +2m41s] transitionRequirements: marked 4 R-items as proposed
+[2026-05-21T15:05:03-04:00] [generation-run44] [measure +2m41s] importIssues: creating task 0: [stitch] cmd/expr: srd066 R4.1-R4.4 (dep=-1)
+[2026-05-21T15:05:05-04:00] [generation-run44] [measure +2m43s] createCobblerIssue: created #5443 "[measure] cmd/expr: srd066 R4.1-R4.4" gen=generation-run44 index=0 dep=-1
+[2026-05-21T15:05:05-04:00] [generation-run44] [measure +2m43s] importIssues: creating task 1: [stitch] cmd/split: srd067 R1.1-R1.4 (dep=-1)
+[2026-05-21T15:05:06-04:00] [generation-run44] [measure +2m44s] createCobblerIssue: created #5444 "[measure] cmd/split: srd067 R1.1-R1.4" gen=generation-run44 index=1 dep=-1
+[2026-05-21T15:05:06-04:00] [generation-run44] [measure +2m44s] importIssues: creating task 2: [stitch] cmd/split: srd067 R2.1-R2.4 (dep=1)
+[2026-05-21T15:05:08-04:00] [generation-run44] [measure +2m46s] createCobblerIssue: created #5445 "[measure] cmd/split: srd067 R2.1-R2.4" gen=generation-run44 index=2 dep=1
+[2026-05-21T15:05:08-04:00] [generation-run44] [measure +2m46s] importIssues: creating task 3: [stitch] cmd/split: srd067 R3.1-R3.4 (dep=2)
+[2026-05-21T15:05:09-04:00] [generation-run44] [measure +2m47s] createCobblerIssue: created #5446 "[measure] cmd/split: srd067 R3.1-R3.4" gen=generation-run44 index=3 dep=2
+[2026-05-21T15:05:10-04:00] [generation-run44] [measure +2m48s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-21T15:05:17-04:00] [generation-run44] [measure +2m55s] importIssues: 4 of 4 issue(s) imported
+[2026-05-21T15:05:17-04:00] [generation-run44] [measure +2m55s] appendMeasureLog: 306 total issues in .cobbler/measure.yaml
+[2026-05-21T15:05:17-04:00] [generation-run44] [measure +2m55s] iteration 1 imported 4 issue(s)
+[2026-05-21T15:05:21-04:00] [generation-run44] [measure +2m59s] linkSubIssue: linked #5443 as sub-issue of #5442
+[2026-05-21T15:05:22-04:00] [generation-run44] [measure +3m0s] linkSubIssue: linked #5444 as sub-issue of #5442
+[2026-05-21T15:05:23-04:00] [generation-run44] [measure +3m1s] linkSubIssue: linked #5445 as sub-issue of #5442
+[2026-05-21T15:05:24-04:00] [generation-run44] [measure +3m2s] linkSubIssue: linked #5446 as sub-issue of #5442
+[2026-05-21T15:05:27-04:00] [generation-run44] [measure +3m5s] closeMeasuringPlaceholder: closed #5442
+[2026-05-21T15:05:27-04:00] [generation-run44] [measure +3m5s] finalizeMeasurePlaceholder: finalized #5442 with 4 child issue(s)
+[2026-05-21T15:05:27-04:00] [generation-run44] [measure +3m5s] completed 1 iteration(s), 4 issue(s) created in 3m5s
