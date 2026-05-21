@@ -115,6 +115,80 @@ func TestDiff(t *testing.T) {
 		refRes := runBin(t, refBin, args, refDir)
 		compareResults(t, args, goRes, refRes)
 	})
+
+	t.Run("recursive_directory", func(t *testing.T) {
+		runRemovalTest(t, goBin, refBin, []string{"-r", "d"},
+			func(dir string) {
+				os.MkdirAll(filepath.Join(dir, "d", "sub"), 0o755)
+				os.WriteFile(filepath.Join(dir, "d", "sub", "f.txt"), []byte("x"), 0o644)
+				os.WriteFile(filepath.Join(dir, "d", "top.txt"), []byte("y"), 0o644)
+			})
+	})
+
+	t.Run("force_nonexistent", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:     "force_nonexistent",
+				Args:     []string{"-f", "no_such_file"},
+				ExitCode: 0,
+			},
+		})
+	})
+
+	t.Run("force_recursive", func(t *testing.T) {
+		runRemovalTest(t, goBin, refBin, []string{"-rf", "d"},
+			func(dir string) {
+				os.MkdirAll(filepath.Join(dir, "d", "a", "b"), 0o755)
+				os.WriteFile(filepath.Join(dir, "d", "a", "b", "c.txt"), []byte("z"), 0o644)
+			})
+	})
+
+	t.Run("empty_dir_with_d", func(t *testing.T) {
+		runRemovalTest(t, goBin, refBin, []string{"-d", "empty"},
+			func(dir string) {
+				os.Mkdir(filepath.Join(dir, "empty"), 0o755)
+			})
+	})
+
+	t.Run("nonempty_dir_with_d", func(t *testing.T) {
+		setup := func(dir string) {
+			os.Mkdir(filepath.Join(dir, "notempty"), 0o755)
+			os.WriteFile(filepath.Join(dir, "notempty", "f"), []byte("x"), 0o644)
+		}
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		setup(goDir)
+		setup(refDir)
+		args := []string{"-d", "notempty"}
+		goRes := runBin(t, goBin, args, goDir)
+		refRes := runBin(t, refBin, args, refDir)
+		compareResults(t, args, goRes, refRes)
+	})
+
+	t.Run("verbose_single_file", func(t *testing.T) {
+		runRemovalTest(t, goBin, refBin, []string{"-v", "f.txt"},
+			func(dir string) {
+				os.WriteFile(filepath.Join(dir, "f.txt"), []byte("data"), 0o644)
+			})
+	})
+
+	t.Run("verbose_recursive", func(t *testing.T) {
+		runRemovalTest(t, goBin, refBin, []string{"-rv", "d"},
+			func(dir string) {
+				os.MkdirAll(filepath.Join(dir, "d", "sub"), 0o755)
+				os.WriteFile(filepath.Join(dir, "d", "sub", "f.txt"), []byte("x"), 0o644)
+			})
+	})
+
+	t.Run("force_no_args", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:     "force_no_operands",
+				Args:     []string{"-f"},
+				ExitCode: 0,
+			},
+		})
+	})
 }
 
 func runRemovalTest(t *testing.T, goBin, refBin string, args []string, setup func(string)) {

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -157,15 +158,37 @@ func removePath(path string, opts options) error {
 }
 
 func removeFile(path string, opts options) error {
-	return os.Remove(path)
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "removed '%s'\n", path)
+	}
+	return nil
 }
 
 func removeDir(path string, opts options) error {
-	return fmt.Errorf("not implemented")
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		child := filepath.Join(path, entry.Name())
+		if err := removePath(child, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "rm: %s\n", err)
+		}
+	}
+	return removeEmptyDir(path, opts)
 }
 
 func removeEmptyDir(path string, opts options) error {
-	return fmt.Errorf("not implemented")
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "removed directory '%s'\n", path)
+	}
+	return nil
 }
 
 func isDotOrDotDot(path string) bool {
