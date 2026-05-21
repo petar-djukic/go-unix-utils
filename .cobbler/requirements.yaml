@@ -3332,16 +3332,20 @@ requirements:
             issue: 5394
             weight: 1
         R4.1:
-            status: in_progress
+            status: complete
+            issue: 5395
             weight: 1
         R4.2:
-            status: in_progress
+            status: complete
+            issue: 5395
             weight: 1
         R4.3:
-            status: in_progress
+            status: complete
+            issue: 5395
             weight: 1
         R4.4:
-            status: in_progress
+            status: complete
+            issue: 5395
             weight: 1
     srd057-mv:
         R1.1:
