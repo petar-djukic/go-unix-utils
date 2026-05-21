@@ -1,0 +1,27 @@
+task_id: "5396"
+task_title: '[stitch] cmd/mv: srd057 R1.1-R1.4'
+status: success
+branch: task/generation-run44-5396
+diff:
+    files: 3
+    insertions: 544
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-20-20-47-45-stitch-orchestrator.log
+      status: M
+      insertions: 127
+      deletions: 0
+    - path: cmd/mv/main.go
+      status: A
+      insertions: 181
+      deletions: 0
+    - path: cmd/mv/mv_test.go
+      status: A
+      insertions: 237
+      deletions: 0
+loc_before:
+    production: 13738
+    test: 12980
+loc_after:
+    production: 13919
+    test: 13217
