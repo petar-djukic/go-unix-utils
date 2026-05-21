@@ -3731,16 +3731,16 @@ requirements:
             issue: 5430
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
         R4.4:
-            status: ready
+            status: proposed
             weight: 1
     srd064-shuf:
         R1.1:
@@ -3792,16 +3792,16 @@ requirements:
             issue: 5429
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
         R4.4:
-            status: ready
+            status: proposed
             weight: 1
     srd065-factor:
         R1.1:
@@ -3837,16 +3837,16 @@ requirements:
             issue: 5426
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
             status: ready
@@ -3878,16 +3878,16 @@ requirements:
             issue: 5418
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R2.4:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
             status: ready
