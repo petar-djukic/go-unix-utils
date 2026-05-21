@@ -1,0 +1,194 @@
+- index: 0
+  title: "[stitch] cmd/csplit: srd068 R4.1-R4.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd068-csplit.yaml (requirements R4.1 through R4.4)
+      - cmd/csplit/main.go (existing implementation covering R1 through R3)
+
+    files:
+      - path: cmd/csplit/main.go
+        action: modify
+        note: Implement R4.1-R4.4 requirements
+
+    requirements:
+      - id: R1
+        text: "Implement srd068-csplit requirement R4.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd068-csplit requirement R4.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd068-csplit requirement R4.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd068-csplit requirement R4.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code structure and patterns in cmd/csplit/main.go from R1-R3 implementation"
+      - id: D2
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per shared protocol"
+      - id: D3
+        text: "All new code integrates with the existing flag parsing and dispatch logic"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd068-csplit R4.1 implemented in cmd/csplit/main.go"
+      - id: AC2
+        text: "srd068-csplit R4.2 implemented in cmd/csplit/main.go"
+      - id: AC3
+        text: "srd068-csplit R4.3 implemented in cmd/csplit/main.go"
+      - id: AC4
+        text: "srd068-csplit R4.4 implemented in cmd/csplit/main.go"
+      - id: AC5
+        text: "go build ./cmd/csplit/ succeeds with no errors"
+      - id: AC6
+        text: "go vet ./cmd/csplit/ reports no issues"
+
+- index: 1
+  title: "[stitch] cmd/csplit: srd068 R4.1-R4.4 (tests)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd068-csplit.yaml (requirements R4.1 through R4.4)
+      - cmd/csplit/main.go (implementation of R4.1-R4.4 from prior task)
+      - cmd/csplit/csplit_test.go (existing differential tests for R1-R3)
+      - pkg/testutils/ (RunDiffTests and DiffTest patterns)
+
+    files:
+      - path: cmd/csplit/csplit_test.go
+        action: modify
+        note: Add differential test cases covering R4.1-R4.4
+
+    requirements:
+      - id: R1
+        text: "Add differential test cases for srd068-csplit R4.1"
+      - id: R2
+        text: "Add differential test cases for srd068-csplit R4.2"
+      - id: R3
+        text: "Add differential test cases for srd068-csplit R4.3"
+      - id: R4
+        text: "Add differential test cases for srd068-csplit R4.4"
+
+    design_decisions:
+      - id: D1
+        text: "Use testutils.RunDiffTests to compare Go binary against gcsplit reference binary"
+      - id: D2
+        text: "Call exec.LookPath('gcsplit') and t.Skip if reference binary not found"
+      - id: D3
+        text: "Follow the existing test structure and naming patterns in csplit_test.go"
+      - id: D4
+        text: "Set LC_ALL=C in test environment for consistent output comparison"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "Differential test cases exist for srd068-csplit R4.1"
+      - id: AC2
+        text: "Differential test cases exist for srd068-csplit R4.2"
+      - id: AC3
+        text: "Differential test cases exist for srd068-csplit R4.3"
+      - id: AC4
+        text: "Differential test cases exist for srd068-csplit R4.4"
+      - id: AC5
+        text: "go test ./cmd/csplit/ -count=1 passes (or skips if gcsplit not in PATH)"
+      - id: AC6
+        text: "go vet ./cmd/csplit/ reports no issues"
+
+- index: 2
+  title: "[stitch] cmd/join (contract)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd069-join.yaml (full SRD for join utility)
+      - docs/ARCHITECTURE.yaml (shared protocols -- SIGPIPE handling, differential testing)
+      - pkg/testutils/ (DiffTest struct and RunDiffTests for test skeleton)
+      - pkg/sys/ (InstallSIGPIPEHandler for main entry point)
+
+    files:
+      - path: cmd/join/main.go
+        action: create
+        note: Main entry point with flag definitions and function stubs for all requirement groups
+      - path: cmd/join/join_test.go
+        action: create
+        note: Differential test skeleton with BuildBinary and empty test slice
+
+    requirements:
+      - id: R1
+        text: "Create cmd/join/main.go with package main, all import declarations, and flag variable definitions derived from srd069-join requirements R1 through R4"
+      - id: R2
+        text: "Define main() calling sys.InstallSIGPIPEHandler(), parsing all flags from the SRD, and dispatching to stub functions with correct signatures but empty or minimal bodies"
+      - id: R3
+        text: "Create cmd/join/join_test.go with TestDiff skeleton using testutils.BuildBinary(t, '.') and exec.LookPath('gjoin') with t.Skip fallback and an empty []testutils.DiffTest slice"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per shared protocol"
+      - id: D2
+        text: "Use exec.LookPath('gjoin') in tests with t.Skip if not found"
+      - id: D3
+        text: "Flag definitions must cover all flags specified in srd069-join"
+      - id: D4
+        text: "Stub functions have correct signatures but empty bodies or minimal placeholder logic that allows compilation"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/join/main.go exists with package main and compiles via go build ./cmd/join/"
+      - id: AC2
+        text: "All flag variables defined match srd069-join flag specifications"
+      - id: AC3
+        text: "main() calls sys.InstallSIGPIPEHandler() and parses all flags"
+      - id: AC4
+        text: "cmd/join/join_test.go exists with TestDiff skeleton"
+      - id: AC5
+        text: "go vet ./cmd/join/ reports no issues"
+
+- index: 3
+  title: "[stitch] cmd/join: srd069 R1.1-R1.4"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd069-join.yaml (requirements R1.1 through R1.4)
+      - cmd/join/main.go (contract skeleton with flag definitions and function stubs)
+
+    files:
+      - path: cmd/join/main.go
+        action: modify
+        note: Implement R1.1-R1.4 requirements by filling in stub function bodies
+
+    requirements:
+      - id: R1
+        text: "Implement srd069-join requirement R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd069-join requirement R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd069-join requirement R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd069-join requirement R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Build on the contract skeleton in cmd/join/main.go -- fill in stub function bodies, do not restructure flag parsing or main()"
+      - id: D2
+        text: "Follow data structure and algorithm choices specified in srd069-join"
+      - id: D3
+        text: "Maintain sys.InstallSIGPIPEHandler() call at the start of main()"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd069-join R1.1 implemented in cmd/join/main.go"
+      - id: AC2
+        text: "srd069-join R1.2 implemented in cmd/join/main.go"
+      - id: AC3
+        text: "srd069-join R1.3 implemented in cmd/join/main.go"
+      - id: AC4
+        text: "srd069-join R1.4 implemented in cmd/join/main.go"
+      - id: AC5
+        text: "go build ./cmd/join/ succeeds with no errors"
+      - id: AC6
+        text: "go vet ./cmd/join/ reports no issues"

@@ -156,3 +156,13 @@
 [2026-05-21T16:19:02-04:00] [generation-run44] [stitch +5m43s] doOneTask: closing task 5451
 [2026-05-21T16:19:02-04:00] [generation-run44] [stitch +5m43s] closeStitchTask: closing #5451 "[stitch] cmd/csplit: srd068 R3.1-R3.4"
 [2026-05-21T16:19:03-04:00] [generation-run44] [stitch +5m44s] commentCobblerIssue: posted comment on #5451
+[2026-05-21T16:19:06-04:00] [generation-run44] [stitch +5m47s] closeCobblerIssue: closed #5451
+[2026-05-21T16:19:08-04:00] [generation-run44] [stitch +5m49s] closeStitchTask: #5451 closed
+[2026-05-21T16:19:09-04:00] [generation-run44] [stitch +5m50s] sweepCompletedTasks: all R-items for #5451 already complete, closing
+[2026-05-21T16:19:11-04:00] [generation-run44] [stitch +5m51s] commentCobblerIssue: posted comment on #5451
+[2026-05-21T16:19:12-04:00] [generation-run44] [stitch +5m53s] closeCobblerIssue: closed #5451
+[2026-05-21T16:19:13-04:00] [generation-run44] [stitch +5m53s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-21T16:19:13-04:00] [generation-run44] [stitch +5m53s] doOneTask: task 5451 finished in 5m41s
+[2026-05-21T16:19:13-04:00] [generation-run44] [stitch +5m53s] task 5451 completed in 5m41s
+[2026-05-21T16:19:13-04:00] [generation-run44] [stitch +5m53s] reached per-cycle limit (1), pausing for measure
+[2026-05-21T16:19:13-04:00] [generation-run44] [stitch +5m53s] completed 1 task(s) in 5m53s
