@@ -26,6 +26,10 @@ func TestDiff(t *testing.T) {
 	tests = append(tests, skipPatternTests()...)
 	tests = append(tests, repeatTests()...)
 	tests = append(tests, offsetTests()...)
+	tests = append(tests, prefixTests()...)
+	tests = append(tests, digitsTests()...)
+	tests = append(tests, elideEmptyTests()...)
+	tests = append(tests, combinedOptionTests()...)
 	tests = append(tests, fileInputTests(t)...)
 	tests = append(tests, errorTests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -196,6 +200,76 @@ func fileInputTests(t *testing.T) []testutils.DiffTest {
 			Name:    "r1_2_file_input",
 			Args:    []string{"input.txt", "/gamma/"},
 			WorkDir: dir,
+		},
+	}
+}
+
+func prefixTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "r3_2_custom_prefix_short",
+			Args:  []string{"-f", "chunk", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		{
+			Name:  "r3_2_custom_prefix_long",
+			Args:  []string{"--prefix=part", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		{
+			Name:  "r3_2_custom_prefix_attached",
+			Args:  []string{"-fout", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+	}
+}
+
+func digitsTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "r3_3_custom_digits_short",
+			Args:  []string{"-n", "3", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+		{
+			Name:  "r3_3_custom_digits_long",
+			Args:  []string{"--digits=4", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+	}
+}
+
+func elideEmptyTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "r3_4_elide_empty_short",
+			Args:  []string{"-z", "-", "/a/"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			Name:  "r3_4_elide_empty_long",
+			Args:  []string{"--elide-empty-files", "-", "/a/"},
+			Stdin: []byte("a\nb\nc\n"),
+		},
+		{
+			Name:  "r3_4_elide_no_effect",
+			Args:  []string{"-z", "-", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
+		},
+	}
+}
+
+func combinedOptionTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{
+			Name:  "r3_ac3_prefix_digits_repeat",
+			Args:  []string{"-f", "chunk", "-n", "3", "-", "/^---$/", "{*}"},
+			Stdin: []byte("a\n---\nb\n---\nc\n---\nd\n"),
+		},
+		{
+			Name:  "r3_prefix_digits_elide",
+			Args:  []string{"-f", "out", "-n", "3", "-z", "-", "/a/", "/c/"},
+			Stdin: []byte("a\nb\nc\nd\n"),
 		},
 	}
 }

@@ -33,13 +33,14 @@ type pattern struct {
 }
 
 type splitter struct {
-	lines   []string
-	pos     int
-	fileNum int
-	prefix  string
-	digits  int
-	created []string
-	atMatch bool
+	lines      []string
+	pos        int
+	fileNum    int
+	prefix     string
+	digits     int
+	elideEmpty bool
+	created    []string
+	atMatch    bool
 }
 
 func main() {
@@ -51,24 +52,29 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) < 2 {
-		if len(args) == 0 {
-			return fmt.Errorf("csplit: missing operand")
-		}
-		return fmt.Errorf("csplit: missing operand after '%s'", args[0])
-	}
-	pats, err := parsePatterns(args[1:])
+	prefix, digits, elideEmpty, rest, err := parseFlags(args)
 	if err != nil {
 		return err
 	}
-	data, err := readInput(args[0])
+	if len(rest) < 2 {
+		if len(rest) == 0 {
+			return fmt.Errorf("csplit: missing operand")
+		}
+		return fmt.Errorf("csplit: missing operand after '%s'", rest[0])
+	}
+	pats, err := parsePatterns(rest[1:])
+	if err != nil {
+		return err
+	}
+	data, err := readInput(rest[0])
 	if err != nil {
 		return err
 	}
 	s := &splitter{
-		lines:  splitToLines(data),
-		prefix: "xx",
-		digits: 2,
+		lines:      splitToLines(data),
+		prefix:     prefix,
+		digits:     digits,
+		elideEmpty: elideEmpty,
 	}
 	return s.process(pats)
 }
@@ -103,6 +109,78 @@ func splitToLines(data []byte) []string {
 		data = data[idx+1:]
 	}
 	return lines
+}
+
+func parseFlags(args []string) (prefix string, digits int, elideEmpty bool, rest []string, err error) {
+	prefix = "xx"
+	digits = 2
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			rest = append(rest, args[i+1:]...)
+			return
+		}
+		if a == "-z" || a == "--elide-empty-files" {
+			elideEmpty = true
+			continue
+		}
+		if a == "-f" {
+			i++
+			if i >= len(args) {
+				err = fmt.Errorf("csplit: option requires an argument -- 'f'")
+				return
+			}
+			prefix = args[i]
+			continue
+		}
+		if strings.HasPrefix(a, "-f") && len(a) > 2 {
+			prefix = a[2:]
+			continue
+		}
+		if strings.HasPrefix(a, "--prefix=") {
+			prefix = a[len("--prefix="):]
+			continue
+		}
+		if a == "-n" {
+			i++
+			if i >= len(args) {
+				err = fmt.Errorf("csplit: option requires an argument -- 'n'")
+				return
+			}
+			var n int
+			n, err = strconv.Atoi(args[i])
+			if err != nil || n < 1 {
+				err = fmt.Errorf("csplit: invalid number of digits: '%s'", args[i])
+				return
+			}
+			digits = n
+			continue
+		}
+		if strings.HasPrefix(a, "-n") && len(a) > 2 {
+			val := a[2:]
+			var n int
+			n, err = strconv.Atoi(val)
+			if err != nil || n < 1 {
+				err = fmt.Errorf("csplit: invalid number of digits: '%s'", val)
+				return
+			}
+			digits = n
+			continue
+		}
+		if strings.HasPrefix(a, "--digits=") {
+			val := a[len("--digits="):]
+			var n int
+			n, err = strconv.Atoi(val)
+			if err != nil || n < 1 {
+				err = fmt.Errorf("csplit: invalid number of digits: '%s'", val)
+				return
+			}
+			digits = n
+			continue
+		}
+		rest = append(rest, a)
+	}
+	return
 }
 
 func parsePatterns(args []string) ([]pattern, error) {
@@ -335,14 +413,17 @@ func (s *splitter) applyInteger(pat pattern, repeated bool) error {
 
 func (s *splitter) emitPiece(to int) error {
 	piece := s.lines[s.pos:to]
-	name := fmt.Sprintf("%s%0*d", s.prefix, s.digits, s.fileNum)
-	s.created = append(s.created, name)
 	content := strings.Join(piece, "")
+	name := fmt.Sprintf("%s%0*d", s.prefix, s.digits, s.fileNum)
+	s.fileNum++
+	s.pos = to
+	if s.elideEmpty && len(content) == 0 {
+		return nil
+	}
+	s.created = append(s.created, name)
 	if err := os.WriteFile(name, []byte(content), 0666); err != nil {
 		return fmt.Errorf("csplit: %v", err)
 	}
-	s.fileNum++
-	s.pos = to
 	fmt.Println(len(content))
 	return nil
 }
