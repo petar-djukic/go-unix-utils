@@ -5,7 +5,11 @@ package main
 
 import (
 	"os/exec"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -176,4 +180,24 @@ func TestDiff(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestTimeoutKillsChild(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(goBin, "0.01", "sh", "-c", "echo $$; exec sleep 60")
+	out, _ := cmd.Output()
+	pid, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatalf("failed to parse child PID: %v (output: %q)", err, string(out))
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := syscall.Kill(pid, 0); err != nil {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Errorf("child process %d still alive after timeout", pid)
 }
