@@ -3642,16 +3642,16 @@ requirements:
             issue: 5423
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R2.4:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
             status: ready
@@ -3711,16 +3711,16 @@ requirements:
             issue: 5424
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
             status: ready
@@ -3768,16 +3768,16 @@ requirements:
             issue: 5425
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
             status: ready
@@ -3825,16 +3825,16 @@ requirements:
             issue: 5426
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
             status: ready
