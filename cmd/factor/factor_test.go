@@ -5,6 +5,7 @@ package main
 
 import (
 	"os/exec"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -16,6 +17,11 @@ func TestDiff(t *testing.T) {
 	if err != nil {
 		t.Skip("reference binary not found")
 	}
+
+	binaryNameRe := regexp.MustCompile(`(?:/\S+/)?g?factor`)
+	normalizeBinaryName := testutils.NormalizeFunc(func(b []byte) []byte {
+		return binaryNameRe.ReplaceAll(b, []byte("factor"))
+	})
 
 	tests := []testutils.DiffTest{
 		{
@@ -53,6 +59,40 @@ func TestDiff(t *testing.T) {
 		{
 			Name: "zero",
 			Args: []string{"0"},
+		},
+		{
+			Name:  "stdin_single",
+			Stdin: []byte("15\n"),
+		},
+		{
+			Name:  "stdin_multiple",
+			Stdin: []byte("6\n7\n12\n1\n97\n"),
+		},
+		{
+			Name:  "stdin_blank_lines",
+			Stdin: []byte("15\n\n\n97\n"),
+		},
+		{
+			Name:  "stdin_large_number",
+			Stdin: []byte("9223372036854775783\n"),
+		},
+		{
+			Name:      "error_non_integer",
+			Args:      []string{"abc"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		{
+			Name:      "error_negative_stdin",
+			Stdin:     []byte("-5\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+		},
+		{
+			Name:      "stdin_mixed_valid_invalid",
+			Stdin:     []byte("12\nabc\n97\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
 		},
 	}
 
