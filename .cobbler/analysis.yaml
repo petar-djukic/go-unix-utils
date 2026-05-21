@@ -389,11 +389,11 @@ code_status:
         - version: "07.1"
           name: Batch 7.1 — file operations (cp, mv, rm)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel07.1-uc001-cp
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel07.1-uc002-mv
