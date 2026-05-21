@@ -12130,3 +12130,209 @@
       - id: AC5
         text: "go vet ./cmd/cp/ reports no issues"
   dependency: 2
+- index: 0
+  title: 'cmd/cp: srd056 R3.1-R3.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd056-cp.yaml (requirements R3.1 through R3.4)
+      - cmd/cp/main.go (existing implementation covering R1.1-R2.4)
+      - cmd/cp/cp_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler, Stat, Lstat)
+
+    files:
+      - path: cmd/cp/main.go
+        action: modify
+        note: Add functionality for srd056-cp R3.1 through R3.4
+      - path: cmd/cp/cp_test.go
+        action: modify
+        note: Add differential test cases covering R3.1 through R3.4
+
+    requirements:
+      - id: R1
+        text: Implement the functionality specified by srd056-cp requirement R3.1
+      - id: R2
+        text: Implement the functionality specified by srd056-cp requirement R3.2
+      - id: R3
+        text: Implement the functionality specified by srd056-cp requirement R3.3
+      - id: R4
+        text: Implement the functionality specified by srd056-cp requirement R3.4
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/cp implementation -- do not rewrite or restructure code from R1.1-R2.4
+      - id: D2
+        text: Use testutils.RunDiffTests with gcp as the reference binary for all new differential tests
+      - id: D3
+        text: Skip differential tests with t.Skip if gcp is not found via exec.LookPath
+      - id: D4
+        text: Set LC_ALL=C in test environment to match GNU reference binary behavior
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/cp ./cmd/cp/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/cp/... reports no issues
+      - id: AC3
+        text: go test ./cmd/cp/... -count=1 passes (or skips if reference binary not found)
+      - id: AC4
+        text: Each of R3.1 through R3.4 has at least one differential test case in cp_test.go
+  dependency: -1
+- index: 1
+  title: 'cmd/cp: srd056 R4.1-R4.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd056-cp.yaml (requirements R4.1 through R4.4)
+      - cmd/cp/main.go (existing implementation covering R1.1-R3.4)
+      - cmd/cp/cp_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler, Stat, Lstat)
+
+    files:
+      - path: cmd/cp/main.go
+        action: modify
+        note: Add functionality for srd056-cp R4.1 through R4.4
+      - path: cmd/cp/cp_test.go
+        action: modify
+        note: Add differential test cases covering R4.1 through R4.4
+
+    requirements:
+      - id: R1
+        text: Implement the functionality specified by srd056-cp requirement R4.1
+      - id: R2
+        text: Implement the functionality specified by srd056-cp requirement R4.2
+      - id: R3
+        text: Implement the functionality specified by srd056-cp requirement R4.3
+      - id: R4
+        text: Implement the functionality specified by srd056-cp requirement R4.4
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/cp implementation -- do not rewrite or restructure code from R1.1-R3.4
+      - id: D2
+        text: Use testutils.RunDiffTests with gcp as the reference binary for all new differential tests
+      - id: D3
+        text: Skip differential tests with t.Skip if gcp is not found via exec.LookPath
+      - id: D4
+        text: Set LC_ALL=C in test environment to match GNU reference binary behavior
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/cp ./cmd/cp/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/cp/... reports no issues
+      - id: AC3
+        text: go test ./cmd/cp/... -count=1 passes (or skips if reference binary not found)
+      - id: AC4
+        text: Each of R4.1 through R4.4 has at least one differential test case in cp_test.go
+      - id: AC5
+        text: All srd056-cp requirements (R1.1-R4.4) are now fully implemented
+  dependency: 0
+- index: 2
+  title: 'cmd/mv: srd057 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd057-mv.yaml (requirements R1.1 through R1.4)
+      - cmd/cp/main.go (reference for file operation utility structure and flag parsing patterns)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler)
+      - CLAUDE.md (project conventions for cmd/ packages)
+
+    files:
+      - path: cmd/mv/main.go
+        action: create
+        note: mv utility implementation covering R1.1 through R1.4
+      - path: cmd/mv/mv_test.go
+        action: create
+        note: Differential tests for mv covering R1.1 through R1.4
+
+    requirements:
+      - id: R1
+        text: Implement the functionality specified by srd057-mv requirement R1.1
+      - id: R2
+        text: Implement the functionality specified by srd057-mv requirement R1.2
+      - id: R3
+        text: Implement the functionality specified by srd057-mv requirement R1.3
+      - id: R4
+        text: Implement the functionality specified by srd057-mv requirement R1.4
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main
+      - id: D2
+        text: Use testutils.RunDiffTests with gmv as the reference binary for differential testing
+      - id: D3
+        text: Skip differential tests with t.Skip if gmv is not found via exec.LookPath
+      - id: D4
+        text: Set LC_ALL=C in test environment to match GNU reference binary behavior
+      - id: D5
+        text: Use testutils.BuildBinary(t, ".") to compile the mv binary under test
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/mv ./cmd/mv/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/mv/... reports no issues
+      - id: AC3
+        text: go test ./cmd/mv/... -count=1 passes (or skips if reference binary not found)
+      - id: AC4
+        text: Each of R1.1 through R1.4 has at least one differential test case in mv_test.go
+      - id: AC5
+        text: cmd/mv/main.go calls sys.InstallSIGPIPEHandler() at the start of main
+  dependency: -1
+- index: 3
+  title: 'cmd/mv: srd057 R2.1-R2.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd057-mv.yaml (requirements R2.1 through R2.4)
+      - cmd/mv/main.go (existing implementation covering R1.1-R1.4)
+      - cmd/mv/mv_test.go (existing differential tests)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest pattern)
+      - pkg/sys/ (InstallSIGPIPEHandler)
+
+    files:
+      - path: cmd/mv/main.go
+        action: modify
+        note: Add functionality for srd057-mv R2.1 through R2.4
+      - path: cmd/mv/mv_test.go
+        action: modify
+        note: Add differential test cases covering R2.1 through R2.4
+
+    requirements:
+      - id: R1
+        text: Implement the functionality specified by srd057-mv requirement R2.1
+      - id: R2
+        text: Implement the functionality specified by srd057-mv requirement R2.2
+      - id: R3
+        text: Implement the functionality specified by srd057-mv requirement R2.3
+      - id: R4
+        text: Implement the functionality specified by srd057-mv requirement R2.4
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/mv implementation -- do not rewrite or restructure code from R1.1-R1.4
+      - id: D2
+        text: Use testutils.RunDiffTests with gmv as the reference binary for all new differential tests
+      - id: D3
+        text: Skip differential tests with t.Skip if gmv is not found via exec.LookPath
+      - id: D4
+        text: Set LC_ALL=C in test environment to match GNU reference binary behavior
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build -o bin/mv ./cmd/mv/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/mv/... reports no issues
+      - id: AC3
+        text: go test ./cmd/mv/... -count=1 passes (or skips if reference binary not found)
+      - id: AC4
+        text: Each of R2.1 through R2.4 has at least one differential test case in mv_test.go
+  dependency: 2
