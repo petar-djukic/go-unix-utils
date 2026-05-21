@@ -12694,3 +12694,195 @@
       - id: AC6
         text: "All srd058-rm requirements (R1.1 through R4.4) are now complete"
   dependency: 1
+- index: 0
+  title: '[stitch] cmd/date: srd060 R1.1-R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd060-date.yaml (full SRD -- implement requirements R1.1 through R1.4)
+      - pkg/sys/sigpipe.go (SIGPIPE handler pattern used by all cmd/ utilities)
+      - pkg/testutils/difftest.go (DiffTest and RunDiffTests API for differential testing)
+      - CLAUDE.md (project build and test conventions)
+
+    files:
+      - path: cmd/date/main.go
+        action: create
+        note: date utility -- initial structure implementing srd060 R1.1-R1.4
+      - path: cmd/date/date_test.go
+        action: create
+        note: differential test scaffolding for date against gdate reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd060-date requirement R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd060-date requirement R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd060-date requirement R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd060-date requirement R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project convention for all cmd/ utilities"
+      - id: D2
+        text: "Reference binary for differential testing is gdate (GNU date installed via Homebrew)"
+      - id: D3
+        text: "Use exec.LookPath(\"gdate\") and t.Skip if not found, per project differential testing pattern"
+      - id: D4
+        text: "Set LC_ALL=C in differential test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/date/main.go compiles without errors: go vet ./cmd/date/... passes"
+      - id: AC2
+        text: "go build -o bin/date ./cmd/date/ produces a working binary"
+      - id: AC3
+        text: "Requirements R1.1 through R1.4 from srd060-date.yaml are fully implemented"
+      - id: AC4
+        text: "Differential tests covering R1.1-R1.4 functionality pass against gdate reference binary"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/date: srd060 R2.1-R2.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd060-date.yaml (full SRD -- implement requirements R2.1 through R2.4)
+      - cmd/date/main.go (existing implementation from prior task -- extend with R2 group)
+      - cmd/date/date_test.go (existing differential tests -- add tests for R2 group)
+      - CLAUDE.md (project build and test conventions)
+
+    files:
+      - path: cmd/date/main.go
+        action: modify
+        note: extend date utility with srd060 R2.1-R2.4 functionality
+      - path: cmd/date/date_test.go
+        action: modify
+        note: add differential tests covering R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd060-date requirement R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd060-date requirement R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd060-date requirement R2.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd060-date requirement R2.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing main.go structure -- do not reorganize or refactor code from prior tasks"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in date_test.go"
+      - id: D3
+        text: "Set LC_ALL=C in all new differential test entries"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go vet ./cmd/date/... passes with no errors"
+      - id: AC2
+        text: "go build -o bin/date ./cmd/date/ succeeds"
+      - id: AC3
+        text: "Requirements R2.1 through R2.4 from srd060-date.yaml are fully implemented"
+      - id: AC4
+        text: "Differential tests covering R2.1-R2.4 functionality pass against gdate reference binary"
+  dependency: 0
+- index: 2
+  title: '[stitch] cmd/date: srd060 R3.1-R3.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd060-date.yaml (full SRD -- implement requirements R3.1 through R3.4)
+      - cmd/date/main.go (existing implementation from prior tasks -- extend with R3 group)
+      - cmd/date/date_test.go (existing differential tests -- add tests for R3 group)
+      - CLAUDE.md (project build and test conventions)
+
+    files:
+      - path: cmd/date/main.go
+        action: modify
+        note: extend date utility with srd060 R3.1-R3.4 functionality
+      - path: cmd/date/date_test.go
+        action: modify
+        note: add differential tests covering R3.1-R3.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd060-date requirement R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd060-date requirement R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd060-date requirement R3.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd060-date requirement R3.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing main.go structure -- do not reorganize or refactor code from prior tasks"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in date_test.go"
+      - id: D3
+        text: "Set LC_ALL=C in all new differential test entries"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go vet ./cmd/date/... passes with no errors"
+      - id: AC2
+        text: "go build -o bin/date ./cmd/date/ succeeds"
+      - id: AC3
+        text: "Requirements R3.1 through R3.4 from srd060-date.yaml are fully implemented"
+      - id: AC4
+        text: "Differential tests covering R3.1-R3.4 functionality pass against gdate reference binary"
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/date: srd060 R4.1-R4.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd060-date.yaml (full SRD -- implement requirements R4.1 through R4.4)
+      - cmd/date/main.go (existing implementation from prior tasks -- extend with R4 group)
+      - cmd/date/date_test.go (existing differential tests -- add tests for R4 group)
+      - CLAUDE.md (project build and test conventions)
+
+    files:
+      - path: cmd/date/main.go
+        action: modify
+        note: extend date utility with srd060 R4.1-R4.4 functionality
+      - path: cmd/date/date_test.go
+        action: modify
+        note: add differential tests covering R4.1-R4.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd060-date requirement R4.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd060-date requirement R4.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd060-date requirement R4.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd060-date requirement R4.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing main.go structure -- do not reorganize or refactor code from prior tasks"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in date_test.go"
+      - id: D3
+        text: "Set LC_ALL=C in all new differential test entries"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go vet ./cmd/date/... passes with no errors"
+      - id: AC2
+        text: "go build -o bin/date ./cmd/date/ succeeds"
+      - id: AC3
+        text: "Requirements R4.1 through R4.4 from srd060-date.yaml are fully implemented"
+      - id: AC4
+        text: "All existing differential tests continue to pass (no regressions from prior R-groups)"
+      - id: AC5
+        text: "Differential tests covering R4.1-R4.4 functionality pass against gdate reference binary"
+  dependency: 2
