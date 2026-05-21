@@ -409,11 +409,11 @@ code_status:
         - version: "08.0"
           name: Batch 8.0 — time, randomness, and expression utilities (date, sleep, touch, timeout, shuf, factor, expr)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel08.0-uc001-date
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel08.0-uc002-sleep
