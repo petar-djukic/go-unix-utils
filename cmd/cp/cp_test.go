@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4.
+// Implements srd056-cp R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R4.4.
 package main
 
 import (
@@ -455,6 +455,159 @@ func TestDiff(t *testing.T) {
 		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
 			Name:    "single_file",
 			Args:    []string{"-v", "src.txt", "dest.txt"},
+			WorkDir: dir,
+			Env:     env,
+			ExpectedFiles: map[string][]byte{
+				"dest.txt": []byte("hello\n"),
+			},
+		}})
+	})
+
+	t.Run("r4_1_exit_zero_success", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "src.txt", "ok\n")
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:     "exit_zero",
+			Args:     []string{"src.txt", "dest.txt"},
+			WorkDir:  dir,
+			ExitCode: 0,
+			Env:      env,
+			ExpectedFiles: map[string][]byte{
+				"dest.txt": []byte("ok\n"),
+			},
+		}})
+	})
+
+	t.Run("r4_2_exit_one_not_found", func(t *testing.T) {
+		dir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "source_not_found",
+			Args:      []string{"nonexistent.txt", "dest.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: errNorm,
+			Env:       env,
+		}})
+	})
+
+	t.Run("r4_2_exit_one_dir_without_r", func(t *testing.T) {
+		dir := t.TempDir()
+		os.Mkdir(filepath.Join(dir, "adir"), 0o755)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "dir_no_recursive",
+			Args:      []string{"adir", "dest"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: errNorm,
+			Env:       env,
+		}})
+	})
+
+	t.Run("r4_3_target_directory_short", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "a.txt", "aaa\n")
+		writeFile(t, dir, "b.txt", "bbb\n")
+		os.Mkdir(filepath.Join(dir, "tgt"), 0o755)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "short_t",
+			Args:    []string{"-t", "tgt", "a.txt", "b.txt"},
+			WorkDir: dir,
+			Env:     env,
+			ExpectedFiles: map[string][]byte{
+				"tgt/a.txt": []byte("aaa\n"),
+				"tgt/b.txt": []byte("bbb\n"),
+			},
+		}})
+	})
+
+	t.Run("r4_3_target_directory_long", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "x.txt", "xxx\n")
+		os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "long_target_dir",
+			Args:    []string{"--target-directory=dest", "x.txt"},
+			WorkDir: dir,
+			Env:     env,
+			ExpectedFiles: map[string][]byte{
+				"dest/x.txt": []byte("xxx\n"),
+			},
+		}})
+	})
+
+	t.Run("r4_3_target_directory_single", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "f.txt", "data\n")
+		os.Mkdir(filepath.Join(dir, "out"), 0o755)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "single_source",
+			Args:    []string{"-t", "out", "f.txt"},
+			WorkDir: dir,
+			Env:     env,
+			ExpectedFiles: map[string][]byte{
+				"out/f.txt": []byte("data\n"),
+			},
+		}})
+	})
+
+	t.Run("r4_4_diff_preserve_verbose", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "src.txt", "hello\n")
+		os.Chmod(filepath.Join(dir, "src.txt"), 0o755)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "pv_combined",
+			Args:      []string{"-pv", "src.txt", "dest.txt"},
+			WorkDir:   dir,
+			Env:       env,
+			Normalize: errNorm,
+			ExpectedFiles: map[string][]byte{
+				"dest.txt": []byte("hello\n"),
+			},
+		}})
+	})
+
+	t.Run("r4_4_diff_force_no_clobber", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "src.txt", "new\n")
+		writeFile(t, dir, "dest.txt", "old\n")
+		os.Chmod(filepath.Join(dir, "dest.txt"), 0o444)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "force_overwrite",
+				Args:    []string{"-f", "src.txt", "dest.txt"},
+				WorkDir: dir,
+				Env:     env,
+				ExpectedFiles: map[string][]byte{
+					"dest.txt": []byte("new\n"),
+				},
+			},
+		})
+	})
+
+	t.Run("r4_4_diff_preserve_archive", func(t *testing.T) {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+		writeFile(t, dir, "src/f.txt", "content\n")
+		os.Chmod(filepath.Join(dir, "src/f.txt"), 0o750)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:      "archive_preserve",
+			Args:      []string{"-a", "src", "dest"},
+			WorkDir:   dir,
+			Env:       env,
+			Normalize: errNorm,
+			ExpectedFiles: map[string][]byte{
+				"dest/f.txt": []byte("content\n"),
+			},
+		}})
+	})
+
+	t.Run("r4_4_diff_symlink_no_deref", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "real.txt", "hello\n")
+		os.Symlink("real.txt", filepath.Join(dir, "link.txt"))
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{{
+			Name:    "copy_symlink_default",
+			Args:    []string{"link.txt", "dest.txt"},
 			WorkDir: dir,
 			Env:     env,
 			ExpectedFiles: map[string][]byte{

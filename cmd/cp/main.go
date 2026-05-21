@@ -44,11 +44,23 @@ var (
 	preserveOwnership  bool
 	preserveTimestamps bool
 	verbose            bool
+	targetDir          string
 )
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 	args := parseFlags(os.Args[1:])
+	if targetDir != "" {
+		if len(args) == 0 {
+			fmt.Fprintf(os.Stderr, "cp: missing file operand\n")
+			os.Exit(1)
+		}
+		code := copyMultiple(args, targetDir)
+		if code != 0 {
+			os.Exit(code)
+		}
+		return
+	}
 	if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "cp: missing file operand\n")
 		os.Exit(1)
@@ -74,7 +86,8 @@ func main() {
 func parseFlags(args []string) []string {
 	var files []string
 	endOfFlags := false
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if endOfFlags || arg == "" || arg[0] != '-' {
 			files = append(files, arg)
 			continue
@@ -87,7 +100,18 @@ func parseFlags(args []string) []string {
 			applyLongFlag(arg[2:])
 			continue
 		}
-		for _, c := range arg[1:] {
+		rest := arg[1:]
+		for j, c := range rest {
+			if c == 't' {
+				suffix := rest[j+1:]
+				if suffix != "" {
+					targetDir = suffix
+				} else if i+1 < len(args) {
+					i++
+					targetDir = args[i]
+				}
+				break
+			}
 			applyFlag(c)
 		}
 	}
@@ -124,6 +148,10 @@ func applyFlag(c rune) {
 func applyLongFlag(name string) {
 	if attr, ok := strings.CutPrefix(name, "preserve="); ok {
 		parsePreserve(attr)
+		return
+	}
+	if dir, ok := strings.CutPrefix(name, "target-directory="); ok {
+		targetDir = dir
 		return
 	}
 	switch name {
