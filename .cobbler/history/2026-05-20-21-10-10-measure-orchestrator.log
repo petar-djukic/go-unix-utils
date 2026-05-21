@@ -129,3 +129,23 @@
 [2026-05-20T21:14:43-04:00] [generation-run44] [measure +4m32s] transitionRequirements: marked 3 R-items as proposed
 [2026-05-20T21:14:43-04:00] [generation-run44] [measure +4m32s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-20T21:14:43-04:00] [generation-run44] [measure +4m32s] transitionRequirements: marked 4 R-items as proposed
+[2026-05-20T21:14:43-04:00] [generation-run44] [measure +4m33s] importIssues: creating task 0: [stitch] cmd/mv: srd057 R3.1-R3.3 (dep=-1)
+[2026-05-20T21:14:45-04:00] [generation-run44] [measure +4m34s] createCobblerIssue: created #5399 "[measure] cmd/mv: srd057 R3.1-R3.3" gen=generation-run44 index=0 dep=-1
+[2026-05-20T21:14:45-04:00] [generation-run44] [measure +4m34s] importIssues: creating task 1: [stitch] cmd/mv: srd057 R4.1-R4.4 (dep=0)
+[2026-05-20T21:14:46-04:00] [generation-run44] [measure +4m36s] createCobblerIssue: created #5400 "[measure] cmd/mv: srd057 R4.1-R4.4" gen=generation-run44 index=1 dep=0
+[2026-05-20T21:14:46-04:00] [generation-run44] [measure +4m36s] importIssues: creating task 2: [stitch] cmd/rm: srd058 (contract) (dep=-1)
+[2026-05-20T21:14:47-04:00] [generation-run44] [measure +4m37s] createCobblerIssue: created #5401 "[measure] cmd/rm: srd058 (contract)" gen=generation-run44 index=2 dep=-1
+[2026-05-20T21:14:47-04:00] [generation-run44] [measure +4m37s] importIssues: creating task 3: [stitch] cmd/rm: srd058 R1.1-R1.4 (dep=2)
+[2026-05-20T21:14:48-04:00] [generation-run44] [measure +4m38s] createCobblerIssue: created #5402 "[measure] cmd/rm: srd058 R1.1-R1.4" gen=generation-run44 index=3 dep=2
+[2026-05-20T21:14:49-04:00] [generation-run44] [measure +4m39s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-20T21:14:50-04:00] [generation-run44] [measure +4m40s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-20T21:14:56-04:00] [generation-run44] [measure +4m45s] importIssues: 4 of 4 issue(s) imported
+[2026-05-20T21:14:56-04:00] [generation-run44] [measure +4m46s] appendMeasureLog: 271 total issues in .cobbler/measure.yaml
+[2026-05-20T21:14:56-04:00] [generation-run44] [measure +4m46s] iteration 1 imported 4 issue(s)
+[2026-05-20T21:14:59-04:00] [generation-run44] [measure +4m49s] linkSubIssue: linked #5399 as sub-issue of #5398
+[2026-05-20T21:15:00-04:00] [generation-run44] [measure +4m50s] linkSubIssue: linked #5400 as sub-issue of #5398
+[2026-05-20T21:15:02-04:00] [generation-run44] [measure +4m51s] linkSubIssue: linked #5401 as sub-issue of #5398
+[2026-05-20T21:15:03-04:00] [generation-run44] [measure +4m53s] linkSubIssue: linked #5402 as sub-issue of #5398
+[2026-05-20T21:15:06-04:00] [generation-run44] [measure +4m55s] closeMeasuringPlaceholder: closed #5398
+[2026-05-20T21:15:06-04:00] [generation-run44] [measure +4m55s] finalizeMeasurePlaceholder: finalized #5398 with 4 child issue(s)
+[2026-05-20T21:15:06-04:00] [generation-run44] [measure +4m55s] completed 1 iteration(s), 4 issue(s) created in 4m55s
