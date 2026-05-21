@@ -78,7 +78,6 @@ func parseFlags(args []string) ([]string, options) {
 			case arg == "--verbose":
 				opts.verbose = true
 			case arg == "--interactive=never":
-				opts.force = true
 				opts.interactive = interactiveNever
 			case arg == "--interactive=once":
 				opts.interactive = interactiveOnce
@@ -114,6 +113,22 @@ func parseFlags(args []string) ([]string, options) {
 }
 
 func removeFiles(paths []string, opts options) int {
+	if shouldPromptOnce(paths, opts) {
+		n := len(paths)
+		noun := "arguments"
+		if n == 1 {
+			noun = "argument"
+		}
+		var ok bool
+		if opts.recursive {
+			ok = promptUser("rm: remove %d %s recursively? ", n, noun)
+		} else {
+			ok = promptUser("rm: remove %d %s? ", n, noun)
+		}
+		if !ok {
+			return 0
+		}
+	}
 	exitCode := 0
 	for _, path := range paths {
 		if err := removePath(path, opts); err != nil {
@@ -151,13 +166,22 @@ func removePath(path string, opts options) error {
 		}
 		return fmt.Errorf("cannot remove '%s': Is a directory", path)
 	}
-	if err := removeFile(path, opts); err != nil {
+	if err := removeFile(path, info, opts); err != nil {
 		return fmt.Errorf("cannot remove '%s': %s", path, sysErrMsg(err))
 	}
 	return nil
 }
 
-func removeFile(path string, opts options) error {
+func removeFile(path string, info os.FileInfo, opts options) error {
+	if opts.interactive == interactiveAlways {
+		desc := "regular file"
+		if info.Size() == 0 {
+			desc = "regular empty file"
+		}
+		if !promptUser("rm: remove %s '%s'? ", desc, path) {
+			return nil
+		}
+	}
 	if err := os.Remove(path); err != nil {
 		return err
 	}
@@ -168,6 +192,11 @@ func removeFile(path string, opts options) error {
 }
 
 func removeDir(path string, opts options) error {
+	if opts.interactive == interactiveAlways {
+		if !promptUser("rm: descend into directory '%s'? ", path) {
+			return nil
+		}
+	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err
@@ -182,6 +211,11 @@ func removeDir(path string, opts options) error {
 }
 
 func removeEmptyDir(path string, opts options) error {
+	if opts.interactive == interactiveAlways {
+		if !promptUser("rm: remove directory '%s'? ", path) {
+			return nil
+		}
+	}
 	if err := os.Remove(path); err != nil {
 		return err
 	}
@@ -224,10 +258,18 @@ func errnoMsg(err error) string {
 	}
 }
 
-func promptRemoval(path string, isDir bool) bool {
-	return false
+func promptUser(format string, args ...any) bool {
+	fmt.Fprintf(os.Stderr, format, args...)
+	if !stdinScanner.Scan() {
+		return false
+	}
+	resp := stdinScanner.Text()
+	return len(resp) > 0 && (resp[0] == 'y' || resp[0] == 'Y')
 }
 
 func shouldPromptOnce(paths []string, opts options) bool {
-	return false
+	if opts.interactive != interactiveOnce {
+		return false
+	}
+	return len(paths) > 3 || opts.recursive
 }

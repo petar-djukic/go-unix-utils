@@ -189,6 +189,134 @@ func TestDiff(t *testing.T) {
 			},
 		})
 	})
+
+	t.Run("interactive_always_yes", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-i", "f.txt"},
+			[]byte("y\n"),
+			func(dir string) {
+				os.WriteFile(filepath.Join(dir, "f.txt"), []byte("data"), 0o644)
+			})
+	})
+
+	t.Run("interactive_always_no", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-i", "f.txt"},
+			[]byte("n\n"),
+			func(dir string) {
+				os.WriteFile(filepath.Join(dir, "f.txt"), []byte("data"), 0o644)
+			})
+	})
+
+	t.Run("interactive_always_empty_file", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-i", "empty.txt"},
+			[]byte("y\n"),
+			func(dir string) {
+				os.WriteFile(filepath.Join(dir, "empty.txt"), nil, 0o644)
+			})
+	})
+
+	t.Run("interactive_always_recursive", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-ri", "d"},
+			[]byte("y\ny\ny\ny\n"),
+			func(dir string) {
+				os.MkdirAll(filepath.Join(dir, "d", "sub"), 0o755)
+				os.WriteFile(filepath.Join(dir, "d", "sub", "f.txt"), nil, 0o644)
+			})
+	})
+
+	t.Run("interactive_always_recursive_decline_descend", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-ri", "d"},
+			[]byte("n\n"),
+			func(dir string) {
+				os.MkdirAll(filepath.Join(dir, "d", "sub"), 0o755)
+				os.WriteFile(filepath.Join(dir, "d", "sub", "f.txt"), nil, 0o644)
+			})
+	})
+
+	t.Run("interactive_once_four_files_yes", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-I", "a", "b", "c", "d"},
+			[]byte("y\n"),
+			func(dir string) {
+				for _, name := range []string{"a", "b", "c", "d"} {
+					os.WriteFile(filepath.Join(dir, name), nil, 0o644)
+				}
+			})
+	})
+
+	t.Run("interactive_once_four_files_no", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-I", "a", "b", "c", "d"},
+			[]byte("n\n"),
+			func(dir string) {
+				for _, name := range []string{"a", "b", "c", "d"} {
+					os.WriteFile(filepath.Join(dir, name), nil, 0o644)
+				}
+			})
+	})
+
+	t.Run("interactive_once_three_files_no_prompt", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-I", "a", "b", "c"},
+			nil,
+			func(dir string) {
+				for _, name := range []string{"a", "b", "c"} {
+					os.WriteFile(filepath.Join(dir, name), nil, 0o644)
+				}
+			})
+	})
+
+	t.Run("interactive_once_recursive_yes", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-rI", "d"},
+			[]byte("y\n"),
+			func(dir string) {
+				os.MkdirAll(filepath.Join(dir, "d", "sub"), 0o755)
+				os.WriteFile(filepath.Join(dir, "d", "sub", "f.txt"), nil, 0o644)
+			})
+	})
+
+	t.Run("interactive_once_recursive_no", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-rI", "d"},
+			[]byte("n\n"),
+			func(dir string) {
+				os.MkdirAll(filepath.Join(dir, "d", "sub"), 0o755)
+				os.WriteFile(filepath.Join(dir, "d", "sub", "f.txt"), nil, 0o644)
+			})
+	})
+
+	t.Run("interactive_never_via_flag", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "interactive_never",
+				Args:      []string{"--interactive=never", "nonexistent"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			},
+		})
+	})
+
+	t.Run("interactive_always_verbose", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-iv", "f.txt"},
+			[]byte("y\n"),
+			func(dir string) {
+				os.WriteFile(filepath.Join(dir, "f.txt"), []byte("data"), 0o644)
+			})
+	})
+
+	t.Run("force_overrides_interactive", func(t *testing.T) {
+		runInteractiveTest(t, goBin, refBin, []string{"-if", "f.txt"},
+			nil,
+			func(dir string) {
+				os.WriteFile(filepath.Join(dir, "f.txt"), []byte("data"), 0o644)
+			})
+	})
+}
+
+func runInteractiveTest(t *testing.T, goBin, refBin string, args []string, stdin []byte, setup func(string)) {
+	t.Helper()
+	goDir := t.TempDir()
+	refDir := t.TempDir()
+	setup(goDir)
+	setup(refDir)
+	goRes := runBinStdin(t, goBin, args, goDir, stdin)
+	refRes := runBinStdin(t, refBin, args, refDir, stdin)
+	compareResults(t, args, goRes, refRes)
 }
 
 func runRemovalTest(t *testing.T, goBin, refBin string, args []string, setup func(string)) {
@@ -210,11 +338,19 @@ type binResult struct {
 
 func runBin(t *testing.T, binary string, args []string, workDir string) binResult {
 	t.Helper()
+	return runBinStdin(t, binary, args, workDir, nil)
+}
+
+func runBinStdin(t *testing.T, binary string, args []string, workDir string, stdin []byte) binResult {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
