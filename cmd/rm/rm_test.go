@@ -306,6 +306,30 @@ func TestDiff(t *testing.T) {
 				os.WriteFile(filepath.Join(dir, "f.txt"), []byte("data"), 0o644)
 			})
 	})
+
+	t.Run("permission_denied", func(t *testing.T) {
+		if os.Getuid() == 0 {
+			t.Skip("test requires non-root user")
+		}
+		setup := func(dir string) {
+			restricted := filepath.Join(dir, "restricted")
+			os.Mkdir(restricted, 0o755)
+			os.WriteFile(filepath.Join(restricted, "f.txt"), []byte("x"), 0o644)
+			os.Chmod(restricted, 0o555)
+		}
+		cleanup := func(dir string) {
+			os.Chmod(filepath.Join(dir, "restricted"), 0o755)
+		}
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		setup(goDir)
+		setup(refDir)
+		t.Cleanup(func() { cleanup(goDir); cleanup(refDir) })
+		args := []string{"restricted/f.txt"}
+		goRes := runBin(t, goBin, args, goDir)
+		refRes := runBin(t, refBin, args, refDir)
+		compareResults(t, args, goRes, refRes)
+	})
 }
 
 func runInteractiveTest(t *testing.T, goBin, refBin string, args []string, stdin []byte, setup func(string)) {
