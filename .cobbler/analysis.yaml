@@ -403,7 +403,7 @@ code_status:
               testfiles: 0
             - id: rel07.1-uc003-rm
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "08.0"
