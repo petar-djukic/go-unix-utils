@@ -1,0 +1,192 @@
+- index: 0
+  title: "[stitch] cmd/expr: srd066 R4.1-R4.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd066-expr.yaml (full SRD -- focus on requirement group R4)
+      - cmd/expr/main.go (existing implementation from R1-R3 tasks)
+      - cmd/expr/expr_test.go (existing differential tests)
+      - docs/ARCHITECTURE.yaml (shared protocols for differential testing and SIGPIPE)
+
+    files:
+      - path: cmd/expr/main.go
+        action: modify
+        note: Add logic for srd066-expr R4.1-R4.4 requirements
+      - path: cmd/expr/expr_test.go
+        action: modify
+        note: Add differential test cases covering R4.1-R4.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd066-expr R4.1 per the SRD specification in cmd/expr/main.go"
+      - id: R2
+        text: "Implement srd066-expr R4.2 per the SRD specification in cmd/expr/main.go"
+      - id: R3
+        text: "Implement srd066-expr R4.3 per the SRD specification in cmd/expr/main.go"
+      - id: R4
+        text: "Implement srd066-expr R4.4 per the SRD specification in cmd/expr/main.go"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/expr implementation -- R1 through R3 groups are already implemented. Do not rewrite existing code; add only the logic needed for R4.1-R4.4."
+      - id: D2
+        text: "All differential tests must use exec.LookPath(\"gexpr\") and t.Skip if the reference binary is not found, per the project shared protocol."
+      - id: D3
+        text: "Set LC_ALL=C in the test environment for all differential test cases."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/expr/main.go compiles without errors: go build ./cmd/expr/"
+      - id: AC2
+        text: "All new differential test cases pass: go test ./cmd/expr/... -count=1"
+      - id: AC3
+        text: "go vet ./cmd/expr/... reports no issues"
+      - id: AC4
+        text: "Each of R4.1, R4.2, R4.3, R4.4 from the SRD is covered by at least one differential test case"
+
+- index: 1
+  title: "[stitch] cmd/split: srd067 R1.1-R1.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd067-split.yaml (full SRD -- focus on requirement group R1)
+      - docs/ARCHITECTURE.yaml (shared protocols for differential testing, SIGPIPE handling)
+      - pkg/testutils/ (differential testing harness API -- BuildBinary, RunDiffTests, DiffTest)
+
+    files:
+      - path: cmd/split/main.go
+        action: create
+        note: "split utility entry point implementing srd067 R1.1-R1.4"
+      - path: cmd/split/split_test.go
+        action: create
+        note: "Differential tests for R1.1-R1.4 against gsplit reference binary"
+
+    requirements:
+      - id: R1
+        text: "Implement srd067-split R1.1 per the SRD specification in cmd/split/main.go"
+      - id: R2
+        text: "Implement srd067-split R1.2 per the SRD specification in cmd/split/main.go"
+      - id: R3
+        text: "Implement srd067-split R1.3 per the SRD specification in cmd/split/main.go"
+      - id: R4
+        text: "Implement srd067-split R1.4 per the SRD specification in cmd/split/main.go"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() to match GNU coreutils SIGPIPE behavior."
+      - id: D2
+        text: "Use testutils.BuildBinary(t, \".\") to compile cmd/split for differential tests and exec.LookPath(\"gsplit\") for the reference binary. Call t.Skip if gsplit is not found."
+      - id: D3
+        text: "Set LC_ALL=C in the test environment for all differential test cases."
+      - id: D4
+        text: "This is the first task for cmd/split. Only implement requirements R1.1-R1.4. Later tasks will add R2-R4 groups by modifying these files."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/split/main.go compiles without errors: go build -o bin/split ./cmd/split/"
+      - id: AC2
+        text: "All differential test cases pass: go test ./cmd/split/... -count=1"
+      - id: AC3
+        text: "go vet ./cmd/split/... reports no issues"
+      - id: AC4
+        text: "Each of R1.1, R1.2, R1.3, R1.4 from the SRD is covered by at least one differential test case"
+
+- index: 2
+  title: "[stitch] cmd/split: srd067 R2.1-R2.4"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd067-split.yaml (full SRD -- focus on requirement group R2)
+      - cmd/split/main.go (existing implementation from R1.1-R1.4 task)
+      - cmd/split/split_test.go (existing differential tests)
+      - docs/ARCHITECTURE.yaml (shared protocols for differential testing)
+
+    files:
+      - path: cmd/split/main.go
+        action: modify
+        note: "Add logic for srd067-split R2.1-R2.4 requirements"
+      - path: cmd/split/split_test.go
+        action: modify
+        note: "Add differential test cases covering R2.1-R2.4"
+
+    requirements:
+      - id: R1
+        text: "Implement srd067-split R2.1 per the SRD specification in cmd/split/main.go"
+      - id: R2
+        text: "Implement srd067-split R2.2 per the SRD specification in cmd/split/main.go"
+      - id: R3
+        text: "Implement srd067-split R2.3 per the SRD specification in cmd/split/main.go"
+      - id: R4
+        text: "Implement srd067-split R2.4 per the SRD specification in cmd/split/main.go"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/split implementation -- R1.1-R1.4 are already implemented. Do not rewrite existing code; add only the logic needed for R2.1-R2.4."
+      - id: D2
+        text: "All differential tests must use exec.LookPath(\"gsplit\") and t.Skip if the reference binary is not found."
+      - id: D3
+        text: "Set LC_ALL=C in the test environment for all differential test cases."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/split/main.go compiles without errors: go build -o bin/split ./cmd/split/"
+      - id: AC2
+        text: "All differential test cases pass (including existing R1 tests): go test ./cmd/split/... -count=1"
+      - id: AC3
+        text: "go vet ./cmd/split/... reports no issues"
+      - id: AC4
+        text: "Each of R2.1, R2.2, R2.3, R2.4 from the SRD is covered by at least one differential test case"
+
+- index: 3
+  title: "[stitch] cmd/split: srd067 R3.1-R3.4"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd067-split.yaml (full SRD -- focus on requirement group R3)
+      - cmd/split/main.go (existing implementation from R1 and R2 tasks)
+      - cmd/split/split_test.go (existing differential tests)
+      - docs/ARCHITECTURE.yaml (shared protocols for differential testing)
+
+    files:
+      - path: cmd/split/main.go
+        action: modify
+        note: "Add logic for srd067-split R3.1-R3.4 requirements"
+      - path: cmd/split/split_test.go
+        action: modify
+        note: "Add differential test cases covering R3.1-R3.4"
+
+    requirements:
+      - id: R1
+        text: "Implement srd067-split R3.1 per the SRD specification in cmd/split/main.go"
+      - id: R2
+        text: "Implement srd067-split R3.2 per the SRD specification in cmd/split/main.go"
+      - id: R3
+        text: "Implement srd067-split R3.3 per the SRD specification in cmd/split/main.go"
+      - id: R4
+        text: "Implement srd067-split R3.4 per the SRD specification in cmd/split/main.go"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/split implementation -- R1.1-R1.4 and R2.1-R2.4 are already implemented. Do not rewrite existing code; add only the logic needed for R3.1-R3.4."
+      - id: D2
+        text: "All differential tests must use exec.LookPath(\"gsplit\") and t.Skip if the reference binary is not found."
+      - id: D3
+        text: "Set LC_ALL=C in the test environment for all differential test cases."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/split/main.go compiles without errors: go build -o bin/split ./cmd/split/"
+      - id: AC2
+        text: "All differential test cases pass (including existing R1 and R2 tests): go test ./cmd/split/... -count=1"
+      - id: AC3
+        text: "go vet ./cmd/split/... reports no issues"
+      - id: AC4
+        text: "Each of R3.1, R3.2, R3.3, R3.4 from the SRD is covered by at least one differential test case"
