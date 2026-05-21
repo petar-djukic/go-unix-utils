@@ -249,3 +249,13 @@
 [2026-05-21T15:38:38-04:00] [generation-run44] [stitch +5m7s] closeStitchTask: closing #5446 "[stitch] cmd/split: srd067 R3.1-R3.4"
 [2026-05-21T15:38:40-04:00] [generation-run44] [stitch +5m8s] commentCobblerIssue: posted comment on #5446
 [2026-05-21T15:38:40-04:00] [generation-run44] [stitch +5m8s] updateRequirementsFile: marked 4 R-items as complete for issue #5446
+[2026-05-21T15:38:43-04:00] [generation-run44] [stitch +5m12s] closeCobblerIssue: closed #5446
+[2026-05-21T15:38:45-04:00] [generation-run44] [stitch +5m13s] closeStitchTask: #5446 closed
+[2026-05-21T15:38:45-04:00] [generation-run44] [stitch +5m14s] sweepCompletedTasks: all R-items for #5446 already complete, closing
+[2026-05-21T15:38:47-04:00] [generation-run44] [stitch +5m15s] commentCobblerIssue: posted comment on #5446
+[2026-05-21T15:38:48-04:00] [generation-run44] [stitch +5m17s] closeCobblerIssue: closed #5446
+[2026-05-21T15:38:48-04:00] [generation-run44] [stitch +5m17s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-21T15:38:48-04:00] [generation-run44] [stitch +5m17s] doOneTask: task 5446 finished in 5m8s
+[2026-05-21T15:38:48-04:00] [generation-run44] [stitch +5m17s] task 5446 completed in 5m8s
+[2026-05-21T15:38:48-04:00] [generation-run44] [stitch +5m17s] reached per-cycle limit (1), pausing for measure
+[2026-05-21T15:38:48-04:00] [generation-run44] [stitch +5m17s] completed 1 task(s) in 5m17s
