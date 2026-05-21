@@ -144,3 +144,13 @@
 [2026-05-21T09:47:18-04:00] [generation-run44] [stitch +3m27s] closeStitchTask: closing #5410 "[stitch] cmd/date: srd060 R3.1-R3.4"
 [2026-05-21T09:47:19-04:00] [generation-run44] [stitch +3m29s] commentCobblerIssue: posted comment on #5410
 [2026-05-21T09:47:19-04:00] [generation-run44] [stitch +3m29s] updateRequirementsFile: marked 4 R-items as complete for issue #5410
+[2026-05-21T09:47:22-04:00] [generation-run44] [stitch +3m32s] closeCobblerIssue: closed #5410
+[2026-05-21T09:47:25-04:00] [generation-run44] [stitch +3m35s] closeStitchTask: #5410 closed
+[2026-05-21T09:47:26-04:00] [generation-run44] [stitch +3m36s] sweepCompletedTasks: all R-items for #5410 already complete, closing
+[2026-05-21T09:47:27-04:00] [generation-run44] [stitch +3m37s] commentCobblerIssue: posted comment on #5410
+[2026-05-21T09:47:37-04:00] [generation-run44] [stitch +3m47s] closeCobblerIssue: closed #5410
+[2026-05-21T09:47:40-04:00] [generation-run44] [stitch +3m49s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-21T09:47:40-04:00] [generation-run44] [stitch +3m49s] doOneTask: task 5410 finished in 3m38s
+[2026-05-21T09:47:40-04:00] [generation-run44] [stitch +3m49s] task 5410 completed in 3m38s
+[2026-05-21T09:47:40-04:00] [generation-run44] [stitch +3m49s] reached per-cycle limit (1), pausing for measure
+[2026-05-21T09:47:40-04:00] [generation-run44] [stitch +3m49s] completed 1 task(s) in 3m49s
