@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5429"
+task_title: '[stitch] cmd/shuf: srd064 R3.1-R3.4'
+status: success
+started_at: "2026-05-21T17:52:42Z"
+duration: 4m30s
+duration_s: 270
+tokens:
+    input: 508986
+    output: 14364
+    cache_creation: 220994
+    cache_read: 287980
+cost_usd: 2.3010035
+num_turns: 21
+rate_limit_wait_s: 1
+loc_before:
+    production: 16051
+    test: 15127
+loc_after:
+    production: 16160
+    test: 15446
+diff:
+    files: 3
+    insertions: 569
+    deletions: 36
