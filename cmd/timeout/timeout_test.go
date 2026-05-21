@@ -86,6 +86,74 @@ func TestDiff(t *testing.T) {
 			ExitCode:  125,
 			Normalize: []testutils.NormalizeFunc{clearStderr},
 		},
+		// R2.1: signal selection with named signal (SIGKILL kills timeout too)
+		{
+			Name:     "signal_kill_named",
+			Args:     []string{"-s", "KILL", "0.01", "sleep", "10"},
+			ExitCode: -1,
+		},
+		{
+			Name:     "signal_kill_long",
+			Args:     []string{"--signal=KILL", "0.01", "sleep", "10"},
+			ExitCode: -1,
+		},
+		// R2.1: signal selection with numeric signal
+		{
+			Name:     "signal_numeric_9",
+			Args:     []string{"-s", "9", "0.01", "sleep", "10"},
+			ExitCode: -1,
+		},
+		// R2.1: signal HUP
+		{
+			Name:     "signal_hup",
+			Args:     []string{"-s", "HUP", "0.01", "sleep", "10"},
+			ExitCode: 129,
+		},
+		// R2.2: kill-after escalation
+		{
+			Name:     "kill_after",
+			Args:     []string{"-k", "0.01", "0.01", "sleep", "10"},
+			ExitCode: 124,
+		},
+		{
+			Name:     "kill_after_long",
+			Args:     []string{"--kill-after=0.01", "0.01", "sleep", "10"},
+			ExitCode: 124,
+		},
+		// R2.3: foreground mode
+		{
+			Name:     "foreground_completes",
+			Args:     []string{"--foreground", "10", "true"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "foreground_timeout",
+			Args:     []string{"--foreground", "0.01", "sleep", "10"},
+			ExitCode: 124,
+		},
+		// R2.4: preserve-status on timeout
+		{
+			Name:     "preserve_status_timeout",
+			Args:     []string{"--preserve-status", "0.01", "sleep", "10"},
+			ExitCode: 143,
+		},
+		// R2.4: preserve-status when command completes normally
+		{
+			Name:     "preserve_status_normal",
+			Args:     []string{"--preserve-status", "10", "true"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "preserve_status_failure",
+			Args:     []string{"--preserve-status", "10", "false"},
+			ExitCode: 1,
+		},
+		// combined: signal + preserve-status (SIGKILL kills timeout too)
+		{
+			Name:     "signal_kill_preserve_status",
+			Args:     []string{"--preserve-status", "-s", "KILL", "0.01", "sleep", "10"},
+			ExitCode: -1,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
