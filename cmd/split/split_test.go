@@ -27,6 +27,7 @@ func TestDiff(t *testing.T) {
 	tests = append(tests, numericSuffixTests()...)
 	tests = append(tests, additionalSuffixTests()...)
 	tests = append(tests, filterTests()...)
+	tests = append(tests, invalidCountTests()...)
 	tests = append(tests, conflictTests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -108,6 +109,24 @@ func byteSplitTests() []testutils.DiffTest {
 				"xaa": bytes.Repeat([]byte("b"), 7),
 				"xab": bytes.Repeat([]byte("b"), 7),
 				"xac": bytes.Repeat([]byte("b"), 6),
+			},
+		},
+		{
+			Name:  "bytes_suffix_K",
+			Args:  []string{"-b", "1K"},
+			Stdin: bytes.Repeat([]byte("c"), 2048),
+			ExpectedFiles: map[string][]byte{
+				"xaa": bytes.Repeat([]byte("c"), 1024),
+				"xab": bytes.Repeat([]byte("c"), 1024),
+			},
+		},
+		{
+			Name:  "bytes_suffix_KB",
+			Args:  []string{"-b", "1KB"},
+			Stdin: bytes.Repeat([]byte("d"), 1500),
+			ExpectedFiles: map[string][]byte{
+				"xaa": bytes.Repeat([]byte("d"), 1000),
+				"xab": bytes.Repeat([]byte("d"), 500),
 			},
 		},
 	}
@@ -273,6 +292,40 @@ func filterTests() []testutils.DiffTest {
 				"out_aa": generateLines(1, 2),
 				"out_ab": generateLines(3, 4),
 			},
+		},
+	}
+}
+
+func invalidCountTests() []testutils.DiffTest {
+	norm := []testutils.NormalizeFunc{normalizeCmdErr}
+	return []testutils.DiffTest{
+		{
+			Name:      "invalid_line_count_zero",
+			Args:      []string{"-l", "0"},
+			Stdin:     []byte("test\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "invalid_line_count_text",
+			Args:      []string{"-l", "abc"},
+			Stdin:     []byte("test\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "invalid_byte_count",
+			Args:      []string{"-b", "0"},
+			Stdin:     []byte("test\n"),
+			ExitCode:  1,
+			Normalize: norm,
+		},
+		{
+			Name:      "invalid_chunk_spec",
+			Args:      []string{"-n", "0"},
+			Stdin:     []byte("test\n"),
+			ExitCode:  1,
+			Normalize: norm,
 		},
 	}
 }
