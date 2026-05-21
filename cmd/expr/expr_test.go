@@ -151,6 +151,13 @@ func TestDiff(t *testing.T) {
 		{Name: "plus_escape_length", Args: []string{"length", "+", "length"}},
 		{Name: "plus_escape_index", Args: []string{"length", "+", "index"}},
 		{Name: "plus_escape_substr", Args: []string{"length", "+", "substr"}},
+		{Name: "plus_escape_operator", Args: []string{"+", "+", "=", "+", "+"}},
+		{Name: "plus_escape_paren", Args: []string{"length", "+", "("}},
+
+		// R3.3: left-associativity (subtraction and division are non-commutative)
+		{Name: "left_assoc_sub", Args: []string{"10", "-", "3", "-", "2"}},
+		{Name: "left_assoc_div", Args: []string{"60", "/", "3", "/", "2"}},
+		{Name: "left_assoc_mod", Args: []string{"17", "%", "10", "%", "4"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
