@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"os"
 	"strconv"
@@ -12,12 +14,15 @@ import (
 )
 
 type options struct {
-	inputRange [2]int
-	hasRange   bool
-	headCount  int
-	hasHead    bool
-	repeat     bool
-	outputFile string
+	inputRange   [2]int
+	hasRange     bool
+	headCount    int
+	hasHead      bool
+	repeat       bool
+	outputFile   string
+	randomSource string
+	zeroTerm     bool
+	echo         bool
 }
 
 func main() {
@@ -29,8 +34,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	if opts.hasRange && len(files) > 0 {
-		fmt.Fprintf(os.Stderr, "shuf: extra operand %q\n", files[0])
+	if opts.hasRange && (opts.echo || len(files) > 0) {
+		if opts.echo {
+			fmt.Fprintf(os.Stderr, "shuf: cannot combine -e and -i options\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "shuf: extra operand %q\n", files[0])
+		}
+		os.Exit(1)
+	}
+
+	rng, err := makeRNG(opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "shuf: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -46,7 +61,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := writeOutput(w, lines, opts); err != nil {
+	if err := writeOutput(w, lines, opts, rng); err != nil {
 		fmt.Fprintf(os.Stderr, "shuf: write error: %v\n", err)
 		os.Exit(1)
 	}
@@ -59,6 +74,35 @@ func main() {
 	}
 }
 
+func makeRNG(opts options) (*rand.Rand, error) {
+	if opts.randomSource == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(opts.randomSource)
+	if err != nil {
+		return nil, err
+	}
+	var seed [32]byte
+	copy(seed[:], data)
+	src := rand.NewChaCha8(seed)
+	return rand.New(src), nil
+}
+
+func randShuffle(rng *rand.Rand, n int, swap func(i, j int)) {
+	if rng != nil {
+		rng.Shuffle(n, swap)
+	} else {
+		rand.Shuffle(n, swap)
+	}
+}
+
+func randIntN(rng *rand.Rand, n int) int {
+	if rng != nil {
+		return rng.IntN(n)
+	}
+	return rand.IntN(n)
+}
+
 func collectLines(opts options, files []string) ([]string, error) {
 	if opts.hasRange {
 		lo, hi := opts.inputRange[0], opts.inputRange[1]
@@ -68,7 +112,10 @@ func collectLines(opts options, files []string) ([]string, error) {
 		}
 		return lines, nil
 	}
-	return readLines(files)
+	if opts.echo {
+		return files, nil
+	}
+	return readLines(files, opts.zeroTerm)
 }
 
 func openOutput(opts options) (*bufio.Writer, *os.File, error) {
@@ -82,16 +129,26 @@ func openOutput(opts options) (*bufio.Writer, *os.File, error) {
 	return bufio.NewWriter(f), f, nil
 }
 
-func writeOutput(w *bufio.Writer, lines []string, opts options) error {
+func writeLine(w *bufio.Writer, line string, zeroTerm bool) error {
+	if _, err := w.WriteString(line); err != nil {
+		return err
+	}
+	if zeroTerm {
+		return w.WriteByte(0)
+	}
+	return w.WriteByte('\n')
+}
+
+func writeOutput(w *bufio.Writer, lines []string, opts options, rng *rand.Rand) error {
 	if len(lines) == 0 {
 		return w.Flush()
 	}
 
 	if opts.repeat {
-		return writeRepeat(w, lines, opts)
+		return writeRepeat(w, lines, opts, rng)
 	}
 
-	rand.Shuffle(len(lines), func(i, j int) {
+	randShuffle(rng, len(lines), func(i, j int) {
 		lines[i], lines[j] = lines[j], lines[i]
 	})
 
@@ -101,24 +158,24 @@ func writeOutput(w *bufio.Writer, lines []string, opts options) error {
 	}
 
 	for i := range n {
-		if _, err := fmt.Fprintln(w, lines[i]); err != nil {
+		if err := writeLine(w, lines[i], opts.zeroTerm); err != nil {
 			return err
 		}
 	}
 	return w.Flush()
 }
 
-func writeRepeat(w *bufio.Writer, lines []string, opts options) error {
+func writeRepeat(w *bufio.Writer, lines []string, opts options, rng *rand.Rand) error {
 	if opts.hasHead {
 		for range opts.headCount {
-			if _, err := fmt.Fprintln(w, lines[rand.IntN(len(lines))]); err != nil {
+			if err := writeLine(w, lines[randIntN(rng, len(lines))], opts.zeroTerm); err != nil {
 				return err
 			}
 		}
 		return w.Flush()
 	}
 	for {
-		if _, err := fmt.Fprintln(w, lines[rand.IntN(len(lines))]); err != nil {
+		if err := writeLine(w, lines[randIntN(rng, len(lines))], opts.zeroTerm); err != nil {
 			return err
 		}
 		if err := w.Flush(); err != nil {
@@ -186,6 +243,21 @@ func parseLongFlag(flag string, rest []string, opts *options) (int, error) {
 	case strings.HasPrefix(flag, "--output="):
 		opts.outputFile = flag[len("--output="):]
 		return 0, nil
+	case flag == "--random-source":
+		if len(rest) == 0 {
+			return 0, fmt.Errorf("option '--random-source' requires an argument")
+		}
+		opts.randomSource = rest[0]
+		return 1, nil
+	case strings.HasPrefix(flag, "--random-source="):
+		opts.randomSource = flag[len("--random-source="):]
+		return 0, nil
+	case flag == "--zero-terminated":
+		opts.zeroTerm = true
+		return 0, nil
+	case flag == "--echo":
+		opts.echo = true
+		return 0, nil
 	default:
 		return 0, fmt.Errorf("unrecognized option '%s'", flag)
 	}
@@ -219,6 +291,10 @@ func parseShortFlags(flags string, rest []string, opts *options) (int, error) {
 			return consumed, nil
 		case 'r':
 			opts.repeat = true
+		case 'z':
+			opts.zeroTerm = true
+		case 'e':
+			opts.echo = true
 		default:
 			return 0, fmt.Errorf("invalid option -- '%c'", flags[j])
 		}
@@ -237,16 +313,8 @@ func shortFlagValue(tail string, rest []string, consumed int, name string) (stri
 }
 
 func parseRange(s string, opts *options) error {
-	parts := strings.SplitN(s, "-", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid input range: %q", s)
-	}
-	lo, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return fmt.Errorf("invalid input range: %q", s)
-	}
-	hi, err := strconv.Atoi(parts[1])
-	if err != nil {
+	lo, hi, ok := splitRange(s)
+	if !ok {
 		return fmt.Errorf("invalid input range: %q", s)
 	}
 	if lo > hi {
@@ -255,6 +323,29 @@ func parseRange(s string, opts *options) error {
 	opts.inputRange = [2]int{lo, hi}
 	opts.hasRange = true
 	return nil
+}
+
+func splitRange(s string) (int, int, bool) {
+	idx := strings.Index(s, "-")
+	if idx < 0 {
+		return 0, 0, false
+	}
+	if idx == 0 {
+		idx = strings.Index(s[1:], "-")
+		if idx < 0 {
+			return 0, 0, false
+		}
+		idx++
+	}
+	lo, err := strconv.Atoi(s[:idx])
+	if err != nil {
+		return 0, 0, false
+	}
+	hi, err := strconv.Atoi(s[idx+1:])
+	if err != nil {
+		return 0, 0, false
+	}
+	return lo, hi, true
 }
 
 func parseHeadCount(s string, opts *options) error {
@@ -267,14 +358,14 @@ func parseHeadCount(s string, opts *options) error {
 	return nil
 }
 
-func readLines(args []string) ([]string, error) {
+func readLines(args []string, zeroTerm bool) ([]string, error) {
 	if len(args) == 0 {
 		args = []string{"-"}
 	}
 
 	var lines []string
 	for _, name := range args {
-		ls, err := readFileLines(name)
+		ls, err := readFileLines(name, zeroTerm)
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +374,7 @@ func readLines(args []string) ([]string, error) {
 	return lines, nil
 }
 
-func readFileLines(name string) ([]string, error) {
+func readFileLines(name string, zeroTerm bool) ([]string, error) {
 	var f *os.File
 	if name == "-" {
 		f = os.Stdin
@@ -296,13 +387,31 @@ func readFileLines(name string) ([]string, error) {
 		defer f.Close()
 	}
 
-	var lines []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
+	data, err := io.ReadAll(f)
+	if err != nil {
 		return nil, err
+	}
+
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	var delim byte = '\n'
+	if zeroTerm {
+		delim = 0
+	}
+
+	// Remove trailing delimiter if present
+	data = bytes.TrimSuffix(data, []byte{delim})
+	if len(data) == 0 {
+		return []string{""}, nil
+	}
+
+	parts := bytes.Split(data, []byte{delim})
+	lines := make([]string, len(parts))
+	for i, p := range parts {
+		lines[i] = string(p)
 	}
 	return lines, nil
 }
+

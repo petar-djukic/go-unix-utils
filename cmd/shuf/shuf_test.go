@@ -526,3 +526,322 @@ func lineCount(b []byte) []byte {
 	n := len(strings.Split(s, "\n"))
 	return []byte(strconv.Itoa(n) + "\n")
 }
+
+// R3.1: --random-source=FILE reads random bytes from file
+func TestRandomSource(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	dir := t.TempDir()
+	rsFile := filepath.Join(dir, "rand.bin")
+	seed := make([]byte, 64)
+	for i := range seed {
+		seed[i] = byte(i * 7)
+	}
+	if err := os.WriteFile(rsFile, seed, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(bin, "--random-source="+rsFile, "-i", "1-10")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf --random-source failed: %v", err)
+	}
+
+	got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if len(got) != 10 {
+		t.Fatalf("expected 10 lines, got %d", len(got))
+	}
+
+	seen := make(map[int]bool)
+	for _, line := range got {
+		v, err := strconv.Atoi(line)
+		if err != nil {
+			t.Fatalf("non-integer: %q", line)
+		}
+		if v < 1 || v > 10 {
+			t.Errorf("value %d out of range", v)
+		}
+		if seen[v] {
+			t.Errorf("duplicate: %d", v)
+		}
+		seen[v] = true
+	}
+
+	cmd2 := exec.Command(bin, "--random-source="+rsFile, "-i", "1-10")
+	out2, err := cmd2.Output()
+	if err != nil {
+		t.Fatalf("second run failed: %v", err)
+	}
+	if string(out) != string(out2) {
+		t.Errorf("same random source should produce same output")
+	}
+}
+
+// R3.1: --random-source with missing file
+func TestRandomSourceMissing(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(bin, "--random-source=/nonexistent", "-i", "1-5")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected error for missing random source file")
+	}
+}
+
+// R3.2: -z uses NUL as delimiter for both input and output
+func TestZeroTerminated(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	input := "alpha\x00beta\x00gamma\x00"
+	cmd := exec.Command(bin, "-z")
+	cmd.Stdin = strings.NewReader(input)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf -z failed: %v", err)
+	}
+
+	raw := string(out)
+	raw = strings.TrimSuffix(raw, "\x00")
+	got := strings.Split(raw, "\x00")
+	if len(got) != 3 {
+		t.Fatalf("expected 3 NUL-separated entries, got %d: %q", len(got), out)
+	}
+
+	sorted := slices.Clone(got)
+	sort.Strings(sorted)
+	want := []string{"alpha", "beta", "gamma"}
+	if !slices.Equal(sorted, want) {
+		t.Errorf("expected permutation of %v, got %v", want, got)
+	}
+}
+
+// R3.2: --zero-terminated long form
+func TestZeroTerminatedLong(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	input := "x\x00y\x00z\x00"
+	cmd := exec.Command(bin, "--zero-terminated")
+	cmd.Stdin = strings.NewReader(input)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf --zero-terminated failed: %v", err)
+	}
+
+	raw := strings.TrimSuffix(string(out), "\x00")
+	got := strings.Split(raw, "\x00")
+	if len(got) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(got))
+	}
+
+	sorted := slices.Clone(got)
+	sort.Strings(sorted)
+	want := []string{"x", "y", "z"}
+	if !slices.Equal(sorted, want) {
+		t.Errorf("expected permutation of %v, got %v", want, got)
+	}
+}
+
+// R3.2: -z with range mode
+func TestZeroTerminatedRange(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(bin, "-z", "-i", "1-3")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf -z -i 1-3 failed: %v", err)
+	}
+
+	raw := strings.TrimSuffix(string(out), "\x00")
+	got := strings.Split(raw, "\x00")
+	if len(got) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(got))
+	}
+
+	sorted := slices.Clone(got)
+	sort.Strings(sorted)
+	want := []string{"1", "2", "3"}
+	if !slices.Equal(sorted, want) {
+		t.Errorf("expected permutation of %v, got %v", want, got)
+	}
+}
+
+// R3.3: -e treats each argument as an input line
+func TestEchoMode(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(bin, "-e", "alpha", "beta", "gamma")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf -e failed: %v", err)
+	}
+
+	got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if len(got) != 3 {
+		t.Fatalf("expected 3 lines, got %d", len(got))
+	}
+
+	sorted := slices.Clone(got)
+	sort.Strings(sorted)
+	want := []string{"alpha", "beta", "gamma"}
+	if !slices.Equal(sorted, want) {
+		t.Errorf("expected permutation of %v, got %v", want, got)
+	}
+}
+
+// R3.3: --echo long form
+func TestEchoModeLong(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(bin, "--echo", "one", "two")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf --echo failed: %v", err)
+	}
+
+	got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(got))
+	}
+
+	sorted := slices.Clone(got)
+	sort.Strings(sorted)
+	want := []string{"one", "two"}
+	if !slices.Equal(sorted, want) {
+		t.Errorf("expected permutation of %v, got %v", want, got)
+	}
+}
+
+// R3.3: -e with -n limits output
+func TestEchoModeWithHead(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(bin, "-e", "-n", "2", "a", "b", "c", "d")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf -e -n 2 failed: %v", err)
+	}
+
+	got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(got))
+	}
+
+	valid := map[string]bool{"a": true, "b": true, "c": true, "d": true}
+	for _, line := range got {
+		if !valid[line] {
+			t.Errorf("unexpected output: %q", line)
+		}
+	}
+}
+
+// R3.3: -e with -i is an error
+func TestEchoWithRangeError(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(bin, "-e", "-i", "1-5", "foo")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error combining -e and -i")
+	}
+	if !strings.Contains(string(out), "cannot combine") {
+		t.Errorf("expected 'cannot combine' error, got: %s", out)
+	}
+}
+
+// R3.4: empty input produces no output and exits 0
+func TestEmptyInput(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(bin)
+	cmd.Stdin = strings.NewReader("")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf with empty input failed: %v", err)
+	}
+	if len(out) != 0 {
+		t.Errorf("expected no output, got: %q", out)
+	}
+}
+
+// R3.4: -e with no args produces no output
+func TestEchoModeEmpty(t *testing.T) {
+	bin := testutils.BuildBinary(t, ".")
+
+	cmd := exec.Command(bin, "-e")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("shuf -e with no args failed: %v", err)
+	}
+	if len(out) != 0 {
+		t.Errorf("expected no output, got: %q", out)
+	}
+}
+
+// R3.3: differential test for echo mode
+func TestDiffEcho(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshuf")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "echo_three_words",
+			Args:      []string{"-e", "alpha", "beta", "gamma"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "echo_empty",
+			Args:      []string{"-e"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortLines},
+		},
+		{
+			Name:      "echo_with_head",
+			Args:      []string{"-e", "-n", "2", "a", "b", "c"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{lineCount},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// R3.2: differential test for zero-terminated mode
+func TestDiffZeroTerminated(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gshuf")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+
+	sortNulLines := func(b []byte) []byte {
+		s := strings.TrimSuffix(string(b), "\x00")
+		if s == "" {
+			return b
+		}
+		parts := strings.Split(s, "\x00")
+		sort.Strings(parts)
+		return []byte(strings.Join(parts, "\x00") + "\x00")
+	}
+
+	tests := []testutils.DiffTest{
+		{
+			Name:      "zero_terminated_stdin",
+			Args:      []string{"-z"},
+			Stdin:     []byte("a\x00b\x00c\x00"),
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortNulLines},
+		},
+		{
+			Name:      "zero_terminated_range",
+			Args:      []string{"-z", "-i", "1-3"},
+			ExitCode:  0,
+			Normalize: []testutils.NormalizeFunc{sortNulLines},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
