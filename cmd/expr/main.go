@@ -19,6 +19,13 @@ var pos int
 func main() {
 	sys.InstallSIGPIPEHandler()
 
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "expr: internal error: %v\n", r)
+			os.Exit(3)
+		}
+	}()
+
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "expr: missing operand")
 		os.Exit(2)
@@ -236,7 +243,7 @@ func parsePrimary() string {
 		advance()
 		result := parseOr()
 		if peek() != ")" {
-			fmt.Fprintln(os.Stderr, "expr: syntax error: expecting ')'")
+			fmt.Fprintf(os.Stderr, "expr: syntax error: expecting ')' after '%s'\n", args[pos-1])
 			os.Exit(2)
 		}
 		advance()

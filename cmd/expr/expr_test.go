@@ -21,6 +21,19 @@ func TestDiff(t *testing.T) {
 	normBinName := testutils.NormalizeFunc(func(b []byte) []byte {
 		return bytes.ReplaceAll(b, []byte("gexpr:"), []byte("expr:"))
 	})
+	normStripTry := testutils.NormalizeFunc(func(b []byte) []byte {
+		var out []byte
+		for line := range bytes.SplitSeq(b, []byte("\n")) {
+			if bytes.HasPrefix(line, []byte("Try ")) {
+				continue
+			}
+			if len(out) > 0 {
+				out = append(out, '\n')
+			}
+			out = append(out, line...)
+		}
+		return out
+	})
 
 	tests := []testutils.DiffTest{
 		// R1.1: integer arithmetic operators
@@ -158,6 +171,37 @@ func TestDiff(t *testing.T) {
 		{Name: "left_assoc_sub", Args: []string{"10", "-", "3", "-", "2"}},
 		{Name: "left_assoc_div", Args: []string{"60", "/", "3", "/", "2"}},
 		{Name: "left_assoc_mod", Args: []string{"17", "%", "10", "%", "4"}},
+
+		// R4.1/R4.2: exit codes for non-null/non-zero vs null/zero results
+		{Name: "exit0_nonzero_int", Args: []string{"1"}},
+		{Name: "exit0_positive_result", Args: []string{"3", "+", "4"}},
+		{Name: "exit0_string_value", Args: []string{"hello"}},
+		{Name: "exit0_true_comparison", Args: []string{"10", ">", "5"}},
+		{Name: "exit1_zero_literal", Args: []string{"0"}},
+		{Name: "exit1_empty_string", Args: []string{""}},
+		{Name: "exit1_false_lt", Args: []string{"10", "<", "5"}},
+		{Name: "exit1_false_eq", Args: []string{"1", "=", "2"}},
+		{Name: "exit1_and_zero", Args: []string{"0", "&", "5"}},
+		{Name: "exit1_match_no_match_count", Args: []string{"match", "xyz", "abc"}},
+		{Name: "exit1_match_no_match_group", Args: []string{"match", "xyz", `abc\(.*\)`}},
+		{Name: "exit1_index_no_match", Args: []string{"index", "hello", "xyz"}},
+		{Name: "exit1_length_zero", Args: []string{"length", ""}},
+
+		// R4.3: syntax errors — missing operand and bad expressions
+		{Name: "err_missing_operand", Args: []string{"1", "+"}, Normalize: []testutils.NormalizeFunc{normBinName}},
+		{Name: "err_missing_operand_mul", Args: []string{"2", "*"}, Normalize: []testutils.NormalizeFunc{normBinName}},
+		{Name: "err_missing_operand_cmp", Args: []string{"3", "<"}, Normalize: []testutils.NormalizeFunc{normBinName}},
+		{Name: "err_unclosed_paren", Args: []string{"(", "1", "+", "2"}, Normalize: []testutils.NormalizeFunc{normBinName}},
+		{Name: "err_unexpected_arg", Args: []string{"1", "2"}, Normalize: []testutils.NormalizeFunc{normBinName}},
+		{Name: "err_missing_all", Args: nil, Normalize: []testutils.NormalizeFunc{normBinName, normStripTry}},
+		{Name: "err_extra_paren", Args: []string{"(", "1", ")", ")"}, Normalize: []testutils.NormalizeFunc{normBinName}},
+
+		// R4.4: additional coverage — ensure all operations appear in differential tests
+		{Name: "or_chain", Args: []string{"0", "|", "0", "|", "5"}},
+		{Name: "and_chain", Args: []string{"1", "&", "2", "&", "3"}},
+		{Name: "match_colon_in_expr", Args: []string{"abc123", ":", `\([a-z]*\)`}},
+		{Name: "substr_in_expr", Args: []string{"substr", "world", "1", "3"}},
+		{Name: "index_in_expr", Args: []string{"index", "abcdef", "ce"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
