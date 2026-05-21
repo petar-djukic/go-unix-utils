@@ -1,0 +1,157 @@
+- index: 0
+  title: "[stitch] cmd/rm: srd058 R2.1-R2.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd058-rm.yaml (requirements R2.1 through R2.4)
+      - cmd/rm/main.go (existing implementation covering R1.1-R1.4)
+      - cmd/rm/rm_test.go (existing differential tests covering R1.1-R1.4)
+      - pkg/testutils/ (differential testing framework -- DiffTest struct and RunDiffTests)
+
+    files:
+      - path: cmd/rm/main.go
+        action: modify
+        note: Add implementation for srd058 requirements R2.1 through R2.4
+      - path: cmd/rm/rm_test.go
+        action: modify
+        note: Add differential test cases exercising R2.1 through R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd058-rm requirement R2.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd058-rm requirement R2.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd058-rm requirement R2.3 per the SRD specification"
+      - id: R4
+        text: "Implement srd058-rm requirement R2.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Use the differential testing pattern: testutils.BuildBinary(t, \".\") for the Go binary, exec.LookPath(\"grm\") for the GNU reference binary, testutils.RunDiffTests to compare outputs"
+      - id: D2
+        text: "Call t.Skip if the grm reference binary is not found in PATH"
+      - id: D3
+        text: "Ensure sys.InstallSIGPIPEHandler() is called at the start of main"
+      - id: D4
+        text: "Set LC_ALL=C in test environment variables for deterministic output comparison"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd058 requirements R2.1 through R2.4 are fully implemented in cmd/rm/main.go"
+      - id: AC2
+        text: "Differential test cases for R2.1-R2.4 are present in cmd/rm/rm_test.go"
+      - id: AC3
+        text: "go build ./cmd/rm/ succeeds with no errors"
+      - id: AC4
+        text: "go vet ./cmd/rm/ reports no issues"
+      - id: AC5
+        text: "go test ./cmd/rm/ -count=1 passes including both new and existing test cases"
+
+- index: 1
+  title: "[stitch] cmd/rm: srd058 R3.1-R3.4"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd058-rm.yaml (requirements R3.1 through R3.4)
+      - cmd/rm/main.go (existing implementation covering R1.1-R2.4)
+      - cmd/rm/rm_test.go (existing differential tests covering R1.1-R2.4)
+      - pkg/testutils/ (differential testing framework -- DiffTest struct and RunDiffTests)
+
+    files:
+      - path: cmd/rm/main.go
+        action: modify
+        note: Add implementation for srd058 requirements R3.1 through R3.4
+      - path: cmd/rm/rm_test.go
+        action: modify
+        note: Add differential test cases exercising R3.1 through R3.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd058-rm requirement R3.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd058-rm requirement R3.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd058-rm requirement R3.3 per the SRD specification"
+      - id: R4
+        text: "Implement srd058-rm requirement R3.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Use the differential testing pattern: testutils.BuildBinary(t, \".\") for the Go binary, exec.LookPath(\"grm\") for the GNU reference binary, testutils.RunDiffTests to compare outputs"
+      - id: D2
+        text: "Call t.Skip if the grm reference binary is not found in PATH"
+      - id: D3
+        text: "Ensure sys.InstallSIGPIPEHandler() is called at the start of main"
+      - id: D4
+        text: "Set LC_ALL=C in test environment variables for deterministic output comparison"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd058 requirements R3.1 through R3.4 are fully implemented in cmd/rm/main.go"
+      - id: AC2
+        text: "Differential test cases for R3.1-R3.4 are present in cmd/rm/rm_test.go"
+      - id: AC3
+        text: "go build ./cmd/rm/ succeeds with no errors"
+      - id: AC4
+        text: "go vet ./cmd/rm/ reports no issues"
+      - id: AC5
+        text: "go test ./cmd/rm/ -count=1 passes including both new and existing test cases"
+
+- index: 2
+  title: "[stitch] cmd/rm: srd058 R4.1-R4.4"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd058-rm.yaml (requirements R4.1 through R4.4)
+      - cmd/rm/main.go (existing implementation covering R1.1-R3.4)
+      - cmd/rm/rm_test.go (existing differential tests covering R1.1-R3.4)
+      - pkg/testutils/ (differential testing framework -- DiffTest struct and RunDiffTests)
+
+    files:
+      - path: cmd/rm/main.go
+        action: modify
+        note: Add implementation for srd058 requirements R4.1 through R4.4
+      - path: cmd/rm/rm_test.go
+        action: modify
+        note: Add differential test cases exercising R4.1 through R4.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd058-rm requirement R4.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd058-rm requirement R4.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd058-rm requirement R4.3 per the SRD specification"
+      - id: R4
+        text: "Implement srd058-rm requirement R4.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Use the differential testing pattern: testutils.BuildBinary(t, \".\") for the Go binary, exec.LookPath(\"grm\") for the GNU reference binary, testutils.RunDiffTests to compare outputs"
+      - id: D2
+        text: "Call t.Skip if the grm reference binary is not found in PATH"
+      - id: D3
+        text: "Ensure sys.InstallSIGPIPEHandler() is called at the start of main"
+      - id: D4
+        text: "Set LC_ALL=C in test environment variables for deterministic output comparison"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "srd058 requirements R4.1 through R4.4 are fully implemented in cmd/rm/main.go"
+      - id: AC2
+        text: "Differential test cases for R4.1-R4.4 are present in cmd/rm/rm_test.go"
+      - id: AC3
+        text: "go build ./cmd/rm/ succeeds with no errors"
+      - id: AC4
+        text: "go vet ./cmd/rm/ reports no issues"
+      - id: AC5
+        text: "go test ./cmd/rm/ -count=1 passes including both new and existing test cases"
+      - id: AC6
+        text: "All srd058-rm requirements (R1.1 through R4.4) are now complete"
