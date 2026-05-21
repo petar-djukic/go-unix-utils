@@ -433,7 +433,7 @@ code_status:
               testfiles: 0
             - id: rel08.0-uc005-shuf
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel08.0-uc006-factor
