@@ -443,7 +443,7 @@ code_status:
               testfiles: 0
             - id: rel08.0-uc007-expr
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "08.1"
