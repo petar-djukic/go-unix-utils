@@ -102,3 +102,27 @@ func TestDiffDateParsing(t *testing.T) {
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
+
+func TestDiffUTCMode(t *testing.T) {
+	goBin, refBin := setupBinaries(t)
+	tests := []testutils.DiffTest{
+		{Name: "utc_short", Args: []string{"-u", "-d", "@1700000000", "+%Y-%m-%d %H:%M:%S %Z"}, Env: []string{"LC_ALL=C", "TZ=America/New_York"}},
+		{Name: "utc_long", Args: []string{"--utc", "-d", "@1700000000", "+%Y-%m-%d %H:%M:%S %Z"}, Env: []string{"LC_ALL=C", "TZ=America/New_York"}},
+		{Name: "universal_long", Args: []string{"--universal", "-d", "@1700000000", "+%Y-%m-%d %H:%M:%S %Z"}, Env: []string{"LC_ALL=C", "TZ=America/New_York"}},
+		{Name: "utc_epoch_seconds", Args: []string{"-u", "-d", "@1700000000", "+%s"}, Env: []string{"LC_ALL=C", "TZ=America/New_York"}},
+		{Name: "utc_default_format", Args: []string{"-u", "-d", "@1700000000"}, Env: []string{"LC_ALL=C", "TZ=America/New_York"}},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffReferenceFile(t *testing.T) {
+	goBin, refBin := setupBinaries(t)
+	tests := []testutils.DiffTest{
+		{Name: "ref_short", Args: []string{"-r", "/dev/null", "+%Y"}, Env: []string{"LC_ALL=C", "TZ=UTC"}},
+		{Name: "ref_long", Args: []string{"--reference=/dev/null", "+%Y"}, Env: []string{"LC_ALL=C", "TZ=UTC"}},
+		{Name: "ref_with_utc", Args: []string{"-u", "-r", "/dev/null", "+%Y-%m-%d %H:%M:%S"}, Env: []string{"LC_ALL=C", "TZ=America/New_York"}},
+		{Name: "ref_missing_file", Args: []string{"-r", "/nonexistent_file_for_date_test", "+%Y"}, ExitCode: 1, Env: []string{"LC_ALL=C", "TZ=UTC"}, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
+		{Name: "ref_missing_long", Args: []string{"--reference=/nonexistent_file_for_date_test", "+%Y"}, ExitCode: 1, Env: []string{"LC_ALL=C", "TZ=UTC"}, Normalize: []testutils.NormalizeFunc{normalizeBinaryName}},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}

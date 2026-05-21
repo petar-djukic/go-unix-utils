@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd060-date R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
+// Implements srd060-date R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -75,7 +75,7 @@ func resolveTime(cfg config) (time.Time, error) {
 	if cfg.refFile != "" {
 		info, err := os.Stat(cfg.refFile)
 		if err != nil {
-			return t, fmt.Errorf("cannot stat '%s': No such file or directory", cfg.refFile)
+			return t, fmt.Errorf("%s: No such file or directory", cfg.refFile)
 		}
 		t = info.ModTime()
 	}
