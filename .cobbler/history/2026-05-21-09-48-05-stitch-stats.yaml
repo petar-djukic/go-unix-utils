@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5411"
+task_title: '[stitch] cmd/date: srd060 R4.1-R4.4'
+status: success
+started_at: "2026-05-21T13:48:05Z"
+duration: 2m2s
+duration_s: 122
+tokens:
+    input: 350308
+    output: 2130
+    cache_creation: 203093
+    cache_read: 147206
+cost_usd: 1.793127
+num_turns: 15
+rate_limit_wait_s: 8
+loc_before:
+    production: 14647
+    test: 14021
+loc_after:
+    production: 14647
+    test: 14034
+diff:
+    files: 3
+    insertions: 107
+    deletions: 1

@@ -3544,16 +3544,20 @@ requirements:
             issue: 5410
             weight: 1
         R4.1:
-            status: in_progress
+            status: complete
+            issue: 5411
             weight: 1
         R4.2:
-            status: in_progress
+            status: complete
+            issue: 5411
             weight: 1
         R4.3:
-            status: in_progress
+            status: complete
+            issue: 5411
             weight: 1
         R4.4:
-            status: in_progress
+            status: complete
+            issue: 5411
             weight: 1
     srd061-sleep:
         R1.1:
