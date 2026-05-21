@@ -3869,16 +3869,16 @@ requirements:
             issue: 5434
             weight: 1
         R4.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.3:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.4:
-            status: proposed
+            status: in_progress
             weight: 1
     srd066-expr:
         R1.1:
