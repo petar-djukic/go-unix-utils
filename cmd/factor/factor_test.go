@@ -23,7 +23,19 @@ func TestDiff(t *testing.T) {
 		return binaryNameRe.ReplaceAll(b, []byte("factor"))
 	})
 
+	discardStdout := testutils.NormalizeFunc(func([]byte) []byte { return nil })
+
 	tests := []testutils.DiffTest{
+		{
+			Name:      "help",
+			Args:      []string{"--help"},
+			Normalize: []testutils.NormalizeFunc{discardStdout},
+		},
+		{
+			Name:      "version",
+			Args:      []string{"--version"},
+			Normalize: []testutils.NormalizeFunc{discardStdout},
+		},
 		{
 			Name: "single_composite",
 			Args: []string{"12"},
