@@ -1,0 +1,206 @@
+- index: 0
+  title: "[stitch] cmd/mv: srd057 R3.1-R3.3"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd057-mv.yaml (R3.1-R3.3 requirements and acceptance criteria)
+      - cmd/mv/main.go (existing implementation covering R1.1-R2.4)
+      - cmd/mv/mv_test.go (existing differential tests)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests pattern)
+
+    files:
+      - path: cmd/mv/main.go
+        action: modify
+        note: Add R3.1-R3.3 functionality to existing mv implementation
+      - path: cmd/mv/mv_test.go
+        action: modify
+        note: Add differential test cases covering R3.1-R3.3
+
+    requirements:
+      - id: R1
+        text: Implement srd057-mv requirement R3.1 per the SRD specification
+      - id: R2
+        text: Implement srd057-mv requirement R3.2 per the SRD specification
+      - id: R3
+        text: Implement srd057-mv requirement R3.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Modify the existing cmd/mv/main.go -- do not rewrite or restructure code from R1.1-R2.4
+      - id: D2
+        text: Use testutils.RunDiffTests with gmv reference binary for all new test cases
+      - id: D3
+        text: Call exec.LookPath("gmv") and t.Skip if reference binary is not found
+      - id: D4
+        text: Set LC_ALL=C in test environment variables for deterministic comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/mv/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/mv/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/mv/... -count=1 passes, including new R3.1-R3.3 test cases"
+      - id: AC4
+        text: All R3.1-R3.3 requirements from srd057-mv are implemented and tested
+      - id: AC5
+        text: Existing tests for R1.1-R2.4 continue to pass without modification
+
+- index: 1
+  title: "[stitch] cmd/mv: srd057 R4.1-R4.4"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd057-mv.yaml (R4.1-R4.4 requirements and acceptance criteria)
+      - cmd/mv/main.go (existing implementation covering R1.1-R3.3)
+      - cmd/mv/mv_test.go (existing differential tests)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests pattern)
+
+    files:
+      - path: cmd/mv/main.go
+        action: modify
+        note: Add R4.1-R4.4 functionality to existing mv implementation
+      - path: cmd/mv/mv_test.go
+        action: modify
+        note: Add differential test cases covering R4.1-R4.4
+
+    requirements:
+      - id: R1
+        text: Implement srd057-mv requirement R4.1 per the SRD specification
+      - id: R2
+        text: Implement srd057-mv requirement R4.2 per the SRD specification
+      - id: R3
+        text: Implement srd057-mv requirement R4.3 per the SRD specification
+      - id: R4
+        text: Implement srd057-mv requirement R4.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Modify the existing cmd/mv/main.go -- do not rewrite or restructure code from R1.1-R3.3
+      - id: D2
+        text: Use testutils.RunDiffTests with gmv reference binary for all new test cases
+      - id: D3
+        text: Call exec.LookPath("gmv") and t.Skip if reference binary is not found
+      - id: D4
+        text: Set LC_ALL=C in test environment variables for deterministic comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/mv/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/mv/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/mv/... -count=1 passes, including new R4.1-R4.4 test cases"
+      - id: AC4
+        text: All R4.1-R4.4 requirements from srd057-mv are implemented and tested
+      - id: AC5
+        text: Existing tests for R1.1-R3.3 continue to pass without modification
+
+- index: 2
+  title: "[stitch] cmd/rm: srd058 (contract)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd058-rm.yaml (full SRD for rm -- read all requirements to understand the complete interface)
+      - cmd/mv/main.go (reference for cmd/ package structure and flag parsing pattern in this project)
+      - cmd/mv/mv_test.go (reference for differential test skeleton pattern)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler usage)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests pattern)
+
+    files:
+      - path: cmd/rm/main.go
+        action: create
+        note: Package main stub with sys.InstallSIGPIPEHandler, flag definitions, and function signatures as stubs
+      - path: cmd/rm/rm_test.go
+        action: create
+        note: TestDiff skeleton with BuildBinary, LookPath for grm, and empty DiffTest slice
+
+    requirements:
+      - id: R1
+        text: Create cmd/rm/main.go with package main, all import statements, flag variable declarations for all flags defined in srd058-rm, and func main() calling sys.InstallSIGPIPEHandler() followed by stub logic
+      - id: R2
+        text: Define internal function signatures (not bodies) for the primary operations described in srd058-rm -- each function has a comment noting which R-items it will implement
+      - id: R3
+        text: Create cmd/rm/rm_test.go with TestDiff function skeleton using testutils.BuildBinary and exec.LookPath("grm") with t.Skip fallback and an empty tests slice
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() as the first statement in main()
+      - id: D2
+        text: Use the standard flag package for option parsing, matching the pattern in other cmd/ packages
+      - id: D3
+        text: Stub functions should compile but print "not implemented" and os.Exit(1) so the binary builds but fails gracefully
+      - id: D4
+        text: Use exec.LookPath("grm") for the GNU reference binary name
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/rm ./cmd/rm/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/rm/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/rm/... -count=1 passes (TestDiff skips if grm not found, otherwise runs with empty test slice)"
+      - id: AC4
+        text: All flags from srd058-rm are declared as variables (even if not yet wired to logic)
+      - id: AC5
+        text: Internal function signatures cover the operations needed by R1.1 through R4.4
+
+- index: 3
+  title: "[stitch] cmd/rm: srd058 R1.1-R1.4"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd058-rm.yaml (R1.1-R1.4 requirements and acceptance criteria)
+      - cmd/rm/main.go (contract stub from prior task -- contains flag declarations and function signatures)
+      - cmd/rm/rm_test.go (test skeleton from prior task)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests pattern)
+
+    files:
+      - path: cmd/rm/main.go
+        action: modify
+        note: Implement R1.1-R1.4 functionality by filling in stub functions
+      - path: cmd/rm/rm_test.go
+        action: modify
+        note: Add differential test cases covering R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: Implement srd058-rm requirement R1.1 per the SRD specification
+      - id: R2
+        text: Implement srd058-rm requirement R1.2 per the SRD specification
+      - id: R3
+        text: Implement srd058-rm requirement R1.3 per the SRD specification
+      - id: R4
+        text: Implement srd058-rm requirement R1.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Modify the existing cmd/rm/main.go contract stubs -- do not rewrite the file structure or flag declarations
+      - id: D2
+        text: Use testutils.RunDiffTests with grm reference binary for all new test cases
+      - id: D3
+        text: Call exec.LookPath("grm") and t.Skip if reference binary is not found
+      - id: D4
+        text: Set LC_ALL=C in test environment variables for deterministic comparison
+      - id: D5
+        text: Test cases must create temporary directories and files for rm operations -- clean up with t.TempDir()
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/rm/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/rm/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/rm/... -count=1 passes, including new R1.1-R1.4 test cases"
+      - id: AC4
+        text: All R1.1-R1.4 requirements from srd058-rm are implemented and tested
+      - id: AC5
+        text: Contract stub functions for R2-R4 requirements still compile (not broken by R1 implementation)
