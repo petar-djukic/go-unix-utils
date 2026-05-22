@@ -14800,3 +14800,183 @@
       - id: AC5
         text: "All srd069-join ready requirements (R2.1 through R4.4) are fully implemented and tested across this and prior tasks"
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/fmt: srd070 R2.1-R5.1'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd070-fmt.yaml (full SRD -- read all requirements, focus on R2.1, R3.1, R4.1, R5.1)
+      - pkg/sys/ (SIGPIPE handler via InstallSIGPIPEHandler)
+      - pkg/testutils/ (differential testing framework -- DiffTest, RunDiffTests, BuildBinary)
+
+    files:
+      - path: cmd/fmt/main.go
+        action: create
+        note: fmt utility -- paragraph reformatting to specified width
+      - path: cmd/fmt/fmt_test.go
+        action: create
+        note: differential tests against gfmt reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd070 R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd070 R3.1 as specified in the SRD"
+      - id: R3
+        text: "Implement srd070 R4.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd070 R5.1 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at start of main per shared SIGPIPE protocol"
+      - id: D2
+        text: "Use testutils.RunDiffTests with gfmt as reference binary from Homebrew coreutils"
+      - id: D3
+        text: "Set LC_ALL=C in all differential test cases"
+      - id: D4
+        text: "Call exec.LookPath for gfmt and t.Skip if not found per graceful skip protocol"
+      - id: D5
+        text: "Build binary with testutils.BuildBinary(t, \".\") from within cmd/fmt/ test"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/fmt/main.go compiles with go build -o bin/fmt ./cmd/fmt/"
+      - id: AC2
+        text: "go vet ./cmd/fmt/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/fmt/ -count=1 passes (or skips if gfmt not found)"
+      - id: AC4
+        text: "Differential tests cover all four requirements (R2.1, R3.1, R4.1, R5.1)"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/fmt: srd070 R6.1-R9.1'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd070-fmt.yaml (requirements R6.1, R7.1, R8.1, R9.1)
+      - cmd/fmt/main.go (existing implementation from prior task)
+      - cmd/fmt/fmt_test.go (existing differential tests from prior task)
+
+    files:
+      - path: cmd/fmt/main.go
+        action: modify
+        note: add functionality for srd070 R6.1, R7.1, R8.1, R9.1
+      - path: cmd/fmt/fmt_test.go
+        action: modify
+        note: add differential tests for R6.1, R7.1, R8.1, R9.1
+
+    requirements:
+      - id: R1
+        text: "Implement srd070 R6.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd070 R7.1 as specified in the SRD"
+      - id: R3
+        text: "Implement srd070 R8.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd070 R9.1 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend existing flag parsing and formatting logic in main.go -- do not restructure prior code"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in fmt_test.go"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/fmt ./cmd/fmt/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/fmt/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/fmt/ -count=1 passes (all prior and new tests)"
+      - id: AC4
+        text: "Differential tests cover R6.1, R7.1, R8.1, R9.1"
+  dependency: 0
+- index: 2
+  title: '[stitch] cmd/fmt: srd070 R10.1-R13.1'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd070-fmt.yaml (requirements R10.1, R11.1, R12.1, R13.1)
+      - cmd/fmt/main.go (existing implementation from prior tasks)
+      - cmd/fmt/fmt_test.go (existing differential tests from prior tasks)
+
+    files:
+      - path: cmd/fmt/main.go
+        action: modify
+        note: add functionality for srd070 R10.1, R11.1, R12.1, R13.1
+      - path: cmd/fmt/fmt_test.go
+        action: modify
+        note: add differential tests for R10.1, R11.1, R12.1, R13.1
+
+    requirements:
+      - id: R1
+        text: "Implement srd070 R10.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd070 R11.1 as specified in the SRD"
+      - id: R3
+        text: "Implement srd070 R12.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd070 R13.1 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend existing flag parsing and formatting logic in main.go -- do not restructure prior code"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in fmt_test.go"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/fmt ./cmd/fmt/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/fmt/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/fmt/ -count=1 passes (all prior and new tests)"
+      - id: AC4
+        text: "Differential tests cover R10.1, R11.1, R12.1, R13.1"
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/fmt: srd070 R13.2-R13.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd070-fmt.yaml (requirements R13.2, R13.3, R13.4)
+      - cmd/fmt/main.go (existing implementation from prior tasks)
+      - cmd/fmt/fmt_test.go (existing differential tests from prior tasks)
+
+    files:
+      - path: cmd/fmt/main.go
+        action: modify
+        note: add functionality for srd070 R13.2, R13.3, R13.4
+      - path: cmd/fmt/fmt_test.go
+        action: modify
+        note: add differential tests for R13.2, R13.3, R13.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd070 R13.2 as specified in the SRD"
+      - id: R2
+        text: "Implement srd070 R13.3 as specified in the SRD"
+      - id: R3
+        text: "Implement srd070 R13.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend existing flag parsing and formatting logic in main.go -- do not restructure prior code"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in fmt_test.go"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/fmt ./cmd/fmt/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/fmt/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/fmt/ -count=1 passes (all prior and new tests)"
+      - id: AC4
+        text: "Differential tests cover R13.2, R13.3, R13.4"
+  dependency: 2
