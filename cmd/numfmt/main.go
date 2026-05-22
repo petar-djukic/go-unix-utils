@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd071-numfmt R1.1-R1.4, R2.1-R2.4.
+// Implements srd071-numfmt R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (
@@ -23,12 +23,15 @@ var (
 )
 
 type opts struct {
-	fromUnit string
-	toUnit   string
-	format   string
-	padding  int
-	round    string
-	suffix   string
+	fromUnit      string
+	toUnit        string
+	format        string
+	padding       int
+	round         string
+	suffix        string
+	delimiter     string
+	fromUnitScale float64
+	toUnitScale   float64
 }
 
 type fmtSpec struct {
@@ -37,14 +40,72 @@ type fmtSpec struct {
 	prec      int
 }
 
+type fieldSpec struct {
+	fields   map[int]bool
+	openFrom int
+}
+
+func (f *fieldSpec) includes(n int) bool {
+	if f.fields[n] {
+		return true
+	}
+	return f.openFrom > 0 && n >= f.openFrom
+}
+
+func parseFieldSpec(s string) (*fieldSpec, error) {
+	fs := &fieldSpec{fields: make(map[int]bool)}
+	for part := range strings.SplitSeq(s, ",") {
+		if startStr, endStr, hasRange := strings.Cut(part, "-"); hasRange {
+			start, err := strconv.Atoi(startStr)
+			if err != nil || start < 1 {
+				return nil, fmt.Errorf("invalid field range: %q", part)
+			}
+			if endStr == "" {
+				if fs.openFrom == 0 || start < fs.openFrom {
+					fs.openFrom = start
+				}
+			} else {
+				end, err := strconv.Atoi(endStr)
+				if err != nil || end < start {
+					return nil, fmt.Errorf("invalid field range: %q", part)
+				}
+				for i := start; i <= end; i++ {
+					fs.fields[i] = true
+				}
+			}
+		} else {
+			n, err := strconv.Atoi(part)
+			if err != nil || n < 1 {
+				return nil, fmt.Errorf("invalid field value: %q", part)
+			}
+			fs.fields[n] = true
+		}
+	}
+	return fs, nil
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
+	for i := 1; i < len(os.Args); i++ {
+		if os.Args[i] == "--" {
+			break
+		}
+		if os.Args[i] == "--header" || os.Args[i] == "-header" {
+			os.Args[i] = "--header=1"
+		}
+	}
 	toUnit := flag.String("to", "none", "")
 	fromUnit := flag.String("from", "none", "")
 	format := flag.String("format", "", "")
 	padding := flag.Int("padding", 0, "")
 	round := flag.String("round", "from-zero", "")
 	suffix := flag.String("suffix", "", "")
+	field := flag.String("field", "", "")
+	delimiter := flag.String("delimiter", "", "")
+	flag.StringVar(delimiter, "d", "", "")
+	header := flag.Int("header", 0, "")
+	fromUnitScale := flag.Float64("from-unit", 1, "")
+	toUnitScale := flag.Float64("to-unit", 1, "")
 	flag.Parse()
 	if !isValidUnit(*toUnit) || !isValidUnit(*fromUnit) {
 		fmt.Fprintf(os.Stderr, "numfmt: invalid unit\n")
@@ -54,7 +115,26 @@ func main() {
 		fmt.Fprintf(os.Stderr, "numfmt: invalid --round method: '%s'\n", *round)
 		os.Exit(1)
 	}
-	o := opts{fromUnit: *fromUnit, toUnit: *toUnit, format: *format, padding: *padding, round: *round, suffix: *suffix}
+	var fs *fieldSpec
+	if *field != "" {
+		var err error
+		fs, err = parseFieldSpec(*field)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "numfmt: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	o := opts{
+		fromUnit:      *fromUnit,
+		toUnit:        *toUnit,
+		format:        *format,
+		padding:       *padding,
+		round:         *round,
+		suffix:        *suffix,
+		delimiter:     *delimiter,
+		fromUnitScale: *fromUnitScale,
+		toUnitScale:   *toUnitScale,
+	}
 	hasError := false
 	if flag.NArg() > 0 {
 		for _, arg := range flag.Args() {
@@ -65,8 +145,20 @@ func main() {
 		}
 	} else {
 		scanner := bufio.NewScanner(os.Stdin)
+		headerLines := *header
 		for scanner.Scan() {
-			if err := processLine(scanner.Text(), o); err != nil {
+			if headerLines > 0 {
+				fmt.Println(scanner.Text())
+				headerLines--
+				continue
+			}
+			var err error
+			if fs != nil {
+				err = processLineFields(scanner.Text(), o, fs)
+			} else {
+				err = processLine(scanner.Text(), o)
+			}
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "numfmt: %v\n", err)
 				hasError = true
 			}
@@ -102,6 +194,7 @@ func processLine(line string, o opts) error {
 	if err != nil {
 		return err
 	}
+	val = applyScaling(val, o)
 	out := formatOutput(val, o)
 	if prefix != "" {
 		fieldWidth := len(prefix) + len(token)
@@ -118,8 +211,93 @@ func processToken(token string, o opts) error {
 	if err != nil {
 		return err
 	}
+	val = applyScaling(val, o)
 	fmt.Println(formatOutput(val, o))
 	return nil
+}
+
+func processLineFields(line string, o opts, fs *fieldSpec) error {
+	if o.delimiter != "" {
+		return processFieldsDelim(line, o, fs)
+	}
+	return processFieldsWhitespace(line, o, fs)
+}
+
+func processFieldsDelim(line string, o opts, fs *fieldSpec) error {
+	fields := strings.Split(line, o.delimiter)
+	for i, f := range fields {
+		if fs.includes(i + 1) {
+			trimmed := strings.TrimSpace(f)
+			if trimmed == "" {
+				continue
+			}
+			val, err := parseNumber(trimmed, o.fromUnit)
+			if err != nil {
+				return err
+			}
+			val = applyScaling(val, o)
+			fields[i] = formatOutput(val, o)
+		}
+	}
+	fmt.Println(strings.Join(fields, o.delimiter))
+	return nil
+}
+
+func processFieldsWhitespace(line string, o opts, fs *fieldSpec) error {
+	type segment struct {
+		text    string
+		isField bool
+	}
+	var segments []segment
+	i := 0
+	for i < len(line) {
+		if line[i] == ' ' || line[i] == '\t' {
+			j := i
+			for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
+				j++
+			}
+			segments = append(segments, segment{line[i:j], false})
+			i = j
+		} else {
+			j := i
+			for j < len(line) && line[j] != ' ' && line[j] != '\t' {
+				j++
+			}
+			segments = append(segments, segment{line[i:j], true})
+			i = j
+		}
+	}
+	fieldIdx := 0
+	var buf strings.Builder
+	for _, seg := range segments {
+		if seg.isField {
+			fieldIdx++
+			if fs.includes(fieldIdx) {
+				val, err := parseNumber(seg.text, o.fromUnit)
+				if err != nil {
+					return err
+				}
+				val = applyScaling(val, o)
+				out := formatOutput(val, o)
+				if len(out) < len(seg.text) {
+					out = strings.Repeat(" ", len(seg.text)-len(out)) + out
+				}
+				buf.WriteString(out)
+			} else {
+				buf.WriteString(seg.text)
+			}
+		} else {
+			buf.WriteString(seg.text)
+		}
+	}
+	fmt.Println(buf.String())
+	return nil
+}
+
+func applyScaling(val float64, o opts) float64 {
+	val *= o.fromUnitScale
+	val /= o.toUnitScale
+	return val
 }
 
 func formatOutput(val float64, o opts) string {
@@ -146,11 +324,10 @@ func formatOutput(val float64, o opts) string {
 
 func parseFmtSpec(format string) fmtSpec {
 	spec := fmtSpec{prec: -1}
-	idx := strings.IndexByte(format, '%')
-	if idx < 0 {
+	_, s, found := strings.Cut(format, "%")
+	if !found {
 		return spec
 	}
-	s := format[idx+1:]
 	for len(s) > 0 && (s[0] == '-' || s[0] == '+' || s[0] == '\'' || s[0] == ' ') {
 		if s[0] == '-' {
 			spec.leftAlign = true

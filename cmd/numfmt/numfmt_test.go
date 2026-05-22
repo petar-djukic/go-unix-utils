@@ -236,6 +236,81 @@ func TestDiff(t *testing.T) {
 			ExitCode:  2,
 			Normalize: []testutils.NormalizeFunc{stderrNorm},
 		},
+		{
+			Name:  "field_single",
+			Args:  []string{"--to=si", "--field=2"},
+			Stdin: []byte("name 1000\n"),
+		},
+		{
+			Name:  "field_multiple",
+			Args:  []string{"--to=si", "--field=2,3"},
+			Stdin: []byte("name 1000 2000\n"),
+		},
+		{
+			Name:  "field_range",
+			Args:  []string{"--to=si", "--field=2-3"},
+			Stdin: []byte("name 1000 2000\n"),
+		},
+		{
+			Name:  "field_open_range",
+			Args:  []string{"--to=si", "--field=2-"},
+			Stdin: []byte("name 1000 2000 3000\n"),
+		},
+		{
+			Name:  "field_first",
+			Args:  []string{"--to=si", "--field=1"},
+			Stdin: []byte("1000 name\n"),
+		},
+		{
+			Name:  "field_passthrough",
+			Args:  []string{"--to=si", "--field=2"},
+			Stdin: []byte("keep 1048576 also\n"),
+		},
+		{
+			Name:  "delimiter_colon",
+			Args:  []string{"--to=si", "--field=2", "--delimiter=:"},
+			Stdin: []byte("name:1000:foo\n"),
+		},
+		{
+			Name:  "delimiter_comma",
+			Args:  []string{"--to=si", "--field=2", "-d", ","},
+			Stdin: []byte("name,1000,foo\n"),
+		},
+		{
+			Name:  "delimiter_tab",
+			Args:  []string{"--to=si", "--field=2", "--delimiter=\t"},
+			Stdin: []byte("name\t1000\tfoo\n"),
+		},
+		{
+			Name:  "header_default",
+			Args:  []string{"--to=si", "--header"},
+			Stdin: []byte("size\n1000\n2000\n"),
+		},
+		{
+			Name:  "header_2",
+			Args:  []string{"--to=si", "--header=2"},
+			Stdin: []byte("title\nsize\n1000\n2000\n"),
+		},
+		{
+			Name:  "header_field",
+			Args:  []string{"--to=iec", "--header", "--field=2"},
+			Stdin: []byte("name size\nfoo 1048576\n"),
+		},
+		{
+			Name:  "to_unit_basic",
+			Args:  []string{"--to=si", "--to-unit=1000"},
+			Stdin: []byte("5000000\n"),
+		},
+		{
+			Name:  "from_unit_basic",
+			Args:  []string{"--to=si", "--from-unit=1024"},
+			Stdin: []byte("1000\n"),
+		},
+		{
+			Name:  "from_unit_to_unit",
+			Args:  []string{"--to=si", "--from-unit=1024", "--to-unit=1000"},
+			Stdin: []byte("1000\n"),
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
