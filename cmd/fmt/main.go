@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -113,7 +114,7 @@ func parseLongIntArg(arg, name string) int {
 		os.Exit(1)
 	}
 	v, err := strconv.Atoi(arg[eq:])
-	if err != nil || v < 1 {
+	if err != nil || v < 0 {
 		fmt.Fprintf(os.Stderr, "fmt: invalid width '%s'\n", arg[eq:])
 		os.Exit(1)
 	}
@@ -161,7 +162,7 @@ func consumeIntArg(args []string, arg string, i *int, j int) int {
 	rest := arg[j+1:]
 	if rest != "" {
 		v, err := strconv.Atoi(rest)
-		if err != nil || v < 1 {
+		if err != nil || v < 0 {
 			fmt.Fprintf(os.Stderr, "fmt: invalid width '%s'\n", rest)
 			os.Exit(1)
 		}
@@ -173,7 +174,7 @@ func consumeIntArg(args []string, arg string, i *int, j int) int {
 		os.Exit(1)
 	}
 	v, err := strconv.Atoi(args[*i])
-	if err != nil || v < 1 {
+	if err != nil || v < 0 {
 		fmt.Fprintf(os.Stderr, "fmt: invalid width '%s'\n", args[*i])
 		os.Exit(1)
 	}
@@ -209,80 +210,248 @@ func fmtFile(name string) error {
 }
 
 func formatInput(r io.Reader) error {
-	paragraphs, err := detectParagraphs(r)
-	if err != nil {
+	scanner := bufio.NewScanner(r)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
 		return err
 	}
 	w := bufio.NewWriter(os.Stdout)
-	for i, para := range paragraphs {
-		if i > 0 {
-			if werr := writeByte(w, '\n'); werr != nil {
-				return werr
-			}
-		}
-		if err := formatParagraph(w, para); err != nil {
-			return err
-		}
+	var werr error
+	if flagPrefix != "" {
+		werr = formatWithPrefix(w, lines)
+	} else {
+		werr = writeFormatted(w, lines)
+	}
+	if werr != nil {
+		return werr
 	}
 	return w.Flush()
 }
 
-// TODO: implement paragraph detection (R2.1, R3.1)
-func detectParagraphs(r io.Reader) ([][]string, error) {
-	fmt.Fprintln(os.Stderr, "fmt: paragraph detection not implemented")
-	os.Exit(1)
-	return nil, nil
+func writeFormatted(w *bufio.Writer, lines []string) error {
+	blocks := groupParagraphs(lines)
+	for _, block := range blocks {
+		if len(block) == 0 {
+			if _, err := w.WriteString("\n"); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := formatParagraph(w, block); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// TODO: implement paragraph formatting (R1.1, R7.1, R8.1)
+func groupParagraphs(lines []string) [][]string {
+	var result [][]string
+	var current []string
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			if len(current) > 0 {
+				result = append(result, current)
+				current = nil
+			}
+			result = append(result, nil)
+			continue
+		}
+		current = append(current, line)
+	}
+	if len(current) > 0 {
+		result = append(result, current)
+	}
+	return result
+}
+
 func formatParagraph(w *bufio.Writer, lines []string) error {
-	fmt.Fprintln(os.Stderr, "fmt: paragraph formatting not implemented")
-	os.Exit(1)
+	if flagSplit {
+		return writeSplitOnly(w, lines)
+	}
+	if len(lines) == 1 && len(lines[0]) <= flagWidth {
+		return writeLines(w, lines)
+	}
+	firstIndent, bodyIndent := getIndents(lines)
+	words := extractWords(lines)
+	if len(words) == 0 {
+		return nil
+	}
+	filled := fillLines(words, firstIndent, bodyIndent, flagGoal, flagWidth)
+	return writeLines(w, filled)
+}
+
+func getIndents(lines []string) (string, string) {
+	first := extractIndent(lines[0])
+	if len(lines) > 1 {
+		return first, extractIndent(lines[1])
+	}
+	return first, first
+}
+
+func extractIndent(s string) string {
+	trimmed := strings.TrimLeft(s, " \t")
+	return s[:len(s)-len(trimmed)]
+}
+
+func extractWords(lines []string) []string {
+	var words []string
+	for _, line := range lines {
+		words = append(words, strings.Fields(line)...)
+	}
+	return words
+}
+
+func fillLines(words []string, firstIndent, bodyIndent string, goal, max int) []string {
+	if len(words) == 0 {
+		return nil
+	}
+	if goal > max {
+		goal = max
+	}
+	var result []string
+	line := firstIndent + words[0]
+	for i := 1; i < len(words); i++ {
+		sep := wordSep(words[i-1])
+		trial := line + sep + words[i]
+		if len(trial) > max || pastGoal(len(line), len(trial), goal) {
+			result = append(result, line)
+			line = bodyIndent + words[i]
+		} else {
+			line = trial
+		}
+	}
+	return append(result, line)
+}
+
+func pastGoal(lineLen, trialLen, goal int) bool {
+	if trialLen <= goal {
+		return false
+	}
+	over := trialLen - goal
+	under := goal - lineLen
+	if under <= 0 {
+		return true
+	}
+	return over > under
+}
+
+func wordSep(prev string) string {
+	if endsWithSentence(prev) {
+		return "  "
+	}
+	return " "
+}
+
+func endsWithSentence(word string) bool {
+	if len(word) == 0 {
+		return false
+	}
+	last := word[len(word)-1]
+	return last == '.' || last == '!' || last == '?'
+}
+
+func writeLines(w *bufio.Writer, lines []string) error {
+	for _, line := range lines {
+		if _, err := w.WriteString(line); err != nil {
+			return err
+		}
+		if err := w.WriteByte('\n'); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-// TODO: implement line filling to goal/max width (R5.1, R6.1, R7.1)
-func fillLines(words []string, indent string, goal, max int) []string {
-	fmt.Fprintln(os.Stderr, "fmt: line filling not implemented")
-	os.Exit(1)
+func writeSplitOnly(w *bufio.Writer, lines []string) error {
+	for _, line := range lines {
+		if len(line) <= flagWidth {
+			if _, err := w.WriteString(line); err != nil {
+				return err
+			}
+			if err := w.WriteByte('\n'); err != nil {
+				return err
+			}
+			continue
+		}
+		indent := extractIndent(line)
+		words := strings.Fields(line)
+		filled := fillLines(words, indent, indent, flagGoal, flagWidth)
+		if err := writeLines(w, filled); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-// TODO: implement split-only mode (R9.1)
-func splitLongLines(lines []string, max int) []string {
-	fmt.Fprintln(os.Stderr, "fmt: split-only mode not implemented")
-	os.Exit(1)
+func formatWithPrefix(w *bufio.Writer, allLines []string) error {
+	var group []string
+	for _, line := range allLines {
+		stripped, has := stripPrefix(line)
+		if has {
+			group = append(group, stripped)
+			continue
+		}
+		if err := flushPrefixGroup(w, group); err != nil {
+			return err
+		}
+		group = nil
+		if _, err := w.WriteString(line); err != nil {
+			return err
+		}
+		if err := w.WriteByte('\n'); err != nil {
+			return err
+		}
+	}
+	return flushPrefixGroup(w, group)
+}
+
+func flushPrefixGroup(w *bufio.Writer, lines []string) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	blocks := groupParagraphs(lines)
+	for _, block := range blocks {
+		if err := writePrefixBlock(w, block); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-// TODO: implement tagged-paragraph handling (R12.1)
-func handleTaggedParagraph(lines []string) (string, string, []string) {
-	fmt.Fprintln(os.Stderr, "fmt: tagged-paragraph handling not implemented")
-	os.Exit(1)
-	return "", "", nil
+func writePrefixBlock(w *bufio.Writer, block []string) error {
+	if len(block) == 0 {
+		_, err := w.WriteString(flagPrefix + "\n")
+		return err
+	}
+	firstIndent, bodyIndent := getIndents(block)
+	words := extractWords(block)
+	if len(words) == 0 {
+		return nil
+	}
+	pLen := len(flagPrefix)
+	filled := fillLines(words, firstIndent, bodyIndent,
+		max(1, flagGoal-pLen), max(1, flagWidth-pLen))
+	for _, fl := range filled {
+		if _, err := w.WriteString(flagPrefix + fl + "\n"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// TODO: implement prefix filtering (R11.1)
-func filterPrefix(lines []string, prefix string) ([]string, []bool) {
-	fmt.Fprintln(os.Stderr, "fmt: prefix filtering not implemented")
-	os.Exit(1)
-	return nil, nil
-}
-
-// TODO: implement uniform spacing normalization (R10.1)
-func normalizeSpacing(line string) string {
-	fmt.Fprintln(os.Stderr, "fmt: uniform spacing not implemented")
-	os.Exit(1)
-	return ""
-}
-
-func writeByte(w *bufio.Writer, b byte) error {
-	return w.WriteByte(b)
+func stripPrefix(line string) (string, bool) {
+	trimmed := strings.TrimLeft(line, " \t")
+	if strings.HasPrefix(trimmed, flagPrefix) {
+		return trimmed[len(flagPrefix):], true
+	}
+	return line, false
 }
 
 func formatErr(err error) string {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
+	if pe, ok := errors.AsType[*os.PathError](err); ok {
 		return fmt.Sprintf("%s: %s", pe.Path, pe.Err)
 	}
 	return err.Error()
