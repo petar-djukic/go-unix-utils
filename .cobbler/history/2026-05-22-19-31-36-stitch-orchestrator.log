@@ -214,3 +214,13 @@
 [2026-05-22T19:35:46-04:00] [generation-run44] [stitch +4m10s] doOneTask: closing task 5476
 [2026-05-22T19:35:46-04:00] [generation-run44] [stitch +4m10s] closeStitchTask: closing #5476 "[stitch] cmd/od: srd072 R2.1-R2.4"
 [2026-05-22T19:35:47-04:00] [generation-run44] [stitch +4m11s] commentCobblerIssue: posted comment on #5476
+[2026-05-22T19:35:49-04:00] [generation-run44] [stitch +4m13s] closeCobblerIssue: closed #5476
+[2026-05-22T19:35:52-04:00] [generation-run44] [stitch +4m15s] closeStitchTask: #5476 closed
+[2026-05-22T19:35:52-04:00] [generation-run44] [stitch +4m16s] sweepCompletedTasks: all R-items for #5476 already complete, closing
+[2026-05-22T19:35:53-04:00] [generation-run44] [stitch +4m17s] commentCobblerIssue: posted comment on #5476
+[2026-05-22T19:35:54-04:00] [generation-run44] [stitch +4m18s] closeCobblerIssue: closed #5476
+[2026-05-22T19:35:55-04:00] [generation-run44] [stitch +4m18s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-22T19:35:55-04:00] [generation-run44] [stitch +4m18s] doOneTask: task 5476 finished in 4m12s
+[2026-05-22T19:35:55-04:00] [generation-run44] [stitch +4m18s] task 5476 completed in 4m12s
+[2026-05-22T19:35:55-04:00] [generation-run44] [stitch +4m18s] reached per-cycle limit (1), pausing for measure
+[2026-05-22T19:35:55-04:00] [generation-run44] [stitch +4m18s] completed 1 task(s) in 4m18s

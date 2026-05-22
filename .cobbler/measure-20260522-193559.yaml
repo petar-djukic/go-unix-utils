@@ -1,0 +1,204 @@
+- index: 0
+  title: "[stitch] cmd/od: srd072 R3.1-R3.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd072-od.yaml (full SRD -- focus on requirement group R3)
+      - cmd/od/main.go (existing implementation from R1-R2 tasks)
+      - cmd/od/od_test.go (existing differential tests from R1-R2 tasks)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/od/main.go
+        action: modify
+        note: Add functionality for srd072 requirements R3.1 through R3.4
+      - path: cmd/od/od_test.go
+        action: modify
+        note: Add differential test cases covering R3.1 through R3.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd072 requirement R3.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd072 requirement R3.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd072 requirement R3.3 per the SRD specification"
+      - id: R4
+        text: "Implement srd072 requirement R3.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/od implementation -- do not rewrite code from R1-R2 tasks"
+      - id: D2
+        text: "Use the differential testing pattern: compare Go binary output against god (Homebrew GNU od) using testutils.RunDiffTests"
+      - id: D3
+        text: "Set LC_ALL=C in all test environments to ensure byte-identical output comparison"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "All four R3 requirements from srd072 are implemented in cmd/od/main.go"
+      - id: AC2
+        text: "Differential test cases in cmd/od/od_test.go cover each R3 requirement"
+      - id: AC3
+        text: "go build ./cmd/od/ succeeds with no errors"
+      - id: AC4
+        text: "go vet ./cmd/od/ reports no issues"
+      - id: AC5
+        text: "go test ./cmd/od/ -count=1 passes (or skips gracefully if god is not installed)"
+
+- index: 1
+  title: "[stitch] cmd/od: srd072 R4.1-R4.4"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd072-od.yaml (full SRD -- focus on requirement group R4)
+      - cmd/od/main.go (existing implementation including R1-R3 tasks)
+      - cmd/od/od_test.go (existing differential tests including R1-R3 tasks)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/od/main.go
+        action: modify
+        note: Add functionality for srd072 requirements R4.1 through R4.4
+      - path: cmd/od/od_test.go
+        action: modify
+        note: Add differential test cases covering R4.1 through R4.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd072 requirement R4.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd072 requirement R4.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd072 requirement R4.3 per the SRD specification"
+      - id: R4
+        text: "Implement srd072 requirement R4.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/od implementation -- do not rewrite code from R1-R3 tasks"
+      - id: D2
+        text: "Use the differential testing pattern: compare Go binary output against god (Homebrew GNU od) using testutils.RunDiffTests"
+      - id: D3
+        text: "Set LC_ALL=C in all test environments to ensure byte-identical output comparison"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "All four R4 requirements from srd072 are implemented in cmd/od/main.go"
+      - id: AC2
+        text: "Differential test cases in cmd/od/od_test.go cover each R4 requirement"
+      - id: AC3
+        text: "go build ./cmd/od/ succeeds with no errors"
+      - id: AC4
+        text: "go vet ./cmd/od/ reports no issues"
+      - id: AC5
+        text: "go test ./cmd/od/ -count=1 passes (or skips gracefully if god is not installed)"
+      - id: AC6
+        text: "All srd072 requirements (R1 through R4) are now fully implemented -- cmd/od is complete"
+
+- index: 2
+  title: "[stitch] cmd/printf: srd073 R1.1-R1.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd073-printf.yaml (full SRD -- focus on requirement group R1)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler for SIGPIPE handling)
+
+    files:
+      - path: cmd/printf/main.go
+        action: create
+        note: "Initial printf implementation covering srd073 R1.1 through R1.4"
+      - path: cmd/printf/printf_test.go
+        action: create
+        note: "Differential tests comparing Go printf against gprintf (Homebrew GNU printf)"
+
+    requirements:
+      - id: R1
+        text: "Implement srd073 requirement R1.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd073 requirement R1.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd073 requirement R1.3 per the SRD specification"
+      - id: R4
+        text: "Implement srd073 requirement R1.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() to match GNU coreutils behavior"
+      - id: D2
+        text: "Use the differential testing pattern: compare Go binary output against gprintf (Homebrew GNU printf) using testutils.RunDiffTests"
+      - id: D3
+        text: "Call exec.LookPath for gprintf and t.Skip if not found, so tests pass on machines without Homebrew GNU binaries"
+      - id: D4
+        text: "Set LC_ALL=C in all test environments to ensure byte-identical output comparison"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "All four R1 requirements from srd073 are implemented in cmd/printf/main.go"
+      - id: AC2
+        text: "cmd/printf/main.go calls sys.InstallSIGPIPEHandler() at the start of main()"
+      - id: AC3
+        text: "Differential test cases in cmd/printf/printf_test.go cover each R1 requirement"
+      - id: AC4
+        text: "go build ./cmd/printf/ succeeds with no errors"
+      - id: AC5
+        text: "go vet ./cmd/printf/ reports no issues"
+      - id: AC6
+        text: "go test ./cmd/printf/ -count=1 passes (or skips gracefully if gprintf is not installed)"
+
+- index: 3
+  title: "[stitch] cmd/printf: srd073 R2.1-R2.4"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd073-printf.yaml (full SRD -- focus on requirement group R2)
+      - cmd/printf/main.go (existing implementation from R1 task)
+      - cmd/printf/printf_test.go (existing differential tests from R1 task)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/printf/main.go
+        action: modify
+        note: Add functionality for srd073 requirements R2.1 through R2.4
+      - path: cmd/printf/printf_test.go
+        action: modify
+        note: Add differential test cases covering R2.1 through R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd073 requirement R2.1 per the SRD specification"
+      - id: R2
+        text: "Implement srd073 requirement R2.2 per the SRD specification"
+      - id: R3
+        text: "Implement srd073 requirement R2.3 per the SRD specification"
+      - id: R4
+        text: "Implement srd073 requirement R2.4 per the SRD specification"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/printf implementation -- do not rewrite code from the R1 task"
+      - id: D2
+        text: "Use the differential testing pattern: compare Go binary output against gprintf (Homebrew GNU printf) using testutils.RunDiffTests"
+      - id: D3
+        text: "Set LC_ALL=C in all test environments to ensure byte-identical output comparison"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "All four R2 requirements from srd073 are implemented in cmd/printf/main.go"
+      - id: AC2
+        text: "Differential test cases in cmd/printf/printf_test.go cover each R2 requirement"
+      - id: AC3
+        text: "go build ./cmd/printf/ succeeds with no errors"
+      - id: AC4
+        text: "go vet ./cmd/printf/ reports no issues"
+      - id: AC5
+        text: "go test ./cmd/printf/ -count=1 passes (or skips gracefully if gprintf is not installed)"
