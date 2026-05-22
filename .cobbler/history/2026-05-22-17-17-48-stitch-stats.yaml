@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5464"
+task_title: '[stitch] cmd/fmt: srd070 R6.1-R9.1'
+status: success
+started_at: "2026-05-22T21:17:48Z"
+duration: 7m49s
+duration_s: 469
+tokens:
+    input: 1076425
+    output: 17800
+    cache_creation: 236760
+    cache_read: 839642
+cost_usd: 2.7629452500000005
+num_turns: 40
+rate_limit_wait_s: 2
+loc_before:
+    production: 18600
+    test: 17215
+loc_after:
+    production: 18600
+    test: 17300
+diff:
+    files: 2
+    insertions: 243
+    deletions: 0
