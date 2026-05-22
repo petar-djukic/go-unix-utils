@@ -85,7 +85,7 @@ func parseShortFlags(flags string, remaining []string, opts *options) (int, erro
 		case 'v':
 			opts.verbose = true
 		case 'w':
-			extra, err := parseShortWidth(rest, remaining, consumed, opts)
+			extra, err := parseShortWidth(rest, opts)
 			return consumed + extra, err
 		default:
 			if ts, ok := traditionalFlag(flags[j]); ok {
@@ -116,15 +116,9 @@ func traditionalFlag(c byte) (typeSpec, bool) {
 	return typeSpec{}, false
 }
 
-func parseShortWidth(rest string, remaining []string, consumed int, opts *options) (int, error) {
+func parseShortWidth(rest string, opts *options) (int, error) {
 	if len(rest) > 0 {
 		return 0, parseWidth(opts, rest)
-	}
-	if consumed < len(remaining) {
-		next := remaining[consumed]
-		if len(next) > 0 && next[0] >= '0' && next[0] <= '9' {
-			return 1, parseWidth(opts, next)
-		}
 	}
 	opts.outputWidth = 32
 	return 0, nil

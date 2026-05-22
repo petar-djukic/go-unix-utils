@@ -30,6 +30,9 @@ func TestDiff(t *testing.T) {
 	tests = append(tests, addressRadixTests()...)
 	tests = append(tests, skipAndReadTests(t)...)
 	tests = append(tests, stdinAndFileTests(t)...)
+	tests = append(tests, widthTests()...)
+	tests = append(tests, traditionalFlagTests()...)
+	tests = append(tests, duplicateTests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -141,5 +144,60 @@ func stdinAndFileTests(t *testing.T) []testutils.DiffTest {
 		{Name: "stdin_dash", Args: []string{"-"}, Stdin: []byte("test")},
 		{Name: "single_file", Args: []string{f1}},
 		{Name: "multi_file", Args: []string{f1, f2}},
+	}
+}
+
+func widthTests() []testutils.DiffTest {
+	data := make([]byte, 32)
+	for i := range data {
+		data[i] = byte(i)
+	}
+	return []testutils.DiffTest{
+		{Name: "width_8", Args: []string{"-w8", "-t", "x1"}, Stdin: data},
+		{Name: "width_32", Args: []string{"-w32", "-t", "x1"}, Stdin: data},
+		{Name: "width_no_value", Args: []string{"-w", "-t", "x1"}, Stdin: data},
+		{Name: "width_4", Args: []string{"-w4", "-t", "x1"}, Stdin: data},
+		{Name: "width_long", Args: []string{"--width=8", "-t", "x1"}, Stdin: data},
+		{Name: "width_long_no_value", Args: []string{"--width", "-t", "x1"}, Stdin: data},
+		{Name: "width_default", Args: []string{"-t", "x1"}, Stdin: data},
+	}
+}
+
+func traditionalFlagTests() []testutils.DiffTest {
+	data := bytes16()
+	return []testutils.DiffTest{
+		{Name: "trad_b", Args: []string{"-b"}, Stdin: data},
+		{Name: "trad_c", Args: []string{"-c"}, Stdin: data},
+		{Name: "trad_d", Args: []string{"-d"}, Stdin: data},
+		{Name: "trad_o", Args: []string{"-o"}, Stdin: data},
+		{Name: "trad_s", Args: []string{"-s"}, Stdin: data},
+		{Name: "trad_x", Args: []string{"-x"}, Stdin: data},
+		{Name: "trad_c_escapes", Args: []string{"-c"}, Stdin: []byte("\t\n\r\000\\hello")},
+		{Name: "trad_bx_combined", Args: []string{"-b", "-x"}, Stdin: data},
+	}
+}
+
+func duplicateTests() []testutils.DiffTest {
+	repeated := make([]byte, 128)
+	for i := range repeated {
+		repeated[i] = 0xAA
+	}
+	mixed := make([]byte, 64)
+	for i := range 16 {
+		mixed[i] = byte(i)
+	}
+	for i := range 32 {
+		mixed[16+i] = 0xFF
+	}
+	for i := range 16 {
+		mixed[48+i] = byte(48 + i)
+	}
+	return []testutils.DiffTest{
+		{Name: "dup_suppression", Args: []string{"-t", "x1"}, Stdin: repeated},
+		{Name: "dup_verbose", Args: []string{"-v", "-t", "x1"}, Stdin: repeated},
+		{Name: "dup_verbose_long", Args: []string{"--output-duplicates", "-t", "x1"}, Stdin: repeated},
+		{Name: "dup_mixed", Args: []string{"-t", "x1"}, Stdin: mixed},
+		{Name: "dup_mixed_verbose", Args: []string{"-v", "-t", "x1"}, Stdin: mixed},
+		{Name: "dup_default_format", Stdin: repeated},
 	}
 }
