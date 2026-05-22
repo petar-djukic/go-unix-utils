@@ -371,3 +371,13 @@ go_out=$(echo 1048576 | ./...
 [2026-05-22T18:27:55-04:00] [generation-run44] [stitch +12m12s] closeStitchTask: closing #5470 "[stitch] cmd/numfmt: srd071 R1.1-R1.4"
 [2026-05-22T18:27:56-04:00] [generation-run44] [stitch +12m13s] commentCobblerIssue: posted comment on #5470
 [2026-05-22T18:27:56-04:00] [generation-run44] [stitch +12m13s] updateRequirementsFile: marked 4 R-items as complete for issue #5470
+[2026-05-22T18:27:59-04:00] [generation-run44] [stitch +12m15s] closeCobblerIssue: closed #5470
+[2026-05-22T18:28:01-04:00] [generation-run44] [stitch +12m17s] closeStitchTask: #5470 closed
+[2026-05-22T18:28:02-04:00] [generation-run44] [stitch +12m18s] sweepCompletedTasks: all R-items for #5470 already complete, closing
+[2026-05-22T18:28:02-04:00] [generation-run44] [stitch +12m19s] commentCobblerIssue: posted comment on #5470
+[2026-05-22T18:28:04-04:00] [generation-run44] [stitch +12m20s] closeCobblerIssue: closed #5470
+[2026-05-22T18:28:06-04:00] [generation-run44] [stitch +12m22s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-22T18:28:06-04:00] [generation-run44] [stitch +12m22s] doOneTask: task 5470 finished in 12m16s
+[2026-05-22T18:28:06-04:00] [generation-run44] [stitch +12m22s] task 5470 completed in 12m16s
+[2026-05-22T18:28:06-04:00] [generation-run44] [stitch +12m22s] reached per-cycle limit (1), pausing for measure
+[2026-05-22T18:28:06-04:00] [generation-run44] [stitch +12m22s] completed 1 task(s) in 12m22s
