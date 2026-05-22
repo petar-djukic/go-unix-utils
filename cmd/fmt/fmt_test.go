@@ -42,6 +42,67 @@ func TestDiff(t *testing.T) {
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
+func TestDiffSpaceCollapsing(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gfmt")
+	if err != nil {
+		t.Skip("reference binary gfmt not found")
+	}
+	tests := []testutils.DiffTest{
+		{Name: "collapse_multiple_spaces", Stdin: []byte(
+			"word1    word2     word3      word4\n",
+		)},
+		{Name: "collapse_tabs", Stdin: []byte(
+			"word1\tword2\t\tword3\n",
+		)},
+		{Name: "sentence_period_double_space", Stdin: []byte(
+			"End of sentence. Next sentence starts here.\n",
+		)},
+		{Name: "sentence_exclamation_double_space", Stdin: []byte(
+			"What a surprise! This continues the text.\n",
+		)},
+		{Name: "sentence_question_double_space", Stdin: []byte(
+			"Is this a question? Yes it is a question.\n",
+		)},
+		{Name: "sentence_end_wrap", Args: []string{"-w", "30"}, Stdin: []byte(
+			"End.  Start of next sentence here.\n",
+		)},
+		{Name: "join_paragraph_lines", Stdin: []byte(
+			"First line of a paragraph.\nSecond line of a paragraph.\n",
+		)},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffWordBoundaries(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gfmt")
+	if err != nil {
+		t.Skip("reference binary gfmt not found")
+	}
+	tests := []testutils.DiffTest{
+		{Name: "break_at_spaces", Args: []string{"-w", "20"}, Stdin: []byte(
+			"one two three four five six\n",
+		)},
+		{Name: "no_mid_word_break", Args: []string{"-w", "10"}, Stdin: []byte(
+			"verylongword short\n",
+		)},
+		{Name: "break_at_width", Args: []string{"-w", "25"}, Stdin: []byte(
+			"hello world from the command line interface\n",
+		)},
+		{Name: "single_word_exceeds", Args: []string{"-w", "5"}, Stdin: []byte(
+			"longword\n",
+		)},
+		{Name: "many_short_words", Args: []string{"-w", "20"}, Stdin: []byte(
+			"a b c d e f g h i j k l m n o p q r s t\n",
+		)},
+		{Name: "mixed_word_lengths", Args: []string{"-w", "30"}, Stdin: []byte(
+			"I am a short. Superlongwordthatexceedswidth tiny.\n",
+		)},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 func TestDiffWidth(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gfmt")
@@ -63,6 +124,18 @@ func TestDiffWidth(t *testing.T) {
 		)},
 		{Name: "goal_width", Args: []string{"-g", "30", "-w", "40"}, Stdin: []byte(
 			"This is a test of the goal width feature of the fmt command.\n",
+		)},
+		{Name: "goal_long_form", Args: []string{"--goal=30", "--width=40"}, Stdin: []byte(
+			"This is a test of the goal width feature of the fmt command.\n",
+		)},
+		{Name: "goal_default_93pct", Args: []string{"-w", "100"}, Stdin: []byte(
+			"This is a line designed to test that the default goal width is ninety-three percent of the maximum width setting which is one hundred characters.\n",
+		)},
+		{Name: "goal_narrow", Args: []string{"-g", "20", "-w", "30"}, Stdin: []byte(
+			"One two three four five six seven eight.\n",
+		)},
+		{Name: "goal_equals_width", Args: []string{"-g", "40", "-w", "40"}, Stdin: []byte(
+			"When goal equals width the formatter fills lines to the maximum width.\n",
 		)},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -86,6 +159,18 @@ func TestDiffModes(t *testing.T) {
 		)},
 		{Name: "tagged_paragraph", Args: []string{"-t", "-w", "40"}, Stdin: []byte(
 			"   First line tag.\nSecond line of the paragraph text.\nThird line.\n",
+		)},
+		{Name: "split_long_mixed", Args: []string{"-s", "-w", "30"}, Stdin: []byte(
+			"Short.\nThis is a longer line that should be split at thirty characters.\nAlso short.\n",
+		)},
+		{Name: "split_preserves_indent", Args: []string{"-s", "-w", "30"}, Stdin: []byte(
+			"    This is an indented line that is too long to fit in thirty characters.\n",
+		)},
+		{Name: "split_no_join_paragraphs", Args: []string{"-s"}, Stdin: []byte(
+			"First.\nSecond.\n\nThird.\nFourth.\n",
+		)},
+		{Name: "split_exact_width", Args: []string{"-s", "-w", "10"}, Stdin: []byte(
+			"0123456789\n01234567890\n",
 		)},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
