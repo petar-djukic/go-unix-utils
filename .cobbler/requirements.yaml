@@ -4182,13 +4182,13 @@ requirements:
             issue: 5464
             weight: 1
         R10.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R11.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R12.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R13.1:
             status: proposed
