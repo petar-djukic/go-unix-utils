@@ -4324,16 +4324,16 @@ requirements:
             issue: 5478
             weight: 1
         R4.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.3:
-            status: proposed
+            status: in_progress
             weight: 1
         R4.4:
-            status: proposed
+            status: in_progress
             weight: 1
     srd073-printf:
         R1.1:
