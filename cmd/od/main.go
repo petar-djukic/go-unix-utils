@@ -80,8 +80,10 @@ func run(opts options, files []string) int {
 	}
 	var r io.Reader = reader
 	if opts.skipBytes > 0 {
-		if _, err := io.CopyN(io.Discard, r, opts.skipBytes); err != nil {
-			return 0
+		n, err := io.CopyN(io.Discard, r, opts.skipBytes)
+		if err != nil || n < opts.skipBytes {
+			fmt.Fprintln(os.Stderr, "od: cannot skip past end of combined input")
+			return 1
 		}
 	}
 	if opts.readLimit {

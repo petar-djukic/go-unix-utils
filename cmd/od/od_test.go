@@ -12,6 +12,8 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
+var discardStderr = testutils.NormalizeFunc(func([]byte) []byte { return nil })
+
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("god")
@@ -26,6 +28,7 @@ func TestDiff(t *testing.T) {
 	tests = append(tests, typeSpecTests()...)
 	tests = append(tests, multiTypeTests()...)
 	tests = append(tests, addressRadixTests()...)
+	tests = append(tests, skipAndReadTests(t)...)
 	tests = append(tests, stdinAndFileTests(t)...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -86,6 +89,40 @@ func addressRadixTests() []testutils.DiffTest {
 		{Name: "addr_none", Args: []string{"-A", "n", "-t", "x1"}, Stdin: data},
 		{Name: "addr_octal", Args: []string{"-A", "o", "-t", "x1"}, Stdin: data},
 		{Name: "addr_long_hex", Args: []string{"--address-radix=x", "-t", "x1"}, Stdin: data},
+	}
+}
+
+func skipAndReadTests(t *testing.T) []testutils.DiffTest {
+	t.Helper()
+	dir := t.TempDir()
+	bigFile := filepath.Join(dir, "big.bin")
+	data := make([]byte, 2048)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	if err := os.WriteFile(bigFile, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	small := []byte("hello world, this is a test!")
+	return []testutils.DiffTest{
+		{Name: "skip_2", Args: []string{"-j", "2", "-t", "x1"}, Stdin: small},
+		{Name: "skip_long", Args: []string{"--skip-bytes=3", "-t", "x1"}, Stdin: small},
+		{Name: "skip_all", Args: []string{"-j", "100", "-t", "x1"}, Stdin: small, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{discardStderr}},
+		{Name: "skip_suffix_b", Args: []string{"-j", "1b", "-t", "x1", bigFile}},
+		{Name: "skip_suffix_k", Args: []string{"-j", "1k", "-t", "x1", bigFile}},
+		{Name: "read_4", Args: []string{"-N", "4", "-t", "x1"}, Stdin: small},
+		{Name: "read_long", Args: []string{"--read-bytes=5", "-t", "x1"}, Stdin: small},
+		{Name: "read_more_than_input", Args: []string{"-N", "100", "-t", "x1"}, Stdin: small},
+		{Name: "skip_and_read", Args: []string{"-j", "6", "-N", "5", "-t", "c"}, Stdin: small},
+		{Name: "skip_read_hex_addr", Args: []string{"-j", "2", "-N", "4", "-A", "x", "-t", "x1"}, Stdin: small},
+		{Name: "skip_read_dec_addr", Args: []string{"-j", "2", "-N", "4", "-A", "d", "-t", "x1"}, Stdin: small},
+		{Name: "skip_read_no_addr", Args: []string{"-j", "2", "-N", "4", "-A", "n", "-t", "x1"}, Stdin: small},
+		{Name: "final_addr_default", Stdin: []byte{0x01, 0x02, 0x03, 0x04}},
+		{Name: "final_addr_hex", Args: []string{"-A", "x"}, Stdin: []byte{0x01, 0x02, 0x03, 0x04}},
+		{Name: "final_addr_dec", Args: []string{"-A", "d"}, Stdin: []byte{0x01, 0x02, 0x03, 0x04}},
+		{Name: "final_addr_none", Args: []string{"-A", "n"}, Stdin: []byte{0x01, 0x02, 0x03, 0x04}},
+		{Name: "final_addr_after_skip", Args: []string{"-j", "2", "-A", "x", "-t", "x1"}, Stdin: small},
 	}
 }
 
