@@ -301,6 +301,24 @@ func TestErrorCases(t *testing.T) {
 	}
 }
 
+func TestDiffExitCodes(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gfmt")
+	if err != nil {
+		t.Skip("reference binary gfmt not found")
+	}
+	discardStderr := testutils.NormalizeFunc(func([]byte) []byte { return nil })
+	dir := t.TempDir()
+	tests := []testutils.DiffTest{
+		{Name: "success_exit_0", Stdin: []byte("hello world\n")},
+		{Name: "missing_file", Args: []string{"nonexistent.txt"}, WorkDir: dir,
+			Normalize: []testutils.NormalizeFunc{discardStderr}},
+		{Name: "invalid_width_str", Args: []string{"--width=abc"}, Stdin: []byte("test\n"),
+			Normalize: []testutils.NormalizeFunc{discardStderr}},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
 func TestFileAndStdin(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gfmt")
