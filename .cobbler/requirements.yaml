@@ -4182,25 +4182,25 @@ requirements:
             issue: 5464
             weight: 1
         R10.1:
-            status: proposed
+            status: ready
             weight: 1
         R11.1:
-            status: proposed
+            status: ready
             weight: 1
         R12.1:
-            status: proposed
+            status: ready
             weight: 1
         R13.1:
-            status: proposed
+            status: ready
             weight: 1
         R13.2:
-            status: proposed
+            status: ready
             weight: 1
         R13.3:
-            status: proposed
+            status: ready
             weight: 1
         R13.4:
-            status: proposed
+            status: ready
             weight: 1
     srd071-numfmt:
         R1.1:
