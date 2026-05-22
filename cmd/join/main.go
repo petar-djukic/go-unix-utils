@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -276,6 +277,13 @@ func getField(fields []string, n int) string {
 	return ""
 }
 
+func getFieldOrEmpty(fields []string, n int, empty string) string {
+	if n >= 1 && n <= len(fields) {
+		return fields[n-1]
+	}
+	return empty
+}
+
 func parseOutputSpec(s string) []outputField {
 	if s == "" {
 		return nil
@@ -306,6 +314,15 @@ func joinFiles(w *bufio.Writer, r1, r2 *inputFile, opts options) {
 	lr2 := newReader(r2)
 	lr1.next()
 	lr2.next()
+
+	if opts.header {
+		writeHeader(w, lr1, lr2, spec, opts)
+	}
+
+	printUnpair1 := slices.Contains(opts.unpairFile, 1) || slices.Contains(opts.onlyUnpair, 1)
+	printUnpair2 := slices.Contains(opts.unpairFile, 2) || slices.Contains(opts.onlyUnpair, 2)
+	suppressPaired := len(opts.onlyUnpair) > 0
+
 	for lr1.hasLine && lr2.hasLine {
 		f1 := splitLine(lr1.line, opts.hasSep, opts.separator)
 		f2 := splitLine(lr2.line, opts.hasSep, opts.separator)
@@ -314,12 +331,102 @@ func joinFiles(w *bufio.Writer, r1, r2 *inputFile, opts options) {
 		cmp := strings.Compare(key1, key2)
 		switch {
 		case cmp < 0:
+			if printUnpair1 {
+				writeUnpairable(w, 1, f1, opts.field1, spec, opts)
+			}
 			lr1.next()
 		case cmp > 0:
+			if printUnpair2 {
+				writeUnpairable(w, 2, f2, opts.field2, spec, opts)
+			}
 			lr2.next()
 		default:
-			joinMatch(w, lr1, lr2, key1, spec, opts)
+			if !suppressPaired {
+				joinMatch(w, lr1, lr2, key1, spec, opts)
+			} else {
+				skipMatch(lr1, lr2, key1, opts)
+			}
 		}
+	}
+
+	if printUnpair1 {
+		for lr1.hasLine {
+			f1 := splitLine(lr1.line, opts.hasSep, opts.separator)
+			writeUnpairable(w, 1, f1, opts.field1, spec, opts)
+			lr1.next()
+		}
+	}
+	if printUnpair2 {
+		for lr2.hasLine {
+			f2 := splitLine(lr2.line, opts.hasSep, opts.separator)
+			writeUnpairable(w, 2, f2, opts.field2, spec, opts)
+			lr2.next()
+		}
+	}
+}
+
+func writeHeader(w *bufio.Writer, lr1, lr2 *lineReader, spec []outputField, opts options) {
+	var f1, f2 []string
+	key := ""
+	if lr1.hasLine {
+		f1 = splitLine(lr1.line, opts.hasSep, opts.separator)
+		key = getField(f1, opts.field1)
+		lr1.next()
+	}
+	if lr2.hasLine {
+		f2 = splitLine(lr2.line, opts.hasSep, opts.separator)
+		if key == "" {
+			key = getField(f2, opts.field2)
+		}
+		lr2.next()
+	}
+	writePair(w, key, f1, f2, spec, opts)
+}
+
+func writeUnpairable(w *bufio.Writer, fileNum int, fields []string, joinField int, spec []outputField, opts options) {
+	sep := " "
+	if opts.hasSep {
+		sep = opts.separator
+	}
+	key := getField(fields, joinField)
+	if len(spec) > 0 {
+		parts := make([]string, len(spec))
+		for i, s := range spec {
+			switch {
+			case s.fileNum == 0:
+				parts[i] = key
+			case s.fileNum == fileNum:
+				parts[i] = getFieldOrEmpty(fields, s.fieldNum, opts.empty)
+			default:
+				parts[i] = opts.empty
+			}
+		}
+		fmt.Fprintln(w, strings.Join(parts, sep))
+	} else {
+		parts := []string{key}
+		for i, f := range fields {
+			if i+1 != joinField {
+				parts = append(parts, f)
+			}
+		}
+		fmt.Fprintln(w, strings.Join(parts, sep))
+	}
+}
+
+func skipMatch(lr1, lr2 *lineReader, key string, opts options) {
+	for lr2.hasLine {
+		fields := splitLine(lr2.line, opts.hasSep, opts.separator)
+		if getField(fields, opts.field2) != key {
+			break
+		}
+		lr2.next()
+	}
+	for lr1.hasLine {
+		fields := splitLine(lr1.line, opts.hasSep, opts.separator)
+		if getField(fields, opts.field1) != key {
+			break
+		}
+		lr1.next()
 	}
 }
 
@@ -356,7 +463,7 @@ func writePair(w *bufio.Writer, key string, f1, f2 []string, spec []outputField,
 		sep = opts.separator
 	}
 	if len(spec) > 0 {
-		fmt.Fprintln(w, formatOutput(key, f1, f2, spec, sep))
+		fmt.Fprintln(w, formatOutput(key, f1, f2, spec, sep, opts.empty))
 	} else {
 		fmt.Fprintln(w, defaultOutput(key, f1, opts.field1, f2, opts.field2, sep))
 	}
@@ -377,16 +484,16 @@ func defaultOutput(key string, f1 []string, j1 int, f2 []string, j2 int, sep str
 	return strings.Join(parts, sep)
 }
 
-func formatOutput(key string, f1, f2 []string, spec []outputField, sep string) string {
+func formatOutput(key string, f1, f2 []string, spec []outputField, sep, empty string) string {
 	parts := make([]string, len(spec))
 	for i, s := range spec {
 		switch s.fileNum {
 		case 0:
 			parts[i] = key
 		case 1:
-			parts[i] = getField(f1, s.fieldNum)
+			parts[i] = getFieldOrEmpty(f1, s.fieldNum, empty)
 		case 2:
-			parts[i] = getField(f2, s.fieldNum)
+			parts[i] = getFieldOrEmpty(f2, s.fieldNum, empty)
 		}
 	}
 	return strings.Join(parts, sep)

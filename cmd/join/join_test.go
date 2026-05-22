@@ -32,6 +32,10 @@ func TestDiff(t *testing.T) {
 	writeFile(t, dir, "dup2.txt", "a X\na Y\nb Z\n")
 	writeFile(t, dir, "partial1.txt", "a 1\nc 3\n")
 	writeFile(t, dir, "partial2.txt", "b 2\nc 4\n")
+	writeFile(t, dir, "hdr1.txt", "Name Age\nalice 30\nbob 25\n")
+	writeFile(t, dir, "hdr2.txt", "Name City\nalice NYC\ncharlie LA\n")
+	writeFile(t, dir, "hdr_c1.txt", "Name,Age\nalice,30\nbob,25\n")
+	writeFile(t, dir, "hdr_c2.txt", "Name,City\nalice,NYC\ncharlie,LA\n")
 
 	tests := []testutils.DiffTest{
 		{
@@ -93,6 +97,66 @@ func TestDiff(t *testing.T) {
 			Name:    "stdin_as_file1",
 			Args:    []string{"-", "f2.txt"},
 			Stdin:   []byte("a 1\nb 2\nc 3\n"),
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_1_a1_unpairable_file1",
+			Args:    []string{"-a", "1", "partial1.txt", "partial2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_1_a2_unpairable_file2",
+			Args:    []string{"-a", "2", "partial1.txt", "partial2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_1_a1_a2_unpairable_both",
+			Args:    []string{"-a", "1", "-a", "2", "partial1.txt", "partial2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_2_v1_only_unpairable_file1",
+			Args:    []string{"-v", "1", "partial1.txt", "partial2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_2_v2_only_unpairable_file2",
+			Args:    []string{"-v", "2", "partial1.txt", "partial2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_e_empty_replacement",
+			Args:    []string{"-a", "1", "-e", "EMPTY", "-o", "0,1.2,2.2", "partial1.txt", "partial2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_3_e_with_v",
+			Args:    []string{"-v", "1", "-e", "N/A", "-o", "0,1.2,2.2", "partial1.txt", "partial2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_4_header",
+			Args:    []string{"--header", "hdr1.txt", "hdr2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_4_header_with_a",
+			Args:    []string{"--header", "-a", "1", "hdr1.txt", "hdr2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_4_header_with_sep",
+			Args:    []string{"--header", "-t", ",", "hdr_c1.txt", "hdr_c2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_a1_full_overlap",
+			Args:    []string{"-a", "1", "f1.txt", "f2.txt"},
+			WorkDir: dir,
+		},
+		{
+			Name:    "r3_v1_full_overlap",
+			Args:    []string{"-v", "1", "f1.txt", "f2.txt"},
 			WorkDir: dir,
 		},
 	}
