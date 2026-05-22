@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd071-numfmt R1.1-R1.4.
+// Implements srd071-numfmt R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -22,21 +22,43 @@ var (
 	ieciSuffixes = []string{"", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei"}
 )
 
+type opts struct {
+	fromUnit string
+	toUnit   string
+	format   string
+	padding  int
+	round    string
+	suffix   string
+}
+
+type fmtSpec struct {
+	leftAlign bool
+	width     int
+	prec      int
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 	toUnit := flag.String("to", "none", "")
 	fromUnit := flag.String("from", "none", "")
+	format := flag.String("format", "", "")
+	padding := flag.Int("padding", 0, "")
+	round := flag.String("round", "from-zero", "")
+	suffix := flag.String("suffix", "", "")
 	flag.Parse()
-
 	if !isValidUnit(*toUnit) || !isValidUnit(*fromUnit) {
 		fmt.Fprintf(os.Stderr, "numfmt: invalid unit\n")
 		os.Exit(1)
 	}
-
+	if !isValidRound(*round) {
+		fmt.Fprintf(os.Stderr, "numfmt: invalid --round method: '%s'\n", *round)
+		os.Exit(1)
+	}
+	o := opts{fromUnit: *fromUnit, toUnit: *toUnit, format: *format, padding: *padding, round: *round, suffix: *suffix}
 	hasError := false
 	if flag.NArg() > 0 {
 		for _, arg := range flag.Args() {
-			if err := processToken(arg, *fromUnit, *toUnit); err != nil {
+			if err := processToken(arg, o); err != nil {
 				fmt.Fprintf(os.Stderr, "numfmt: %v\n", err)
 				hasError = true
 			}
@@ -44,8 +66,7 @@ func main() {
 	} else {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
-			line := scanner.Text()
-			if err := processLine(line, *fromUnit, *toUnit); err != nil {
+			if err := processLine(scanner.Text(), o); err != nil {
 				fmt.Fprintf(os.Stderr, "numfmt: %v\n", err)
 				hasError = true
 			}
@@ -64,16 +85,24 @@ func isValidUnit(u string) bool {
 	return false
 }
 
-func processLine(line, fromUnit, toUnit string) error {
+func isValidRound(r string) bool {
+	switch r {
+	case "up", "down", "from-zero", "towards-zero", "nearest":
+		return true
+	}
+	return false
+}
+
+func processLine(line string, o opts) error {
 	prefix, token, trailing := splitWhitespace(line)
 	if token == "" {
 		return fmt.Errorf("invalid number: %q", "")
 	}
-	val, err := parseNumber(token, fromUnit)
+	val, err := parseNumber(token, o.fromUnit)
 	if err != nil {
 		return err
 	}
-	out := formatNumber(val, toUnit)
+	out := formatOutput(val, o)
 	if prefix != "" {
 		fieldWidth := len(prefix) + len(token)
 		if len(out) < fieldWidth {
@@ -84,14 +113,75 @@ func processLine(line, fromUnit, toUnit string) error {
 	return nil
 }
 
-func processToken(token, fromUnit, toUnit string) error {
-	val, err := parseNumber(token, fromUnit)
+func processToken(token string, o opts) error {
+	val, err := parseNumber(token, o.fromUnit)
 	if err != nil {
 		return err
 	}
-	out := formatNumber(val, toUnit)
-	fmt.Println(out)
+	fmt.Println(formatOutput(val, o))
 	return nil
+}
+
+func formatOutput(val float64, o opts) string {
+	spec := parseFmtSpec(o.format)
+	out := formatNumber(val, o.toUnit, o.round, spec.prec)
+	out += o.suffix
+	width := spec.width
+	leftAlign := spec.leftAlign
+	if o.padding != 0 {
+		pw := o.padding
+		if pw < 0 {
+			leftAlign = true
+			pw = -pw
+		}
+		if pw > width {
+			width = pw
+		}
+	}
+	if width > 0 && len(out) < width {
+		out = padString(out, width, leftAlign)
+	}
+	return out
+}
+
+func parseFmtSpec(format string) fmtSpec {
+	spec := fmtSpec{prec: -1}
+	idx := strings.IndexByte(format, '%')
+	if idx < 0 {
+		return spec
+	}
+	s := format[idx+1:]
+	for len(s) > 0 && (s[0] == '-' || s[0] == '+' || s[0] == '\'' || s[0] == ' ') {
+		if s[0] == '-' {
+			spec.leftAlign = true
+		}
+		s = s[1:]
+	}
+	for len(s) > 0 && s[0] >= '0' && s[0] <= '9' {
+		spec.width = spec.width*10 + int(s[0]-'0')
+		s = s[1:]
+	}
+	if len(s) > 0 && s[0] == '.' {
+		s = s[1:]
+		spec.prec = 0
+		for len(s) > 0 && s[0] >= '0' && s[0] <= '9' {
+			spec.prec = spec.prec*10 + int(s[0]-'0')
+			s = s[1:]
+		}
+	}
+	return spec
+}
+
+func padString(s string, width int, leftAlign bool) string {
+	pad := width - len(s)
+	if pad <= 0 {
+		return s
+	}
+	spaces := strings.Repeat(" ", pad)
+	if leftAlign {
+		return s + spaces
+	}
+	return spaces + s
 }
 
 func splitWhitespace(s string) (prefix, body, suffix string) {
@@ -210,13 +300,13 @@ func suffixMultipliers(unit string, base float64) map[string]float64 {
 	return m
 }
 
-func formatNumber(val float64, unit string) string {
+func formatNumber(val float64, unit, round string, prec int) string {
 	if unit == "none" {
-		return formatRaw(val)
+		return formatValPrec(val, prec)
 	}
 	base := baseForUnit(unit)
 	suffixes := suffixesForUnit(unit)
-	return formatWithSuffix(val, base, suffixes)
+	return formatWithSuffix(val, base, suffixes, round, prec)
 }
 
 func formatRaw(val float64) string {
@@ -224,6 +314,13 @@ func formatRaw(val float64) string {
 		return strconv.FormatInt(int64(val), 10)
 	}
 	return strconv.FormatFloat(val, 'f', -1, 64)
+}
+
+func formatValPrec(val float64, prec int) string {
+	if prec >= 0 {
+		return strconv.FormatFloat(val, 'f', prec, 64)
+	}
+	return formatRaw(val)
 }
 
 func suffixesForUnit(unit string) []string {
@@ -238,7 +335,7 @@ func suffixesForUnit(unit string) []string {
 	return nil
 }
 
-func formatWithSuffix(val, base float64, suffixes []string) string {
+func formatWithSuffix(val, base float64, suffixes []string, round string, prec int) string {
 	negative := val < 0
 	abs := math.Abs(val)
 	level := 0
@@ -248,30 +345,60 @@ func formatWithSuffix(val, base float64, suffixes []string) string {
 		level++
 	}
 	if level == 0 {
-		return formatRaw(val)
+		return formatValPrec(val, prec)
 	}
-	rounded1 := math.Ceil(scaled*10) / 10
-	if rounded1 < 10 {
-		if negative {
-			return fmt.Sprintf("-%.1f%s", rounded1, suffixes[level])
+	sign := ""
+	if negative {
+		sign = "-"
+	}
+	if prec >= 0 {
+		r := roundToPrec(scaled, prec, negative, round)
+		if r >= base && level+1 < len(suffixes) {
+			level++
+			r = roundToPrec(abs/math.Pow(base, float64(level)), prec, negative, round)
 		}
-		return fmt.Sprintf("%.1f%s", rounded1, suffixes[level])
+		return fmt.Sprintf("%s%.*f%s", sign, prec, r, suffixes[level])
 	}
-	intVal := int64(math.Ceil(scaled))
+	rounded1 := roundToPrec(scaled, 1, negative, round)
+	if rounded1 < 10 {
+		return fmt.Sprintf("%s%.1f%s", sign, rounded1, suffixes[level])
+	}
+	intVal := int64(roundToPrec(scaled, 0, negative, round))
 	if float64(intVal) >= base && level+1 < len(suffixes) {
 		level++
 		newScaled := abs / math.Pow(base, float64(level))
-		r := math.Ceil(newScaled*10) / 10
+		r := roundToPrec(newScaled, 1, negative, round)
 		if r < 10 {
-			if negative {
-				return fmt.Sprintf("-%.1f%s", r, suffixes[level])
-			}
-			return fmt.Sprintf("%.1f%s", r, suffixes[level])
+			return fmt.Sprintf("%s%.1f%s", sign, r, suffixes[level])
 		}
-		intVal = int64(math.Ceil(newScaled))
+		intVal = int64(roundToPrec(newScaled, 0, negative, round))
 	}
-	if negative {
-		return fmt.Sprintf("-%d%s", intVal, suffixes[level])
+	return fmt.Sprintf("%s%d%s", sign, intVal, suffixes[level])
+}
+
+func roundToPrec(absVal float64, prec int, negative bool, method string) float64 {
+	factor := math.Pow(10, float64(prec))
+	return roundAbs(absVal*factor, negative, method) / factor
+}
+
+func roundAbs(absVal float64, negative bool, method string) float64 {
+	switch method {
+	case "up":
+		if negative {
+			return math.Floor(absVal)
+		}
+		return math.Ceil(absVal)
+	case "down":
+		if negative {
+			return math.Ceil(absVal)
+		}
+		return math.Floor(absVal)
+	case "from-zero":
+		return math.Ceil(absVal)
+	case "towards-zero":
+		return math.Floor(absVal)
+	case "nearest":
+		return math.Round(absVal)
 	}
-	return fmt.Sprintf("%d%s", intVal, suffixes[level])
+	return math.Ceil(absVal)
 }

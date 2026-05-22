@@ -151,6 +151,71 @@ func TestDiff(t *testing.T) {
 			Args: []string{"--to=si", "1000", "2000", "3000"},
 		},
 		{
+			Name:  "format_width",
+			Args:  []string{"--to=si", "--format=%10f"},
+			Stdin: []byte("1500000\n"),
+		},
+		{
+			Name:  "format_precision",
+			Args:  []string{"--to=si", "--format=%.2f"},
+			Stdin: []byte("1500000\n"),
+		},
+		{
+			Name:  "format_width_prec",
+			Args:  []string{"--to=si", "--format=%10.2f"},
+			Stdin: []byte("1500000\n"),
+		},
+		{
+			Name:  "format_left_align",
+			Args:  []string{"--to=si", "--format=%-10f"},
+			Stdin: []byte("1500000\n"),
+		},
+		{
+			Name:  "padding_right",
+			Args:  []string{"--to=si", "--padding=10"},
+			Stdin: []byte("1500000\n"),
+		},
+		{
+			Name:  "padding_left",
+			Args:  []string{"--to=si", "--padding=-10"},
+			Stdin: []byte("1500000\n"),
+		},
+		{
+			Name:  "round_up",
+			Args:  []string{"--to=si", "--round=up"},
+			Stdin: []byte("1340000\n"),
+		},
+		{
+			Name:  "round_down",
+			Args:  []string{"--to=si", "--round=down"},
+			Stdin: []byte("1340000\n"),
+		},
+		{
+			Name:  "round_from_zero",
+			Args:  []string{"--to=si", "--round=from-zero"},
+			Stdin: []byte("1340000\n"),
+		},
+		{
+			Name:  "round_towards_zero",
+			Args:  []string{"--to=si", "--round=towards-zero"},
+			Stdin: []byte("1340000\n"),
+		},
+		{
+			Name:  "round_nearest",
+			Args:  []string{"--to=si", "--round=nearest"},
+			Stdin: []byte("1340000\n"),
+		},
+		{
+			Name:  "suffix_basic",
+			Args:  []string{"--to=si", "--suffix=B"},
+			Stdin: []byte("1000\n"),
+		},
+		{
+			Name:  "suffix_with_iec",
+			Args:  []string{"--to=iec", "--suffix=B"},
+			Stdin: []byte("1048576\n"),
+		},
+		{
 			Name:      "error_invalid_number",
 			Args:      []string{"--to=si"},
 			Stdin:     []byte("abc\n"),
