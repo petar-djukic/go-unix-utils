@@ -4097,44 +4097,44 @@ requirements:
             issue: 5455
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R2.4:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
         R4.4:
-            status: ready
+            status: proposed
             weight: 1
     srd070-fmt:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
             status: ready
