@@ -473,7 +473,7 @@ code_status:
               testfiles: 0
             - id: rel08.1-uc005-numfmt
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel08.1-uc006-od
