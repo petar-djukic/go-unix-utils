@@ -33,6 +33,7 @@ func TestDiff(t *testing.T) {
 	tests = append(tests, widthTests()...)
 	tests = append(tests, traditionalFlagTests()...)
 	tests = append(tests, duplicateTests()...)
+	tests = append(tests, errorCaseTests()...)
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
 
@@ -174,6 +175,17 @@ func traditionalFlagTests() []testutils.DiffTest {
 		{Name: "trad_x", Args: []string{"-x"}, Stdin: data},
 		{Name: "trad_c_escapes", Args: []string{"-c"}, Stdin: []byte("\t\n\r\000\\hello")},
 		{Name: "trad_bx_combined", Args: []string{"-b", "-x"}, Stdin: data},
+	}
+}
+
+func errorCaseTests() []testutils.DiffTest {
+	return []testutils.DiffTest{
+		{Name: "err_invalid_type", Args: []string{"-t", "z"}, Stdin: []byte("x"), ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{discardStderr}},
+		{Name: "err_missing_file", Args: []string{"/nonexistent/path/to/file"}, ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{discardStderr}},
+		{Name: "err_invalid_option", Args: []string{"--invalidopt"}, Stdin: []byte("x"), ExitCode: 1,
+			Normalize: []testutils.NormalizeFunc{discardStderr}},
 	}
 }
 
