@@ -463,7 +463,7 @@ code_status:
               testfiles: 0
             - id: rel08.1-uc003-join
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel08.1-uc004-fmt

@@ -4150,49 +4150,49 @@ requirements:
             issue: 5458
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R5.1:
-            status: ready
+            status: proposed
             weight: 1
         R6.1:
-            status: ready
+            status: proposed
             weight: 1
         R7.1:
-            status: ready
+            status: proposed
             weight: 1
         R8.1:
-            status: ready
+            status: proposed
             weight: 1
         R9.1:
-            status: ready
+            status: proposed
             weight: 1
         R10.1:
-            status: ready
+            status: proposed
             weight: 1
         R11.1:
-            status: ready
+            status: proposed
             weight: 1
         R12.1:
-            status: ready
+            status: proposed
             weight: 1
         R13.1:
-            status: ready
+            status: proposed
             weight: 1
         R13.2:
-            status: ready
+            status: proposed
             weight: 1
         R13.3:
-            status: ready
+            status: proposed
             weight: 1
         R13.4:
-            status: ready
+            status: proposed
             weight: 1
     srd071-numfmt:
         R1.1:
