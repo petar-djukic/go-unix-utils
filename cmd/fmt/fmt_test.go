@@ -157,8 +157,35 @@ func TestDiffModes(t *testing.T) {
 		{Name: "uniform_spacing", Args: []string{"-u"}, Stdin: []byte(
 			"Hello world.  This is a test.  More text here.\n",
 		)},
+		{Name: "uniform_multi_space", Args: []string{"-u"}, Stdin: []byte(
+			"word1    word2     word3      word4\n",
+		)},
+		{Name: "uniform_tabs", Args: []string{"-u"}, Stdin: []byte(
+			"word1\tword2\t\tword3\n",
+		)},
+		{Name: "uniform_sentence_triple", Args: []string{"-u"}, Stdin: []byte(
+			"End.   Start.  More text here.\n",
+		)},
+		{Name: "uniform_sentence_single", Args: []string{"-u"}, Stdin: []byte(
+			"End. Start.\n",
+		)},
+		{Name: "uniform_multi_paragraph", Args: []string{"-u"}, Stdin: []byte(
+			"First  para   text.\n\nSecond   para   text.\n",
+		)},
+		{Name: "uniform_split", Args: []string{"-u", "-s"}, Stdin: []byte(
+			"Short   line.\nThis is a very long   line    that   exceeds the default  width of   seventy-five characters and should be split.\n",
+		)},
 		{Name: "tagged_paragraph", Args: []string{"-t", "-w", "40"}, Stdin: []byte(
 			"   First line tag.\nSecond line of the paragraph text.\nThird line.\n",
+		)},
+		{Name: "tagged_body_indent", Args: []string{"-t", "-w", "40"}, Stdin: []byte(
+			"* Item header.\n  Body text that continues here and wraps around.\n",
+		)},
+		{Name: "tagged_multi_para", Args: []string{"-t", "-w", "40"}, Stdin: []byte(
+			"  Tag one.\nBody of para one that wraps.\n\n  Tag two.\nBody of para two.\n",
+		)},
+		{Name: "tagged_long_form", Args: []string{"--tagged-paragraph", "-w", "40"}, Stdin: []byte(
+			"   First line tag.\nSecond line body.\n",
 		)},
 		{Name: "split_long_mixed", Args: []string{"-s", "-w", "30"}, Stdin: []byte(
 			"Short.\nThis is a longer line that should be split at thirty characters.\nAlso short.\n",
@@ -204,6 +231,15 @@ func TestDiffPrefix(t *testing.T) {
 		)},
 		{Name: "prefix_with_space", Args: []string{"-p", "> "}, Stdin: []byte(
 			"> First prefixed line.\n> Second prefixed line.\nNot prefixed.\n",
+		)},
+		{Name: "prefix_indented", Args: []string{"-p", ">"}, Stdin: []byte(
+			"  >This is a very long prefixed line that should definitely be wrapped because it exceeds the default width of seventy-five characters.\n",
+		)},
+		{Name: "prefix_blank_sep", Args: []string{"-p", ">"}, Stdin: []byte(
+			">Line one of para one.\n>Line two of para one.\n>\n>Line one of para two.\nNot prefixed.\n",
+		)},
+		{Name: "prefix_long_form", Args: []string{"--prefix=>"}, Stdin: []byte(
+			">Short prefixed.\nNormal.\n",
 		)},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)

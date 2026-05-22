@@ -272,6 +272,9 @@ func formatParagraph(w *bufio.Writer, lines []string) error {
 		return writeSplitOnly(w, lines)
 	}
 	if len(lines) == 1 && len(lines[0]) <= flagWidth {
+		if flagUniform {
+			lines[0] = normalizeUniform(lines[0])
+		}
 		return writeLines(w, lines)
 	}
 	firstIndent, bodyIndent := getIndents(lines)
@@ -353,6 +356,44 @@ func endsWithSentence(word string) bool {
 	return last == '.' || last == '!' || last == '?'
 }
 
+func normalizeUniform(line string) string {
+	indent := extractIndent(line)
+	rest := line[len(indent):]
+	if len(strings.TrimSpace(rest)) == 0 {
+		return line
+	}
+	var b strings.Builder
+	b.WriteString(indent)
+	i := 0
+	for i < len(rest) && (rest[i] == ' ' || rest[i] == '\t') {
+		i++
+	}
+	for i < len(rest) {
+		ws := i
+		for i < len(rest) && rest[i] != ' ' && rest[i] != '\t' {
+			i++
+		}
+		word := rest[ws:i]
+		b.WriteString(word)
+		if i >= len(rest) {
+			break
+		}
+		spaceCount := 0
+		for i < len(rest) && (rest[i] == ' ' || rest[i] == '\t') {
+			spaceCount++
+			i++
+		}
+		if i < len(rest) {
+			if spaceCount > 1 && endsWithSentence(word) {
+				b.WriteString("  ")
+			} else {
+				b.WriteString(" ")
+			}
+		}
+	}
+	return b.String()
+}
+
 func writeLines(w *bufio.Writer, lines []string) error {
 	for _, line := range lines {
 		if _, err := w.WriteString(line); err != nil {
@@ -367,6 +408,9 @@ func writeLines(w *bufio.Writer, lines []string) error {
 
 func writeSplitOnly(w *bufio.Writer, lines []string) error {
 	for _, line := range lines {
+		if flagUniform {
+			line = normalizeUniform(line)
+		}
 		if len(line) <= flagWidth {
 			if _, err := w.WriteString(line); err != nil {
 				return err
@@ -388,16 +432,21 @@ func writeSplitOnly(w *bufio.Writer, lines []string) error {
 
 func formatWithPrefix(w *bufio.Writer, allLines []string) error {
 	var group []string
+	var groupWS string
 	for _, line := range allLines {
-		stripped, has := stripPrefix(line)
+		ws, stripped, has := stripPrefix(line)
 		if has {
+			if len(group) == 0 {
+				groupWS = ws
+			}
 			group = append(group, stripped)
 			continue
 		}
-		if err := flushPrefixGroup(w, group); err != nil {
+		if err := flushPrefixGroup(w, group, groupWS); err != nil {
 			return err
 		}
 		group = nil
+		groupWS = ""
 		if _, err := w.WriteString(line); err != nil {
 			return err
 		}
@@ -405,25 +454,26 @@ func formatWithPrefix(w *bufio.Writer, allLines []string) error {
 			return err
 		}
 	}
-	return flushPrefixGroup(w, group)
+	return flushPrefixGroup(w, group, groupWS)
 }
 
-func flushPrefixGroup(w *bufio.Writer, lines []string) error {
+func flushPrefixGroup(w *bufio.Writer, lines []string, leadingWS string) error {
 	if len(lines) == 0 {
 		return nil
 	}
 	blocks := groupParagraphs(lines)
 	for _, block := range blocks {
-		if err := writePrefixBlock(w, block); err != nil {
+		if err := writePrefixBlock(w, block, leadingWS); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writePrefixBlock(w *bufio.Writer, block []string) error {
+func writePrefixBlock(w *bufio.Writer, block []string, leadingWS string) error {
+	fullPrefix := leadingWS + flagPrefix
 	if len(block) == 0 {
-		_, err := w.WriteString(flagPrefix + "\n")
+		_, err := w.WriteString(fullPrefix + "\n")
 		return err
 	}
 	firstIndent, bodyIndent := getIndents(block)
@@ -431,23 +481,24 @@ func writePrefixBlock(w *bufio.Writer, block []string) error {
 	if len(words) == 0 {
 		return nil
 	}
-	pLen := len(flagPrefix)
+	pLen := len(fullPrefix)
 	filled := fillLines(words, firstIndent, bodyIndent,
 		max(1, flagGoal-pLen), max(1, flagWidth-pLen))
 	for _, fl := range filled {
-		if _, err := w.WriteString(flagPrefix + fl + "\n"); err != nil {
+		if _, err := w.WriteString(fullPrefix + fl + "\n"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func stripPrefix(line string) (string, bool) {
+func stripPrefix(line string) (string, string, bool) {
 	trimmed := strings.TrimLeft(line, " \t")
 	if strings.HasPrefix(trimmed, flagPrefix) {
-		return trimmed[len(flagPrefix):], true
+		ws := line[:len(line)-len(trimmed)]
+		return ws, trimmed[len(flagPrefix):], true
 	}
-	return line, false
+	return "", line, false
 }
 
 func formatErr(err error) string {
