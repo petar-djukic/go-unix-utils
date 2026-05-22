@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd071-numfmt R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements srd071-numfmt R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.2.
 package main
 
 import (
@@ -30,6 +30,7 @@ type opts struct {
 	round         string
 	suffix        string
 	delimiter     string
+	invalid       string
 	fromUnitScale float64
 	toUnitScale   float64
 }
@@ -106,6 +107,7 @@ func main() {
 	header := flag.Int("header", 0, "")
 	fromUnitScale := flag.Float64("from-unit", 1, "")
 	toUnitScale := flag.Float64("to-unit", 1, "")
+	invalid := flag.String("invalid", "abort", "")
 	flag.Parse()
 	if !isValidUnit(*toUnit) || !isValidUnit(*fromUnit) {
 		fmt.Fprintf(os.Stderr, "numfmt: invalid unit\n")
@@ -113,6 +115,10 @@ func main() {
 	}
 	if !isValidRound(*round) {
 		fmt.Fprintf(os.Stderr, "numfmt: invalid --round method: '%s'\n", *round)
+		os.Exit(1)
+	}
+	if !isValidInvalid(*invalid) {
+		fmt.Fprintf(os.Stderr, "numfmt: invalid --invalid mode: '%s'\n", *invalid)
 		os.Exit(1)
 	}
 	var fs *fieldSpec
@@ -132,6 +138,7 @@ func main() {
 		round:         *round,
 		suffix:        *suffix,
 		delimiter:     *delimiter,
+		invalid:       *invalid,
 		fromUnitScale: *fromUnitScale,
 		toUnitScale:   *toUnitScale,
 	}
@@ -139,8 +146,15 @@ func main() {
 	if flag.NArg() > 0 {
 		for _, arg := range flag.Args() {
 			if err := processToken(arg, o); err != nil {
-				fmt.Fprintf(os.Stderr, "numfmt: %v\n", err)
-				hasError = true
+				if o.invalid != "abort" {
+					fmt.Println(arg)
+				}
+				if o.invalid != "ignore" {
+					fmt.Fprintf(os.Stderr, "numfmt: %v\n", err)
+				}
+				if o.invalid == "abort" || o.invalid == "fail" {
+					hasError = true
+				}
 			}
 		}
 	} else {
@@ -157,10 +171,17 @@ func main() {
 				err = processLineFields(scanner.Text(), o, fs)
 			} else {
 				err = processLine(scanner.Text(), o)
+				if err != nil && o.invalid != "abort" {
+					fmt.Println(scanner.Text())
+				}
 			}
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "numfmt: %v\n", err)
-				hasError = true
+				if o.invalid != "ignore" {
+					fmt.Fprintf(os.Stderr, "numfmt: %v\n", err)
+				}
+				if o.invalid == "abort" || o.invalid == "fail" {
+					hasError = true
+				}
 			}
 		}
 	}
@@ -180,6 +201,14 @@ func isValidUnit(u string) bool {
 func isValidRound(r string) bool {
 	switch r {
 	case "up", "down", "from-zero", "towards-zero", "nearest":
+		return true
+	}
+	return false
+}
+
+func isValidInvalid(m string) bool {
+	switch m {
+	case "abort", "fail", "warn", "ignore":
 		return true
 	}
 	return false
@@ -225,6 +254,7 @@ func processLineFields(line string, o opts, fs *fieldSpec) error {
 
 func processFieldsDelim(line string, o opts, fs *fieldSpec) error {
 	fields := strings.Split(line, o.delimiter)
+	var firstErr error
 	for i, f := range fields {
 		if fs.includes(i + 1) {
 			trimmed := strings.TrimSpace(f)
@@ -233,14 +263,20 @@ func processFieldsDelim(line string, o opts, fs *fieldSpec) error {
 			}
 			val, err := parseNumber(trimmed, o.fromUnit)
 			if err != nil {
-				return err
+				if o.invalid == "abort" {
+					return err
+				}
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
 			}
 			val = applyScaling(val, o)
 			fields[i] = formatOutput(val, o)
 		}
 	}
 	fmt.Println(strings.Join(fields, o.delimiter))
-	return nil
+	return firstErr
 }
 
 func processFieldsWhitespace(line string, o opts, fs *fieldSpec) error {
@@ -269,13 +305,21 @@ func processFieldsWhitespace(line string, o opts, fs *fieldSpec) error {
 	}
 	fieldIdx := 0
 	var buf strings.Builder
+	var firstErr error
 	for _, seg := range segments {
 		if seg.isField {
 			fieldIdx++
 			if fs.includes(fieldIdx) {
 				val, err := parseNumber(seg.text, o.fromUnit)
 				if err != nil {
-					return err
+					if o.invalid == "abort" {
+						return err
+					}
+					if firstErr == nil {
+						firstErr = err
+					}
+					buf.WriteString(seg.text)
+					continue
 				}
 				val = applyScaling(val, o)
 				out := formatOutput(val, o)
@@ -291,7 +335,7 @@ func processFieldsWhitespace(line string, o opts, fs *fieldSpec) error {
 		}
 	}
 	fmt.Println(buf.String())
-	return nil
+	return firstErr
 }
 
 func applyScaling(val float64, o opts) float64 {

@@ -311,6 +311,69 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--to=si", "--from-unit=1024", "--to-unit=1000"},
 			Stdin: []byte("1000\n"),
 		},
+		{
+			Name:      "invalid_fail",
+			Args:      []string{"--to=si", "--invalid=fail"},
+			Stdin:     []byte("abc\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{stderrNorm},
+		},
+		{
+			Name:      "invalid_warn",
+			Args:      []string{"--to=si", "--invalid=warn"},
+			Stdin:     []byte("abc\n"),
+			Normalize: []testutils.NormalizeFunc{stderrNorm},
+		},
+		{
+			Name:  "invalid_ignore",
+			Args:  []string{"--to=si", "--invalid=ignore"},
+			Stdin: []byte("abc\n"),
+		},
+		{
+			Name:      "invalid_fail_mixed",
+			Args:      []string{"--to=si", "--invalid=fail"},
+			Stdin:     []byte("1000\nabc\n2000\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{stderrNorm},
+		},
+		{
+			Name:      "invalid_warn_mixed",
+			Args:      []string{"--to=si", "--invalid=warn"},
+			Stdin:     []byte("1000\nabc\n2000\n"),
+			Normalize: []testutils.NormalizeFunc{stderrNorm},
+		},
+		{
+			Name:  "invalid_ignore_mixed",
+			Args:  []string{"--to=si", "--invalid=ignore"},
+			Stdin: []byte("1000\nabc\n2000\n"),
+		},
+		{
+			Name:      "invalid_warn_field",
+			Args:      []string{"--to=si", "--field=2", "--invalid=warn"},
+			Stdin:     []byte("name abc\n"),
+			Normalize: []testutils.NormalizeFunc{stderrNorm},
+		},
+		{
+			Name:  "invalid_ignore_field",
+			Args:  []string{"--to=si", "--field=2", "--invalid=ignore"},
+			Stdin: []byte("name abc\n"),
+		},
+		{
+			Name:      "invalid_fail_field_multi",
+			Args:      []string{"--to=si", "--field=2,3", "--invalid=fail"},
+			Stdin:     []byte("name abc 2000\n"),
+			ExitCode:  2,
+			Normalize: []testutils.NormalizeFunc{stderrNorm},
+		},
+		{
+			Name: "exit_0_success",
+			Args: []string{"--to=si"},
+			Stdin: []byte("1000\n"),
+		},
+		{
+			Name:  "exit_0_operand",
+			Args:  []string{"--to=si", "1000"},
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
