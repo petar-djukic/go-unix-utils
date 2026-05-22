@@ -1,0 +1,215 @@
+- index: 0
+  title: "[stitch] cmd/fmt: srd070 R10.1, R11.1, R12.1"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd070-fmt.yaml (requirements R10.1, R11.1, R12.1 -- read the full SRD for context)
+      - cmd/fmt/main.go (existing implementation to extend)
+      - cmd/fmt/fmt_test.go (existing differential tests to extend)
+      - pkg/testutils/ (differential testing framework -- understand DiffTest and RunDiffTests)
+
+    files:
+      - path: cmd/fmt/main.go
+        action: modify
+        note: Add functionality for srd070 requirements R10.1, R11.1, R12.1
+      - path: cmd/fmt/fmt_test.go
+        action: modify
+        note: Add differential test cases covering R10.1, R11.1, R12.1
+
+    requirements:
+      - id: R1
+        text: Implement srd070 requirement R10.1 in cmd/fmt per the SRD specification
+      - id: R2
+        text: Implement srd070 requirement R11.1 in cmd/fmt per the SRD specification
+      - id: R3
+        text: Implement srd070 requirement R12.1 in cmd/fmt per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/fmt implementation -- do not rewrite or restructure existing code. Add only the logic needed for R10.1, R11.1, R12.1.
+      - id: D2
+        text: Use the differential testing pattern with pkg/testutils.RunDiffTests comparing against the gfmt reference binary. All test cases set LC_ALL=C.
+      - id: D3
+        text: Skip differential tests if the reference binary gfmt is not found via exec.LookPath (t.Skip pattern).
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd070 R10.1 is implemented and has at least one differential test case exercising it
+      - id: AC2
+        text: srd070 R11.1 is implemented and has at least one differential test case exercising it
+      - id: AC3
+        text: srd070 R12.1 is implemented and has at least one differential test case exercising it
+      - id: AC4
+        text: go build ./cmd/fmt/ succeeds with no errors
+      - id: AC5
+        text: go vet ./cmd/fmt/ reports no issues
+      - id: AC6
+        text: go test ./cmd/fmt/... -count=1 passes (or skips gracefully if gfmt reference binary is not installed)
+
+- index: 1
+  title: "[stitch] cmd/fmt: srd070 R13.1-R13.4"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd070-fmt.yaml (requirements R13.1, R13.2, R13.3, R13.4 -- read the full SRD for context)
+      - cmd/fmt/main.go (existing implementation to extend -- includes changes from prior task)
+      - cmd/fmt/fmt_test.go (existing differential tests to extend)
+      - pkg/testutils/ (differential testing framework -- understand DiffTest and RunDiffTests)
+
+    files:
+      - path: cmd/fmt/main.go
+        action: modify
+        note: Add functionality for srd070 requirements R13.1, R13.2, R13.3, R13.4
+      - path: cmd/fmt/fmt_test.go
+        action: modify
+        note: Add differential test cases covering R13.1, R13.2, R13.3, R13.4
+
+    requirements:
+      - id: R1
+        text: Implement srd070 requirement R13.1 in cmd/fmt per the SRD specification
+      - id: R2
+        text: Implement srd070 requirement R13.2 in cmd/fmt per the SRD specification
+      - id: R3
+        text: Implement srd070 requirement R13.3 in cmd/fmt per the SRD specification
+      - id: R4
+        text: Implement srd070 requirement R13.4 in cmd/fmt per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/fmt implementation -- do not rewrite or restructure existing code. Add only the logic needed for R13.1 through R13.4.
+      - id: D2
+        text: Use the differential testing pattern with pkg/testutils.RunDiffTests comparing against the gfmt reference binary. All test cases set LC_ALL=C.
+      - id: D3
+        text: Skip differential tests if the reference binary gfmt is not found via exec.LookPath (t.Skip pattern).
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd070 R13.1 is implemented and has at least one differential test case exercising it
+      - id: AC2
+        text: srd070 R13.2 is implemented and has at least one differential test case exercising it
+      - id: AC3
+        text: srd070 R13.3 is implemented and has at least one differential test case exercising it
+      - id: AC4
+        text: srd070 R13.4 is implemented and has at least one differential test case exercising it
+      - id: AC5
+        text: go build ./cmd/fmt/ succeeds with no errors
+      - id: AC6
+        text: go vet ./cmd/fmt/ reports no issues
+      - id: AC7
+        text: go test ./cmd/fmt/... -count=1 passes (or skips gracefully if gfmt reference binary is not installed)
+
+- index: 2
+  title: "[stitch] cmd/numfmt: srd071 R1.1-R1.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd071-numfmt.yaml (requirements R1.1, R1.2, R1.3, R1.4 -- read the full SRD for context on the numfmt utility)
+      - docs/ARCHITECTURE.yaml (shared protocols section -- differential testing pattern and SIGPIPE handling)
+      - pkg/testutils/ (differential testing framework -- understand DiffTest, RunDiffTests, BuildBinary)
+      - pkg/sys/ (for InstallSIGPIPEHandler)
+
+    files:
+      - path: cmd/numfmt/main.go
+        action: create
+        note: numfmt implementation covering srd071 R1.1-R1.4
+      - path: cmd/numfmt/numfmt_test.go
+        action: create
+        note: Differential tests for numfmt comparing against gnumfmt
+
+    requirements:
+      - id: R1
+        text: Implement srd071 requirement R1.1 in cmd/numfmt per the SRD specification
+      - id: R2
+        text: Implement srd071 requirement R1.2 in cmd/numfmt per the SRD specification
+      - id: R3
+        text: Implement srd071 requirement R1.3 in cmd/numfmt per the SRD specification
+      - id: R4
+        text: Implement srd071 requirement R1.4 in cmd/numfmt per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main to match GNU coreutils SIGPIPE behavior."
+      - id: D2
+        text: "Use the differential testing pattern: testutils.BuildBinary(t, \".\") for the Go binary, exec.LookPath(\"gnumfmt\") for the reference binary, t.Skip if reference not found."
+      - id: D3
+        text: All differential test cases set LC_ALL=C in the Env field.
+      - id: D4
+        text: "Package is cmd/numfmt with package main. Implementation in main.go, tests in numfmt_test.go."
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd071 R1.1 is implemented and has at least one differential test case exercising it
+      - id: AC2
+        text: srd071 R1.2 is implemented and has at least one differential test case exercising it
+      - id: AC3
+        text: srd071 R1.3 is implemented and has at least one differential test case exercising it
+      - id: AC4
+        text: srd071 R1.4 is implemented and has at least one differential test case exercising it
+      - id: AC5
+        text: go build ./cmd/numfmt/ succeeds with no errors
+      - id: AC6
+        text: go vet ./cmd/numfmt/ reports no issues
+      - id: AC7
+        text: go test ./cmd/numfmt/... -count=1 passes (or skips gracefully if gnumfmt reference binary is not installed)
+      - id: AC8
+        text: main() calls sys.InstallSIGPIPEHandler() before any stdout writes
+
+- index: 3
+  title: "[stitch] cmd/numfmt: srd071 R2.1-R2.4"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd071-numfmt.yaml (requirements R2.1, R2.2, R2.3, R2.4 -- read the full SRD for context)
+      - cmd/numfmt/main.go (existing implementation from prior task -- extend it)
+      - cmd/numfmt/numfmt_test.go (existing differential tests from prior task -- extend them)
+      - pkg/testutils/ (differential testing framework -- understand DiffTest and RunDiffTests)
+
+    files:
+      - path: cmd/numfmt/main.go
+        action: modify
+        note: Add functionality for srd071 requirements R2.1, R2.2, R2.3, R2.4
+      - path: cmd/numfmt/numfmt_test.go
+        action: modify
+        note: Add differential test cases covering R2.1, R2.2, R2.3, R2.4
+
+    requirements:
+      - id: R1
+        text: Implement srd071 requirement R2.1 in cmd/numfmt per the SRD specification
+      - id: R2
+        text: Implement srd071 requirement R2.2 in cmd/numfmt per the SRD specification
+      - id: R3
+        text: Implement srd071 requirement R2.3 in cmd/numfmt per the SRD specification
+      - id: R4
+        text: Implement srd071 requirement R2.4 in cmd/numfmt per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Extend the existing cmd/numfmt implementation -- do not rewrite or restructure existing code. Add only the logic needed for R2.1 through R2.4.
+      - id: D2
+        text: Use the differential testing pattern with pkg/testutils.RunDiffTests comparing against the gnumfmt reference binary. All test cases set LC_ALL=C.
+      - id: D3
+        text: Skip differential tests if the reference binary gnumfmt is not found via exec.LookPath (t.Skip pattern).
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd071 R2.1 is implemented and has at least one differential test case exercising it
+      - id: AC2
+        text: srd071 R2.2 is implemented and has at least one differential test case exercising it
+      - id: AC3
+        text: srd071 R2.3 is implemented and has at least one differential test case exercising it
+      - id: AC4
+        text: srd071 R2.4 is implemented and has at least one differential test case exercising it
+      - id: AC5
+        text: go build ./cmd/numfmt/ succeeds with no errors
+      - id: AC6
+        text: go vet ./cmd/numfmt/ reports no issues
+      - id: AC7
+        text: go test ./cmd/numfmt/... -count=1 passes (or skips gracefully if gnumfmt reference binary is not installed)
