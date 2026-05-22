@@ -210,13 +210,13 @@ func run(w *bufio.Writer, opts options, files []string) int {
 	}
 	defer r2.Close()
 
-	joinFiles(w, r1, r2, opts)
-	return 0
+	return joinFiles(w, r1, r2, opts)
 }
 
 type inputFile struct {
 	scanner *bufio.Scanner
 	closer  func() error
+	name    string
 }
 
 func (f *inputFile) Close() error {
@@ -228,6 +228,7 @@ func openInput(name string) (*inputFile, error) {
 		return &inputFile{
 			scanner: bufio.NewScanner(os.Stdin),
 			closer:  func() error { return nil },
+			name:    name,
 		}, nil
 	}
 	f, err := os.Open(name)
@@ -237,6 +238,7 @@ func openInput(name string) (*inputFile, error) {
 	return &inputFile{
 		scanner: bufio.NewScanner(f),
 		closer:  f.Close,
+		name:    name,
 	}, nil
 }
 
@@ -249,16 +251,19 @@ type lineReader struct {
 	scanner *bufio.Scanner
 	line    string
 	hasLine bool
+	name    string
+	lineNum int
 }
 
 func newReader(f *inputFile) *lineReader {
-	return &lineReader{scanner: f.scanner}
+	return &lineReader{scanner: f.scanner, name: f.name}
 }
 
 func (r *lineReader) next() bool {
 	r.hasLine = r.scanner.Scan()
 	if r.hasLine {
 		r.line = r.scanner.Text()
+		r.lineNum++
 	}
 	return r.hasLine
 }
@@ -308,7 +313,7 @@ func parseOutputSpec(s string) []outputField {
 	return spec
 }
 
-func joinFiles(w *bufio.Writer, r1, r2 *inputFile, opts options) {
+func joinFiles(w *bufio.Writer, r1, r2 *inputFile, opts options) int {
 	spec := parseOutputSpec(opts.output)
 	lr1 := newReader(r1)
 	lr2 := newReader(r2)
@@ -323,11 +328,31 @@ func joinFiles(w *bufio.Writer, r1, r2 *inputFile, opts options) {
 	printUnpair2 := slices.Contains(opts.unpairFile, 2) || slices.Contains(opts.onlyUnpair, 2)
 	suppressPaired := len(opts.onlyUnpair) > 0
 
+	var prevKey1, prevKey2 string
+	var hasPrev1, hasPrev2 bool
+
 	for lr1.hasLine && lr2.hasLine {
 		f1 := splitLine(lr1.line, opts.hasSep, opts.separator)
 		f2 := splitLine(lr2.line, opts.hasSep, opts.separator)
 		key1 := getField(f1, opts.field1)
 		key2 := getField(f2, opts.field2)
+
+		if opts.checkOrder {
+			if hasPrev1 && key1 < prevKey1 {
+				fmt.Fprintf(os.Stderr, "join: %s:%d: is not sorted: %s\n", lr1.name, lr1.lineNum, lr1.line)
+				return 1
+			}
+			if hasPrev2 && key2 < prevKey2 {
+				fmt.Fprintf(os.Stderr, "join: %s:%d: is not sorted: %s\n", lr2.name, lr2.lineNum, lr2.line)
+				return 1
+			}
+		}
+
+		prevKey1 = key1
+		hasPrev1 = true
+		prevKey2 = key2
+		hasPrev2 = true
+
 		cmp := strings.Compare(key1, key2)
 		switch {
 		case cmp < 0:
@@ -342,11 +367,45 @@ func joinFiles(w *bufio.Writer, r1, r2 *inputFile, opts options) {
 			lr2.next()
 		default:
 			if !suppressPaired {
-				joinMatch(w, lr1, lr2, key1, spec, opts)
+				if !joinMatch(w, lr1, lr2, key1, spec, opts) {
+					return 1
+				}
 			} else {
 				skipMatch(lr1, lr2, key1, opts)
 			}
 		}
+	}
+
+	if opts.checkOrder {
+		for lr1.hasLine {
+			f1 := splitLine(lr1.line, opts.hasSep, opts.separator)
+			key1 := getField(f1, opts.field1)
+			if hasPrev1 && key1 < prevKey1 {
+				fmt.Fprintf(os.Stderr, "join: %s:%d: is not sorted: %s\n", lr1.name, lr1.lineNum, lr1.line)
+				return 1
+			}
+			prevKey1 = key1
+			hasPrev1 = true
+			if printUnpair1 {
+				writeUnpairable(w, 1, f1, opts.field1, spec, opts)
+			}
+			lr1.next()
+		}
+		for lr2.hasLine {
+			f2 := splitLine(lr2.line, opts.hasSep, opts.separator)
+			key2 := getField(f2, opts.field2)
+			if hasPrev2 && key2 < prevKey2 {
+				fmt.Fprintf(os.Stderr, "join: %s:%d: is not sorted: %s\n", lr2.name, lr2.lineNum, lr2.line)
+				return 1
+			}
+			prevKey2 = key2
+			hasPrev2 = true
+			if printUnpair2 {
+				writeUnpairable(w, 2, f2, opts.field2, spec, opts)
+			}
+			lr2.next()
+		}
+		return 0
 	}
 
 	if printUnpair1 {
@@ -363,6 +422,8 @@ func joinFiles(w *bufio.Writer, r1, r2 *inputFile, opts options) {
 			lr2.next()
 		}
 	}
+
+	return 0
 }
 
 func writeHeader(w *bufio.Writer, lr1, lr2 *lineReader, spec []outputField, opts options) {
@@ -430,18 +491,44 @@ func skipMatch(lr1, lr2 *lineReader, key string, opts options) {
 	}
 }
 
-func joinMatch(w *bufio.Writer, lr1, lr2 *lineReader, key string, spec []outputField, opts options) {
-	group := collectGroup(lr2, opts.field2, key, opts)
+func joinMatch(w *bufio.Writer, lr1, lr2 *lineReader, key string, spec []outputField, opts options) bool {
+	group2 := collectGroup(lr2, opts.field2, key, opts)
+
+	if opts.checkOrder {
+		group1 := collectGroup(lr1, opts.field1, key, opts)
+		if lr1.hasLine {
+			f := splitLine(lr1.line, opts.hasSep, opts.separator)
+			if getField(f, opts.field1) < key {
+				fmt.Fprintf(os.Stderr, "join: %s:%d: is not sorted: %s\n", lr1.name, lr1.lineNum, lr1.line)
+				return false
+			}
+		}
+		if lr2.hasLine {
+			f := splitLine(lr2.line, opts.hasSep, opts.separator)
+			if getField(f, opts.field2) < key {
+				fmt.Fprintf(os.Stderr, "join: %s:%d: is not sorted: %s\n", lr2.name, lr2.lineNum, lr2.line)
+				return false
+			}
+		}
+		for _, f1 := range group1 {
+			for _, f2 := range group2 {
+				writePair(w, key, f1, f2, spec, opts)
+			}
+		}
+		return true
+	}
+
 	for lr1.hasLine {
 		f1 := splitLine(lr1.line, opts.hasSep, opts.separator)
 		if getField(f1, opts.field1) != key {
 			break
 		}
-		for _, f2 := range group {
+		for _, f2 := range group2 {
 			writePair(w, key, f1, f2, spec, opts)
 		}
 		lr1.next()
 	}
+	return true
 }
 
 func collectGroup(lr *lineReader, fieldNum int, key string, opts options) [][]string {

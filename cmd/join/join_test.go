@@ -4,13 +4,29 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+var binNameRe = regexp.MustCompile(`(?:/\S+/)?g?join:`)
+
+func normBinName(b []byte) []byte {
+	return binNameRe.ReplaceAll(b, []byte("join:"))
+}
+
+func normOpenPrefix(b []byte) []byte {
+	return bytes.ReplaceAll(b, []byte(": open "), []byte(": "))
+}
+
+func normLower(b []byte) []byte {
+	return bytes.ToLower(b)
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -36,6 +52,7 @@ func TestDiff(t *testing.T) {
 	writeFile(t, dir, "hdr2.txt", "Name City\nalice NYC\ncharlie LA\n")
 	writeFile(t, dir, "hdr_c1.txt", "Name,Age\nalice,30\nbob,25\n")
 	writeFile(t, dir, "hdr_c2.txt", "Name,City\nalice,NYC\ncharlie,LA\n")
+	writeFile(t, dir, "unsorted1.txt", "a 1\nc 3\nb 2\n")
 
 	tests := []testutils.DiffTest{
 		{
@@ -158,6 +175,18 @@ func TestDiff(t *testing.T) {
 			Name:    "r3_v1_full_overlap",
 			Args:    []string{"-v", "1", "f1.txt", "f2.txt"},
 			WorkDir: dir,
+		},
+		{
+			Name:      "r4_2_missing_file",
+			Args:      []string{"nonexistent_file.txt", "f2.txt"},
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{normBinName, normOpenPrefix, normLower},
+		},
+		{
+			Name:      "r4_2_check_order_unsorted",
+			Args:      []string{"--check-order", "unsorted1.txt", "f2.txt"},
+			WorkDir:   dir,
+			Normalize: []testutils.NormalizeFunc{normBinName},
 		},
 	}
 
