@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5471"
+task_title: '[stitch] cmd/numfmt: srd071 R2.1-R2.4'
+status: success
+started_at: "2026-05-22T22:28:18Z"
+duration: 16m39s
+duration_s: 998
+tokens:
+    input: 668837
+    output: 61144
+    cache_creation: 268639
+    cache_read: 400188
+cost_usd: 3.794804
+num_turns: 17
+rate_limit_wait_s: 4
+loc_before:
+    production: 18928
+    test: 17530
+loc_after:
+    production: 19055
+    test: 17595
+diff:
+    files: 3
+    insertions: 323
+    deletions: 33
