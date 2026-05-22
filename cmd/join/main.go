@@ -239,5 +239,155 @@ func openInput(name string) (*inputFile, error) {
 	}, nil
 }
 
-func joinFiles(_ *bufio.Writer, _ *inputFile, _ *inputFile, _ options) {
+type outputField struct {
+	fileNum  int
+	fieldNum int
+}
+
+type lineReader struct {
+	scanner *bufio.Scanner
+	line    string
+	hasLine bool
+}
+
+func newReader(f *inputFile) *lineReader {
+	return &lineReader{scanner: f.scanner}
+}
+
+func (r *lineReader) next() bool {
+	r.hasLine = r.scanner.Scan()
+	if r.hasLine {
+		r.line = r.scanner.Text()
+	}
+	return r.hasLine
+}
+
+func splitLine(line string, hasSep bool, sep string) []string {
+	if hasSep {
+		return strings.Split(line, sep)
+	}
+	return strings.Fields(line)
+}
+
+func getField(fields []string, n int) string {
+	if n >= 1 && n <= len(fields) {
+		return fields[n-1]
+	}
+	return ""
+}
+
+func parseOutputSpec(s string) []outputField {
+	if s == "" {
+		return nil
+	}
+	tokens := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ' '
+	})
+	spec := make([]outputField, len(tokens))
+	for i, tok := range tokens {
+		if tok == "0" {
+			spec[i] = outputField{fileNum: 0}
+			continue
+		}
+		parts := strings.SplitN(tok, ".", 2)
+		fn, _ := strconv.Atoi(parts[0])
+		fld := 0
+		if len(parts) == 2 {
+			fld, _ = strconv.Atoi(parts[1])
+		}
+		spec[i] = outputField{fileNum: fn, fieldNum: fld}
+	}
+	return spec
+}
+
+func joinFiles(w *bufio.Writer, r1, r2 *inputFile, opts options) {
+	spec := parseOutputSpec(opts.output)
+	lr1 := newReader(r1)
+	lr2 := newReader(r2)
+	lr1.next()
+	lr2.next()
+	for lr1.hasLine && lr2.hasLine {
+		f1 := splitLine(lr1.line, opts.hasSep, opts.separator)
+		f2 := splitLine(lr2.line, opts.hasSep, opts.separator)
+		key1 := getField(f1, opts.field1)
+		key2 := getField(f2, opts.field2)
+		cmp := strings.Compare(key1, key2)
+		switch {
+		case cmp < 0:
+			lr1.next()
+		case cmp > 0:
+			lr2.next()
+		default:
+			joinMatch(w, lr1, lr2, key1, spec, opts)
+		}
+	}
+}
+
+func joinMatch(w *bufio.Writer, lr1, lr2 *lineReader, key string, spec []outputField, opts options) {
+	group := collectGroup(lr2, opts.field2, key, opts)
+	for lr1.hasLine {
+		f1 := splitLine(lr1.line, opts.hasSep, opts.separator)
+		if getField(f1, opts.field1) != key {
+			break
+		}
+		for _, f2 := range group {
+			writePair(w, key, f1, f2, spec, opts)
+		}
+		lr1.next()
+	}
+}
+
+func collectGroup(lr *lineReader, fieldNum int, key string, opts options) [][]string {
+	var group [][]string
+	for lr.hasLine {
+		fields := splitLine(lr.line, opts.hasSep, opts.separator)
+		if getField(fields, fieldNum) != key {
+			break
+		}
+		group = append(group, fields)
+		lr.next()
+	}
+	return group
+}
+
+func writePair(w *bufio.Writer, key string, f1, f2 []string, spec []outputField, opts options) {
+	sep := " "
+	if opts.hasSep {
+		sep = opts.separator
+	}
+	if len(spec) > 0 {
+		fmt.Fprintln(w, formatOutput(key, f1, f2, spec, sep))
+	} else {
+		fmt.Fprintln(w, defaultOutput(key, f1, opts.field1, f2, opts.field2, sep))
+	}
+}
+
+func defaultOutput(key string, f1 []string, j1 int, f2 []string, j2 int, sep string) string {
+	parts := []string{key}
+	for i, f := range f1 {
+		if i+1 != j1 {
+			parts = append(parts, f)
+		}
+	}
+	for i, f := range f2 {
+		if i+1 != j2 {
+			parts = append(parts, f)
+		}
+	}
+	return strings.Join(parts, sep)
+}
+
+func formatOutput(key string, f1, f2 []string, spec []outputField, sep string) string {
+	parts := make([]string, len(spec))
+	for i, s := range spec {
+		switch s.fileNum {
+		case 0:
+			parts[i] = key
+		case 1:
+			parts[i] = getField(f1, s.fieldNum)
+		case 2:
+			parts[i] = getField(f2, s.fieldNum)
+		}
+	}
+	return strings.Join(parts, sep)
 }
