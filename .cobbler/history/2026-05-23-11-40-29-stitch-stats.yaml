@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5537"
+task_title: '[stitch] generation-run44 #5537'
+status: success
+started_at: "2026-05-23T15:40:29Z"
+duration: 11m39s
+duration_s: 698
+tokens:
+    input: 3726580
+    output: 29759
+    cache_creation: 287316
+    cache_read: 3439198
+cost_usd: 4.48495875
+num_turns: 113
+loc_before:
+    production: 23009
+    test: 20412
+loc_after:
+    production: 23372
+    test: 20777
+diff:
+    files: 3
+    insertions: 1081
+    deletions: 0
