@@ -18055,3 +18055,203 @@
       - id: AC4
         text: "Invalid mode specification produces a diagnostic on stderr and exits non-zero"
   dependency: 2
+- index: 0
+  title: '[stitch] Implement cmd/chgrp core group-change and argument parsing (srd090 R1.1, R1.2, R1.3, R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd090-chgrp.yaml (SRD defining all chgrp requirements and acceptance criteria)
+      - cmd/chmod/main.go (reference implementation of similar permission-change utility in this project)
+      - cmd/chmod/chmod_test.go (reference differential test structure for permission utilities)
+      - pkg/sys/ (InstallSIGPIPEHandler function for SIGPIPE handling)
+      - pkg/testutils/ (DiffTest struct, BuildBinary, and RunDiffTests for differential testing)
+
+    files:
+      - path: cmd/chgrp/main.go
+        action: create
+        note: chgrp utility -- argument parsing, group resolution, ownership change
+      - path: cmd/chgrp/chgrp_test.go
+        action: create
+        note: differential tests against gchgrp reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd090 R1.1: parse command-line flags and the GROUP FILE... argument structure per the SRD"
+      - id: R2
+        text: "Implement srd090 R1.2: resolve the GROUP operand to a numeric GID, supporting both group names and numeric GIDs"
+      - id: R3
+        text: "Implement srd090 R1.3: apply group ownership change to each specified file using the resolved GID"
+      - id: R4
+        text: "Implement srd090 R1.4: install SIGPIPE handler via sys.InstallSIGPIPEHandler() and support --help and --version flags"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per project SIGPIPE protocol"
+      - id: D2
+        text: "Use os.Chown(path, -1, gid) to change group without modifying the file owner"
+      - id: D3
+        text: "Use os/user.LookupGroup for name-to-GID resolution and strconv.Atoi for numeric GIDs"
+      - id: D4
+        text: "Use the differential testing pattern: testutils.BuildBinary + exec.LookPath(\"gchgrp\") + testutils.RunDiffTests with t.Skip if reference binary not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/chgrp ./cmd/chgrp/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/chgrp/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/chgrp/ -count=1 passes, including differential tests against gchgrp when available"
+      - id: AC4
+        text: "chgrp correctly changes group ownership of a regular file to the specified group"
+      - id: AC5
+        text: "chgrp handles numeric GID arguments correctly"
+      - id: AC6
+        text: "All srd090 R1.1 through R1.4 acceptance criteria from the SRD are satisfied"
+  dependency: -1
+- index: 1
+  title: '[stitch] Implement cmd/chgrp recursive traversal and symlink options (srd090 R2.1, R2.2, R2.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd090-chgrp.yaml (SRD defining all chgrp requirements -- focus on R2.x group)
+      - cmd/chgrp/main.go (existing core chgrp implementation to extend with recursive and symlink support)
+      - cmd/chgrp/chgrp_test.go (existing differential tests to extend with recursive and symlink cases)
+
+    files:
+      - path: cmd/chgrp/main.go
+        action: modify
+        note: add recursive traversal (-R) and symlink handling flags (-H, -L, -P, --dereference, --no-dereference)
+      - path: cmd/chgrp/chgrp_test.go
+        action: modify
+        note: add differential tests for recursive traversal and symlink handling behaviors
+
+    requirements:
+      - id: R1
+        text: "Implement srd090 R2.1: add -R/--recursive flag for recursive directory traversal, changing group of all files and directories within the hierarchy"
+      - id: R2
+        text: "Implement srd090 R2.2: add symlink traversal control flags -H (follow command-line symlinks only), -L (follow all symlinks), -P (never follow symlinks) for recursive mode"
+      - id: R3
+        text: "Implement srd090 R2.3: add --dereference and --no-dereference flags for controlling symlink dereferencing behavior"
+
+    design_decisions:
+      - id: D1
+        text: "Use filepath.WalkDir for recursive traversal with symlink-aware behavior controlled by -H/-L/-P flags"
+      - id: D2
+        text: "Default to -P (do not follow symlinks) in recursive mode to match GNU chgrp default behavior"
+      - id: D3
+        text: "Use os.Lchown when --no-dereference is active to change the symlink itself rather than its target"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/chgrp ./cmd/chgrp/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/chgrp/ -count=1 passes with all existing and new tests"
+      - id: AC3
+        text: "chgrp -R changes group recursively through directory trees"
+      - id: AC4
+        text: "Symlink handling matches GNU gchgrp behavior for -H, -L, -P flags in recursive mode"
+      - id: AC5
+        text: "All srd090 R2.1 through R2.3 acceptance criteria from the SRD are satisfied"
+  dependency: 0
+- index: 2
+  title: '[stitch] Implement cmd/chgrp error handling and verbose output (srd090 R3.1, R3.2, R3.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd090-chgrp.yaml (SRD defining all chgrp requirements -- focus on R3.x group)
+      - cmd/chgrp/main.go (existing chgrp implementation to extend with verbose output and error handling)
+      - cmd/chgrp/chgrp_test.go (existing differential tests to extend with verbose and error cases)
+
+    files:
+      - path: cmd/chgrp/main.go
+        action: modify
+        note: add verbose/changes output (-v, -c), silent mode (-f), and exit code semantics
+      - path: cmd/chgrp/chgrp_test.go
+        action: modify
+        note: add differential tests for verbose output, error messages, and exit codes
+
+    requirements:
+      - id: R1
+        text: "Implement srd090 R3.1: add -v/--verbose flag to print a diagnostic for every file processed, and -c/--changes flag to report only when a change is actually made"
+      - id: R2
+        text: "Implement srd090 R3.2: add -f/--silent/--quiet flag to suppress most error messages"
+      - id: R3
+        text: "Implement srd090 R3.3: implement exit code semantics -- exit 0 on complete success, exit nonzero on any failure, with error messages written to stderr"
+
+    design_decisions:
+      - id: D1
+        text: "Print verbose and changes diagnostics to stdout matching the GNU chgrp output format"
+      - id: D2
+        text: "Track whether any file operation fails across all arguments and set exit code accordingly at program exit"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/chgrp ./cmd/chgrp/ compiles without errors"
+      - id: AC2
+        text: "go test ./cmd/chgrp/ -count=1 passes with all existing and new tests"
+      - id: AC3
+        text: "chgrp -v prints a diagnostic line for every file processed"
+      - id: AC4
+        text: "chgrp -c prints diagnostics only for files whose group actually changed"
+      - id: AC5
+        text: "chgrp exits with nonzero status when it fails to change group of any file, and prints error to stderr"
+      - id: AC6
+        text: "All srd090 R3.1 through R3.3 acceptance criteria from the SRD are satisfied"
+  dependency: 0
+- index: 3
+  title: '[stitch] Implement cmd/chown core ownership-change and argument parsing (srd091 R1.1, R1.2, R1.3, R1.4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd091-chown.yaml (SRD defining all chown requirements and acceptance criteria)
+      - cmd/chmod/main.go (reference implementation of similar permission/ownership utility in this project)
+      - cmd/chmod/chmod_test.go (reference differential test structure for permission utilities)
+      - pkg/sys/ (InstallSIGPIPEHandler function for SIGPIPE handling)
+      - pkg/testutils/ (DiffTest struct, BuildBinary, and RunDiffTests for differential testing)
+
+    files:
+      - path: cmd/chown/main.go
+        action: create
+        note: chown utility -- OWNER[:GROUP] parsing, uid/gid resolution, ownership change
+      - path: cmd/chown/chown_test.go
+        action: create
+        note: differential tests against gchown reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd091 R1.1: parse command-line flags and the OWNER[:GROUP] FILE... argument structure per the SRD"
+      - id: R2
+        text: "Implement srd091 R1.2: resolve OWNER to numeric UID and optional GROUP to numeric GID, supporting both names and numeric IDs"
+      - id: R3
+        text: "Implement srd091 R1.3: apply ownership change to each specified file using the resolved UID and GID via os.Chown"
+      - id: R4
+        text: "Implement srd091 R1.4: install SIGPIPE handler via sys.InstallSIGPIPEHandler() and support --help and --version flags"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per project SIGPIPE protocol"
+      - id: D2
+        text: "Parse OWNER[:GROUP] supporting all GNU chown forms: OWNER, OWNER:GROUP, OWNER:, :GROUP"
+      - id: D3
+        text: "Use os/user.Lookup for name-to-UID resolution and os/user.LookupGroup for name-to-GID resolution"
+      - id: D4
+        text: "Use the differential testing pattern: testutils.BuildBinary + exec.LookPath(\"gchown\") + testutils.RunDiffTests with t.Skip if reference binary not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/chown ./cmd/chown/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/chown/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/chown/ -count=1 passes, including differential tests against gchown when available"
+      - id: AC4
+        text: "chown correctly changes owner and group of a regular file"
+      - id: AC5
+        text: "chown handles the OWNER:GROUP, OWNER:, :GROUP, and bare OWNER argument forms"
+      - id: AC6
+        text: "All srd091 R1.1 through R1.4 acceptance criteria from the SRD are satisfied"
+  dependency: -1
