@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd073-printf R1.1-R1.4.
+// Implements srd073-printf R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -277,6 +277,9 @@ func fmtUnsigned(goFmt, arg string, ps *printState, out *strings.Builder) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "printf: '%s': expected a numeric value\n", arg)
 		ps.hadErr = true
+	}
+	if n == 0 {
+		goFmt = strings.ReplaceAll(goFmt, "#", "")
 	}
 	fmt.Fprintf(out, goFmt, uint64(n))
 }
