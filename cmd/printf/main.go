@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd073-printf R1.1-R1.4, R2.1-R2.4.
+// Implements srd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
 package main
 
 import (

@@ -125,6 +125,46 @@ func TestDiff(t *testing.T) {
 		{Name: "percent-with-directive", Args: []string{`%d%%\n`, "42"}, Env: []string{"LC_ALL=C"}},
 		{Name: "percent-multiple", Args: []string{`%%-%%-%%\n`}, Env: []string{"LC_ALL=C"}},
 
+		// R3.1: C-style escape sequences in FORMAT
+		{Name: "esc-backslash", Args: []string{`a\\b`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-bell", Args: []string{`\a`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-backspace", Args: []string{`x\b`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-formfeed", Args: []string{`\f`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-newline", Args: []string{`\n`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-cr", Args: []string{`\r`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-tab", Args: []string{`\t`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-vtab", Args: []string{`\v`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-octal-101", Args: []string{`\101`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-octal-012", Args: []string{`\012`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-octal-0", Args: []string{`\0`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-hex-41", Args: []string{`\x41`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-hex-0a", Args: []string{`\x0a`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-unicode-u0041", Args: []string{`A`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-unicode-u00e9", Args: []string{`é`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-unicode-U00000041", Args: []string{`\U00000041`}, Env: []string{"LC_ALL=C"}},
+		{Name: "esc-mixed", Args: []string{`\t\101\n`}, Env: []string{"LC_ALL=C"}},
+
+		// R3.2: argument recycling
+		{Name: "recycle-string", Args: []string{`%s\n`, "a", "b", "c"}, Env: []string{"LC_ALL=C"}},
+		{Name: "recycle-int", Args: []string{`%d\n`, "1", "2", "3"}, Env: []string{"LC_ALL=C"}},
+		{Name: "recycle-two-specs", Args: []string{`%s=%d\n`, "a", "1", "b", "2"}, Env: []string{"LC_ALL=C"}},
+		{Name: "recycle-single-arg", Args: []string{`[%s]\n`, "only"}, Env: []string{"LC_ALL=C"}},
+
+		// R3.3: missing arguments default to 0 / ""
+		{Name: "missing-int", Args: []string{`%d %d\n`, "42"}, Env: []string{"LC_ALL=C"}},
+		{Name: "missing-string", Args: []string{`%s %s\n`, "hello"}, Env: []string{"LC_ALL=C"}},
+		{Name: "missing-float", Args: []string{`%f %f\n`, "3.14"}, Env: []string{"LC_ALL=C"}},
+		{Name: "missing-all", Args: []string{`%d %s %f\n`}, Env: []string{"LC_ALL=C"}},
+		{Name: "missing-char", Args: []string{`%c\n`}, Env: []string{"LC_ALL=C"}},
+
+		// R3.4: quote-prefix character value
+		{Name: "quote-single-A", Args: []string{`%d\n`, `'A`}, Env: []string{"LC_ALL=C"}},
+		{Name: "quote-double-A", Args: []string{`%d\n`, `"A`}, Env: []string{"LC_ALL=C"}},
+		{Name: "quote-single-zero", Args: []string{`%d\n`, `'0`}, Env: []string{"LC_ALL=C"}},
+		{Name: "quote-single-space", Args: []string{`%d\n`, `' `}, Env: []string{"LC_ALL=C"}},
+		{Name: "quote-float-A", Args: []string{`%f\n`, `'A`}, Env: []string{"LC_ALL=C"}},
+		{Name: "quote-hex-A", Args: []string{`%x\n`, `'A`}, Env: []string{"LC_ALL=C"}},
+
 		// R1.1: error cases with normalizer
 		{Name: "d-non-numeric", Args: []string{`%d\n`, "abc"}, Env: []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normStderr}},
