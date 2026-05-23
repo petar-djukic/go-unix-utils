@@ -1,0 +1,23 @@
+task_id: "5547"
+task_title: '[stitch] Implement cmd/chmod core mode parsing and application (srd089 R1.1, R1.2, R1.3, R1.4)'
+status: success
+branch: task/generation-run44-5547
+diff:
+    files: 2
+    insertions: 618
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-23-13-02-24-stitch-orchestrator.log
+      status: M
+      insertions: 314
+      deletions: 0
+    - path: cmd/chmod/main.go
+      status: A
+      insertions: 305
+      deletions: 0
+loc_before:
+    production: 23372
+    test: 20671
+loc_after:
+    production: 23677
+    test: 20671
