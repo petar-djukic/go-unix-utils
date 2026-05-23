@@ -172,3 +172,13 @@ bin/b2su...
 [2026-05-22T21:25:37-04:00] [generation-run44] [stitch +3m52s] closeStitchTask: closing #5493 "[stitch] cmd/b2sum implementation -- srd076 R1.1, R1.2, R1.3, R1.4"
 [2026-05-22T21:25:38-04:00] [generation-run44] [stitch +3m53s] commentCobblerIssue: posted comment on #5493
 [2026-05-22T21:25:38-04:00] [generation-run44] [stitch +3m53s] updateRequirementsFile: marked 4 R-items as complete for issue #5493
+[2026-05-22T21:25:41-04:00] [generation-run44] [stitch +3m55s] closeCobblerIssue: closed #5493
+[2026-05-22T21:25:43-04:00] [generation-run44] [stitch +3m57s] closeStitchTask: #5493 closed
+[2026-05-22T21:25:43-04:00] [generation-run44] [stitch +3m57s] sweepCompletedTasks: all R-items for #5494 already complete, closing
+[2026-05-22T21:25:44-04:00] [generation-run44] [stitch +3m58s] commentCobblerIssue: posted comment on #5494
+[2026-05-22T21:25:46-04:00] [generation-run44] [stitch +4m0s] closeCobblerIssue: closed #5494
+[2026-05-22T21:25:48-04:00] [generation-run44] [stitch +4m2s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-22T21:25:48-04:00] [generation-run44] [stitch +4m2s] doOneTask: task 5493 finished in 3m57s
+[2026-05-22T21:25:48-04:00] [generation-run44] [stitch +4m2s] task 5493 completed in 3m57s
+[2026-05-22T21:25:48-04:00] [generation-run44] [stitch +4m2s] reached per-cycle limit (1), pausing for measure
+[2026-05-22T21:25:48-04:00] [generation-run44] [stitch +4m2s] completed 1 task(s) in 4m2s
