@@ -197,6 +197,13 @@ func TestDiff(t *testing.T) {
 			Args: []string{"--algorithm=sm3", "--raw", helloFile},
 		},
 		// R3.1: exit 0 on success (verified by all above tests with default ExitCode=0)
+		// R3.2: invalid algorithm exits 1
+		{
+			Name:      "invalid-algorithm",
+			Args:      []string{"--algorithm=invalid", helloFile},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
