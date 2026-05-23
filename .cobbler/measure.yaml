@@ -17915,3 +17915,143 @@
       - id: AC5
         text: "Exit codes match GNU gtruncate behavior for both success and error cases"
   dependency: 1
+- index: 0
+  title: '[stitch] Implement cmd/chmod core mode parsing and application (srd089 R1.1, R1.2, R1.3, R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd089-chmod.yaml (requirements R1.1, R1.2, R1.3, R1.4)
+      - pkg/sys/ (InstallSIGPIPEHandler usage pattern)
+
+    files:
+      - path: cmd/chmod/main.go
+        action: create
+        note: chmod binary with core mode parsing and file mode application
+
+    requirements:
+      - id: R1
+        text: "Implement srd089 R1.1: chmod invocation, argument parsing for MODE and FILE operands"
+      - id: R2
+        text: "Implement srd089 R1.2: octal mode specification for absolute permission setting"
+      - id: R3
+        text: "Implement srd089 R1.3: symbolic mode specification parsing and application (ugoa, +-=, rwxXst)"
+      - id: R4
+        text: "Implement srd089 R1.4: --help and --version output"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at start of main per project SIGPIPE protocol"
+      - id: D2
+        text: "Use os.Chmod for applying computed mode to each file operand"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/chmod ./cmd/chmod/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/chmod/... passes with no warnings"
+      - id: AC3
+        text: "chmod with octal mode (e.g., 755) sets correct file permissions"
+      - id: AC4
+        text: "chmod with symbolic mode (e.g., u+x, g-w, o=r) modifies permissions correctly"
+  dependency: -1
+- index: 1
+  title: '[stitch] Implement cmd/chmod verbose, silent, and recursive options (srd089 R2.1, R2.2, R2.3, R2.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd089-chmod.yaml (requirements R2.1, R2.2, R2.3, R2.4)
+      - cmd/chmod/main.go (existing core implementation)
+
+    files:
+      - path: cmd/chmod/main.go
+        action: modify
+        note: Add verbose, changes, silent, and recursive flag support
+
+    requirements:
+      - id: R1
+        text: "Implement srd089 R2.1: -v/--verbose flag reporting every file processed with mode change details"
+      - id: R2
+        text: "Implement srd089 R2.2: -c/--changes flag reporting only files whose permissions actually changed"
+      - id: R3
+        text: "Implement srd089 R2.3: -f/--silent/--quiet flag suppressing most error messages"
+      - id: R4
+        text: "Implement srd089 R2.4: -R/--recursive flag for recursive directory traversal"
+
+    design_decisions:
+      - id: D1
+        text: "Use filepath.WalkDir for recursive directory traversal with -R"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/chmod ./cmd/chmod/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/chmod/... passes with no warnings"
+      - id: AC3
+        text: "-v flag prints mode change messages for each file processed"
+      - id: AC4
+        text: "-R flag recursively changes permissions on all files within a directory tree"
+  dependency: 0
+- index: 2
+  title: '[stitch] Implement cmd/chmod root protection and reference mode (srd089 R3.1, R3.2)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd089-chmod.yaml (requirements R3.1, R3.2)
+      - cmd/chmod/main.go (existing implementation with recursive support)
+
+    files:
+      - path: cmd/chmod/main.go
+        action: modify
+        note: Add preserve-root safety and reference file mode support
+
+    requirements:
+      - id: R1
+        text: "Implement srd089 R3.1: --preserve-root (default with -R) and --no-preserve-root flags to prevent recursive chmod on /"
+      - id: R2
+        text: "Implement srd089 R3.2: --reference=RFILE flag to copy mode bits from a reference file"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/chmod ./cmd/chmod/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/chmod/... passes with no warnings"
+      - id: AC3
+        text: "--preserve-root causes chmod -R to refuse to operate on / and exit with error"
+      - id: AC4
+        text: "--reference=RFILE applies the mode of RFILE to target files"
+  dependency: 1
+- index: 3
+  title: '[stitch] Implement cmd/chmod error handling and exit codes (srd089 R4.1, R4.2, R4.3)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd089-chmod.yaml (requirements R4.1, R4.2, R4.3)
+      - cmd/chmod/main.go (existing implementation)
+
+    files:
+      - path: cmd/chmod/main.go
+        action: modify
+        note: Add error handling, exit codes, and edge case handling
+
+    requirements:
+      - id: R1
+        text: "Implement srd089 R4.1: exit code 0 on success, 1 on any operational failure"
+      - id: R2
+        text: "Implement srd089 R4.2: permission error handling and diagnostic messages on stderr"
+      - id: R3
+        text: "Implement srd089 R4.3: error handling for invalid mode specifications and missing operands"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/chmod ./cmd/chmod/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/chmod/... passes with no warnings"
+      - id: AC3
+        text: "chmod exits 0 on success and 1 when any file operation fails"
+      - id: AC4
+        text: "Invalid mode specification produces a diagnostic on stderr and exits non-zero"
+  dependency: 2
