@@ -163,3 +163,13 @@
 [2026-05-23T08:14:17-04:00] [generation-run44] [stitch +7m29s] closeStitchTask: closing #5523 "[stitch] Implement cmd/basenc decoding mode (srd081-basenc R2.1-R2.4)"
 [2026-05-23T08:14:18-04:00] [generation-run44] [stitch +7m30s] commentCobblerIssue: posted comment on #5523
 [2026-05-23T08:14:18-04:00] [generation-run44] [stitch +7m30s] updateRequirementsFile: marked 4 R-items as complete for issue #5523
+[2026-05-23T08:14:21-04:00] [generation-run44] [stitch +7m34s] closeCobblerIssue: closed #5523
+[2026-05-23T08:14:23-04:00] [generation-run44] [stitch +7m35s] closeStitchTask: #5523 closed
+[2026-05-23T08:14:23-04:00] [generation-run44] [stitch +7m36s] sweepCompletedTasks: all R-items for #5523 already complete, closing
+[2026-05-23T08:14:24-04:00] [generation-run44] [stitch +7m37s] commentCobblerIssue: posted comment on #5523
+[2026-05-23T08:14:25-04:00] [generation-run44] [stitch +7m38s] closeCobblerIssue: closed #5523
+[2026-05-23T08:14:27-04:00] [generation-run44] [stitch +7m40s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-23T08:14:27-04:00] [generation-run44] [stitch +7m40s] doOneTask: task 5523 finished in 7m32s
+[2026-05-23T08:14:27-04:00] [generation-run44] [stitch +7m40s] task 5523 completed in 7m32s
+[2026-05-23T08:14:27-04:00] [generation-run44] [stitch +7m40s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T08:14:27-04:00] [generation-run44] [stitch +7m40s] completed 1 task(s) in 7m40s

@@ -4757,16 +4757,16 @@ requirements:
             issue: 5523
             weight: 1
         R3.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.3:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.4:
-            status: proposed
+            status: in_progress
             weight: 1
     srd082-stat:
         R1.1:
