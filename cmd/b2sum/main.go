@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"os"
+	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/blake2b"
@@ -15,18 +16,35 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-func newBLAKE2b() hash.Hash {
-	h, _ := blake2b.New512(nil)
-	return h
+func newBLAKE2b(size int) func() hash.Hash {
+	return func() hash.Hash {
+		h, _ := blake2b.New(size, nil)
+		return h
+	}
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 	opts, files := parseArgs(os.Args[1:])
+
+	if opts.length == 0 {
+		opts.length = 512
+	}
+	if opts.length <= 0 || opts.length%8 != 0 || opts.length > 512 {
+		fmt.Fprintf(os.Stderr, "b2sum: invalid length: %d\n", opts.length)
+		os.Exit(1)
+	}
+
+	digestBytes := opts.length / 8
+	algorithm := "BLAKE2b"
+	if opts.length != 512 {
+		algorithm = fmt.Sprintf("BLAKE2b-%d", opts.length)
+	}
+
 	cfg := hashutil.HashConfig{
-		Algorithm: "BLAKE2b",
-		NewHash:   newBLAKE2b,
-		DigestLen: 64,
+		Algorithm: algorithm,
+		NewHash:   newBLAKE2b(digestBytes),
+		DigestLen: digestBytes,
 	}
 	if opts.check {
 		checkOpts := hashutil.CheckOptions{
@@ -56,6 +74,7 @@ type options struct {
 	warn   bool
 	quiet  bool
 	status bool
+	length int
 }
 
 func parseArgs(args []string) (options, []string) {
@@ -68,7 +87,7 @@ func parseArgs(args []string) (options, []string) {
 			files = append(files, args[i+1:]...)
 			break
 		}
-		if handled, advance := parseLongFlag(arg, &opts); handled {
+		if handled, advance := parseLongFlag(args[i:], &opts); handled {
 			i += advance
 			continue
 		}
@@ -82,9 +101,13 @@ func parseArgs(args []string) (options, []string) {
 	return opts, files
 }
 
-func parseLongFlag(arg string, opts *options) (bool, int) {
+func parseLongFlag(remaining []string, opts *options) (bool, int) {
+	arg := remaining[0]
 	if !strings.HasPrefix(arg, "--") {
 		return false, 0
+	}
+	if arg == "--length" || strings.HasPrefix(arg, "--length=") {
+		return parseLengthFlag(remaining, opts)
 	}
 	switch arg {
 	case "--binary":
@@ -105,6 +128,31 @@ func parseLongFlag(arg string, opts *options) (bool, int) {
 		return false, 0
 	}
 	return true, 1
+}
+
+func parseLengthFlag(remaining []string, opts *options) (bool, int) {
+	arg := remaining[0]
+	if strings.HasPrefix(arg, "--length=") {
+		val := arg[len("--length="):]
+		n, err := strconv.Atoi(val)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "b2sum: invalid length: '%s'\n", val)
+			os.Exit(1)
+		}
+		opts.length = n
+		return true, 1
+	}
+	if len(remaining) < 2 {
+		fmt.Fprintf(os.Stderr, "b2sum: option '--length' requires an argument\n")
+		os.Exit(1)
+	}
+	n, err := strconv.Atoi(remaining[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "b2sum: invalid length: '%s'\n", remaining[1])
+		os.Exit(1)
+	}
+	opts.length = n
+	return true, 2
 }
 
 func parseShortFlags(flags string, opts *options) int {
