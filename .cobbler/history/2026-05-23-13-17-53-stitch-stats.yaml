@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5550"
+task_title: '[stitch] Implement cmd/chmod error handling and exit codes (srd089 R4.1, R4.2, R4.3)'
+status: success
+started_at: "2026-05-23T17:17:53Z"
+duration: 4m9s
+duration_s: 248
+tokens:
+    input: 384135
+    output: 8857
+    cache_creation: 224368
+    cache_read: 159758
+cost_usd: 2.1127207500000007
+num_turns: 18
+rate_limit_wait_s: 2
+loc_before:
+    production: 23900
+    test: 20671
+loc_after:
+    production: 23913
+    test: 20671
+diff:
+    files: 2
+    insertions: 116
+    deletions: 0

@@ -1,0 +1,23 @@
+task_id: "5550"
+task_title: '[stitch] Implement cmd/chmod error handling and exit codes (srd089 R4.1, R4.2, R4.3)'
+status: success
+branch: task/generation-run44-5550
+diff:
+    files: 2
+    insertions: 116
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-23-13-17-44-stitch-orchestrator.log
+      status: M
+      insertions: 104
+      deletions: 0
+    - path: cmd/chmod/main.go
+      status: M
+      insertions: 13
+      deletions: 0
+loc_before:
+    production: 23900
+    test: 20671
+loc_after:
+    production: 23913
+    test: 20671
