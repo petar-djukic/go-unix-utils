@@ -4635,16 +4635,20 @@ requirements:
             weight: 1
     srd079-base32:
         R1.1:
-            status: in_progress
+            status: uncertain
+            issue: 5513
             weight: 1
         R1.2:
-            status: in_progress
+            status: uncertain
+            issue: 5513
             weight: 1
         R1.3:
-            status: in_progress
+            status: uncertain
+            issue: 5513
             weight: 1
         R1.4:
-            status: in_progress
+            status: uncertain
+            issue: 5513
             weight: 1
         R2.1:
             status: proposed
