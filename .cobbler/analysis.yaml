@@ -564,11 +564,11 @@ code_status:
         - version: "10.1"
           name: Batch 10.1 — permission and ownership (chmod, chgrp, chown)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel10.1-uc001-chmod
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel10.1-uc002-chgrp
