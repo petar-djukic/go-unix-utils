@@ -426,3 +426,9 @@ import (
 [2026-05-22T22:19:47-04:00] [generation-run44] [stitch +17m15s] doOneTask: closing task 5502
 [2026-05-22T22:19:47-04:00] [generation-run44] [stitch +17m15s] closeStitchTask: closing #5502 "[stitch] generation-run44 #5502"
 [2026-05-22T22:19:48-04:00] [generation-run44] [stitch +17m15s] commentCobblerIssue: posted comment on #5502
+[2026-05-22T22:19:50-04:00] [generation-run44] [stitch +17m17s] closeCobblerIssue: closed #5502
+[2026-05-22T22:19:50-04:00] [generation-run44] [stitch +17m18s] closeStitchTask: #5502 closed
+[2026-05-22T22:19:51-04:00] [generation-run44] [stitch +17m18s] doOneTask: task 5502 finished in 17m11s
+[2026-05-22T22:19:51-04:00] [generation-run44] [stitch +17m18s] task 5502 completed in 17m11s
+[2026-05-22T22:19:51-04:00] [generation-run44] [stitch +17m18s] reached per-cycle limit (1), pausing for measure
+[2026-05-22T22:19:51-04:00] [generation-run44] [stitch +17m18s] completed 1 task(s) in 17m18s
