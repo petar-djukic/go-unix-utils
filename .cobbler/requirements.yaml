@@ -4471,16 +4471,20 @@ requirements:
             issue: 5490
             weight: 1
         R2.1:
-            status: in_progress
+            status: uncertain
+            issue: 5491
             weight: 1
         R2.2:
-            status: in_progress
+            status: uncertain
+            issue: 5491
             weight: 1
         R2.3:
-            status: in_progress
+            status: uncertain
+            issue: 5491
             weight: 1
         R3.1:
-            status: in_progress
+            status: uncertain
+            issue: 5491
             weight: 1
         R3.2:
             status: ready
