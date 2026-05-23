@@ -4855,35 +4855,35 @@ requirements:
             issue: 5525
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
     srd085-sync:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R1.2:
-            status: ready
+            status: proposed
             weight: 1
         R1.3:
-            status: ready
+            status: proposed
             weight: 1
         R1.4:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
     srd086-hashutil:
         R1.1:
