@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4.
+// Implements srd073-printf R1.1-R1.4, R2.1-R2.4, R3.1-R3.4, R4.1-R4.2.
 package main
 
 import (
@@ -172,6 +172,7 @@ func hexVal(c byte) (int, bool) {
 func processDirective(
 	format string, i int, ps *printState, out *strings.Builder,
 ) int {
+	start := i - 1
 	if i >= len(format) {
 		out.WriteByte('%')
 		return i
@@ -198,7 +199,19 @@ func processDirective(
 		ps.hadErr = true
 		return i
 	}
-	formatSpec(format[i], dir.String(), ps, out)
+	switch format[i] {
+	case 'd', 'i', 'o', 'u', 'x', 'X', 'f', 'F', 'e', 'E', 'g', 'G', 's', 'c', 'b':
+		formatSpec(format[i], dir.String(), ps, out)
+	default:
+		end := i + 1
+		if end < len(format) {
+			end++
+		}
+		fmt.Fprintf(os.Stderr,
+			"printf: %s: invalid conversion specification\n", format[start:end])
+		ps.hadErr = true
+		ps.stopped = true
+	}
 	return i + 1
 }
 
@@ -257,9 +270,6 @@ func formatSpec(spec byte, dir string, ps *printState, out *strings.Builder) {
 		fmtChar(dir, arg, out)
 	case 'b':
 		fmtBStr(arg, ps, out)
-	default:
-		fmt.Fprintf(os.Stderr, "printf: '%%%c': invalid directive\n", spec)
-		ps.hadErr = true
 	}
 }
 

@@ -165,9 +165,33 @@ func TestDiff(t *testing.T) {
 		{Name: "quote-float-A", Args: []string{`%f\n`, `'A`}, Env: []string{"LC_ALL=C"}},
 		{Name: "quote-hex-A", Args: []string{`%x\n`, `'A`}, Env: []string{"LC_ALL=C"}},
 
-		// R1.1: error cases with normalizer
+		// R4.1-R4.2: exit codes and error cases
 		{Name: "d-non-numeric", Args: []string{`%d\n`, "abc"}, Env: []string{"LC_ALL=C"},
 			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "i-non-numeric", Args: []string{`%i\n`, "abc"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "u-non-numeric", Args: []string{`%u\n`, "abc"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "o-non-numeric", Args: []string{`%o\n`, "abc"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "x-non-numeric", Args: []string{`%x\n`, "abc"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "X-non-numeric", Args: []string{`%X\n`, "abc"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "f-non-numeric", Args: []string{`%f\n`, "abc"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "e-non-numeric", Args: []string{`%e\n`, "abc"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "g-non-numeric", Args: []string{`%g\n`, "abc"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "invalid-directive-z", Args: []string{`%z\n`, "42"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "partial-output-on-error", Args: []string{`%d %d\n`, "42", "abc"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "error-then-recycle", Args: []string{`%d\n`, "abc", "42"}, Env: []string{"LC_ALL=C"},
+			Normalize: []testutils.NormalizeFunc{normStderr}},
+		{Name: "success-exit-simple", Args: []string{`hello\n`}, Env: []string{"LC_ALL=C"}},
+		{Name: "success-exit-formatted", Args: []string{`%d %s\n`, "42", "hello"}, Env: []string{"LC_ALL=C"}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
