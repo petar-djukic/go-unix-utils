@@ -18,7 +18,7 @@ import (
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	wrap, file := parseArgs(os.Args[1:])
+	wrap, decode, ignoreGarbage, file := parseArgs(os.Args[1:])
 
 	rc, err := encutil.OpenInput(file)
 	if err != nil {
@@ -27,10 +27,17 @@ func main() {
 	}
 	defer rc.Close()
 
-	err = encutil.Encode(rc, os.Stdout, encutil.EncoderConfig{
-		Encode:  encodeBase64,
-		WrapCol: wrap,
-	})
+	if decode {
+		err = encutil.Decode(rc, os.Stdout, encutil.DecoderConfig{
+			Decode:        decodeBase64,
+			IgnoreGarbage: ignoreGarbage,
+		})
+	} else {
+		err = encutil.Encode(rc, os.Stdout, encutil.EncoderConfig{
+			Encode:  encodeBase64,
+			WrapCol: wrap,
+		})
+	}
 	if err != nil {
 		if errors.Is(err, syscall.EPIPE) {
 			os.Exit(0)
@@ -44,8 +51,13 @@ func encodeBase64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
-func parseArgs(args []string) (int, string) {
+func decodeBase64(s string) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(s)
+}
+
+func parseArgs(args []string) (int, bool, bool, string) {
 	wrap := 76
+	var decode, ignoreGarbage bool
 	var file string
 	i := 0
 	for i < len(args) {
@@ -56,7 +68,7 @@ func parseArgs(args []string) (int, string) {
 			}
 			break
 		}
-		if handled, advance := parseLongFlag(args[i:], &wrap); handled {
+		if handled, advance := parseLongFlag(args[i:], &wrap, &decode, &ignoreGarbage); handled {
 			i += advance
 			continue
 		}
@@ -65,15 +77,23 @@ func parseArgs(args []string) (int, string) {
 			i++
 			continue
 		}
-		i += parseShortFlags(args[i:], &wrap)
+		i += parseShortFlags(args[i:], &wrap, &decode, &ignoreGarbage)
 	}
-	return wrap, file
+	return wrap, decode, ignoreGarbage, file
 }
 
-func parseLongFlag(remaining []string, wrap *int) (bool, int) {
+func parseLongFlag(remaining []string, wrap *int, decode, ignoreGarbage *bool) (bool, int) {
 	arg := remaining[0]
 	if !strings.HasPrefix(arg, "--") {
 		return false, 0
+	}
+	if arg == "--decode" {
+		*decode = true
+		return true, 1
+	}
+	if arg == "--ignore-garbage" {
+		*ignoreGarbage = true
+		return true, 1
 	}
 	if arg == "--wrap" || strings.HasPrefix(arg, "--wrap=") {
 		return parseWrapFlag(remaining, wrap)
@@ -108,11 +128,15 @@ func parseWrapFlag(remaining []string, wrap *int) (bool, int) {
 	return true, 2
 }
 
-func parseShortFlags(remaining []string, wrap *int) int {
+func parseShortFlags(remaining []string, wrap *int, decode, ignoreGarbage *bool) int {
 	arg := remaining[0]
 	flags := arg[1:]
 	for j := 0; j < len(flags); j++ {
 		switch flags[j] {
+		case 'd':
+			*decode = true
+		case 'i':
+			*ignoreGarbage = true
 		case 'w':
 			val := flags[j+1:]
 			if val != "" {
