@@ -306,9 +306,17 @@ func TestSIGPIPE(t *testing.T) {
 	if err := os.WriteFile(largePath, bytes.Repeat([]byte("x\n"), 500000), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	t.Run("go", func(t *testing.T) { testSIGPIPE(t, goBin, largePath) })
+	if refBin, err := exec.LookPath("gb2sum"); err == nil {
+		t.Run("ref", func(t *testing.T) { testSIGPIPE(t, refBin, largePath) })
+	}
+}
+
+func testSIGPIPE(t *testing.T, bin, filePath string) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, goBin, largePath)
+	cmd := exec.CommandContext(ctx, bin, filePath)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -323,10 +331,10 @@ func TestSIGPIPE(t *testing.T) {
 	stdout.Close()
 	err = cmd.Wait()
 	if ctx.Err() == context.DeadlineExceeded {
-		t.Fatal("b2sum timed out; SIGPIPE handler may not be installed")
+		t.Fatalf("%s timed out; SIGPIPE handler may not be installed", bin)
 	}
 	if err != nil {
-		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
+		t.Fatalf("%s: expected exit 0 on SIGPIPE, got: %v", bin, err)
 	}
 }
 
