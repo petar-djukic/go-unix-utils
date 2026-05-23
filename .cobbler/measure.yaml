@@ -17767,3 +17767,151 @@
       - id: AC4
         text: "go vet ./cmd/truncate/" passes with no warnings
   dependency: 2
+- index: 0
+  title: '[stitch] Implement cmd/truncate core size operations (srd083 R1.1, R1.2, R1.3, R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd083-truncate.yaml (full SRD -- read all requirement groups R1 through R3 for context, implement only R1.1 through R1.4 in this task)
+      - cmd/truncate/truncate_test.go (existing differential tests -- do not modify this file, only create main.go)
+      - pkg/sizeparse/sizeparse.go (size string parsing -- use ParseWithOptions for parsing SIZE arguments with unit suffixes)
+      - pkg/sys/sigpipe.go (SIGPIPE handler installation pattern)
+      - CLAUDE.md (project conventions for building, testing, and SIGPIPE handling)
+
+    files:
+      - path: cmd/truncate/main.go
+        action: create
+        note: "truncate utility -- flag parsing, size argument handling, and core truncation per srd083 R1"
+
+    requirements:
+      - id: R1
+        text: "Implement srd083 R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd083 R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd083 R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd083 R1.4 as specified in the SRD"
+      - id: R5
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per project convention"
+      - id: R6
+        text: "Use pkg/sizeparse.ParseWithOptions for parsing size arguments including unit suffixes"
+
+    design_decisions:
+      - id: D1
+        text: "Use pkg/sizeparse.ParseWithOptions for all size argument parsing -- sizeparse is the project-standard library for size strings"
+      - id: D2
+        text: "Follow standard cmd/ package pattern from CLAUDE.md: package main, sys.InstallSIGPIPEHandler(), flag parsing, operation"
+      - id: D3
+        text: "Structure main.go so that R2.x and R3.x features can be added in subsequent tasks without refactoring the main flow"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/truncate ./cmd/truncate/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/truncate/ passes with no warnings"
+      - id: AC3
+        text: "sys.InstallSIGPIPEHandler() is called at the start of main()"
+      - id: AC4
+        text: "srd083 R1.1, R1.2, R1.3, R1.4 are implemented per the SRD specification"
+      - id: AC5
+        text: "Differential tests covering R1-group requirements pass: go test ./cmd/truncate/ -count=1"
+  dependency: -1
+- index: 1
+  title: '[stitch] Implement cmd/truncate relative and reference sizing (srd083 R2.1, R2.2)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd083-truncate.yaml (SRD -- focus on R2.1 and R2.2, read R1 for context on existing implementation)
+      - cmd/truncate/main.go (existing implementation from previous task -- extend with R2 features)
+      - cmd/truncate/truncate_test.go (existing differential tests -- do not modify, use to verify)
+      - pkg/sizeparse/sizeparse.go (ParseWithOptions -- AllowSign option enables relative size +/- parsing if needed by R2 requirements)
+
+    files:
+      - path: cmd/truncate/main.go
+        action: modify
+        note: "Add relative size operations and reference file support per srd083 R2"
+
+    requirements:
+      - id: R1
+        text: "Implement srd083 R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd083 R2.2 as specified in the SRD"
+      - id: R3
+        text: "Integrate R2 features with the existing flag parsing and main flow from the R1 implementation"
+      - id: R4
+        text: "Use pkg/sizeparse.ParseWithOptions with AllowSign=true for relative size (+/-) parsing where applicable"
+      - id: R5
+        text: "Ensure all existing R1-group functionality continues to work correctly after changes"
+
+    design_decisions:
+      - id: D1
+        text: "Use sizeparse.ParseWithOptions with AllowSign=true for parsing relative size specifications (+SIZE, -SIZE)"
+      - id: D2
+        text: "Extend the existing flag parsing and command flow in main.go without restructuring the main function"
+      - id: D3
+        text: "Match GNU gtruncate behavior exactly -- differential tests validate byte-for-byte parity"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/truncate ./cmd/truncate/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/truncate/ passes with no warnings"
+      - id: AC3
+        text: "srd083 R2.1 and R2.2 are implemented per the SRD specification"
+      - id: AC4
+        text: "Differential tests for R1-group requirements still pass (no regression)"
+      - id: AC5
+        text: "Differential tests for R2-group requirements pass: go test ./cmd/truncate/ -count=1"
+  dependency: 0
+- index: 2
+  title: '[stitch] Implement cmd/truncate error handling and options (srd083 R3.1, R3.2, R3.3)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd083-truncate.yaml (SRD -- focus on R3.1, R3.2, R3.3, read R1/R2 for context on existing implementation)
+      - cmd/truncate/main.go (existing implementation from previous tasks -- extend with R3 features)
+      - cmd/truncate/truncate_test.go (existing differential tests -- do not modify, ALL tests should pass after this task)
+
+    files:
+      - path: cmd/truncate/main.go
+        action: modify
+        note: "Add error handling, options, and edge case handling per srd083 R3 -- this is the final implementation task for cmd/truncate"
+
+    requirements:
+      - id: R1
+        text: "Implement srd083 R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd083 R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd083 R3.3 as specified in the SRD"
+      - id: R4
+        text: "Write all error and diagnostic messages to stderr matching GNU gtruncate output format"
+      - id: R5
+        text: "Return appropriate exit codes per the SRD specification for success and error cases"
+      - id: R6
+        text: "Ensure all existing R1-group and R2-group functionality continues to work correctly"
+
+    design_decisions:
+      - id: D1
+        text: "Write error messages to stderr matching GNU gtruncate format -- differential tests compare stderr byte-for-byte"
+      - id: D2
+        text: "Follow exit code conventions from the SRD specification -- default to exit 1 on error per GNU coreutils convention"
+      - id: D3
+        text: "After this task, ALL differential tests in truncate_test.go must pass -- this is the final implementation task for srd083"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/truncate ./cmd/truncate/ succeeds"
+      - id: AC2
+        text: "go vet ./cmd/truncate/ passes with no warnings"
+      - id: AC3
+        text: "srd083 R3.1, R3.2, R3.3 are implemented per the SRD specification"
+      - id: AC4
+        text: "All differential tests pass: go test ./cmd/truncate/ -count=1"
+      - id: AC5
+        text: "Exit codes match GNU gtruncate behavior for both success and error cases"
+  dependency: 1
