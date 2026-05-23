@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -18,22 +19,28 @@ import (
 
 func main() {
 	sys.InstallSIGPIPEHandler()
-	wrap, decode, ignoreGarbage, file := parseArgs(os.Args[1:])
+	wrap, decode, ignoreGarbage, files := parseArgs(os.Args[1:])
 
-	rc, err := encutil.OpenInput(file)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "base64: %s: %s\n", file, err.Error())
-		os.Exit(1)
+	if len(files) == 0 {
+		files = []string{""}
 	}
-	defer rc.Close()
 
+	readers, closers := openFiles(files)
+	defer func() {
+		for _, c := range closers {
+			c.Close()
+		}
+	}()
+
+	r := io.MultiReader(readers...)
+	var err error
 	if decode {
-		err = encutil.Decode(rc, os.Stdout, encutil.DecoderConfig{
+		err = encutil.Decode(r, os.Stdout, encutil.DecoderConfig{
 			Decode:        decodeBase64,
 			IgnoreGarbage: ignoreGarbage,
 		})
 	} else {
-		err = encutil.Encode(rc, os.Stdout, encutil.EncoderConfig{
+		err = encutil.Encode(r, os.Stdout, encutil.EncoderConfig{
 			Encode:  encodeBase64,
 			WrapCol: wrap,
 		})
@@ -47,6 +54,25 @@ func main() {
 	}
 }
 
+func openFiles(files []string) ([]io.Reader, []io.Closer) {
+	var readers []io.Reader
+	var closers []io.Closer
+	for _, f := range files {
+		rc, err := encutil.OpenInput(f)
+		if err != nil {
+			name := f
+			if name == "" {
+				name = "-"
+			}
+			fmt.Fprintf(os.Stderr, "base64: %s: %s\n", name, err.Error())
+			os.Exit(1)
+		}
+		readers = append(readers, rc)
+		closers = append(closers, rc)
+	}
+	return readers, closers
+}
+
 func encodeBase64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
@@ -55,17 +81,15 @@ func decodeBase64(s string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(s)
 }
 
-func parseArgs(args []string) (int, bool, bool, string) {
+func parseArgs(args []string) (int, bool, bool, []string) {
 	wrap := 76
 	var decode, ignoreGarbage bool
-	var file string
+	var files []string
 	i := 0
 	for i < len(args) {
 		arg := args[i]
 		if arg == "--" {
-			if i+1 < len(args) {
-				file = args[i+1]
-			}
+			files = append(files, args[i+1:]...)
 			break
 		}
 		if handled, advance := parseLongFlag(args[i:], &wrap, &decode, &ignoreGarbage); handled {
@@ -73,13 +97,13 @@ func parseArgs(args []string) (int, bool, bool, string) {
 			continue
 		}
 		if arg == "-" || !strings.HasPrefix(arg, "-") {
-			file = arg
+			files = append(files, arg)
 			i++
 			continue
 		}
 		i += parseShortFlags(args[i:], &wrap, &decode, &ignoreGarbage)
 	}
-	return wrap, decode, ignoreGarbage, file
+	return wrap, decode, ignoreGarbage, files
 }
 
 func parseLongFlag(remaining []string, wrap *int, decode, ignoreGarbage *bool) (bool, int) {
