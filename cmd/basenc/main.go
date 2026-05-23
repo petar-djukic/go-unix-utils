@@ -162,12 +162,18 @@ func decodeZ85(s string) ([]byte, error) {
 func parseArgs(args []string) (options, string) {
 	opts := options{wrap: 76}
 	var file string
+	fileSet := false
 	i := 0
 	for i < len(args) {
 		arg := args[i]
 		if arg == "--" {
-			if i+1 < len(args) {
-				file = args[i+1]
+			for _, extra := range args[i+1:] {
+				if fileSet {
+					fmt.Fprintf(os.Stderr, "basenc: extra operand '%s'\n", extra)
+					os.Exit(1)
+				}
+				file = extra
+				fileSet = true
 			}
 			break
 		}
@@ -176,7 +182,12 @@ func parseArgs(args []string) (options, string) {
 			continue
 		}
 		if arg == "-" || !strings.HasPrefix(arg, "-") {
+			if fileSet {
+				fmt.Fprintf(os.Stderr, "basenc: extra operand '%s'\n", arg)
+				os.Exit(1)
+			}
 			file = arg
+			fileSet = true
 			i++
 			continue
 		}

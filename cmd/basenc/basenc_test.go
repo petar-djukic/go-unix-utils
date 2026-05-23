@@ -30,6 +30,8 @@ func TestDiff(t *testing.T) {
 	writeFile(t, emptyFile, "")
 	z85File := filepath.Join(tmpDir, "z85.dat")
 	writeFile(t, z85File, "test")
+	encodedFile := filepath.Join(tmpDir, "encoded.txt")
+	writeFile(t, encodedFile, "aGVsbG8K\n")
 
 	discardStderr := testutils.NormalizeFunc(func([]byte) []byte { return nil })
 
@@ -76,11 +78,16 @@ func TestDiff(t *testing.T) {
 		{Name: "encode-empty-file", Args: []string{"--base64", emptyFile}, Env: []string{"LC_ALL=C"}},
 		{Name: "stdin-dash", Args: []string{"--base64", "-"}, Stdin: []byte("hello\n"), Env: []string{"LC_ALL=C"}},
 		{Name: "encode-empty-stdin", Args: []string{"--base64"}, Stdin: []byte(""), Env: []string{"LC_ALL=C"}},
+		// R3.1: --ignore-garbage with base16
+		{Name: "ignore-garbage-base16", Args: []string{"--base16", "-d", "-i"}, Stdin: []byte("68!!65!!6C6C6F0A\n"), Env: []string{"LC_ALL=C"}},
+		// R3.2: decode from file
+		{Name: "decode-file", Args: []string{"--base64", "-d", encodedFile}, Env: []string{"LC_ALL=C"}},
 		// R3.3: error cases
 		{Name: "no-encoding", Stdin: []byte("hello\n"), ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardStderr}, Env: []string{"LC_ALL=C"}},
 		{Name: "missing-file", Args: []string{"--base64", filepath.Join(tmpDir, "nonexistent.txt")}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardStderr}, Env: []string{"LC_ALL=C"}},
 		{Name: "decode-invalid-input", Args: []string{"--base64", "-d"}, Stdin: []byte("!!!invalid!!!\n"), ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardStderr}, Env: []string{"LC_ALL=C"}},
 		{Name: "z85-decode-invalid", Args: []string{"--z85", "-d"}, Stdin: []byte("abc\n"), ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardStderr}, Env: []string{"LC_ALL=C"}},
+		{Name: "extra-operand", Args: []string{"--base64", helloFile, z85File}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardStderr}, Env: []string{"LC_ALL=C"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
