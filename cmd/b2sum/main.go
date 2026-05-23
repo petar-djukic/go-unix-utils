@@ -27,6 +27,11 @@ func main() {
 	sys.InstallSIGPIPEHandler()
 	opts, files := parseArgs(os.Args[1:])
 
+	if opts.tag && opts.textExplicit {
+		fmt.Fprintf(os.Stderr, "b2sum: --tag does not support --text mode\n")
+		os.Exit(1)
+	}
+
 	if opts.length == 0 {
 		opts.length = 512
 	}
@@ -68,13 +73,14 @@ func main() {
 }
 
 type options struct {
-	binary bool
-	tag    bool
-	check  bool
-	warn   bool
-	quiet  bool
-	status bool
-	length int
+	binary       bool
+	tag          bool
+	check        bool
+	warn         bool
+	quiet        bool
+	status       bool
+	length       int
+	textExplicit bool
 }
 
 func parseArgs(args []string) (options, []string) {
@@ -114,6 +120,7 @@ func parseLongFlag(remaining []string, opts *options) (bool, int) {
 		opts.binary = true
 	case "--text":
 		opts.binary = false
+		opts.textExplicit = true
 	case "--tag":
 		opts.tag = true
 	case "--check":
@@ -162,6 +169,7 @@ func parseShortFlags(flags string, opts *options) int {
 			opts.binary = true
 		case 't':
 			opts.binary = false
+			opts.textExplicit = true
 		case 'c':
 			opts.check = true
 		case 'w':
