@@ -52,6 +52,10 @@ func main() {
 	opts, mode, files := parseArgs(os.Args[1:])
 	if opts.reference != "" {
 		mode = resolveReference(opts.reference)
+	} else if err := validateMode(mode); err != nil {
+		fmt.Fprintf(os.Stderr, "chmod: invalid mode: '%s'\n", mode)
+		fmt.Fprintln(os.Stderr, "Try 'chmod --help' for more information.")
+		os.Exit(1)
 	}
 	if len(files) == 0 {
 		fmt.Fprintf(os.Stderr, "chmod: missing operand after '%s'\n", mode)
@@ -278,6 +282,15 @@ func parseShortFlags(flags string, opts *options) bool {
 		}
 	}
 	return true
+}
+
+func validateMode(mode string) error {
+	if isOctalMode(mode) {
+		_, err := strconv.ParseUint(mode, 8, 32)
+		return err
+	}
+	_, err := evalSymbolic(mode, 0, 0)
+	return err
 }
 
 func applyMode(mode string, path string) error {
