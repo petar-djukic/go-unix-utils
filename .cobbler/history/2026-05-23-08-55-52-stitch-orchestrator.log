@@ -417,3 +417,9 @@ f...
 [2026-05-23T09:13:16-04:00] [generation-run44] [stitch +17m24s] doOneTask: closing task 5532
 [2026-05-23T09:13:16-04:00] [generation-run44] [stitch +17m24s] closeStitchTask: closing #5532 "[stitch] generation-run44 #5532"
 [2026-05-23T09:13:17-04:00] [generation-run44] [stitch +17m26s] commentCobblerIssue: posted comment on #5532
+[2026-05-23T09:13:19-04:00] [generation-run44] [stitch +17m27s] closeCobblerIssue: closed #5532
+[2026-05-23T09:13:19-04:00] [generation-run44] [stitch +17m28s] closeStitchTask: #5532 closed
+[2026-05-23T09:13:20-04:00] [generation-run44] [stitch +17m28s] doOneTask: task 5532 finished in 17m22s
+[2026-05-23T09:13:20-04:00] [generation-run44] [stitch +17m28s] task 5532 completed in 17m22s
+[2026-05-23T09:13:20-04:00] [generation-run44] [stitch +17m28s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T09:13:20-04:00] [generation-run44] [stitch +17m28s] completed 1 task(s) in 17m28s
