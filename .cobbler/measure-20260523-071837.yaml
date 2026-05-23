@@ -1,0 +1,173 @@
+- index: 0
+  title: "cmd/base32 implementation -- srd079-base32 R1.1, R1.2, R1.3, R1.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd079-base32.yaml (SRD for base32 -- read requirements R1.1 through R1.4)
+      - docs/specs/software-requirements/srd088-encutil.yaml (shared encoding library SRD -- understand the Encode/Decode/OpenInput API)
+      - pkg/encutil/ (read all .go files to understand the encoding utility API: EncoderConfig, DecoderConfig, Encode, Decode, OpenInput)
+      - pkg/sys/ (read for InstallSIGPIPEHandler signature)
+
+    files:
+      - path: cmd/base32/main.go
+        action: create
+        note: base32 utility entry point implementing srd079-base32 R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd079-base32 R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd079-base32 R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd079-base32 R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd079-base32 R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Use pkg/encutil.Encode with an EncoderConfig for Base32 encoding and pkg/encutil.OpenInput for stdin/file input handling"
+      - id: D2
+        text: "Call pkg/sys.InstallSIGPIPEHandler() at the start of main to match GNU coreutils behavior"
+      - id: D3
+        text: "Use encoding/base32.StdEncoding from the Go standard library as the Base32 alphabet for the EncoderConfig.Encode function"
+      - id: D4
+        text: "The binary is cmd/base32 and the single source file is cmd/base32/main.go"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/base32/main.go compiles without errors: go build ./cmd/base32/"
+      - id: AC2
+        text: "go vet ./cmd/base32/ passes with no warnings"
+      - id: AC3
+        text: "srd079-base32 requirements R1.1, R1.2, R1.3, and R1.4 are implemented as specified in the SRD"
+      - id: AC4
+        text: "SIGPIPE handler is installed at the start of main"
+
+- index: 1
+  title: "cmd/base32 implementation -- srd079-base32 R2.1, R2.2, R2.3, R2.4"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd079-base32.yaml (SRD for base32 -- read requirements R2.1 through R2.4)
+      - cmd/base32/main.go (existing implementation from previous task -- extend it)
+      - pkg/encutil/ (read all .go files for DecoderConfig and Decode API)
+
+    files:
+      - path: cmd/base32/main.go
+        action: modify
+        note: Add decode mode, wrap control, and input handling per srd079-base32 R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd079-base32 R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd079-base32 R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd079-base32 R2.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd079-base32 R2.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Use pkg/encutil.Decode with a DecoderConfig for Base32 decoding"
+      - id: D2
+        text: "Extend the existing flag parsing in main.go to handle the flags specified by R2.1-R2.4"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/base32/main.go compiles without errors: go build ./cmd/base32/"
+      - id: AC2
+        text: "go vet ./cmd/base32/ passes with no warnings"
+      - id: AC3
+        text: "srd079-base32 requirements R2.1, R2.2, R2.3, and R2.4 are implemented as specified in the SRD"
+      - id: AC4
+        text: "Existing R1.x functionality is preserved -- no regressions"
+
+- index: 2
+  title: "cmd/base32 implementation -- srd079-base32 R3.1, R3.2, R3.3"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd079-base32.yaml (SRD for base32 -- read requirements R3.1 through R3.3)
+      - cmd/base32/main.go (existing implementation from previous tasks -- extend it)
+
+    files:
+      - path: cmd/base32/main.go
+        action: modify
+        note: Add error handling and remaining functionality per srd079-base32 R3.1-R3.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd079-base32 R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd079-base32 R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd079-base32 R3.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow GNU coreutils exit code conventions as specified in the SRD"
+      - id: D2
+        text: "Write error messages to stderr in the format 'base32: <message>' to match GNU behavior"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/base32/main.go compiles without errors: go build ./cmd/base32/"
+      - id: AC2
+        text: "go vet ./cmd/base32/ passes with no warnings"
+      - id: AC3
+        text: "srd079-base32 requirements R3.1, R3.2, and R3.3 are implemented as specified in the SRD"
+      - id: AC4
+        text: "All R1.x and R2.x functionality is preserved -- no regressions"
+
+- index: 3
+  title: "cmd/base32 differential tests -- srd079-base32"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd079-base32.yaml (SRD for base32 -- derive test cases from all requirements R1.1 through R3.3)
+      - docs/specs/use-cases/rel09.1-uc001-base32.yaml (use case for base32 -- understand expected end-to-end behavior)
+      - docs/specs/test-suites/test-rel-09.1.yaml (test suite for release 09.1 -- follow specified test cases if present)
+      - cmd/base32/main.go (implementation to test)
+      - pkg/testutils/ (read all .go files for the DiffTest struct, RunDiffTests, and BuildBinary API)
+
+    files:
+      - path: cmd/base32/base32_test.go
+        action: create
+        note: Differential tests for base32 comparing Go binary against gbase32
+
+    requirements:
+      - id: R1
+        text: "Create TestDiff function using pkg/testutils.BuildBinary and pkg/testutils.RunDiffTests following the project differential testing pattern"
+      - id: R2
+        text: "Include DiffTest cases covering encoding mode (srd079-base32 R1.x requirements)"
+      - id: R3
+        text: "Include DiffTest cases covering decode mode and options (srd079-base32 R2.x requirements)"
+      - id: R4
+        text: "Include DiffTest cases covering error handling and edge cases (srd079-base32 R3.x requirements)"
+
+    design_decisions:
+      - id: D1
+        text: "Use exec.LookPath('gbase32') to find the GNU reference binary and t.Skip if not found"
+      - id: D2
+        text: "Set LC_ALL=C in the test environment via DiffTest.Env to ensure consistent output between Go and reference binaries"
+      - id: D3
+        text: "Follow the differential testing pattern from CLAUDE.md: BuildBinary(t, '.'), LookPath, []DiffTest, RunDiffTests"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/base32/base32_test.go compiles: go vet ./cmd/base32/"
+      - id: AC2
+        text: "Tests pass when gbase32 is available: go test ./cmd/base32/ -count=1"
+      - id: AC3
+        text: "Tests skip gracefully when gbase32 is not in PATH"
+      - id: AC4
+        text: "Test cases cover all three requirement groups (R1.x encoding, R2.x decode/options, R3.x errors)"
