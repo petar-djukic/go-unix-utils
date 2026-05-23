@@ -489,7 +489,7 @@ code_status:
         - version: "09.0"
           name: Batch 9.0 — hash and checksum utilities (sha224sum, sha384sum, b2sum, cksum, sum)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel09.0-uc001-sha224sum
               specstatus: spec_complete
@@ -503,7 +503,7 @@ code_status:
               testfiles: 0
             - id: rel09.0-uc003-b2sum
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel09.0-uc004-cksum
