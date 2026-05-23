@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chmod implements srd089-chmod R1.1-R1.4, R4.1-R4.3.
+// cmd/chmod implements srd089-chmod R1.1-R1.4, R2.1-R2.4, R4.1-R4.3.
 package main
 
 import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -32,10 +33,17 @@ Each MODE is of the form '[ugoa]*([-+=]([rwxXst]*|[ugo]))+|[-+=][0-7]+'.
 const versionText = `chmod (go-unix-utils) dev
 `
 
+type options struct {
+	verbose   bool
+	changes   bool
+	silent    bool
+	recursive bool
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
 
-	mode, files := parseArgs(os.Args[1:])
+	opts, mode, files := parseArgs(os.Args[1:])
 	if len(files) == 0 {
 		fmt.Fprintf(os.Stderr, "chmod: missing operand after '%s'\n", mode)
 		fmt.Fprintln(os.Stderr, "Try 'chmod --help' for more information.")
@@ -44,8 +52,7 @@ func main() {
 
 	exitCode := 0
 	for _, file := range files {
-		if err := applyMode(mode, file); err != nil {
-			fmt.Fprintf(os.Stderr, "chmod: %s\n", formatErr(err))
+		if err := processFile(opts, mode, file); err != nil {
 			exitCode = 1
 		}
 	}
@@ -54,7 +61,118 @@ func main() {
 	}
 }
 
-func parseArgs(args []string) (string, []string) {
+func processFile(opts options, mode string, path string) error {
+	if opts.recursive {
+		return processRecursive(opts, mode, path)
+	}
+	return applyAndReport(opts, mode, path)
+}
+
+func processRecursive(opts options, mode string, root string) error {
+	var walkErr error
+	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
+		if err != nil {
+			reportError(opts, path, err)
+			walkErr = err
+			return nil
+		}
+		if applyErr := applyAndReport(opts, mode, path); applyErr != nil {
+			walkErr = applyErr
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return walkErr
+}
+
+func applyAndReport(opts options, mode string, path string) error {
+	oldMode, err := getMode(path)
+	if err != nil {
+		reportError(opts, path, err)
+		return err
+	}
+	if err := applyMode(mode, path); err != nil {
+		reportError(opts, path, err)
+		return err
+	}
+	newMode, err := getMode(path)
+	if err != nil {
+		reportError(opts, path, err)
+		return err
+	}
+	printDiagnostic(opts, path, oldMode, newMode)
+	return nil
+}
+
+func getMode(path string) (os.FileMode, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return 0, err
+	}
+	return info.Mode().Perm() | (info.Mode() & (os.ModeSetuid | os.ModeSetgid | os.ModeSticky)), nil
+}
+
+func reportError(opts options, _ string, err error) {
+	if opts.silent {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "chmod: %s\n", formatErr(err))
+}
+
+func printDiagnostic(opts options, path string, oldMode, newMode os.FileMode) {
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "mode of '%s' changed from %04o (%s) to %04o (%s)\n",
+			path, uint32(oldMode), symbolicString(oldMode), uint32(newMode), symbolicString(newMode))
+		return
+	}
+	if opts.changes && oldMode != newMode {
+		fmt.Fprintf(os.Stdout, "mode of '%s' changed from %04o (%s) to %04o (%s)\n",
+			path, uint32(oldMode), symbolicString(oldMode), uint32(newMode), symbolicString(newMode))
+	}
+}
+
+func symbolicString(mode os.FileMode) string {
+	var buf [9]byte
+	const rwx = "rwx"
+	for i := range 9 {
+		if mode&(1<<uint(8-i)) != 0 {
+			buf[i] = rwx[i%3]
+		} else {
+			buf[i] = '-'
+		}
+	}
+	applySpecialBits(&buf, mode)
+	return string(buf[:])
+}
+
+func applySpecialBits(buf *[9]byte, mode os.FileMode) {
+	if mode&os.ModeSetuid != 0 {
+		if buf[2] == 'x' {
+			buf[2] = 's'
+		} else {
+			buf[2] = 'S'
+		}
+	}
+	if mode&os.ModeSetgid != 0 {
+		if buf[5] == 'x' {
+			buf[5] = 's'
+		} else {
+			buf[5] = 'S'
+		}
+	}
+	if mode&os.ModeSticky != 0 {
+		if buf[8] == 'x' {
+			buf[8] = 't'
+		} else {
+			buf[8] = 'T'
+		}
+	}
+}
+
+func parseArgs(args []string) (options, string, []string) {
+	var opts options
 	var files []string
 	mode := ""
 	endOfFlags := false
@@ -63,18 +181,18 @@ func parseArgs(args []string) (string, []string) {
 			files = append(files, arg)
 			continue
 		}
-		switch {
-		case arg == "--help":
-			fmt.Fprint(os.Stdout, helpText)
-			os.Exit(0)
-		case arg == "--version":
-			fmt.Fprint(os.Stdout, versionText)
-			os.Exit(0)
-		case arg == "--":
-			endOfFlags = true
-		case mode == "":
+		if handled := handleSpecialArg(arg, &endOfFlags); handled {
+			continue
+		}
+		if mode == "" {
+			if parseLongFlag(arg, &opts) {
+				continue
+			}
+			if strings.HasPrefix(arg, "-") && parseShortFlags(arg[1:], &opts) {
+				continue
+			}
 			mode = arg
-		default:
+		} else {
 			files = append(files, arg)
 		}
 	}
@@ -83,7 +201,57 @@ func parseArgs(args []string) (string, []string) {
 		fmt.Fprintln(os.Stderr, "Try 'chmod --help' for more information.")
 		os.Exit(1)
 	}
-	return mode, files
+	return opts, mode, files
+}
+
+func handleSpecialArg(arg string, endOfFlags *bool) bool {
+	switch arg {
+	case "--help":
+		fmt.Fprint(os.Stdout, helpText)
+		os.Exit(0)
+	case "--version":
+		fmt.Fprint(os.Stdout, versionText)
+		os.Exit(0)
+	case "--":
+		*endOfFlags = true
+	default:
+		return false
+	}
+	return true
+}
+
+func parseLongFlag(arg string, opts *options) bool {
+	switch arg {
+	case "--verbose":
+		opts.verbose = true
+	case "--changes":
+		opts.changes = true
+	case "--silent", "--quiet":
+		opts.silent = true
+	case "--recursive":
+		opts.recursive = true
+	default:
+		return false
+	}
+	return true
+}
+
+func parseShortFlags(flags string, opts *options) bool {
+	for _, c := range flags {
+		switch c {
+		case 'v':
+			opts.verbose = true
+		case 'c':
+			opts.changes = true
+		case 'f':
+			opts.silent = true
+		case 'R':
+			opts.recursive = true
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func applyMode(mode string, path string) error {
