@@ -449,7 +449,7 @@ code_status:
         - version: "08.1"
           name: Batch 8.1 — file splitting, joining, formatting, and data display (split, csplit, join, fmt, numfmt, od, printf)
           specstatus: spec_complete
-          codereadiness: partial
+          codereadiness: all implemented
           usecases:
             - id: rel08.1-uc001-split
               specstatus: spec_complete
@@ -483,7 +483,7 @@ code_status:
               testfiles: 0
             - id: rel08.1-uc007-printf
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "09.0"
