@@ -97,6 +97,53 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardStderr},
 		},
+		// R2.1: -r selects BSD algorithm (default)
+		{
+			Name: "flag-r-single-file",
+			Args: []string{"-r", helloFile},
+		},
+		{
+			Name:  "flag-r-stdin",
+			Args:  []string{"-r"},
+			Stdin: []byte("hello\n"),
+		},
+		// R2.2: -s selects System V algorithm
+		{
+			Name: "flag-s-single-file",
+			Args: []string{"-s", helloFile},
+		},
+		{
+			Name: "flag-s-empty-file",
+			Args: []string{"-s", emptyFile},
+		},
+		{
+			Name: "flag-s-binary",
+			Args: []string{"-s", binaryFile},
+		},
+		{
+			Name: "flag-s-large-file",
+			Args: []string{"-s", largeFile},
+		},
+		{
+			Name:  "flag-s-stdin",
+			Args:  []string{"-s"},
+			Stdin: []byte("hello\n"),
+		},
+		{
+			Name:  "flag-s-stdin-empty",
+			Args:  []string{"-s"},
+			Stdin: []byte{},
+		},
+		{
+			Name: "flag-s-multiple-files",
+			Args: []string{"-s", helloFile, emptyFile},
+		},
+		{
+			Name:      "flag-s-missing-file",
+			Args:      []string{"-s", filepath.Join(tmpDir, "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
