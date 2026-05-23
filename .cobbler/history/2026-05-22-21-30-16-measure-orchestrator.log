@@ -131,3 +131,23 @@
 [2026-05-22T21:36:34-04:00] [generation-run44] [measure +6m17s] transitionRequirements: marked 1 R-items as proposed
 [2026-05-22T21:36:34-04:00] [generation-run44] [measure +6m17s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-22T21:36:34-04:00] [generation-run44] [measure +6m17s] transitionRequirements: marked 4 R-items as proposed
+[2026-05-22T21:36:34-04:00] [generation-run44] [measure +6m17s] importIssues: creating task 0: [stitch] cmd/b2sum implementation -- srd076 R3.2, R3.3, R4.1, R4.2 (dep=-1)
+[2026-05-22T21:36:35-04:00] [generation-run44] [measure +6m18s] createCobblerIssue: created #5498 "[measure] cmd/b2sum implementation -- srd076 R3.2, R3.3, R4.1, R4.2" gen=generation-run44 index=0 dep=-1
+[2026-05-22T21:36:35-04:00] [generation-run44] [measure +6m18s] importIssues: creating task 1: [stitch] cmd/b2sum implementation -- srd076 R4.3 (dep=0)
+[2026-05-22T21:36:36-04:00] [generation-run44] [measure +6m19s] createCobblerIssue: created #5499 "[measure] cmd/b2sum implementation -- srd076 R4.3" gen=generation-run44 index=1 dep=0
+[2026-05-22T21:36:36-04:00] [generation-run44] [measure +6m19s] importIssues: creating task 2: [stitch] cmd/cksum implementation -- srd077 R1.1, R1.2, R1.3, R1.4 (dep=-1)
+[2026-05-22T21:36:37-04:00] [generation-run44] [measure +6m20s] createCobblerIssue: created #5500 "[measure] cmd/cksum implementation -- srd077 R1.1, R1.2, R1.3, R1.4" gen=generation-run44 index=2 dep=-1
+[2026-05-22T21:36:37-04:00] [generation-run44] [measure +6m20s] importIssues: creating task 3: [stitch] cmd/sha384sum implementation -- srd075 R3.2, R4.1, R4.2, R4.3 (dep=-1)
+[2026-05-22T21:36:38-04:00] [generation-run44] [measure +6m21s] createCobblerIssue: created #5501 "[measure] cmd/sha384sum implementation -- srd075 R3.2, R4.1, R4.2, R4.3" gen=generation-run44 index=3 dep=-1
+[2026-05-22T21:36:38-04:00] [generation-run44] [measure +6m22s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-22T21:36:40-04:00] [generation-run44] [measure +6m23s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-22T21:36:45-04:00] [generation-run44] [measure +6m29s] importIssues: 4 of 4 issue(s) imported
+[2026-05-22T21:36:45-04:00] [generation-run44] [measure +6m29s] appendMeasureLog: 350 total issues in .cobbler/measure.yaml
+[2026-05-22T21:36:45-04:00] [generation-run44] [measure +6m29s] iteration 1 imported 4 issue(s)
+[2026-05-22T21:36:49-04:00] [generation-run44] [measure +6m32s] linkSubIssue: linked #5498 as sub-issue of #5497
+[2026-05-22T21:36:50-04:00] [generation-run44] [measure +6m33s] linkSubIssue: linked #5499 as sub-issue of #5497
+[2026-05-22T21:36:50-04:00] [generation-run44] [measure +6m34s] linkSubIssue: linked #5500 as sub-issue of #5497
+[2026-05-22T21:36:51-04:00] [generation-run44] [measure +6m35s] linkSubIssue: linked #5501 as sub-issue of #5497
+[2026-05-22T21:36:53-04:00] [generation-run44] [measure +6m37s] closeMeasuringPlaceholder: closed #5497
+[2026-05-22T21:36:53-04:00] [generation-run44] [measure +6m37s] finalizeMeasurePlaceholder: finalized #5497 with 4 child issue(s)
+[2026-05-22T21:36:53-04:00] [generation-run44] [measure +6m37s] completed 1 iteration(s), 4 issue(s) created in 6m37s
