@@ -16516,3 +16516,198 @@
       - id: AC3
         text: go test ./cmd/sum/ -count=1 passes (all test cases including R2.1, R2.2, R3.1, R3.2)
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/sum implementation -- srd078 R3.3'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd078-sum.yaml (R3.3 requirement specification)
+      - cmd/sum/main.go (existing implementation covering R1.1-R1.4, R2.1-R2.2, R3.1-R3.2)
+      - cmd/sum/sum_test.go (existing differential tests)
+      - pkg/testutils/ (differential testing framework -- RunDiffTests, BuildBinary, DiffTest)
+
+    files:
+      - path: cmd/sum/main.go
+        action: modify
+        note: Add R3.3 functionality to existing sum implementation
+      - path: cmd/sum/sum_test.go
+        action: modify
+        note: Add differential test cases for R3.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd078 R3.3 as specified in the SRD -- read the SRD for the exact requirement text and acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: Follow the existing code patterns in cmd/sum/main.go established by prior requirements R1.1-R1.4, R2.1-R2.2, R3.1-R3.2
+      - id: D2
+        text: Use pkg/testutils.RunDiffTests with reference binary gsum from Homebrew coreutils
+      - id: D3
+        text: Call exec.LookPath("gsum") and t.Skip if not found so tests pass on machines without Homebrew
+      - id: D4
+        text: All differential tests must set LC_ALL=C in the test environment
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd078 R3.3 is implemented per the SRD specification
+      - id: AC2
+        text: go build -o bin/sum ./cmd/sum/ compiles without errors
+      - id: AC3
+        text: go vet ./cmd/sum/ reports no issues
+      - id: AC4
+        text: go test ./cmd/sum/... -count=1 passes (skipping gracefully if gsum is not installed)
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/base32 implementation -- srd079 R1.1, R1.2, R1.3, R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd079-base32.yaml (R1.1-R1.4 requirement specifications)
+      - pkg/encutil/ (shared encoding/decoding library -- Encode, Decode, OpenInput, EncoderConfig, DecoderConfig)
+      - pkg/sys/ (InstallSIGPIPEHandler for stdout writes)
+      - pkg/testutils/ (differential testing framework -- RunDiffTests, BuildBinary, DiffTest)
+      - CLAUDE.md (project conventions for building and testing)
+
+    files:
+      - path: cmd/base32/main.go
+        action: create
+        note: base32 utility -- RFC 4648 Base32 encoding with wrap control
+      - path: cmd/base32/base32_test.go
+        action: create
+        note: Differential tests against gbase32 reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd079 R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd079 R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd079 R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd079 R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main to match GNU coreutils behavior when piped to consumers that close stdin early
+      - id: D2
+        text: Use pkg/encutil.Encode with an EncoderConfig that sets Encode to a base32 encoding function and WrapCol for line wrapping
+      - id: D3
+        text: Use pkg/encutil.OpenInput to open the input file or read from stdin when no file argument is given or the argument is "-"
+      - id: D4
+        text: Use encoding/base32.StdEncoding from the Go standard library as the base32 alphabet
+      - id: D5
+        text: Use pkg/testutils.RunDiffTests with reference binary gbase32 from Homebrew coreutils
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd079 R1.1 through R1.4 are implemented per the SRD specification
+      - id: AC2
+        text: go build -o bin/base32 ./cmd/base32/ compiles without errors
+      - id: AC3
+        text: go vet ./cmd/base32/ reports no issues
+      - id: AC4
+        text: Differential tests compare output against gbase32 and pass (skipping gracefully if gbase32 is not installed)
+      - id: AC5
+        text: go test ./cmd/base32/... -count=1 passes
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/base32 implementation -- srd079 R2.1, R2.2, R2.3, R2.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd079-base32.yaml (R2.1-R2.4 requirement specifications)
+      - cmd/base32/main.go (existing implementation from prior task covering R1.1-R1.4)
+      - cmd/base32/base32_test.go (existing differential tests)
+      - pkg/encutil/ (shared encoding/decoding library -- Encode, Decode, OpenInput, EncoderConfig, DecoderConfig)
+
+    files:
+      - path: cmd/base32/main.go
+        action: modify
+        note: Add R2.1-R2.4 decode functionality to existing base32 implementation
+      - path: cmd/base32/base32_test.go
+        action: modify
+        note: Add differential test cases for R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd079 R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd079 R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd079 R2.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd079 R2.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: Use pkg/encutil.Decode with a DecoderConfig that sets Decode to a base32 decoding function
+      - id: D2
+        text: The DecoderConfig.IgnoreGarbage field controls whether non-alphabet characters are silently skipped during decoding
+      - id: D3
+        text: Follow the existing flag parsing and main flow patterns established in cmd/base32/main.go from the R1.x implementation
+      - id: D4
+        text: All differential tests must set LC_ALL=C in the test environment
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd079 R2.1 through R2.4 are implemented per the SRD specification
+      - id: AC2
+        text: go build -o bin/base32 ./cmd/base32/ compiles without errors
+      - id: AC3
+        text: go vet ./cmd/base32/ reports no issues
+      - id: AC4
+        text: Differential tests for decode mode pass against gbase32 (skipping gracefully if gbase32 is not installed)
+      - id: AC5
+        text: go test ./cmd/base32/... -count=1 passes including both R1.x and R2.x tests
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/base32 implementation -- srd079 R3.1, R3.2, R3.3'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd079-base32.yaml (R3.1-R3.3 requirement specifications)
+      - cmd/base32/main.go (existing implementation from prior tasks covering R1.1-R1.4 and R2.1-R2.4)
+      - cmd/base32/base32_test.go (existing differential tests)
+      - pkg/encutil/ (shared encoding/decoding library)
+
+    files:
+      - path: cmd/base32/main.go
+        action: modify
+        note: Add R3.1-R3.3 functionality to existing base32 implementation
+      - path: cmd/base32/base32_test.go
+        action: modify
+        note: Add differential test cases for R3.1-R3.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd079 R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd079 R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd079 R3.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: Follow the existing code patterns in cmd/base32/main.go established by prior R1.x and R2.x requirements
+      - id: D2
+        text: Use pkg/testutils.RunDiffTests with reference binary gbase32 from Homebrew coreutils
+      - id: D3
+        text: All differential tests must set LC_ALL=C in the test environment
+
+    acceptance_criteria:
+      - id: AC1
+        text: srd079 R3.1 through R3.3 are implemented per the SRD specification
+      - id: AC2
+        text: go build -o bin/base32 ./cmd/base32/ compiles without errors
+      - id: AC3
+        text: go vet ./cmd/base32/ reports no issues
+      - id: AC4
+        text: go test ./cmd/base32/... -count=1 passes including all R1.x, R2.x, and R3.x tests
+      - id: AC5
+        text: The complete base32 utility handles encoding, decoding, and all edge cases specified in srd079
+  dependency: 2
