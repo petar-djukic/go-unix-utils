@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5488"
+task_title: '[stitch] cmd/sha224sum: implement srd074 R3.1, R3.2, R4.1, R4.2'
+status: success
+started_at: "2026-05-23T00:30:41Z"
+duration: 1m53s
+duration_s: 112
+tokens:
+    input: 279983
+    output: 1265
+    cache_creation: 206047
+    cache_read: 73929
+cost_usd: 1.7538604999999998
+num_turns: 11
+rate_limit_wait_s: 3
+loc_before:
+    production: 20514
+    test: 18460
+loc_after:
+    production: 20514
+    test: 18460
+diff:
+    files: 1
+    insertions: 82
+    deletions: 0
