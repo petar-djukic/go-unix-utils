@@ -129,3 +129,22 @@
 [2026-05-23T07:44:46-04:00] [generation-run44] [measure +5m22s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-23T07:44:46-04:00] [generation-run44] [measure +5m22s] transitionRequirements: marked 3 R-items as proposed
 [2026-05-23T07:44:46-04:00] [generation-run44] [measure +5m22s] transitionRequirements: marked 4 R-items as proposed
+[2026-05-23T07:44:46-04:00] [generation-run44] [measure +5m22s] importIssues: creating task 0: Implement cmd/base64 encoding mode (srd080-base64 R1.1-R1.4) (dep=-1)
+[2026-05-23T07:44:47-04:00] [generation-run44] [measure +5m24s] createCobblerIssue: created #5518 "[measure] Implement cmd/base64 encoding mode (srd080-base64 R1.1-R1.4)" gen=generation-run44 index=0 dep=-1
+[2026-05-23T07:44:47-04:00] [generation-run44] [measure +5m24s] importIssues: creating task 1: Add decode mode to cmd/base64 (srd080-base64 R2.1-R2.4) (dep=0)
+[2026-05-23T07:44:48-04:00] [generation-run44] [measure +5m25s] createCobblerIssue: created #5519 "[measure] Add decode mode to cmd/base64 (srd080-base64 R2.1-R2.4)" gen=generation-run44 index=1 dep=0
+[2026-05-23T07:44:48-04:00] [generation-run44] [measure +5m25s] importIssues: creating task 2: Error handling and multi-file support for cmd/base64 (srd080-base64 R3.1-R3.3) (dep=1)
+[2026-05-23T07:44:49-04:00] [generation-run44] [measure +5m26s] createCobblerIssue: created #5520 "[measure] Error handling and multi-file support for cmd/base64 (srd080-base64 R3.1-R3.3)" gen=generation-run44 index=2 dep=1
+[2026-05-23T07:44:49-04:00] [generation-run44] [measure +5m26s] importIssues: creating task 3: Implement cmd/basenc encoding mode (srd081-basenc R1.1-R1.4) (dep=-1)
+[2026-05-23T07:44:50-04:00] [generation-run44] [measure +5m27s] createCobblerIssue: created #5521 "[measure] Implement cmd/basenc encoding mode (srd081-basenc R1.1-R1.4)" gen=generation-run44 index=3 dep=-1
+[2026-05-23T07:44:51-04:00] [generation-run44] [measure +5m27s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-23T07:44:55-04:00] [generation-run44] [measure +5m32s] importIssues: 4 of 4 issue(s) imported
+[2026-05-23T07:44:56-04:00] [generation-run44] [measure +5m32s] appendMeasureLog: 366 total issues in .cobbler/measure.yaml
+[2026-05-23T07:44:56-04:00] [generation-run44] [measure +5m32s] iteration 1 imported 4 issue(s)
+[2026-05-23T07:44:59-04:00] [generation-run44] [measure +5m35s] linkSubIssue: linked #5518 as sub-issue of #5517
+[2026-05-23T07:45:00-04:00] [generation-run44] [measure +5m36s] linkSubIssue: linked #5519 as sub-issue of #5517
+[2026-05-23T07:45:01-04:00] [generation-run44] [measure +5m37s] linkSubIssue: linked #5520 as sub-issue of #5517
+[2026-05-23T07:45:02-04:00] [generation-run44] [measure +5m38s] linkSubIssue: linked #5521 as sub-issue of #5517
+[2026-05-23T07:45:04-04:00] [generation-run44] [measure +5m40s] closeMeasuringPlaceholder: closed #5517
+[2026-05-23T07:45:04-04:00] [generation-run44] [measure +5m40s] finalizeMeasurePlaceholder: finalized #5517 with 4 child issue(s)
+[2026-05-23T07:45:04-04:00] [generation-run44] [measure +5m40s] completed 1 iteration(s), 4 issue(s) created in 5m40s
