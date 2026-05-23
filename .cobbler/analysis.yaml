@@ -519,7 +519,7 @@ code_status:
         - version: "09.1"
           name: Batch 9.1 — encoding utilities (base32, base64, basenc)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel09.1-uc001-base32
               specstatus: spec_complete
@@ -528,7 +528,7 @@ code_status:
               testfiles: 0
             - id: rel09.1-uc002-base64
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel09.1-uc003-basenc
