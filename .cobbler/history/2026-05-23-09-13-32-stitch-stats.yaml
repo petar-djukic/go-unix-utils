@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5533"
+task_title: '[stitch] cmd/stat (contract) (srd082)'
+status: success
+started_at: "2026-05-23T13:13:32Z"
+duration: 8m6s
+duration_s: 486
+tokens:
+    input: 859428
+    output: 24042
+    cache_creation: 245062
+    cache_read: 614346
+cost_usd: 2.8520939500000004
+num_turns: 39
+rate_limit_wait_s: 4
+loc_before:
+    production: 22966
+    test: 20412
+loc_after:
+    production: 23009
+    test: 20412
+diff:
+    files: 5
+    insertions: 782
+    deletions: 587

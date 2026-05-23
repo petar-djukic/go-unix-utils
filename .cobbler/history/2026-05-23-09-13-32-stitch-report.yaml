@@ -1,0 +1,35 @@
+task_id: "5533"
+task_title: '[stitch] cmd/stat (contract) (srd082)'
+status: success
+branch: task/generation-run44-5533
+diff:
+    files: 5
+    insertions: 782
+    deletions: 587
+files:
+    - path: .cobbler/history/2026-05-23-09-13-23-stitch-orchestrator.log
+      status: M
+      insertions: 153
+      deletions: 0
+    - path: cmd/stat/format.go
+      status: A
+      insertions: 298
+      deletions: 0
+    - path: cmd/stat/helpers.go
+      status: A
+      insertions: 222
+      deletions: 0
+    - path: cmd/stat/main.go
+      status: M
+      insertions: 0
+      deletions: 587
+    - path: cmd/stat/output.go
+      status: A
+      insertions: 110
+      deletions: 0
+loc_before:
+    production: 22966
+    test: 20412
+loc_after:
+    production: 23009
+    test: 20412
