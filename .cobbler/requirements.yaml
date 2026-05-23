@@ -4790,19 +4790,19 @@ requirements:
             issue: 5534
             weight: 1
         R3.1:
-            status: in_progress
+            status: code_complete
             weight: 1
         R4.1:
-            status: in_progress
+            status: code_complete
             weight: 1
         R4.2:
-            status: in_progress
+            status: code_complete
             weight: 1
         R5.1:
-            status: in_progress
+            status: code_complete
             weight: 1
         R6.1:
-            status: proposed
+            status: code_complete
             weight: 1
         R7.1:
             status: proposed
