@@ -4805,13 +4805,13 @@ requirements:
             status: code_complete
             weight: 1
         R7.1:
-            status: in_progress
+            status: code_complete
             weight: 1
         R7.2:
-            status: in_progress
+            status: code_complete
             weight: 1
         R7.3:
-            status: in_progress
+            status: code_complete
             weight: 1
     srd083-truncate:
         R1.1:
