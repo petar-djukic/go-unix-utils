@@ -156,3 +156,9 @@ bin/sha384sum --tag /tmp/sha384test...
 [2026-05-22T21:08:59-04:00] [generation-run44] [stitch +2m42s] closeStitchTask: closing #5491 "[stitch] cmd/sha384sum: implement srd075 R2.1, R2.2, R2.3, R3.1"
 [2026-05-22T21:09:00-04:00] [generation-run44] [stitch +2m43s] commentCobblerIssue: posted comment on #5491
 [2026-05-22T21:09:00-04:00] [generation-run44] [stitch +2m43s] updateRequirementsFile: marked 4 R-items as uncertain for issue #5491
+[2026-05-22T21:09:02-04:00] [generation-run44] [stitch +2m45s] closeCobblerIssue: closed #5491
+[2026-05-22T21:09:04-04:00] [generation-run44] [stitch +2m47s] closeStitchTask: #5491 closed
+[2026-05-22T21:09:04-04:00] [generation-run44] [stitch +2m47s] doOneTask: task 5491 finished in 2m42s
+[2026-05-22T21:09:04-04:00] [generation-run44] [stitch +2m47s] task 5491 completed in 2m42s
+[2026-05-22T21:09:04-04:00] [generation-run44] [stitch +2m47s] reached per-cycle limit (1), pausing for measure
+[2026-05-22T21:09:04-04:00] [generation-run44] [stitch +2m47s] completed 1 task(s) in 2m47s
