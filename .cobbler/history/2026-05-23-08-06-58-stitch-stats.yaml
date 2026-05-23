@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5523"
+task_title: '[stitch] Implement cmd/basenc decoding mode (srd081-basenc R2.1-R2.4)'
+status: success
+started_at: "2026-05-23T12:06:58Z"
+duration: 7m22s
+duration_s: 442
+tokens:
+    input: 476032
+    output: 21580
+    cache_creation: 236655
+    cache_read: 239366
+cost_usd: 2.5960472500000003
+num_turns: 26
+rate_limit_wait_s: 1
+loc_before:
+    production: 21921
+    test: 19775
+loc_after:
+    production: 21921
+    test: 19899
+diff:
+    files: 2
+    insertions: 254
+    deletions: 0
