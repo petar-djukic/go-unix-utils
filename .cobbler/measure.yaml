@@ -16343,3 +16343,176 @@
       - id: AC5
         text: "Differential tests cover each new requirement with at least one test case per requirement"
   dependency: -1
+- index: 0
+  title: '[stitch] cmd/cksum implementation -- srd077 R2.1, R2.2, R2.3, R3.1'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd077-cksum.yaml (R2.1, R2.2, R2.3, R3.1 specifications)
+      - cmd/cksum/main.go (existing implementation covering R1.1-R1.4)
+      - cmd/cksum/cksum_test.go (existing differential tests)
+      - pkg/hashutil/ (shared hash utility library for algorithm support)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing pattern)
+
+    files:
+      - path: cmd/cksum/main.go
+        action: modify
+        note: Add functionality for srd077 R2.1, R2.2, R2.3, R3.1
+      - path: cmd/cksum/cksum_test.go
+        action: modify
+        note: Add differential test cases for R2.1, R2.2, R2.3, R3.1
+
+    requirements:
+      - id: R1
+        text: Implement srd077-cksum requirement R2.1 per the specification
+      - id: R2
+        text: Implement srd077-cksum requirement R2.2 per the specification
+      - id: R3
+        text: Implement srd077-cksum requirement R2.3 per the specification
+      - id: R4
+        text: Implement srd077-cksum requirement R3.1 per the specification
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main per project convention
+      - id: D2
+        text: Follow the differential testing pattern from ARCHITECTURE.yaml shared_protocols -- use testutils.BuildBinary, exec.LookPath for gcksum, t.Skip if reference binary not found
+      - id: D3
+        text: Use pkg/hashutil for hash computation when algorithm selection requires standard hash algorithms
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/cksum/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/cksum/ reports no issues
+      - id: AC3
+        text: go test ./cmd/cksum/ -count=1 passes (both existing and new test cases)
+      - id: AC4
+        text: New differential test cases cover the functionality specified by R2.1, R2.2, R2.3, R3.1
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/cksum implementation -- srd077 R3.2, R3.3'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd077-cksum.yaml (R3.2, R3.3 specifications)
+      - cmd/cksum/main.go (existing implementation covering R1.1-R1.4, R2.1-R3.1)
+      - cmd/cksum/cksum_test.go (existing differential tests)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing pattern)
+
+    files:
+      - path: cmd/cksum/main.go
+        action: modify
+        note: Add functionality for srd077 R3.2, R3.3
+      - path: cmd/cksum/cksum_test.go
+        action: modify
+        note: Add differential test cases for R3.2, R3.3
+
+    requirements:
+      - id: R1
+        text: Implement srd077-cksum requirement R3.2 per the specification
+      - id: R2
+        text: Implement srd077-cksum requirement R3.3 per the specification
+
+    design_decisions:
+      - id: D1
+        text: Follow the differential testing pattern from ARCHITECTURE.yaml shared_protocols -- use testutils.BuildBinary, exec.LookPath for gcksum, t.Skip if reference binary not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/cksum/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/cksum/ reports no issues
+      - id: AC3
+        text: go test ./cmd/cksum/ -count=1 passes (all test cases including R3.2, R3.3)
+  dependency: 0
+- index: 2
+  title: '[stitch] cmd/sum implementation -- srd078 R1.1, R1.2, R1.3, R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd078-sum.yaml (R1.1, R1.2, R1.3, R1.4 specifications)
+      - pkg/testutils/ (differential testing harness API)
+      - pkg/sys/ (InstallSIGPIPEHandler)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing pattern)
+
+    files:
+      - path: cmd/sum/main.go
+        action: create
+        note: sum utility implementing R1.1, R1.2, R1.3, R1.4
+      - path: cmd/sum/sum_test.go
+        action: create
+        note: Differential tests for R1.1, R1.2, R1.3, R1.4
+
+    requirements:
+      - id: R1
+        text: Implement srd078-sum requirement R1.1 per the specification
+      - id: R2
+        text: Implement srd078-sum requirement R1.2 per the specification
+      - id: R3
+        text: Implement srd078-sum requirement R1.3 per the specification
+      - id: R4
+        text: Implement srd078-sum requirement R1.4 per the specification
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main per project convention
+      - id: D2
+        text: Follow the differential testing pattern from ARCHITECTURE.yaml shared_protocols -- use testutils.BuildBinary, exec.LookPath for gsum, t.Skip if reference binary not found
+      - id: D3
+        text: Set LC_ALL=C in all differential test environments per project convention
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/sum/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/sum/ reports no issues
+      - id: AC3
+        text: go test ./cmd/sum/ -count=1 passes
+      - id: AC4
+        text: Differential test cases cover the functionality specified by R1.1, R1.2, R1.3, R1.4
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/sum implementation -- srd078 R2.1, R2.2, R3.1, R3.2'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd078-sum.yaml (R2.1, R2.2, R3.1, R3.2 specifications)
+      - cmd/sum/main.go (existing implementation covering R1.1-R1.4)
+      - cmd/sum/sum_test.go (existing differential tests)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for differential testing pattern)
+
+    files:
+      - path: cmd/sum/main.go
+        action: modify
+        note: Add functionality for srd078 R2.1, R2.2, R3.1, R3.2
+      - path: cmd/sum/sum_test.go
+        action: modify
+        note: Add differential test cases for R2.1, R2.2, R3.1, R3.2
+
+    requirements:
+      - id: R1
+        text: Implement srd078-sum requirement R2.1 per the specification
+      - id: R2
+        text: Implement srd078-sum requirement R2.2 per the specification
+      - id: R3
+        text: Implement srd078-sum requirement R3.1 per the specification
+      - id: R4
+        text: Implement srd078-sum requirement R3.2 per the specification
+
+    design_decisions:
+      - id: D1
+        text: Follow the differential testing pattern from ARCHITECTURE.yaml shared_protocols -- use testutils.BuildBinary, exec.LookPath for gsum, t.Skip if reference binary not found
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./cmd/sum/ succeeds with no errors
+      - id: AC2
+        text: go vet ./cmd/sum/ reports no issues
+      - id: AC3
+        text: go test ./cmd/sum/ -count=1 passes (all test cases including R2.1, R2.2, R3.1, R3.2)
+  dependency: 2
