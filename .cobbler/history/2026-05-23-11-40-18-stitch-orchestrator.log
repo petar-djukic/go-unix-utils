@@ -386,3 +386,9 @@ python3 -c "import os; s = os.statvfs('/tmp'); print...
 [2026-05-23T11:52:04-04:00] [generation-run44] [stitch +11m46s] doOneTask: closing task 5537
 [2026-05-23T11:52:04-04:00] [generation-run44] [stitch +11m46s] closeStitchTask: closing #5537 "[stitch] generation-run44 #5537"
 [2026-05-23T11:52:05-04:00] [generation-run44] [stitch +11m47s] commentCobblerIssue: posted comment on #5537
+[2026-05-23T11:52:07-04:00] [generation-run44] [stitch +11m48s] closeCobblerIssue: closed #5537
+[2026-05-23T11:52:07-04:00] [generation-run44] [stitch +11m49s] closeStitchTask: #5537 closed
+[2026-05-23T11:52:08-04:00] [generation-run44] [stitch +11m49s] doOneTask: task 5537 finished in 11m42s
+[2026-05-23T11:52:08-04:00] [generation-run44] [stitch +11m49s] task 5537 completed in 11m42s
+[2026-05-23T11:52:08-04:00] [generation-run44] [stitch +11m49s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T11:52:08-04:00] [generation-run44] [stitch +11m49s] completed 1 task(s) in 11m49s
