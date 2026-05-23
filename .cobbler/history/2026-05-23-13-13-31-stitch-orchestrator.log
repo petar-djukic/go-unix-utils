@@ -191,3 +191,13 @@
 [2026-05-23T13:17:32-04:00] [generation-run44] [stitch +4m1s] closeStitchTask: closing #5549 "[stitch] Implement cmd/chmod root protection and reference mode (srd089 R3.1, R3.2)"
 [2026-05-23T13:17:33-04:00] [generation-run44] [stitch +4m2s] commentCobblerIssue: posted comment on #5549
 [2026-05-23T13:17:33-04:00] [generation-run44] [stitch +4m2s] updateRequirementsFile: marked 2 R-items as complete for issue #5549
+[2026-05-23T13:17:35-04:00] [generation-run44] [stitch +4m4s] closeCobblerIssue: closed #5549
+[2026-05-23T13:17:37-04:00] [generation-run44] [stitch +4m6s] closeStitchTask: #5549 closed
+[2026-05-23T13:17:37-04:00] [generation-run44] [stitch +4m7s] sweepCompletedTasks: all R-items for #5549 already complete, closing
+[2026-05-23T13:17:38-04:00] [generation-run44] [stitch +4m7s] commentCobblerIssue: posted comment on #5549
+[2026-05-23T13:17:39-04:00] [generation-run44] [stitch +4m8s] closeCobblerIssue: closed #5549
+[2026-05-23T13:17:41-04:00] [generation-run44] [stitch +4m10s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-23T13:17:41-04:00] [generation-run44] [stitch +4m10s] doOneTask: task 5549 finished in 4m5s
+[2026-05-23T13:17:41-04:00] [generation-run44] [stitch +4m10s] task 5549 completed in 4m5s
+[2026-05-23T13:17:41-04:00] [generation-run44] [stitch +4m10s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T13:17:41-04:00] [generation-run44] [stitch +4m10s] completed 1 task(s) in 4m10s
