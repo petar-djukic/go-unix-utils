@@ -157,6 +157,112 @@ func TestDiff(t *testing.T) {
 		})
 		verifyGroup(t, filepath.Join(workDir, "good"), groupB.gid)
 	})
+
+	t.Run("recursive_dir", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.MkdirAll(filepath.Join(workDir, "d", "sub"), 0o755)
+		os.WriteFile(filepath.Join(workDir, "d", "f1"), []byte("x"), 0o644)
+		os.WriteFile(filepath.Join(workDir, "d", "sub", "f2"), []byte("x"), 0o644)
+		setGroupRecursive(t, filepath.Join(workDir, "d"), groupA.gid)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "recursive",
+				Args:    []string{"-R", groupB.name, "d"},
+				WorkDir: workDir,
+			},
+		})
+		verifyGroup(t, filepath.Join(workDir, "d"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "d", "f1"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "d", "sub"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "d", "sub", "f2"), groupB.gid)
+	})
+
+	t.Run("recursive_long_flag", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.MkdirAll(filepath.Join(workDir, "d"), 0o755)
+		os.WriteFile(filepath.Join(workDir, "d", "f1"), []byte("x"), 0o644)
+		setGroupRecursive(t, filepath.Join(workDir, "d"), groupA.gid)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "recursive_long",
+				Args:    []string{"--recursive", groupB.name, "d"},
+				WorkDir: workDir,
+			},
+		})
+		verifyGroup(t, filepath.Join(workDir, "d"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "d", "f1"), groupB.gid)
+	})
+
+	t.Run("no_dereference", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.WriteFile(filepath.Join(workDir, "target"), []byte("x"), 0o644)
+		os.Symlink("target", filepath.Join(workDir, "link"))
+		setGroup(t, filepath.Join(workDir, "target"), groupA.gid)
+		setGroup(t, filepath.Join(workDir, "link"), groupA.gid)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "h_flag",
+				Args:    []string{"-h", groupB.name, "link"},
+				WorkDir: workDir,
+			},
+		})
+		verifyGroup(t, filepath.Join(workDir, "link"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "target"), groupA.gid)
+	})
+
+	t.Run("recursive_symlink_P", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.MkdirAll(filepath.Join(workDir, "d"), 0o755)
+		os.WriteFile(filepath.Join(workDir, "d", "f1"), []byte("x"), 0o644)
+		os.WriteFile(filepath.Join(workDir, "outside"), []byte("x"), 0o644)
+		os.Symlink("../outside", filepath.Join(workDir, "d", "link"))
+		setGroupRecursive(t, workDir, groupA.gid)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "R_P_symlink",
+				Args:    []string{"-R", "-P", groupB.name, "d"},
+				WorkDir: workDir,
+			},
+		})
+		verifyGroup(t, filepath.Join(workDir, "d"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "d", "f1"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "d", "link"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "outside"), groupA.gid)
+	})
+
+	t.Run("recursive_symlink_H", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.MkdirAll(filepath.Join(workDir, "realdir"), 0o755)
+		os.WriteFile(filepath.Join(workDir, "realdir", "f1"), []byte("x"), 0o644)
+		os.Symlink("realdir", filepath.Join(workDir, "linkdir"))
+		setGroupRecursive(t, workDir, groupA.gid)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "R_H_symlink",
+				Args:    []string{"-R", "-H", groupB.name, "linkdir"},
+				WorkDir: workDir,
+			},
+		})
+		verifyGroup(t, filepath.Join(workDir, "linkdir"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "realdir", "f1"), groupB.gid)
+	})
+
+	t.Run("recursive_symlink_L", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.MkdirAll(filepath.Join(workDir, "d"), 0o755)
+		os.WriteFile(filepath.Join(workDir, "outside"), []byte("x"), 0o644)
+		os.Symlink("../outside", filepath.Join(workDir, "d", "link"))
+		setGroupRecursive(t, workDir, groupA.gid)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "R_L_symlink",
+				Args:    []string{"-R", "-L", groupB.name, "d"},
+				WorkDir: workDir,
+			},
+		})
+		verifyGroup(t, filepath.Join(workDir, "d"), groupB.gid)
+		verifyGroup(t, filepath.Join(workDir, "outside"), groupB.gid)
+	})
 }
 
 var binaryNameRe = regexp.MustCompile(`(/\S+/)?g?chgrp\b`)
@@ -228,6 +334,19 @@ func setGroup(t *testing.T, path string, gid int) {
 	t.Helper()
 	if err := os.Lchown(path, -1, gid); err != nil {
 		t.Fatalf("setGroup(%s, %d): %v", path, gid, err)
+	}
+}
+
+func setGroupRecursive(t *testing.T, root string, gid int) {
+	t.Helper()
+	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Lchown(path, -1, gid)
+	})
+	if err != nil {
+		t.Fatalf("setGroupRecursive(%s, %d): %v", root, gid, err)
 	}
 }
 

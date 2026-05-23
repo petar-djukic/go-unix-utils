@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chgrp implements srd090-chgrp R1.1-R1.4.
+// cmd/chgrp implements srd090-chgrp R1.1-R1.4, R2.1-R2.3.
 package main
 
 import (
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -45,11 +46,22 @@ Examples:
 const versionText = `chgrp (go-unix-utils) dev
 `
 
+type symlinkMode int
+
+const (
+	symlinkP symlinkMode = iota
+	symlinkH
+	symlinkL
+)
+
 type options struct {
-	verbose   bool
-	changes   bool
-	silent    bool
-	reference string
+	verbose       bool
+	changes       bool
+	silent        bool
+	reference     string
+	recursive     bool
+	noDereference bool
+	symlink       symlinkMode
 }
 
 func main() {
@@ -113,11 +125,84 @@ func resolveReference(rfile string) int {
 }
 
 func changeGroup(opts options, gid int, path string) error {
-	if err := os.Lchown(path, -1, gid); err != nil {
+	if !opts.recursive {
+		return chownSingle(opts, gid, path)
+	}
+	return chownRecursive(opts, gid, path, true)
+}
+
+func chownSingle(opts options, gid int, path string) error {
+	fn := os.Chown
+	if opts.noDereference {
+		fn = os.Lchown
+	}
+	if err := fn(path, -1, gid); err != nil {
 		reportError(opts, err)
 		return err
 	}
 	return nil
+}
+
+func chownRecursive(opts options, gid int, path string, isTopLevel bool) error {
+	follow := shouldFollowLink(opts, isTopLevel)
+	fi, err := statPath(path, follow)
+	if err != nil {
+		reportError(opts, err)
+		return err
+	}
+	chownErr := applyChown(opts, gid, path)
+	if fi.IsDir() {
+		if walkErr := walkChildren(opts, gid, path); walkErr != nil && chownErr == nil {
+			chownErr = walkErr
+		}
+	}
+	return chownErr
+}
+
+func applyChown(opts options, gid int, path string) error {
+	fn := os.Lchown
+	if opts.symlink == symlinkL {
+		fn = os.Chown
+	}
+	if err := fn(path, -1, gid); err != nil {
+		reportError(opts, err)
+		return err
+	}
+	return nil
+}
+
+func shouldFollowLink(opts options, isTopLevel bool) bool {
+	switch opts.symlink {
+	case symlinkL:
+		return true
+	case symlinkH:
+		return isTopLevel
+	default:
+		return false
+	}
+}
+
+func statPath(path string, follow bool) (os.FileInfo, error) {
+	if follow {
+		return os.Stat(path)
+	}
+	return os.Lstat(path)
+}
+
+func walkChildren(opts options, gid int, dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		reportError(opts, err)
+		return err
+	}
+	var firstErr error
+	for _, e := range entries {
+		child := filepath.Join(dir, e.Name())
+		if err := chownRecursive(opts, gid, child, false); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 func reportError(opts options, err error) {
@@ -195,6 +280,13 @@ func parseLongFlag(arg string, opts *options) bool {
 		opts.changes = true
 	case "--silent", "--quiet":
 		opts.silent = true
+	case "--recursive":
+		opts.recursive = true
+	case "--dereference":
+		opts.noDereference = false
+	case "--no-dereference":
+		opts.noDereference = true
+	case "--preserve-root", "--no-preserve-root":
 	default:
 		if strings.HasPrefix(arg, "--reference=") {
 			opts.reference = arg[len("--reference="):]
@@ -214,6 +306,16 @@ func parseShortFlags(flags string, opts *options) bool {
 			opts.changes = true
 		case 'f':
 			opts.silent = true
+		case 'R':
+			opts.recursive = true
+		case 'h':
+			opts.noDereference = true
+		case 'H':
+			opts.symlink = symlinkH
+		case 'L':
+			opts.symlink = symlinkL
+		case 'P':
+			opts.symlink = symlinkP
 		default:
 			return false
 		}
