@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5503"
+task_title: '[stitch] cmd/cksum implementation -- srd077 R2.1, R2.2, R2.3, R3.1'
+status: success
+started_at: "2026-05-23T02:20:02Z"
+duration: 2m1s
+duration_s: 120
+tokens:
+    input: 295429
+    output: 1267
+    cache_creation: 212439
+    cache_read: 82983
+cost_usd: 1.81874175
+num_turns: 13
+rate_limit_wait_s: 17
+loc_before:
+    production: 21166
+    test: 19361
+loc_after:
+    production: 21166
+    test: 19361
+diff:
+    files: 1
+    insertions: 86
+    deletions: 0
