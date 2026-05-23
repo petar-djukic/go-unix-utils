@@ -1,0 +1,19 @@
+task_id: "5526"
+task_title: '[stitch] Implement cmd/link error handling (srd084-link R2.1-R2.3)'
+status: success
+branch: task/generation-run44-5526
+diff:
+    files: 1
+    insertions: 83
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-23-08-24-45-stitch-orchestrator.log
+      status: M
+      insertions: 84
+      deletions: 0
+loc_before:
+    production: 22004
+    test: 20107
+loc_after:
+    production: 22004
+    test: 20107
