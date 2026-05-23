@@ -4774,16 +4774,20 @@ requirements:
             weight: 1
     srd082-stat:
         R1.1:
-            status: in_progress
+            status: uncertain
+            issue: 5534
             weight: 1
         R2.1:
-            status: in_progress
+            status: uncertain
+            issue: 5534
             weight: 1
         R2.2:
-            status: in_progress
+            status: uncertain
+            issue: 5534
             weight: 1
         R2.3:
-            status: in_progress
+            status: uncertain
+            issue: 5534
             weight: 1
         R3.1:
             status: proposed
