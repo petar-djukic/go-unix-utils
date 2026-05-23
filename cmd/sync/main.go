@@ -14,6 +14,21 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
+const helpText = `Usage: sync [OPTION] [FILE]...
+Synchronize cached writes to persistent storage
+
+If one or more files are specified, sync only them,
+or their containing file systems.
+
+  -d, --data             sync only file data, no unneeded metadata
+  -f, --file-system      sync the file systems that contain the files
+      --help     display this help and exit
+      --version  output version information and exit
+`
+
+const versionText = `sync (go-unix-utils) dev
+`
+
 type options struct {
 	data       bool
 	fileSystem bool
@@ -109,6 +124,12 @@ func parseLongFlag(flag string, opts *options) error {
 		opts.data = true
 	case "--file-system":
 		opts.fileSystem = true
+	case "--help":
+		fmt.Fprint(os.Stdout, helpText)
+		os.Exit(0)
+	case "--version":
+		fmt.Fprint(os.Stdout, versionText)
+		os.Exit(0)
 	default:
 		return fmt.Errorf("unrecognized option '%s'", flag)
 	}
