@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chmod implements srd089-chmod R1.1-R1.4, R2.1-R2.4, R4.1-R4.3.
+// cmd/chmod implements srd089-chmod R1.1-R1.4, R2.1-R2.4, R3.1-R3.2, R4.1-R4.3.
 package main
 
 import (
@@ -18,12 +18,16 @@ import (
 
 const helpText = `Usage: chmod [OPTION]... MODE[,MODE]... FILE...
   or:  chmod [OPTION]... OCTAL-MODE FILE...
+  or:  chmod [OPTION]... --reference=RFILE FILE...
 Change the mode of each FILE to MODE.
 
-  -c, --changes        like verbose but report only when a change is made
+  -c, --changes          like verbose but report only when a change is made
   -f, --silent, --quiet  suppress most error messages
-  -v, --verbose        output a diagnostic for every file processed
-  -R, --recursive      change files and directories recursively
+  -v, --verbose          output a diagnostic for every file processed
+      --no-preserve-root  do not treat '/' specially (the default)
+      --preserve-root    fail to operate recursively on '/'
+      --reference=RFILE  use RFILE's mode instead of MODE values
+  -R, --recursive        change files and directories recursively
       --help     display this help and exit
       --version  output version information and exit
 
@@ -34,16 +38,21 @@ const versionText = `chmod (go-unix-utils) dev
 `
 
 type options struct {
-	verbose   bool
-	changes   bool
-	silent    bool
-	recursive bool
+	verbose      bool
+	changes      bool
+	silent       bool
+	recursive    bool
+	preserveRoot bool
+	reference    string
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
 	opts, mode, files := parseArgs(os.Args[1:])
+	if opts.reference != "" {
+		mode = resolveReference(opts.reference)
+	}
 	if len(files) == 0 {
 		fmt.Fprintf(os.Stderr, "chmod: missing operand after '%s'\n", mode)
 		fmt.Fprintln(os.Stderr, "Try 'chmod --help' for more information.")
@@ -69,6 +78,11 @@ func processFile(opts options, mode string, path string) error {
 }
 
 func processRecursive(opts options, mode string, root string) error {
+	if opts.preserveRoot && isRootPath(root) {
+		fmt.Fprintf(os.Stderr,
+			"chmod: it is dangerous to operate recursively on '/'\nchmod: use --no-preserve-root to override this failsafe\n")
+		return fmt.Errorf("refusing to operate on root")
+	}
 	var walkErr error
 	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
 		if err != nil {
@@ -184,19 +198,23 @@ func parseArgs(args []string) (options, string, []string) {
 		if handled := handleSpecialArg(arg, &endOfFlags); handled {
 			continue
 		}
+		if parseLongFlag(arg, &opts) {
+			continue
+		}
 		if mode == "" {
-			if parseLongFlag(arg, &opts) {
-				continue
-			}
 			if strings.HasPrefix(arg, "-") && parseShortFlags(arg[1:], &opts) {
 				continue
 			}
-			mode = arg
+			if opts.reference != "" {
+				files = append(files, arg)
+			} else {
+				mode = arg
+			}
 		} else {
 			files = append(files, arg)
 		}
 	}
-	if mode == "" {
+	if mode == "" && opts.reference == "" {
 		fmt.Fprintln(os.Stderr, "chmod: missing operand")
 		fmt.Fprintln(os.Stderr, "Try 'chmod --help' for more information.")
 		os.Exit(1)
@@ -230,7 +248,15 @@ func parseLongFlag(arg string, opts *options) bool {
 		opts.silent = true
 	case "--recursive":
 		opts.recursive = true
+	case "--preserve-root":
+		opts.preserveRoot = true
+	case "--no-preserve-root":
+		opts.preserveRoot = false
 	default:
+		if strings.HasPrefix(arg, "--reference=") {
+			opts.reference = arg[len("--reference="):]
+			return true
+		}
 		return false
 	}
 	return true
@@ -304,165 +330,23 @@ func applySymbolicMode(mode string, path string) error {
 	return os.Chmod(path, newMode)
 }
 
-func evalSymbolic(spec string, current os.FileMode, umask os.FileMode) (os.FileMode, error) {
-	perm := current.Perm() | (current & (os.ModeSetuid | os.ModeSetgid | os.ModeSticky))
-	for clause := range strings.SplitSeq(spec, ",") {
-		var err error
-		perm, err = evalClause(clause, perm, umask)
-		if err != nil {
-			return 0, err
-		}
+func resolveReference(rfile string) string {
+	info, err := os.Stat(rfile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "chmod: failed to get attributes of '%s': %s\n",
+			rfile, err.(*os.PathError).Err)
+		os.Exit(1)
 	}
-	return perm, nil
+	m := info.Mode().Perm() | (info.Mode() & (os.ModeSetuid | os.ModeSetgid | os.ModeSticky))
+	return fmt.Sprintf("%04o", uint32(m))
 }
 
-func evalClause(clause string, perm os.FileMode, umask os.FileMode) (os.FileMode, error) {
-	i := 0
-	who := parseWho(clause, &i)
-	if i >= len(clause) {
-		return 0, fmt.Errorf("invalid mode: %q", clause)
+func isRootPath(path string) bool {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path == "/"
 	}
-	for i < len(clause) {
-		op := clause[i]
-		if op != '+' && op != '-' && op != '=' {
-			return 0, fmt.Errorf("invalid mode: %q", clause)
-		}
-		i++
-		bits := parsePerms(clause, &i)
-		perm = applyOp(perm, who, op, bits, umask)
-	}
-	return perm, nil
-}
-
-type permBits struct {
-	read    bool
-	write   bool
-	exec    bool
-	execX   bool
-	setuid  bool
-	setgid  bool
-	sticky  bool
-}
-
-func parseWho(clause string, pos *int) string {
-	start := *pos
-	for *pos < len(clause) {
-		c := clause[*pos]
-		if c == 'u' || c == 'g' || c == 'o' || c == 'a' {
-			*pos++
-		} else {
-			break
-		}
-	}
-	return clause[start:*pos]
-}
-
-func parsePerms(clause string, pos *int) permBits {
-	var bits permBits
-	for *pos < len(clause) {
-		c := clause[*pos]
-		switch c {
-		case 'r':
-			bits.read = true
-		case 'w':
-			bits.write = true
-		case 'x':
-			bits.exec = true
-		case 'X':
-			bits.execX = true
-		case 's':
-			bits.setuid = true
-			bits.setgid = true
-		case 't':
-			bits.sticky = true
-		default:
-			return bits
-		}
-		*pos++
-	}
-	return bits
-}
-
-func applyOp(perm os.FileMode, who string, op byte, bits permBits, umask os.FileMode) os.FileMode {
-	implicit := who == ""
-	if implicit || strings.ContainsRune(who, 'a') {
-		who = "ugo"
-	}
-
-	var mask os.FileMode
-	for _, w := range who {
-		mask |= buildMask(w, bits, perm)
-	}
-
-	if implicit {
-		mask &^= umask
-	}
-
-	switch op {
-	case '+':
-		perm |= mask
-	case '-':
-		perm &^= mask
-	case '=':
-		perm = applyEquals(perm, who, mask)
-	}
-	return perm
-}
-
-func buildMask(who rune, bits permBits, current os.FileMode) os.FileMode {
-	var rBit, wBit, xBit os.FileMode
-	var specialBit os.FileMode
-	useSpecial := false
-
-	switch who {
-	case 'u':
-		rBit, wBit, xBit = 0400, 0200, 0100
-		specialBit = os.ModeSetuid
-		useSpecial = bits.setuid || bits.setgid
-	case 'g':
-		rBit, wBit, xBit = 0040, 0020, 0010
-		specialBit = os.ModeSetgid
-		useSpecial = bits.setuid || bits.setgid
-	case 'o':
-		rBit, wBit, xBit = 0004, 0002, 0001
-		specialBit = os.ModeSticky
-		useSpecial = bits.sticky
-	}
-
-	var mask os.FileMode
-	if bits.read {
-		mask |= rBit
-	}
-	if bits.write {
-		mask |= wBit
-	}
-	if bits.exec {
-		mask |= xBit
-	}
-	if bits.execX && current&0111 != 0 {
-		mask |= xBit
-	}
-	if useSpecial {
-		mask |= specialBit
-	}
-	return mask
-}
-
-func applyEquals(perm os.FileMode, who string, mask os.FileMode) os.FileMode {
-	var clear os.FileMode
-	for _, w := range who {
-		switch w {
-		case 'u':
-			clear |= 0700 | os.ModeSetuid
-		case 'g':
-			clear |= 0070 | os.ModeSetgid
-		case 'o':
-			clear |= 0007 | os.ModeSticky
-		}
-	}
-	perm &^= clear
-	perm |= mask
-	return perm
+	return resolved == "/"
 }
 
 func formatErr(err error) string {
