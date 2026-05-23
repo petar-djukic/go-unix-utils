@@ -100,6 +100,103 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardStderr},
 		},
+		// R2.1: algorithm selection -- tagged output for each algorithm
+		{
+			Name: "algo-sha1",
+			Args: []string{"--algorithm=sha1", helloFile},
+		},
+		{
+			Name: "algo-sha224",
+			Args: []string{"--algorithm=sha224", helloFile},
+		},
+		{
+			Name: "algo-sha256",
+			Args: []string{"--algorithm=sha256", helloFile},
+		},
+		{
+			Name: "algo-sha384",
+			Args: []string{"--algorithm=sha384", helloFile},
+		},
+		{
+			Name: "algo-sha512",
+			Args: []string{"--algorithm=sha512", helloFile},
+		},
+		{
+			Name: "algo-blake2b",
+			Args: []string{"--algorithm=blake2b", helloFile},
+		},
+		{
+			Name: "algo-sm3",
+			Args: []string{"--algorithm=sm3", helloFile},
+		},
+		// R2.1: explicit crc algorithm
+		{
+			Name: "algo-crc-explicit",
+			Args: []string{"--algorithm=crc", helloFile},
+		},
+		// R2.1: algorithm with stdin
+		{
+			Name:  "algo-sha256-stdin",
+			Args:  []string{"--algorithm=sha256"},
+			Stdin: []byte("hello\n"),
+		},
+		// R2.1: algorithm with multiple files
+		{
+			Name: "algo-sha256-multi",
+			Args: []string{"--algorithm=sha256", helloFile, emptyFile},
+		},
+		// R2.1: short flag -a
+		{
+			Name: "algo-short-space",
+			Args: []string{"-a", "sha256", helloFile},
+		},
+		{
+			Name: "algo-short-nospace",
+			Args: []string{"-asha256", helloFile},
+		},
+		// R2.1: algorithm with empty file
+		{
+			Name: "algo-sha256-empty",
+			Args: []string{"--algorithm=sha256", emptyFile},
+		},
+		// R2.1: algorithm with binary content
+		{
+			Name: "algo-sha256-binary",
+			Args: []string{"--algorithm=sha256", binaryFile},
+		},
+		// R2.2: untagged output
+		{
+			Name: "untagged-sha256",
+			Args: []string{"--algorithm=sha256", "--untagged", helloFile},
+		},
+		{
+			Name: "untagged-sha1",
+			Args: []string{"--algorithm=sha1", "--untagged", helloFile},
+		},
+		{
+			Name: "untagged-sha256-multi",
+			Args: []string{"--algorithm=sha256", "--untagged", helloFile, emptyFile},
+		},
+		{
+			Name:  "untagged-sha256-stdin",
+			Args:  []string{"--algorithm=sha256", "--untagged"},
+			Stdin: []byte("hello\n"),
+		},
+		// R2.3: raw output
+		{
+			Name: "raw-sha256",
+			Args: []string{"--algorithm=sha256", "--raw", helloFile},
+		},
+		{
+			Name:  "raw-sha256-stdin",
+			Args:  []string{"--algorithm=sha256", "--raw"},
+			Stdin: []byte("hello\n"),
+		},
+		{
+			Name: "raw-sm3",
+			Args: []string{"--algorithm=sm3", "--raw", helloFile},
+		},
+		// R3.1: exit 0 on success (verified by all above tests with default ExitCode=0)
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

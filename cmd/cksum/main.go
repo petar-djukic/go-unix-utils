@@ -4,10 +4,18 @@
 package main
 
 import (
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
 	"fmt"
+	"hash"
 	"io"
 	"os"
+	"strings"
 
+	"golang.org/x/crypto/blake2b"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/hashutil"
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
@@ -28,18 +36,45 @@ func init() {
 	}
 }
 
+type options struct {
+	algorithm string
+	untagged  bool
+	raw       bool
+}
+
 func main() {
 	sys.InstallSIGPIPEHandler()
-	files := os.Args[1:]
+	opts, files := parseArgs(os.Args[1:])
+	alg := opts.algorithm
+	if alg == "" || alg == "crc" {
+		runCRC(files)
+		return
+	}
+	cfg, err := algorithmConfig(alg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cksum: %v\n", err)
+		os.Exit(1)
+	}
+	if opts.raw {
+		if len(files) > 1 {
+			fmt.Fprintf(os.Stderr, "cksum: the --raw option is not supported with multiple files\n")
+			os.Exit(1)
+		}
+		os.Exit(digestRaw(files, cfg))
+	}
+	os.Exit(hashutil.DigestFiles(files, cfg, false, !opts.untagged, os.Stdout, os.Stderr))
+}
+
+func runCRC(files []string) {
 	exitCode := 0
 	if len(files) == 0 {
-		if err := processStdin(os.Stdout); err != nil {
+		if err := crcStdin(os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "cksum: %v\n", err)
 			exitCode = 1
 		}
 	} else {
 		for _, file := range files {
-			if err := processFile(file, os.Stdout); err != nil {
+			if err := crcFile(file, os.Stdout); err != nil {
 				fmt.Fprintf(os.Stderr, "cksum: %v\n", err)
 				exitCode = 1
 			}
@@ -48,7 +83,109 @@ func main() {
 	os.Exit(exitCode)
 }
 
-func processStdin(stdout io.Writer) error {
+func algorithmConfig(alg string) (hashutil.HashConfig, error) {
+	switch alg {
+	case "sha1":
+		return hashutil.HashConfig{Algorithm: "SHA1", NewHash: sha1.New, DigestLen: 20}, nil
+	case "sha224":
+		return hashutil.HashConfig{Algorithm: "SHA224", NewHash: sha256.New224, DigestLen: 28}, nil
+	case "sha256":
+		return hashutil.HashConfig{Algorithm: "SHA256", NewHash: sha256.New, DigestLen: 32}, nil
+	case "sha384":
+		return hashutil.HashConfig{Algorithm: "SHA384", NewHash: sha512.New384, DigestLen: 48}, nil
+	case "sha512":
+		return hashutil.HashConfig{Algorithm: "SHA512", NewHash: sha512.New, DigestLen: 64}, nil
+	case "blake2b":
+		return hashutil.HashConfig{
+			Algorithm: "BLAKE2b",
+			NewHash:   func() hash.Hash { h, _ := blake2b.New512(nil); return h },
+			DigestLen: 64,
+		}, nil
+	case "sm3":
+		return hashutil.HashConfig{Algorithm: "SM3", NewHash: newSM3, DigestLen: 32}, nil
+	default:
+		return hashutil.HashConfig{}, fmt.Errorf("unrecognized algorithm: %s", alg)
+	}
+}
+
+func digestRaw(files []string, cfg hashutil.HashConfig) int {
+	if len(files) == 0 {
+		files = []string{"-"}
+	}
+	for _, file := range files {
+		r, err := openInput(file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cksum: %v\n", err)
+			return 1
+		}
+		h := cfg.NewHash()
+		_, err = io.Copy(h, r)
+		r.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cksum: %v\n", err)
+			return 1
+		}
+		os.Stdout.Write(h.Sum(nil))
+	}
+	return 0
+}
+
+func parseArgs(args []string) (options, []string) {
+	var opts options
+	var files []string
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--" {
+			files = append(files, args[i+1:]...)
+			break
+		}
+		if strings.HasPrefix(arg, "--") {
+			i += parseLongFlag(args[i:], &opts)
+			continue
+		}
+		if arg != "-" && strings.HasPrefix(arg, "-") {
+			i += parseShortFlag(args[i:], &opts)
+			continue
+		}
+		files = append(files, arg)
+		i++
+	}
+	return opts, files
+}
+
+func parseLongFlag(remaining []string, opts *options) int {
+	arg := remaining[0]
+	switch {
+	case arg == "--untagged":
+		opts.untagged = true
+	case arg == "--raw":
+		opts.raw = true
+	case arg == "--algorithm" && len(remaining) >= 2:
+		opts.algorithm = remaining[1]
+		return 2
+	case strings.HasPrefix(arg, "--algorithm="):
+		opts.algorithm = arg[len("--algorithm="):]
+	}
+	return 1
+}
+
+func parseShortFlag(remaining []string, opts *options) int {
+	arg := remaining[0]
+	if len(arg) >= 2 && arg[1] == 'a' {
+		if len(arg) > 2 {
+			opts.algorithm = arg[2:]
+			return 1
+		}
+		if len(remaining) >= 2 {
+			opts.algorithm = remaining[1]
+			return 2
+		}
+	}
+	return 1
+}
+
+func crcStdin(stdout io.Writer) error {
 	crc, size, err := computeCRC(os.Stdin)
 	if err != nil {
 		return err
@@ -57,7 +194,7 @@ func processStdin(stdout io.Writer) error {
 	return nil
 }
 
-func processFile(file string, stdout io.Writer) error {
+func crcFile(file string, stdout io.Writer) error {
 	r, err := openInput(file)
 	if err != nil {
 		return err
