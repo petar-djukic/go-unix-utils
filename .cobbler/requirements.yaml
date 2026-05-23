@@ -4831,10 +4831,12 @@ requirements:
             issue: 5543
             weight: 1
         R2.1:
-            status: in_progress
+            status: uncertain
+            issue: 5544
             weight: 1
         R2.2:
-            status: in_progress
+            status: uncertain
+            issue: 5544
             weight: 1
         R3.1:
             status: proposed
