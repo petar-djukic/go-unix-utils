@@ -4774,40 +4774,40 @@ requirements:
             weight: 1
     srd082-stat:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R5.1:
-            status: ready
+            status: proposed
             weight: 1
         R6.1:
-            status: ready
+            status: proposed
             weight: 1
         R7.1:
-            status: ready
+            status: proposed
             weight: 1
         R7.2:
-            status: ready
+            status: proposed
             weight: 1
         R7.3:
-            status: ready
+            status: proposed
             weight: 1
     srd083-truncate:
         R1.1:

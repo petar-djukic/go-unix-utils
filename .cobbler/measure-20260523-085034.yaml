@@ -1,0 +1,181 @@
+- index: 0
+  title: "[stitch] cmd/stat (contract) (srd082)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd082-stat.yaml (all requirement groups, to derive flag variables and internal function signatures)
+      - pkg/sys/stat.go (Stat, Lstat, FileInfo struct -- the API stat will use for file metadata)
+      - CLAUDE.md (project conventions, SIGPIPE handler requirement, build commands)
+
+    files:
+      - path: cmd/stat/main.go
+        action: create
+        note: Package main with flag declarations, main() skeleton, and internal function stubs
+
+    requirements:
+      - id: R1
+        text: Create cmd/stat/main.go with package main. Declare flag variables for all flags defined in srd082-stat.yaml (--format, --printf, --terse, --file-system, --dereference, and --help/--version).
+      - id: R2
+        text: Define main() that calls sys.InstallSIGPIPEHandler(), parses flags via flag.Parse(), iterates over remaining arguments as file paths, and calls placeholder stub functions for each output mode.
+      - id: R3
+        text: Define internal stub functions for each output mode derived from srd082 requirement groups -- default format, custom format string, terse format, and filesystem format. Each stub returns an empty string or zero value.
+      - id: R4
+        text: Define internal stub functions for format directive expansion (one for file directives, one for filesystem directives). Each stub returns an empty string.
+
+    design_decisions:
+      - id: D1
+        text: Import and use pkg/sys.Stat and pkg/sys.Lstat for file metadata, per architecture component dependencies.
+      - id: D2
+        text: Call sys.InstallSIGPIPEHandler() at the start of main(), per the SIGPIPE shared protocol in ARCHITECTURE.yaml.
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/stat/main.go exists with package main and compiles with "go build -o bin/stat ./cmd/stat/"
+      - id: AC2
+        text: All stub functions are defined and return zero values or empty strings
+      - id: AC3
+        text: Flag variables are declared for every flag in srd082-stat.yaml
+      - id: AC4
+        text: "go vet ./cmd/stat/... reports no errors"
+
+- index: 1
+  title: "[stitch] Implement cmd/stat core (srd082 R1.1, R2.1, R2.2, R2.3)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd082-stat.yaml (R1.1, R2.1, R2.2, R2.3 -- core stat operation and output format selection)
+      - cmd/stat/main.go (contract stubs from prior task -- fill in the stub functions)
+      - pkg/sys/stat.go (Stat, Lstat, FileInfo struct fields)
+      - CLAUDE.md (project conventions, build commands)
+
+    files:
+      - path: cmd/stat/main.go
+        action: modify
+        note: Implement core stat operation and three output format modes
+
+    requirements:
+      - id: R1
+        text: "Implement srd082 R1.1: core stat operation that reads file metadata via pkg/sys.Stat (or Lstat when not dereferencing) and dispatches to the selected output format"
+      - id: R2
+        text: "Implement srd082 R2.1: default output format that displays all file metadata fields with labels, matching the exact layout and field order specified in srd082-stat.yaml"
+      - id: R3
+        text: "Implement srd082 R2.2: --format option that accepts a format string, expands directives, and appends a trailing newline after each file's output"
+      - id: R4
+        text: "Implement srd082 R2.3: --printf option that accepts a format string, expands directives and backslash escapes (\\n, \\t, \\\\, etc.), and does not append a trailing newline"
+
+    design_decisions:
+      - id: D1
+        text: Use pkg/sys.Stat for dereferenced calls and pkg/sys.Lstat for non-dereferenced calls, per srd002-sys contract.
+      - id: D2
+        text: Default output format must match GNU stat field order and labels exactly -- read srd082-stat.yaml R2.1 for the authoritative layout.
+      - id: D3
+        text: --printf backslash escape processing handles \\n, \\t, \\r, \\\\, \\a, \\b, \\f, \\v, \\0NNN (octal), and \\xHH (hex), matching GNU stat behavior.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/stat ./cmd/stat/ succeeds with no errors"
+      - id: AC2
+        text: "bin/stat on a regular file produces multi-line default format output with File, Size, Blocks, IO Block, Device, Inode, Links, Access (mode), Uid, Gid, Access (time), Modify, Change, and Birth fields"
+      - id: AC3
+        text: "bin/stat --format='%n %s' on a file prints filename and size followed by a newline"
+      - id: AC4
+        text: "bin/stat --printf='%n\\n' on a file prints filename followed by exactly one newline (no extra trailing newline)"
+      - id: AC5
+        text: "go vet ./cmd/stat/... reports no errors"
+
+- index: 2
+  title: "[stitch] Implement cmd/stat format directives and filesystem (srd082 R3.1, R4.1, R4.2, R5.1)"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd082-stat.yaml (R3.1, R4.1, R4.2, R5.1 -- filesystem mode, file directives, filesystem directives, dereference)
+      - cmd/stat/main.go (core implementation from prior task)
+      - pkg/sys/stat.go (FileInfo struct fields used by format directives)
+      - CLAUDE.md (project conventions)
+
+    files:
+      - path: cmd/stat/main.go
+        action: modify
+        note: Implement format directive expansion and filesystem mode
+
+    requirements:
+      - id: R1
+        text: "Implement srd082 R3.1: --file-system / -f mode that displays filesystem information (type, block size, blocks total/free/available, inode total/free) instead of file information, using the statfs syscall"
+      - id: R2
+        text: "Implement srd082 R4.1: format directive expansion for file attributes -- implement every file-mode directive specified in srd082-stat.yaml (e.g., %a access rights octal, %A access rights human, %b blocks, %d device, %f raw mode hex, %F file type, %g group id, %G group name, %h hard links, %i inode, %n name, %N quoted name, %o I/O block size, %s total size, %u user id, %U user name, %w/%W birth time, %x/%X access time, %y/%Y modify time, %z/%Z change time)"
+      - id: R3
+        text: "Implement srd082 R4.2: format directive expansion for filesystem attributes -- implement every filesystem-mode directive specified in srd082-stat.yaml (e.g., %a free blocks available, %b total blocks, %c total inodes, %d free inodes, %f filesystem id, %i filesystem id, %l max filename length, %n filename, %s block size, %S fundamental block size, %t/%T filesystem type hex/name)"
+      - id: R4
+        text: "Implement srd082 R5.1: --dereference / -L option that follows symbolic links and reports metadata of the target file instead of the symlink itself"
+
+    design_decisions:
+      - id: D1
+        text: Use golang.org/x/sys/unix.Statfs for filesystem metadata in --file-system mode.
+      - id: D2
+        text: File format directives map directly to pkg/sys.FileInfo struct fields -- read srd082-stat.yaml R4.1 for the exact mapping of each directive letter to its data source.
+      - id: D3
+        text: When --dereference is set, use pkg/sys.Stat instead of pkg/sys.Lstat for all file operations.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/stat ./cmd/stat/ succeeds"
+      - id: AC2
+        text: "bin/stat --format='%a %U %s %n' on a file prints octal permissions, owner name, size, and filename"
+      - id: AC3
+        text: "bin/stat -f --format='%T %b %a' on a file prints filesystem type name, total blocks, and available blocks"
+      - id: AC4
+        text: "bin/stat -L on a symbolic link reports the metadata of the target, not the symlink"
+      - id: AC5
+        text: "go vet ./cmd/stat/... reports no errors"
+
+- index: 3
+  title: "[stitch] Implement cmd/stat terse output and error handling (srd082 R6.1, R7.1, R7.2, R7.3)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd082-stat.yaml (R6.1, R7.1, R7.2, R7.3 -- terse mode, error reporting, exit codes, multi-file)
+      - cmd/stat/main.go (implementation from prior tasks)
+      - CLAUDE.md (project conventions)
+
+    files:
+      - path: cmd/stat/main.go
+        action: modify
+        note: Implement terse output mode and error handling
+
+    requirements:
+      - id: R1
+        text: "Implement srd082 R6.1: --terse / -t option that prints file information as a single compact line of space-separated fields in the format specified by srd082-stat.yaml (typically: name size blocks mode uid gid device inode links major minor atime mtime ctime birthtime)"
+      - id: R2
+        text: "Implement srd082 R7.1: error reporting for non-existent or inaccessible files -- print error message to stderr in the format matching GNU stat (e.g., \"stat: cannot stat 'FILENAME': No such file or directory\") and continue processing remaining arguments"
+      - id: R3
+        text: "Implement srd082 R7.2: exit code handling -- exit 0 when all files are processed successfully, exit 1 when any file produces an error"
+      - id: R4
+        text: "Implement srd082 R7.3: multi-file argument support -- process each file argument in order, printing output for each file separated by blank lines in default mode, and continuing past errors to process all arguments"
+
+    design_decisions:
+      - id: D1
+        text: Error messages must match GNU stat format exactly -- read srd082-stat.yaml R7.1 for the required error message template.
+      - id: D2
+        text: Exit code is the logical OR of all per-file results -- 1 if any file fails, 0 only if all succeed. This matches GNU coreutils convention.
+      - id: D3
+        text: Terse output with --file-system uses a different field set than terse output for files -- read srd082-stat.yaml R6.1 for both formats.
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/stat ./cmd/stat/ succeeds"
+      - id: AC2
+        text: "bin/stat --terse on a regular file prints a single line of space-separated metadata fields"
+      - id: AC3
+        text: "bin/stat nonexistent_file prints 'stat: cannot stat ...' to stderr and exits 1"
+      - id: AC4
+        text: "bin/stat file1 nonexistent file2 prints output for file1 and file2, error for nonexistent to stderr, and exits 1"
+      - id: AC5
+        text: "go vet ./cmd/stat/... reports no errors"

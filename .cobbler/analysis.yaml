@@ -539,7 +539,7 @@ code_status:
         - version: "10.0"
           name: Batch 10.0 — file metadata and operations (stat, truncate, link, sync)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel10.0-uc001-stat
               specstatus: spec_complete
@@ -558,7 +558,7 @@ code_status:
               testfiles: 0
             - id: rel10.0-uc004-sync
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "10.1"
