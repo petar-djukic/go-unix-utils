@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5536"
+task_title: '[stitch] Implement cmd/stat terse output and error handling (srd082 R6.1, R7.1, R7.2, R7.3)'
+status: success
+started_at: "2026-05-23T15:26:04Z"
+duration: 7m11s
+duration_s: 431
+tokens:
+    input: 1210194
+    output: 13532
+    cache_creation: 238619
+    cache_read: 971549
+cost_usd: 2.7528826000000004
+num_turns: 60
+rate_limit_wait_s: 1
+loc_before:
+    production: 23009
+    test: 20412
+loc_after:
+    production: 23009
+    test: 20412
+diff:
+    files: 2
+    insertions: 197
+    deletions: 3

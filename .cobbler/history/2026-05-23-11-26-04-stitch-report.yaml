@@ -1,0 +1,23 @@
+task_id: "5536"
+task_title: '[stitch] Implement cmd/stat terse output and error handling (srd082 R6.1, R7.1, R7.2, R7.3)'
+status: success
+branch: task/generation-run44-5536
+diff:
+    files: 2
+    insertions: 197
+    deletions: 3
+files:
+    - path: .cobbler/history/2026-05-23-11-25-54-stitch-orchestrator.log
+      status: M
+      insertions: 195
+      deletions: 0
+    - path: .cobbler/requirements.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+loc_before:
+    production: 23009
+    test: 20412
+loc_after:
+    production: 23009
+    test: 20412
