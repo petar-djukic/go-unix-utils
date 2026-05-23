@@ -4667,13 +4667,13 @@ requirements:
             issue: 5514
             weight: 1
         R3.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.3:
-            status: proposed
+            status: in_progress
             weight: 1
     srd080-base64:
         R1.1:
