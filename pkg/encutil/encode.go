@@ -27,7 +27,7 @@ func Encode(r io.Reader, w io.Writer, cfg EncoderConfig) error {
 	}
 	encoded := cfg.Encode(data)
 	if cfg.WrapCol <= 0 {
-		_, err = io.WriteString(w, encoded+"\n")
+		_, err = io.WriteString(w, encoded)
 		return err
 	}
 	return writeWrapped(w, encoded, cfg.WrapCol)
