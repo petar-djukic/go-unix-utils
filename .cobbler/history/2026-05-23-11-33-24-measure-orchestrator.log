@@ -123,3 +123,25 @@
 [2026-05-23T11:39:54-04:00] [generation-run44] [measure +6m31s] validateMeasureOutput: [2] "[stitch] Implement cmd/truncate version and help output (srd083 R3.3)": could not parse description: yaml: line 21: did not find expected key
 [2026-05-23T11:39:54-04:00] [generation-run44] [measure +6m31s] validateMeasureOutput: [3] "[stitch] Implement cmd/truncate differential tests (srd083 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3)": could not parse description: yaml: line 34: did not find expected key
 [2026-05-23T11:39:54-04:00] [generation-run44] [measure +6m31s] importIssues: 4 warning(s)
+[2026-05-23T11:39:58-04:00] [generation-run44] [measure +6m34s] importIssues: creating task 0: [stitch] Implement cmd/truncate core file size operations (srd083 R1.1, R1.2, R1.3, R1.4) (dep=-1)
+[2026-05-23T11:39:59-04:00] [generation-run44] [measure +6m35s] createCobblerIssue: created #5538 "[measure] Implement cmd/truncate core file size operations (srd083 R1.1, R1.2, R1.3, R1.4)" gen=generation-run44 index=0 dep=-1
+[2026-05-23T11:39:59-04:00] [generation-run44] [measure +6m35s] importIssues: creating task 1: [stitch] Implement cmd/truncate relative operations and reference (srd083 R2.1, R2.2, R3.1, R3.2) (dep=0)
+[2026-05-23T11:40:00-04:00] [generation-run44] [measure +6m36s] createCobblerIssue: created #5539 "[measure] Implement cmd/truncate relative operations and reference (srd083 R2.1, R2.2, R3.1, R3.2)" gen=generation-run44 index=1 dep=0
+[2026-05-23T11:40:00-04:00] [generation-run44] [measure +6m36s] importIssues: creating task 2: [stitch] Implement cmd/truncate version and help output (srd083 R3.3) (dep=1)
+[2026-05-23T11:40:01-04:00] [generation-run44] [measure +6m37s] createCobblerIssue: created #5540 "[measure] Implement cmd/truncate version and help output (srd083 R3.3)" gen=generation-run44 index=2 dep=1
+[2026-05-23T11:40:01-04:00] [generation-run44] [measure +6m37s] importIssues: creating task 3: [stitch] Implement cmd/truncate differential tests (srd083 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3) (dep=2)
+[2026-05-23T11:40:02-04:00] [generation-run44] [measure +6m38s] createCobblerIssue: created #5541 "[measure] Implement cmd/truncate differential tests (srd083 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3)" gen=generation-run44 index=3 dep=2
+[2026-05-23T11:40:02-04:00] [generation-run44] [measure +6m38s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-23T11:40:04-04:00] [generation-run44] [measure +6m40s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-23T11:40:05-04:00] [generation-run44] [measure +6m41s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-23T11:40:07-04:00] [generation-run44] [measure +6m43s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-23T11:40:10-04:00] [generation-run44] [measure +6m46s] importIssues: 4 of 4 issue(s) imported
+[2026-05-23T11:40:10-04:00] [generation-run44] [measure +6m46s] appendMeasureLog: 382 total issues in .cobbler/measure.yaml
+[2026-05-23T11:40:10-04:00] [generation-run44] [measure +6m46s] iteration 1 imported 4 issue(s)
+[2026-05-23T11:40:13-04:00] [generation-run44] [measure +6m49s] linkSubIssue: linked #5538 as sub-issue of #5537
+[2026-05-23T11:40:14-04:00] [generation-run44] [measure +6m50s] linkSubIssue: linked #5539 as sub-issue of #5537
+[2026-05-23T11:40:14-04:00] [generation-run44] [measure +6m51s] linkSubIssue: linked #5540 as sub-issue of #5537
+[2026-05-23T11:40:16-04:00] [generation-run44] [measure +6m52s] linkSubIssue: linked #5541 as sub-issue of #5537
+[2026-05-23T11:40:17-04:00] [generation-run44] [measure +6m54s] closeMeasuringPlaceholder: closed #5537
+[2026-05-23T11:40:17-04:00] [generation-run44] [measure +6m54s] finalizeMeasurePlaceholder: finalized #5537 with 4 child issue(s)
+[2026-05-23T11:40:17-04:00] [generation-run44] [measure +6m54s] completed 1 iteration(s), 4 issue(s) created in 6m54s
