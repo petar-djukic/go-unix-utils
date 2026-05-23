@@ -123,3 +123,22 @@
 [2026-05-23T12:31:24-04:00] [generation-run44] [measure +12m53s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-23T12:31:24-04:00] [generation-run44] [measure +12m53s] transitionRequirements: marked 2 R-items as proposed
 [2026-05-23T12:31:24-04:00] [generation-run44] [measure +12m53s] transitionRequirements: marked 3 R-items as proposed
+[2026-05-23T12:31:24-04:00] [generation-run44] [measure +12m53s] importIssues: creating task 0: [stitch] Implement cmd/truncate core size operations (srd083 R1.1, R1.2, R1.3, R1.4) (dep=-1)
+[2026-05-23T12:31:25-04:00] [generation-run44] [measure +12m54s] createCobblerIssue: created #5543 "[measure] Implement cmd/truncate core size operations (srd083 R1.1, R1.2, R1.3, R1.4)" gen=generation-run44 index=0 dep=-1
+[2026-05-23T12:31:25-04:00] [generation-run44] [measure +12m54s] importIssues: creating task 1: [stitch] Implement cmd/truncate relative and reference sizing (srd083 R2.1, R2.2) (dep=0)
+[2026-05-23T12:31:26-04:00] [generation-run44] [measure +12m55s] createCobblerIssue: created #5544 "[measure] Implement cmd/truncate relative and reference sizing (srd083 R2.1, R2.2)" gen=generation-run44 index=1 dep=0
+[2026-05-23T12:31:26-04:00] [generation-run44] [measure +12m55s] importIssues: creating task 2: [stitch] Implement cmd/truncate error handling and options (srd083 R3.1, R3.2, R3.3) (dep=1)
+[2026-05-23T12:31:27-04:00] [generation-run44] [measure +12m56s] createCobblerIssue: created #5545 "[measure] Implement cmd/truncate error handling and options (srd083 R3.1, R3.2, R3.3)" gen=generation-run44 index=2 dep=1
+[2026-05-23T12:31:28-04:00] [generation-run44] [measure +12m57s] waitForIssuesVisible: 0/3 visible, retrying...
+[2026-05-23T12:31:29-04:00] [generation-run44] [measure +12m58s] waitForIssuesVisible: 2/3 visible, retrying...
+[2026-05-23T12:31:31-04:00] [generation-run44] [measure +13m0s] waitForIssuesVisible: 2/3 visible, retrying...
+[2026-05-23T12:31:32-04:00] [generation-run44] [measure +13m1s] waitForIssuesVisible: 2/3 visible, retrying...
+[2026-05-23T12:31:35-04:00] [generation-run44] [measure +13m4s] importIssues: 3 of 3 issue(s) imported
+[2026-05-23T12:31:35-04:00] [generation-run44] [measure +13m4s] appendMeasureLog: 385 total issues in .cobbler/measure.yaml
+[2026-05-23T12:31:35-04:00] [generation-run44] [measure +13m4s] iteration 1 imported 3 issue(s)
+[2026-05-23T12:31:39-04:00] [generation-run44] [measure +13m8s] linkSubIssue: linked #5543 as sub-issue of #5542
+[2026-05-23T12:31:40-04:00] [generation-run44] [measure +13m9s] linkSubIssue: linked #5544 as sub-issue of #5542
+[2026-05-23T12:31:41-04:00] [generation-run44] [measure +13m10s] linkSubIssue: linked #5545 as sub-issue of #5542
+[2026-05-23T12:31:43-04:00] [generation-run44] [measure +13m12s] closeMeasuringPlaceholder: closed #5542
+[2026-05-23T12:31:43-04:00] [generation-run44] [measure +13m12s] finalizeMeasurePlaceholder: finalized #5542 with 3 child issue(s)
+[2026-05-23T12:31:43-04:00] [generation-run44] [measure +13m12s] completed 1 iteration(s), 3 issue(s) created in 13m12s
