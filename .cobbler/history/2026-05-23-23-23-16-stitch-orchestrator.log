@@ -229,3 +229,13 @@
 [2026-05-23T23:28:50-04:00] [generation-run44] [stitch +5m34s] closeStitchTask: closing #5569 "[stitch] Implement cmd/users core functionality (srd096 R1.1, R1.2, R1.3)"
 [2026-05-23T23:28:51-04:00] [generation-run44] [stitch +5m35s] commentCobblerIssue: posted comment on #5569
 [2026-05-23T23:28:51-04:00] [generation-run44] [stitch +5m35s] updateRequirementsFile: marked 3 R-items as complete for issue #5569
+[2026-05-23T23:28:54-04:00] [generation-run44] [stitch +5m38s] closeCobblerIssue: closed #5569
+[2026-05-23T23:28:55-04:00] [generation-run44] [stitch +5m39s] closeStitchTask: #5569 closed
+[2026-05-23T23:28:56-04:00] [generation-run44] [stitch +5m40s] sweepCompletedTasks: all R-items for #5569 already complete, closing
+[2026-05-23T23:28:57-04:00] [generation-run44] [stitch +5m41s] commentCobblerIssue: posted comment on #5569
+[2026-05-23T23:28:58-04:00] [generation-run44] [stitch +5m42s] closeCobblerIssue: closed #5569
+[2026-05-23T23:29:00-04:00] [generation-run44] [stitch +5m44s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-23T23:29:00-04:00] [generation-run44] [stitch +5m44s] doOneTask: task 5569 finished in 5m38s
+[2026-05-23T23:29:00-04:00] [generation-run44] [stitch +5m44s] task 5569 completed in 5m38s
+[2026-05-23T23:29:00-04:00] [generation-run44] [stitch +5m44s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T23:29:00-04:00] [generation-run44] [stitch +5m44s] completed 1 task(s) in 5m44s
