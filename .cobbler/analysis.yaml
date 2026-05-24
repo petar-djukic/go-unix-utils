@@ -623,7 +623,7 @@ code_status:
               testfiles: 0
             - id: rel11.1-uc003-pinky
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "12.0"
