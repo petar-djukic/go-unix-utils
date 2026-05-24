@@ -609,11 +609,11 @@ code_status:
         - version: "11.1"
           name: Batch 11.1 — user and session information (users, who, pinky)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel11.1-uc001-users
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel11.1-uc002-who
