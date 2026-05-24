@@ -260,3 +260,13 @@
 [2026-05-23T13:51:26-04:00] [generation-run44] [stitch +14m35s] closeStitchTask: closing #5553 "[stitch] Implement cmd/chgrp recursive traversal and symlink options (srd090 R2.1, R2.2, R2.3)"
 [2026-05-23T13:51:27-04:00] [generation-run44] [stitch +14m36s] commentCobblerIssue: posted comment on #5553
 [2026-05-23T13:51:27-04:00] [generation-run44] [stitch +14m36s] updateRequirementsFile: marked 3 R-items as complete for issue #5553
+[2026-05-23T13:51:29-04:00] [generation-run44] [stitch +14m38s] closeCobblerIssue: closed #5553
+[2026-05-23T13:51:31-04:00] [generation-run44] [stitch +14m39s] closeStitchTask: #5553 closed
+[2026-05-23T13:51:31-04:00] [generation-run44] [stitch +14m40s] sweepCompletedTasks: all R-items for #5553 already complete, closing
+[2026-05-23T13:51:32-04:00] [generation-run44] [stitch +14m41s] commentCobblerIssue: posted comment on #5553
+[2026-05-23T13:51:34-04:00] [generation-run44] [stitch +14m42s] closeCobblerIssue: closed #5553
+[2026-05-23T13:51:34-04:00] [generation-run44] [stitch +14m42s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-23T13:51:34-04:00] [generation-run44] [stitch +14m42s] doOneTask: task 5553 finished in 14m35s
+[2026-05-23T13:51:34-04:00] [generation-run44] [stitch +14m42s] task 5553 completed in 14m35s
+[2026-05-23T13:51:34-04:00] [generation-run44] [stitch +14m42s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T13:51:34-04:00] [generation-run44] [stitch +14m42s] completed 1 task(s) in 14m42s
