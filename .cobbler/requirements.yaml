@@ -5257,13 +5257,16 @@ requirements:
             weight: 1
     srd096-users:
         R1.1:
-            status: in_progress
+            status: complete
+            issue: 5569
             weight: 1
         R1.2:
-            status: in_progress
+            status: complete
+            issue: 5569
             weight: 1
         R1.3:
-            status: in_progress
+            status: complete
+            issue: 5569
             weight: 1
         R2.1:
             status: proposed
