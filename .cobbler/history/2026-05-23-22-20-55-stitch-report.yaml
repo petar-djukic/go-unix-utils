@@ -1,0 +1,23 @@
+task_id: "5560"
+task_title: '[stitch] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5560
+diff:
+    files: 2
+    insertions: 186
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-23-22-20-46-stitch-orchestrator.log
+      status: M
+      insertions: 136
+      deletions: 0
+    - path: cmd/mkfifo/mkfifo_test.go
+      status: M
+      insertions: 51
+      deletions: 0
+loc_before:
+    production: 25074
+    test: 22144
+loc_after:
+    production: 25074
+    test: 22195
