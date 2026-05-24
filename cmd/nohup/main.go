@@ -5,10 +5,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
@@ -81,10 +83,23 @@ func exitFromError(err error, command string) {
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		os.Exit(exitErr.ExitCode())
 	}
-	if _, lookErr := exec.LookPath(command); lookErr != nil {
+	if isNotFoundError(err) {
 		fmt.Fprintf(os.Stderr, "nohup: failed to run command '%s': No such file or directory\n", command)
 		os.Exit(127)
 	}
-	fmt.Fprintf(os.Stderr, "nohup: failed to run command '%s': %s\n", command, err)
+	fmt.Fprintf(os.Stderr, "nohup: failed to run command '%s': %s\n", command, syscallMessage(err))
 	os.Exit(126)
+}
+
+func isNotFoundError(err error) bool {
+	return errors.Is(err, exec.ErrNotFound) || errors.Is(err, syscall.ENOENT)
+}
+
+func syscallMessage(err error) string {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		msg := pathErr.Err.Error()
+		return strings.ToUpper(msg[:1]) + msg[1:]
+	}
+	return err.Error()
 }
