@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5570"
+task_title: '[stitch] Implement cmd/users error handling and differential tests (srd096 R2.1, R2.2, R2.3)'
+status: success
+started_at: "2026-05-24T03:29:10Z"
+duration: 2m39s
+duration_s: 159
+tokens:
+    input: 319236
+    output: 1486
+    cache_creation: 220007
+    cache_read: 99221
+cost_usd: 1.9174690000000003
+num_turns: 21
+rate_limit_wait_s: 8
+loc_before:
+    production: 25868
+    test: 22937
+loc_after:
+    production: 25868
+    test: 22974
+diff:
+    files: 2
+    insertions: 161
+    deletions: 0

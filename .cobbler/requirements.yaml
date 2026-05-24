@@ -5269,13 +5269,16 @@ requirements:
             issue: 5569
             weight: 1
         R2.1:
-            status: in_progress
+            status: complete
+            issue: 5570
             weight: 1
         R2.2:
-            status: in_progress
+            status: complete
+            issue: 5570
             weight: 1
         R2.3:
-            status: in_progress
+            status: complete
+            issue: 5570
             weight: 1
     srd097-who:
         R1.1:
