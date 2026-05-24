@@ -82,7 +82,7 @@ func run(modeStr, name, nodeType string, major, minor int) int {
 		if nodeType == "p" {
 			permBits = 0o666 &^ uint32(umaskVal)
 		} else {
-			permBits = 0o666 &^ uint32(umaskVal)
+			permBits = 0o660 &^ uint32(umaskVal)
 		}
 	}
 
@@ -298,7 +298,7 @@ func parseSymbolicMode(modeStr string, nodeType string) (os.FileMode, error) {
 	if nodeType == "p" {
 		baseMode = 0o666
 	} else {
-		baseMode = 0o666
+		baseMode = 0o660
 	}
 	mode := baseMode
 	for clause := range strings.SplitSeq(modeStr, ",") {
