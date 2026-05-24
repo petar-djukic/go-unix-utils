@@ -603,7 +603,7 @@ code_status:
               testfiles: 0
             - id: rel11.0-uc004-nohup
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "11.1"
