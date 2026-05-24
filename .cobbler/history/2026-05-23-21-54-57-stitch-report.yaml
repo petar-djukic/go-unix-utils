@@ -1,0 +1,31 @@
+task_id: "5558"
+task_title: '[stitch] Implement cmd/chown error handling and verbose output (srd091 R3.1, R3.2, R3.3)'
+status: success
+branch: task/generation-run44-5558
+diff:
+    files: 4
+    insertions: 565
+    deletions: 11
+files:
+    - path: .cobbler/history/2026-05-23-21-54-50-stitch-orchestrator.log
+      status: M
+      insertions: 270
+      deletions: 0
+    - path: .cobbler/requirements.yaml
+      status: M
+      insertions: 6
+      deletions: 3
+    - path: cmd/chown/chown_test.go
+      status: M
+      insertions: 189
+      deletions: 0
+    - path: cmd/chown/main.go
+      status: M
+      insertions: 101
+      deletions: 8
+loc_before:
+    production: 24659
+    test: 21674
+loc_after:
+    production: 24752
+    test: 21863
