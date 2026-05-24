@@ -5244,13 +5244,16 @@ requirements:
             issue: 5567
             weight: 1
         R2.1:
-            status: in_progress
+            status: complete
+            issue: 5568
             weight: 1
         R2.2:
-            status: in_progress
+            status: complete
+            issue: 5568
             weight: 1
         R2.3:
-            status: in_progress
+            status: complete
+            issue: 5568
             weight: 1
     srd096-users:
         R1.1:
