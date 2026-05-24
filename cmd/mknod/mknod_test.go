@@ -204,6 +204,53 @@ func TestDiff(t *testing.T) {
 			},
 		})
 	})
+
+	t.Run("invalid_type_with_devnums", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "bad_type_full_args",
+				Args:      []string{"foo", "x", "1", "2"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			},
+		})
+	})
+
+	t.Run("permission_denied", func(t *testing.T) {
+		workDir := t.TempDir()
+		roDir := filepath.Join(workDir, "readonly")
+		os.Mkdir(roDir, 0o555)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "no_write_perm",
+				Args:      []string{filepath.Join(roDir, "pipe"), "p"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			},
+		})
+	})
+
+	t.Run("mode_missing_arg_short", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "m_no_arg",
+				Args:      []string{"-m"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			},
+		})
+	})
+
+	t.Run("unrecognized_long_option", func(t *testing.T) {
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "bad_long_opt",
+				Args:      []string{"--foo", "bar", "p"},
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			},
+		})
+	})
 }
 
 func TestFifoCreation(t *testing.T) {

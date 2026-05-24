@@ -173,7 +173,6 @@ func parseArgs(args []string) (string, string, string, int, int, error) {
 		return modeStr, name, nodeType, 0, 0, nil
 	}
 
-	// For non-FIFO types (b, c, u, or invalid), require MAJOR MINOR
 	if len(positional) < 4 {
 		last := positional[len(positional)-1]
 		if len(positional) == 2 {
@@ -185,7 +184,6 @@ func parseArgs(args []string) (string, string, string, int, int, error) {
 		return "", "", "", 0, 0, &usageError{fmt.Sprintf("extra operand '%s'", positional[4])}
 	}
 
-	// Now validate the type
 	switch nodeType {
 	case "b", "c", "u":
 	default:
