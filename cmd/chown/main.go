@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chown implements srd091-chown R1.1-R1.4, R2.1-R2.3.
+// cmd/chown implements srd091-chown R1.1-R1.4, R2.1-R2.3, R3.1-R3.3.
 package main
 
 import (
@@ -62,6 +62,9 @@ const (
 )
 
 type options struct {
+	verbose       bool
+	changes       bool
+	silent        bool
 	reference     string
 	recursive     bool
 	noDereference bool
@@ -103,13 +106,23 @@ func changeOwnership(opts options, uid, gid int, path string) error {
 
 func chownSingle(opts options, uid, gid int, path string) error {
 	fn := os.Chown
+	statFn := sys.Stat
 	if opts.noDereference {
 		fn = os.Lchown
+		statFn = sys.Lstat
+	}
+	oldUID, oldGID := -1, -1
+	if opts.verbose || opts.changes {
+		if fi, err := statFn(path); err == nil {
+			oldUID, oldGID = int(fi.Uid), int(fi.Gid)
+		}
 	}
 	if err := fn(path, uid, gid); err != nil {
-		reportError(err)
+		reportError(opts, err)
+		printDiagnostic(opts, path, oldUID, oldGID, uid, gid)
 		return err
 	}
+	printDiagnostic(opts, path, oldUID, oldGID, uid, gid)
 	return nil
 }
 
@@ -117,7 +130,8 @@ func chownRecursive(opts options, uid, gid int, path string, isTopLevel bool) er
 	follow := shouldFollowLink(opts, isTopLevel)
 	fi, err := statPath(path, follow)
 	if err != nil {
-		reportError(err)
+		reportError(opts, err)
+		printDiagnostic(opts, path, -1, -1, uid, gid)
 		return err
 	}
 	var firstErr error
@@ -132,13 +146,23 @@ func chownRecursive(opts options, uid, gid int, path string, isTopLevel bool) er
 
 func applyChown(opts options, uid, gid int, path string) error {
 	fn := os.Lchown
+	statFn := sys.Lstat
 	if opts.symlink == symlinkL {
 		fn = os.Chown
+		statFn = sys.Stat
+	}
+	oldUID, oldGID := -1, -1
+	if opts.verbose || opts.changes {
+		if fi, err := statFn(path); err == nil {
+			oldUID, oldGID = int(fi.Uid), int(fi.Gid)
+		}
 	}
 	if err := fn(path, uid, gid); err != nil {
-		reportError(err)
+		reportError(opts, err)
+		printDiagnostic(opts, path, oldUID, oldGID, uid, gid)
 		return err
 	}
+	printDiagnostic(opts, path, oldUID, oldGID, uid, gid)
 	return nil
 }
 
@@ -163,7 +187,7 @@ func statPath(path string, follow bool) (os.FileInfo, error) {
 func walkChildren(opts options, uid, gid int, dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		reportError(err)
+		reportError(opts, err)
 		return err
 	}
 	var firstErr error
@@ -262,7 +286,66 @@ func resolveReference(rfile string) (int, int) {
 	return int(fi.Uid), int(fi.Gid)
 }
 
-func reportError(err error) {
+func uidToName(uid int) string {
+	u, err := user.LookupId(strconv.Itoa(uid))
+	if err != nil {
+		return strconv.Itoa(uid)
+	}
+	return u.Username
+}
+
+func gidToName(gid int) string {
+	g, err := user.LookupGroupId(strconv.Itoa(gid))
+	if err != nil {
+		return strconv.Itoa(gid)
+	}
+	return g.Name
+}
+
+func formatOwnership(uid, gid int) string {
+	if uid < 0 {
+		return ":" + gidToName(gid)
+	}
+	if gid < 0 {
+		return uidToName(uid)
+	}
+	return uidToName(uid) + ":" + gidToName(gid)
+}
+
+func printDiagnostic(opts options, path string, oldUID, oldGID, targetUID, targetGID int) {
+	if !opts.verbose && !opts.changes {
+		return
+	}
+	if oldUID < 0 || oldGID < 0 {
+		if opts.verbose {
+			fmt.Fprintf(os.Stdout, "failed to change ownership of '%s' to %s\n",
+				path, formatOwnership(targetUID, targetGID))
+		}
+		return
+	}
+	eUID := targetUID
+	if eUID < 0 {
+		eUID = oldUID
+	}
+	eGID := targetGID
+	if eGID < 0 {
+		eGID = oldGID
+	}
+	if oldUID == eUID && oldGID == eGID {
+		if opts.verbose {
+			fmt.Fprintf(os.Stdout, "ownership of '%s' retained as %s\n",
+				path, formatOwnership(oldUID, oldGID))
+		}
+		return
+	}
+	fmt.Fprintf(os.Stdout, "changed ownership of '%s' from %s to %s\n",
+		path, formatOwnership(oldUID, oldGID), formatOwnership(targetUID, targetGID))
+}
+
+func reportError(opts options, err error) {
+	if opts.silent {
+		return
+	}
 	fmt.Fprintf(os.Stderr, "chown: %s\n", formatErr(err))
 }
 
@@ -328,7 +411,12 @@ func handleSpecialArg(arg string, endOfFlags *bool) bool {
 
 func parseLongFlag(arg string, opts *options) bool {
 	switch arg {
-	case "--verbose", "--changes", "--silent", "--quiet":
+	case "--verbose":
+		opts.verbose = true
+	case "--changes":
+		opts.changes = true
+	case "--silent", "--quiet":
+		opts.silent = true
 	case "--recursive":
 		opts.recursive = true
 	case "--dereference":
@@ -349,7 +437,12 @@ func parseLongFlag(arg string, opts *options) bool {
 func parseShortFlags(flags string, opts *options) bool {
 	for _, c := range flags {
 		switch c {
-		case 'v', 'c', 'f':
+		case 'v':
+			opts.verbose = true
+		case 'c':
+			opts.changes = true
+		case 'f':
+			opts.silent = true
 		case 'R':
 			opts.recursive = true
 		case 'h':
