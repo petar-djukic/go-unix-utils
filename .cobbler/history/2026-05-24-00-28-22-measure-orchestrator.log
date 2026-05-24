@@ -134,3 +134,25 @@
 [2026-05-24T00:32:42-04:00] [generation-run44] [measure +4m20s] transitionRequirements: marked 3 R-items as proposed
 [2026-05-24T00:32:42-04:00] [generation-run44] [measure +4m20s] transitionRequirements: marked 3 R-items as proposed
 [2026-05-24T00:32:42-04:00] [generation-run44] [measure +4m20s] transitionRequirements: marked 3 R-items as proposed
+[2026-05-24T00:32:42-04:00] [generation-run44] [measure +4m20s] importIssues: creating task 0: [stitch] Implement cmd/who extended session display (srd097 R2.1, R2.2, R2.3, R2.4) (dep=-1)
+[2026-05-24T00:32:43-04:00] [generation-run44] [measure +4m21s] createCobblerIssue: created #5577 "[measure] Implement cmd/who extended session display (srd097 R2.1, R2.2, R2.3, R2.4)" gen=generation-run44 index=0 dep=-1
+[2026-05-24T00:32:43-04:00] [generation-run44] [measure +4m21s] importIssues: creating task 1: [stitch] Implement cmd/who error handling and differential tests (srd097 R3.1, R3.2, R3.3) (dep=0)
+[2026-05-24T00:32:44-04:00] [generation-run44] [measure +4m22s] createCobblerIssue: created #5578 "[measure] Implement cmd/who error handling and differential tests (srd097 R3.1, R3.2, R3.3)" gen=generation-run44 index=1 dep=0
+[2026-05-24T00:32:44-04:00] [generation-run44] [measure +4m22s] importIssues: creating task 2: [stitch] Implement cmd/chroot core functionality (srd100 R1.1, R1.2, R1.3) (dep=-1)
+[2026-05-24T00:32:45-04:00] [generation-run44] [measure +4m23s] createCobblerIssue: created #5579 "[measure] Implement cmd/chroot core functionality (srd100 R1.1, R1.2, R1.3)" gen=generation-run44 index=2 dep=-1
+[2026-05-24T00:32:45-04:00] [generation-run44] [measure +4m23s] importIssues: creating task 3: [stitch] Implement cmd/chroot error handling and differential tests (srd100 R2.1, R2.2, R2.3) (dep=2)
+[2026-05-24T00:32:46-04:00] [generation-run44] [measure +4m24s] createCobblerIssue: created #5580 "[measure] Implement cmd/chroot error handling and differential tests (srd100 R2.1, R2.2, R2.3)" gen=generation-run44 index=3 dep=2
+[2026-05-24T00:32:46-04:00] [generation-run44] [measure +4m24s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-24T00:32:48-04:00] [generation-run44] [measure +4m25s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-24T00:32:49-04:00] [generation-run44] [measure +4m27s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-24T00:32:51-04:00] [generation-run44] [measure +4m28s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-24T00:32:55-04:00] [generation-run44] [measure +4m32s] importIssues: 4 of 4 issue(s) imported
+[2026-05-24T00:32:55-04:00] [generation-run44] [measure +4m32s] appendMeasureLog: 413 total issues in .cobbler/measure.yaml
+[2026-05-24T00:32:55-04:00] [generation-run44] [measure +4m32s] iteration 1 imported 4 issue(s)
+[2026-05-24T00:32:58-04:00] [generation-run44] [measure +4m36s] linkSubIssue: linked #5577 as sub-issue of #5576
+[2026-05-24T00:32:59-04:00] [generation-run44] [measure +4m36s] linkSubIssue: linked #5578 as sub-issue of #5576
+[2026-05-24T00:33:00-04:00] [generation-run44] [measure +4m37s] linkSubIssue: linked #5579 as sub-issue of #5576
+[2026-05-24T00:33:01-04:00] [generation-run44] [measure +4m38s] linkSubIssue: linked #5580 as sub-issue of #5576
+[2026-05-24T00:33:02-04:00] [generation-run44] [measure +4m40s] closeMeasuringPlaceholder: closed #5576
+[2026-05-24T00:33:02-04:00] [generation-run44] [measure +4m40s] finalizeMeasurePlaceholder: finalized #5576 with 4 child issue(s)
+[2026-05-24T00:33:02-04:00] [generation-run44] [measure +4m40s] completed 1 iteration(s), 4 issue(s) created in 4m40s

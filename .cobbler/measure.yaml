@@ -18950,3 +18950,184 @@
       - id: AC3
         text: "srd097 R1.1, R1.2, R1.3, R1.4 are implemented as specified in the SRD"
   dependency: -1
+- index: 0
+  title: '[stitch] Implement cmd/who extended session display (srd097 R2.1, R2.2, R2.3, R2.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd097-who.yaml (R2.1-R2.4 requirement definitions)
+      - cmd/who/main.go (existing core implementation from R1.1-R1.4)
+      - cmd/who/who_test.go (existing differential tests)
+      - pkg/sys/ (system call abstractions for file metadata)
+
+    files:
+      - path: cmd/who/main.go
+        action: modify
+        note: Extend who implementation with R2.1-R2.4 features
+      - path: cmd/who/who_test.go
+        action: modify
+        note: Add differential test cases for R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: Implement srd097-who R2.1 per the SRD specification
+      - id: R2
+        text: Implement srd097-who R2.2 per the SRD specification
+      - id: R3
+        text: Implement srd097-who R2.3 per the SRD specification
+      - id: R4
+        text: Implement srd097-who R2.4 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Use pkg/testutils.RunDiffTests to compare against gwho reference binary
+      - id: D2
+        text: Call exec.LookPath("gwho") and t.Skip if reference binary not found
+      - id: D3
+        text: Set LC_ALL=C in test environment for deterministic output comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R2.1-R2.4 behaviors from srd097-who.yaml are implemented in cmd/who/main.go
+      - id: AC2
+        text: "go build ./cmd/who/ compiles without errors"
+      - id: AC3
+        text: "go test ./cmd/who/ -count=1 passes"
+      - id: AC4
+        text: Differential tests against gwho pass for all R2.x features
+  dependency: -1
+- index: 1
+  title: '[stitch] Implement cmd/who error handling and differential tests (srd097 R3.1, R3.2, R3.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd097-who.yaml (R3.1-R3.3 requirement definitions)
+      - cmd/who/main.go (existing implementation including R1.x and R2.x)
+      - cmd/who/who_test.go (existing differential tests)
+
+    files:
+      - path: cmd/who/main.go
+        action: modify
+        note: Add error handling and edge case support per R3.1-R3.3
+      - path: cmd/who/who_test.go
+        action: modify
+        note: Add differential test cases for R3.1-R3.3 error scenarios
+
+    requirements:
+      - id: R1
+        text: Implement srd097-who R3.1 per the SRD specification
+      - id: R2
+        text: Implement srd097-who R3.2 per the SRD specification
+      - id: R3
+        text: Implement srd097-who R3.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Use pkg/testutils.RunDiffTests to compare against gwho reference binary
+      - id: D2
+        text: Call exec.LookPath("gwho") and t.Skip if reference binary not found
+      - id: D3
+        text: Set LC_ALL=C in test environment for deterministic output comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R3.1-R3.3 behaviors from srd097-who.yaml are implemented
+      - id: AC2
+        text: "go build ./cmd/who/ compiles without errors"
+      - id: AC3
+        text: "go test ./cmd/who/ -count=1 passes"
+      - id: AC4
+        text: Differential tests against gwho pass for all R3.x error cases
+  dependency: 0
+- index: 2
+  title: '[stitch] Implement cmd/chroot core functionality (srd100 R1.1, R1.2, R1.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd100-chroot.yaml (R1.1-R1.3 requirement definitions)
+      - pkg/sys/ (system call abstractions)
+      - pkg/testutils/ (differential testing harness)
+
+    files:
+      - path: cmd/chroot/main.go
+        action: create
+        note: chroot implementation -- change root directory and execute command
+      - path: cmd/chroot/chroot_test.go
+        action: create
+        note: Differential tests against gchroot reference binary
+
+    requirements:
+      - id: R1
+        text: Implement srd100-chroot R1.1 per the SRD specification
+      - id: R2
+        text: Implement srd100-chroot R1.2 per the SRD specification
+      - id: R3
+        text: Implement srd100-chroot R1.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main
+      - id: D2
+        text: Use pkg/testutils.BuildBinary and RunDiffTests for differential testing
+      - id: D3
+        text: Call exec.LookPath("gchroot") and t.Skip if reference binary not found
+      - id: D4
+        text: Set LC_ALL=C in test environment for deterministic output comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R1.1-R1.3 behaviors from srd100-chroot.yaml are implemented
+      - id: AC2
+        text: "go build ./cmd/chroot/ compiles without errors"
+      - id: AC3
+        text: "go test ./cmd/chroot/ -count=1 passes"
+      - id: AC4
+        text: Differential tests against gchroot pass for R1.x features
+  dependency: -1
+- index: 3
+  title: '[stitch] Implement cmd/chroot error handling and differential tests (srd100 R2.1, R2.2, R2.3)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd100-chroot.yaml (R2.1-R2.3 requirement definitions)
+      - cmd/chroot/main.go (existing core implementation from R1.x)
+      - cmd/chroot/chroot_test.go (existing differential tests)
+
+    files:
+      - path: cmd/chroot/main.go
+        action: modify
+        note: Add error handling and edge case support per R2.1-R2.3
+      - path: cmd/chroot/chroot_test.go
+        action: modify
+        note: Add differential test cases for R2.1-R2.3 error scenarios
+
+    requirements:
+      - id: R1
+        text: Implement srd100-chroot R2.1 per the SRD specification
+      - id: R2
+        text: Implement srd100-chroot R2.2 per the SRD specification
+      - id: R3
+        text: Implement srd100-chroot R2.3 per the SRD specification
+
+    design_decisions:
+      - id: D1
+        text: Use pkg/testutils.RunDiffTests to compare against gchroot reference binary
+      - id: D2
+        text: Call exec.LookPath("gchroot") and t.Skip if reference binary not found
+      - id: D3
+        text: Set LC_ALL=C in test environment for deterministic output comparison
+
+    acceptance_criteria:
+      - id: AC1
+        text: All R2.1-R2.3 behaviors from srd100-chroot.yaml are implemented
+      - id: AC2
+        text: "go build ./cmd/chroot/ compiles without errors"
+      - id: AC3
+        text: "go test ./cmd/chroot/ -count=1 passes"
+      - id: AC4
+        text: Differential tests against gchroot pass for all R2.x error cases
+  dependency: 2
