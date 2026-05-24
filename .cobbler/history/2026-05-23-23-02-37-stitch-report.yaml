@@ -1,0 +1,23 @@
+task_id: "5565"
+task_title: '[stitch] Implement cmd/nice error handling and differential tests (srd094 R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5565
+diff:
+    files: 2
+    insertions: 105
+    deletions: 3
+files:
+    - path: .cobbler/history/2026-05-23-23-02-27-stitch-orchestrator.log
+      status: M
+      insertions: 103
+      deletions: 0
+    - path: .cobbler/requirements.yaml
+      status: M
+      insertions: 3
+      deletions: 3
+loc_before:
+    production: 25655
+    test: 22806
+loc_after:
+    production: 25655
+    test: 22806
