@@ -584,11 +584,11 @@ code_status:
         - version: "11.0"
           name: Batch 11.0 — special files and process control (mkfifo, mknod, nice, nohup)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel11.0-uc001-mkfifo
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel11.0-uc002-mknod

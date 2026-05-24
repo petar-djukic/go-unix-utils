@@ -1,0 +1,183 @@
+- index: 0
+  title: "[stitch] Implement cmd/mknod core special file creation and mode setting (srd093 R1.1, R1.2, R1.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd093-mknod.yaml (requirements R1.1, R1.2, R1.3)
+      - cmd/mkfifo/main.go (reference implementation for similar special file creation utility)
+      - pkg/sys/sys.go (InstallSIGPIPEHandler usage)
+
+    files:
+      - path: cmd/mknod/main.go
+        action: create
+        note: mknod utility -- creates block special, character special, or FIFO special files
+
+    requirements:
+      - id: R1
+        text: "Implement srd093 R1.1 -- argument parsing for mknod NAME TYPE [MAJOR MINOR] with --help and --version support"
+      - id: R2
+        text: "Implement srd093 R1.2 -- create block special (b), character special (c/u), and FIFO (p) file types using appropriate syscalls with correct device number handling"
+      - id: R3
+        text: "Implement srd093 R1.3 -- mode setting via -m/--mode flag with proper umask interaction for created special files"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project shared protocol"
+      - id: D2
+        text: "Use syscall.Mknod for block and character special file creation with major/minor device number encoding"
+      - id: D3
+        text: "Build output binary to bin/mknod using go build -o bin/mknod ./cmd/mknod/"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/mknod/main.go compiles without errors: go build ./cmd/mknod/"
+      - id: AC2
+        text: "go vet ./cmd/mknod/ reports no issues"
+      - id: AC3
+        text: "mknod creates FIFO files when TYPE is p without requiring MAJOR/MINOR arguments"
+      - id: AC4
+        text: "mknod creates block and character special files with correct device numbers when TYPE is b or c/u"
+      - id: AC5
+        text: "mknod applies -m/--mode flag to set permissions on created files"
+
+- index: 1
+  title: "[stitch] Implement cmd/mknod error handling and differential tests (srd093 R2.1, R2.2, R2.3)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd093-mknod.yaml (requirements R2.1, R2.2, R2.3)
+      - cmd/mknod/main.go (core implementation from previous task)
+      - cmd/mkfifo/mkfifo_test.go (reference test file for differential testing pattern)
+      - pkg/testutils/ (differential testing framework -- BuildBinary, RunDiffTests, DiffTest)
+
+    files:
+      - path: cmd/mknod/main.go
+        action: modify
+        note: Add error handling for invalid arguments, missing device numbers, and filesystem errors
+      - path: cmd/mknod/mknod_test.go
+        action: create
+        note: Differential tests comparing Go mknod against gmknod reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd093 R2.1 -- error handling for invalid or missing arguments with correct stderr messages and exit codes matching GNU mknod"
+      - id: R2
+        text: "Implement srd093 R2.2 -- error handling for filesystem errors (permission denied, file already exists, invalid device numbers)"
+      - id: R3
+        text: "Implement srd093 R2.3 -- differential tests against gmknod reference binary using testutils.RunDiffTests covering success and error paths"
+
+    design_decisions:
+      - id: D1
+        text: "Use testutils.BuildBinary(t, \".\") to compile the Go binary for testing"
+      - id: D2
+        text: "Call exec.LookPath(\"gmknod\") and t.Skip if the reference binary is not found"
+      - id: D3
+        text: "Test cases cover FIFO creation, invalid type arguments, missing MAJOR/MINOR for block/char types, and --help/--version output"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/mknod/ -count=1 passes with no failures"
+      - id: AC2
+        text: "Differential tests compare exit code, stdout, and stderr against gmknod for each test case"
+      - id: AC3
+        text: "Tests skip gracefully when gmknod is not in PATH via t.Skip"
+      - id: AC4
+        text: "Error messages and exit codes match GNU mknod behavior for all error paths"
+
+- index: 2
+  title: "[stitch] Implement cmd/nice core priority adjustment and command execution (srd094 R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd094-nice.yaml (requirements R1.1, R1.2, R1.3, R1.4)
+      - pkg/sys/sys.go (InstallSIGPIPEHandler usage)
+      - cmd/mkfifo/main.go (reference for argument parsing and exit code patterns in cmd/ utilities)
+
+    files:
+      - path: cmd/nice/main.go
+        action: create
+        note: nice utility -- runs a command with adjusted scheduling priority
+
+    requirements:
+      - id: R1
+        text: "Implement srd094 R1.1 -- argument parsing for nice [-n ADJUSTMENT] [COMMAND [ARG...]] with --help and --version support"
+      - id: R2
+        text: "Implement srd094 R1.2 -- default priority adjustment of +10 when no -n flag is provided"
+      - id: R3
+        text: "Implement srd094 R1.3 -- custom adjustment via -n/--adjustment flag accepting positive and negative integer values"
+      - id: R4
+        text: "Implement srd094 R1.4 -- execute the specified command with the adjusted nice value, preserving the command's exit code"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project shared protocol"
+      - id: D2
+        text: "Use syscall.Setpriority and syscall.Getpriority for nice value adjustment"
+      - id: D3
+        text: "Match GNU nice exit code conventions -- 125 for nice itself failing, 126 if command found but not executable, 127 if command not found, otherwise the command's exit code"
+      - id: D4
+        text: "Use syscall.Exec to replace the process with the command, matching GNU nice behavior"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/nice/main.go compiles without errors: go build ./cmd/nice/"
+      - id: AC2
+        text: "go vet ./cmd/nice/ reports no issues"
+      - id: AC3
+        text: "nice with no -n flag applies default +10 adjustment"
+      - id: AC4
+        text: "nice -n 5 COMMAND adjusts priority by +5 before executing COMMAND"
+      - id: AC5
+        text: "The executed command's exit code is preserved and returned by nice"
+
+- index: 3
+  title: "[stitch] Implement cmd/nice error handling and differential tests (srd094 R2.1, R2.2, R2.3)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd094-nice.yaml (requirements R2.1, R2.2, R2.3)
+      - cmd/nice/main.go (core implementation from previous task)
+      - cmd/mkfifo/mkfifo_test.go (reference test file for differential testing pattern)
+      - pkg/testutils/ (differential testing framework -- BuildBinary, RunDiffTests, DiffTest)
+
+    files:
+      - path: cmd/nice/main.go
+        action: modify
+        note: Add error handling for invalid adjustment values and command execution failures
+      - path: cmd/nice/nice_test.go
+        action: create
+        note: Differential tests comparing Go nice against gnice reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd094 R2.1 -- error handling for invalid adjustment values (non-numeric, out of range) with correct stderr messages"
+      - id: R2
+        text: "Implement srd094 R2.2 -- error handling for command not found (exit 127) and command not executable (exit 126)"
+      - id: R3
+        text: "Implement srd094 R2.3 -- differential tests against gnice reference binary using testutils.RunDiffTests covering default adjustment, custom adjustment, invalid values, and command errors"
+
+    design_decisions:
+      - id: D1
+        text: "Use testutils.BuildBinary(t, \".\") to compile the Go binary for testing"
+      - id: D2
+        text: "Call exec.LookPath(\"gnice\") and t.Skip if the reference binary is not found"
+      - id: D3
+        text: "Test cases cover default +10 adjustment, custom -n values, invalid adjustment strings, nonexistent commands, and --help/--version output"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/nice/ -count=1 passes with no failures"
+      - id: AC2
+        text: "Differential tests compare exit code, stdout, and stderr against gnice for each test case"
+      - id: AC3
+        text: "Tests skip gracefully when gnice is not in PATH via t.Skip"
+      - id: AC4
+        text: "Exit codes 125, 126, 127 match GNU nice behavior for respective error conditions"
