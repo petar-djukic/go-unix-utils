@@ -170,3 +170,13 @@
 [2026-05-23T21:54:37-04:00] [generation-run44] [stitch +3m48s] doOneTask: closing task 5557
 [2026-05-23T21:54:37-04:00] [generation-run44] [stitch +3m48s] closeStitchTask: closing #5557 "[stitch] Implement cmd/chown recursive traversal and symlink handling (srd091 R2.1, R2.2, R2.3)"
 [2026-05-23T21:54:38-04:00] [generation-run44] [stitch +3m49s] commentCobblerIssue: posted comment on #5557
+[2026-05-23T21:54:41-04:00] [generation-run44] [stitch +3m51s] closeCobblerIssue: closed #5557
+[2026-05-23T21:54:42-04:00] [generation-run44] [stitch +3m53s] closeStitchTask: #5557 closed
+[2026-05-23T21:54:43-04:00] [generation-run44] [stitch +3m54s] sweepCompletedTasks: all R-items for #5557 already complete, closing
+[2026-05-23T21:54:44-04:00] [generation-run44] [stitch +3m54s] commentCobblerIssue: posted comment on #5557
+[2026-05-23T21:54:45-04:00] [generation-run44] [stitch +3m56s] closeCobblerIssue: closed #5557
+[2026-05-23T21:54:47-04:00] [generation-run44] [stitch +3m57s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-23T21:54:47-04:00] [generation-run44] [stitch +3m57s] doOneTask: task 5557 finished in 3m50s
+[2026-05-23T21:54:47-04:00] [generation-run44] [stitch +3m57s] task 5557 completed in 3m50s
+[2026-05-23T21:54:47-04:00] [generation-run44] [stitch +3m57s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T21:54:47-04:00] [generation-run44] [stitch +3m57s] completed 1 task(s) in 3m57s
