@@ -5228,44 +5228,44 @@ requirements:
             weight: 1
     srd095-nohup:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R1.2:
-            status: ready
+            status: proposed
             weight: 1
         R1.3:
-            status: ready
+            status: proposed
             weight: 1
         R1.4:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
     srd096-users:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R1.2:
-            status: ready
+            status: proposed
             weight: 1
         R1.3:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.2:
-            status: ready
+            status: proposed
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
     srd097-who:
         R1.1:
