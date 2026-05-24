@@ -1,0 +1,175 @@
+- index: 0
+  title: "[stitch] Implement cmd/chown recursive traversal and symlink handling (srd091 R2.1, R2.2, R2.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd091-chown.yaml (full SRD -- focus on requirements R2.1, R2.2, R2.3)
+      - cmd/chown/main.go (existing implementation covering R1.1 through R1.4)
+      - cmd/chgrp/main.go (sibling utility with recursive traversal and symlink handling for reference)
+
+    files:
+      - path: cmd/chown/main.go
+        action: modify
+        note: Add recursive ownership change (-R) with symlink traversal options (-H, -L, -P)
+      - path: cmd/chown/chown_test.go
+        action: modify
+        note: Add differential test cases for recursive and symlink behavior
+
+    requirements:
+      - id: R1
+        text: "Implement srd091 R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd091 R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd091 R2.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "All cmd/ utilities call sys.InstallSIGPIPEHandler() at the start of main per shared protocol"
+      - id: D2
+        text: "Reference binary for differential testing is gchown (Homebrew coreutils g-prefix convention)"
+      - id: D3
+        text: "Differential tests use pkg/testutils.RunDiffTests to compare against gchown with LC_ALL=C"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/chown/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/chown/ passes with no warnings"
+      - id: AC3
+        text: "go test ./cmd/chown/ -count=1 passes -- differential tests for R2.1, R2.2, R2.3 match gchown output"
+
+- index: 1
+  title: "[stitch] Implement cmd/chown error handling and verbose output (srd091 R3.1, R3.2, R3.3)"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd091-chown.yaml (full SRD -- focus on requirements R3.1, R3.2, R3.3)
+      - cmd/chown/main.go (existing implementation covering R1.1 through R2.3)
+      - cmd/chgrp/main.go (sibling utility with error handling and verbose output for reference)
+
+    files:
+      - path: cmd/chown/main.go
+        action: modify
+        note: Add error handling, verbose output (-v), and changes-only output (-c)
+      - path: cmd/chown/chown_test.go
+        action: modify
+        note: Add differential test cases for error handling and verbose output
+
+    requirements:
+      - id: R1
+        text: "Implement srd091 R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd091 R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd091 R3.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Reference binary for differential testing is gchown (Homebrew coreutils g-prefix convention)"
+      - id: D2
+        text: "Differential tests use pkg/testutils.RunDiffTests to compare against gchown with LC_ALL=C"
+      - id: D3
+        text: "Error messages must match GNU chown format for differential test parity"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/chown/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/chown/ passes with no warnings"
+      - id: AC3
+        text: "go test ./cmd/chown/ -count=1 passes -- differential tests for R3.1, R3.2, R3.3 match gchown output"
+
+- index: 2
+  title: "[stitch] Implement cmd/mkfifo core FIFO creation and mode setting (srd092 R1.1, R1.2, R1.3, R1.4)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd092-mkfifo.yaml (full SRD -- focus on requirements R1.1, R1.2, R1.3, R1.4)
+      - pkg/sys/sys.go (SIGPIPE handler and syscall abstractions)
+      - cmd/mkfifo/ (verify directory is empty or does not exist before creating files)
+
+    files:
+      - path: cmd/mkfifo/main.go
+        action: create
+        note: mkfifo utility -- creates named pipes (FIFOs) with optional mode setting
+      - path: cmd/mkfifo/mkfifo_test.go
+        action: create
+        note: Differential tests comparing against gmkfifo reference binary
+
+    requirements:
+      - id: R1
+        text: "Implement srd092 R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd092 R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd092 R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd092 R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per shared protocol"
+      - id: D2
+        text: "Reference binary for differential testing is gmkfifo (Homebrew coreutils g-prefix convention)"
+      - id: D3
+        text: "Differential tests use pkg/testutils.RunDiffTests to compare against gmkfifo with LC_ALL=C"
+      - id: D4
+        text: "Test file uses testutils.BuildBinary(t, \".\") and exec.LookPath(\"gmkfifo\") with t.Skip if not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/mkfifo/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/mkfifo/ passes with no warnings"
+      - id: AC3
+        text: "go test ./cmd/mkfifo/ -count=1 passes -- differential tests for R1.1, R1.2, R1.3, R1.4 match gmkfifo output"
+
+- index: 3
+  title: "[stitch] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3)"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd092-mkfifo.yaml (full SRD -- focus on requirements R2.1, R2.2, R2.3)
+      - cmd/mkfifo/main.go (existing implementation covering R1.1 through R1.4)
+      - cmd/mkfifo/mkfifo_test.go (existing differential tests from R1.x)
+
+    files:
+      - path: cmd/mkfifo/main.go
+        action: modify
+        note: Add error handling, edge case coverage, and diagnostic messages
+      - path: cmd/mkfifo/mkfifo_test.go
+        action: modify
+        note: Add differential test cases for error handling and edge cases
+
+    requirements:
+      - id: R1
+        text: "Implement srd092 R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd092 R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd092 R2.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Reference binary for differential testing is gmkfifo (Homebrew coreutils g-prefix convention)"
+      - id: D2
+        text: "Differential tests use pkg/testutils.RunDiffTests to compare against gmkfifo with LC_ALL=C"
+      - id: D3
+        text: "Error messages must match GNU mkfifo format for differential test parity"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/mkfifo/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/mkfifo/ passes with no warnings"
+      - id: AC3
+        text: "go test ./cmd/mkfifo/ -count=1 passes -- differential tests for R2.1, R2.2, R2.3 match gmkfifo output"

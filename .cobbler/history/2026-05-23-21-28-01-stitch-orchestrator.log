@@ -212,3 +212,13 @@
 [2026-05-23T21:46:15-04:00] [generation-run44] [stitch +18m13s] closeStitchTask: closing #5555 "[stitch] Implement cmd/chown core ownership-change and argument parsing (srd091 R1.1, R1.2, R1.3, R1.4)"
 [2026-05-23T21:46:15-04:00] [generation-run44] [stitch +18m14s] commentCobblerIssue: posted comment on #5555
 [2026-05-23T21:46:15-04:00] [generation-run44] [stitch +18m14s] updateRequirementsFile: marked 4 R-items as complete for issue #5555
+[2026-05-23T21:46:18-04:00] [generation-run44] [stitch +18m16s] closeCobblerIssue: closed #5555
+[2026-05-23T21:46:19-04:00] [generation-run44] [stitch +18m18s] closeStitchTask: #5555 closed
+[2026-05-23T21:46:20-04:00] [generation-run44] [stitch +18m19s] sweepCompletedTasks: all R-items for #5555 already complete, closing
+[2026-05-23T21:46:21-04:00] [generation-run44] [stitch +18m19s] commentCobblerIssue: posted comment on #5555
+[2026-05-23T21:46:22-04:00] [generation-run44] [stitch +18m21s] closeCobblerIssue: closed #5555
+[2026-05-23T21:46:22-04:00] [generation-run44] [stitch +18m21s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-23T21:46:22-04:00] [generation-run44] [stitch +18m21s] doOneTask: task 5555 finished in 18m16s
+[2026-05-23T21:46:22-04:00] [generation-run44] [stitch +18m21s] task 5555 completed in 18m16s
+[2026-05-23T21:46:22-04:00] [generation-run44] [stitch +18m21s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T21:46:22-04:00] [generation-run44] [stitch +18m21s] completed 1 task(s) in 18m21s
