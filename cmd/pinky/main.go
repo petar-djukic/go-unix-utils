@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd098-pinky R1.1, R1.2, R1.3, R2.1, R2.2, R2.3.
+// Implements srd098-pinky R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3.
 package main
 
 /*
@@ -133,7 +133,7 @@ func parseFlagBundle(flags string) {
 func printShort(users []string) error {
 	entries := readEntries(users)
 	if !suppressHeader {
-		hdr := fmt.Sprintf("%-9s%-21s%-9s%-7s%-17s%s",
+		hdr := fmt.Sprintf("%-9s%-21s%-9s%-7s%-13s%s",
 			"Login", "Name", "TTY", "Idle", "When", "Where")
 		if _, err := fmt.Fprintln(os.Stdout, hdr); err != nil {
 			return err
@@ -153,7 +153,7 @@ func printShortEntry(e utmpEntry) error {
 	when := formatLoginTime(e.time)
 	var line string
 	if e.host != "" {
-		line = fmt.Sprintf("%-9s%-21s%-9s%-7s%-17s%s",
+		line = fmt.Sprintf("%-9s%-21s%-9s%-7s%-13s%s",
 			e.user, name, e.line, idle, when, e.host)
 	} else {
 		line = fmt.Sprintf("%-9s%-21s%-9s%-7s%s",
@@ -258,7 +258,7 @@ func idleString(ttyName string) string {
 }
 
 func formatLoginTime(sec int64) string {
-	return time.Unix(sec, 0).Format("2006-01-02 15:04")
+	return time.Unix(sec, 0).Format("Jan _2 15:04")
 }
 
 func lookupGecos(user string) string {
