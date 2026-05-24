@@ -301,3 +301,13 @@
 [2026-05-23T22:04:25-04:00] [generation-run44] [stitch +9m35s] doOneTask: closing task 5558
 [2026-05-23T22:04:25-04:00] [generation-run44] [stitch +9m35s] closeStitchTask: closing #5558 "[stitch] Implement cmd/chown error handling and verbose output (srd091 R3.1, R3.2, R3.3)"
 [2026-05-23T22:04:25-04:00] [generation-run44] [stitch +9m36s] commentCobblerIssue: posted comment on #5558
+[2026-05-23T22:04:28-04:00] [generation-run44] [stitch +9m38s] closeCobblerIssue: closed #5558
+[2026-05-23T22:04:30-04:00] [generation-run44] [stitch +9m40s] closeStitchTask: #5558 closed
+[2026-05-23T22:04:30-04:00] [generation-run44] [stitch +9m41s] sweepCompletedTasks: all R-items for #5558 already complete, closing
+[2026-05-23T22:04:31-04:00] [generation-run44] [stitch +9m42s] commentCobblerIssue: posted comment on #5558
+[2026-05-23T22:04:32-04:00] [generation-run44] [stitch +9m43s] closeCobblerIssue: closed #5558
+[2026-05-23T22:04:33-04:00] [generation-run44] [stitch +9m43s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-23T22:04:33-04:00] [generation-run44] [stitch +9m43s] doOneTask: task 5558 finished in 9m38s
+[2026-05-23T22:04:33-04:00] [generation-run44] [stitch +9m43s] task 5558 completed in 9m38s
+[2026-05-23T22:04:33-04:00] [generation-run44] [stitch +9m43s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T22:04:33-04:00] [generation-run44] [stitch +9m43s] completed 1 task(s) in 9m43s
