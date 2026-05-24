@@ -1,0 +1,27 @@
+task_id: "5563"
+task_title: '[stitch] Implement cmd/mknod error handling and differential tests (srd093 R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5563
+diff:
+    files: 3
+    insertions: 216
+    deletions: 2
+files:
+    - path: .cobbler/history/2026-05-23-22-51-15-stitch-orchestrator.log
+      status: M
+      insertions: 170
+      deletions: 0
+    - path: cmd/mknod/main.go
+      status: M
+      insertions: 0
+      deletions: 2
+    - path: cmd/mknod/mknod_test.go
+      status: M
+      insertions: 47
+      deletions: 0
+loc_before:
+    production: 25657
+    test: 22759
+loc_after:
+    production: 25655
+    test: 22806
