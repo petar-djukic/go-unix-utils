@@ -441,3 +441,13 @@ mkdir -p "$f/d/...
 [2026-05-23T21:27:51-04:00] [generation-run44] [stitch +15m43s] doOneTask: closing task 5554
 [2026-05-23T21:27:51-04:00] [generation-run44] [stitch +15m43s] closeStitchTask: closing #5554 "[stitch] Implement cmd/chgrp error handling and verbose output (srd090 R3.1, R3.2, R3.3)"
 [2026-05-23T21:27:52-04:00] [generation-run44] [stitch +15m44s] commentCobblerIssue: posted comment on #5554
+[2026-05-23T21:27:54-04:00] [generation-run44] [stitch +15m47s] closeCobblerIssue: closed #5554
+[2026-05-23T21:27:56-04:00] [generation-run44] [stitch +15m48s] closeStitchTask: #5554 closed
+[2026-05-23T21:27:56-04:00] [generation-run44] [stitch +15m49s] sweepCompletedTasks: all R-items for #5554 already complete, closing
+[2026-05-23T21:27:57-04:00] [generation-run44] [stitch +15m50s] commentCobblerIssue: posted comment on #5554
+[2026-05-23T21:27:58-04:00] [generation-run44] [stitch +15m51s] closeCobblerIssue: closed #5554
+[2026-05-23T21:27:58-04:00] [generation-run44] [stitch +15m51s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-23T21:27:58-04:00] [generation-run44] [stitch +15m51s] doOneTask: task 5554 finished in 15m45s
+[2026-05-23T21:27:58-04:00] [generation-run44] [stitch +15m51s] task 5554 completed in 15m45s
+[2026-05-23T21:27:58-04:00] [generation-run44] [stitch +15m51s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T21:27:58-04:00] [generation-run44] [stitch +15m51s] completed 1 task(s) in 15m51s

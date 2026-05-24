@@ -573,7 +573,7 @@ code_status:
               testfiles: 0
             - id: rel10.1-uc002-chgrp
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel10.1-uc003-chown
