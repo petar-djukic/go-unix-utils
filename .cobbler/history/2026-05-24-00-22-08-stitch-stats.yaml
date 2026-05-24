@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5575"
+task_title: '[stitch] Implement cmd/who core functionality (srd097 R1.1, R1.2, R1.3, R1.4)'
+status: success
+started_at: "2026-05-24T04:22:08Z"
+duration: 6m7s
+duration_s: 366
+tokens:
+    input: 537555
+    output: 16245
+    cache_creation: 236162
+    cache_read: 301380
+cost_usd: 2.431273
+num_turns: 33
+rate_limit_wait_s: 3
+loc_before:
+    production: 26167
+    test: 23023
+loc_after:
+    production: 26338
+    test: 23023
+diff:
+    files: 2
+    insertions: 302
+    deletions: 0

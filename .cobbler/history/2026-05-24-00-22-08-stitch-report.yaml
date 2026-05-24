@@ -1,0 +1,23 @@
+task_id: "5575"
+task_title: '[stitch] Implement cmd/who core functionality (srd097 R1.1, R1.2, R1.3, R1.4)'
+status: success
+branch: task/generation-run44-5575
+diff:
+    files: 2
+    insertions: 302
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-24-00-22-00-stitch-orchestrator.log
+      status: M
+      insertions: 132
+      deletions: 0
+    - path: cmd/who/main.go
+      status: A
+      insertions: 171
+      deletions: 0
+loc_before:
+    production: 26167
+    test: 23023
+loc_after:
+    production: 26338
+    test: 23023
