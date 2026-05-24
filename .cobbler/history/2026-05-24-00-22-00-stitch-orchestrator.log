@@ -164,3 +164,13 @@
 [2026-05-24T00:28:13-04:00] [generation-run44] [stitch +6m12s] closeStitchTask: closing #5575 "[stitch] Implement cmd/who core functionality (srd097 R1.1, R1.2, R1.3, R1.4)"
 [2026-05-24T00:28:14-04:00] [generation-run44] [stitch +6m13s] commentCobblerIssue: posted comment on #5575
 [2026-05-24T00:28:14-04:00] [generation-run44] [stitch +6m13s] updateRequirementsFile: marked 4 R-items as complete for issue #5575
+[2026-05-24T00:28:16-04:00] [generation-run44] [stitch +6m16s] closeCobblerIssue: closed #5575
+[2026-05-24T00:28:18-04:00] [generation-run44] [stitch +6m17s] closeStitchTask: #5575 closed
+[2026-05-24T00:28:18-04:00] [generation-run44] [stitch +6m18s] sweepCompletedTasks: all R-items for #5575 already complete, closing
+[2026-05-24T00:28:19-04:00] [generation-run44] [stitch +6m19s] commentCobblerIssue: posted comment on #5575
+[2026-05-24T00:28:20-04:00] [generation-run44] [stitch +6m20s] closeCobblerIssue: closed #5575
+[2026-05-24T00:28:21-04:00] [generation-run44] [stitch +6m21s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-24T00:28:21-04:00] [generation-run44] [stitch +6m21s] doOneTask: task 5575 finished in 6m15s
+[2026-05-24T00:28:21-04:00] [generation-run44] [stitch +6m21s] task 5575 completed in 6m15s
+[2026-05-24T00:28:21-04:00] [generation-run44] [stitch +6m21s] reached per-cycle limit (1), pausing for measure
+[2026-05-24T00:28:21-04:00] [generation-run44] [stitch +6m21s] completed 1 task(s) in 6m21s
