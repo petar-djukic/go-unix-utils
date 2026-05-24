@@ -235,3 +235,13 @@
 [2026-05-24T00:15:58-04:00] [generation-run44] [stitch +15m18s] closeStitchTask: closing #5573 "[stitch] Implement cmd/pinky output formatting and flags (srd098 R2.1, R2.2, R2.3)"
 [2026-05-24T00:15:59-04:00] [generation-run44] [stitch +15m19s] commentCobblerIssue: posted comment on #5573
 [2026-05-24T00:15:59-04:00] [generation-run44] [stitch +15m19s] updateRequirementsFile: marked 3 R-items as complete for issue #5573
+[2026-05-24T00:16:02-04:00] [generation-run44] [stitch +15m21s] closeCobblerIssue: closed #5573
+[2026-05-24T00:16:03-04:00] [generation-run44] [stitch +15m23s] closeStitchTask: #5573 closed
+[2026-05-24T00:16:04-04:00] [generation-run44] [stitch +15m24s] sweepCompletedTasks: all R-items for #5573 already complete, closing
+[2026-05-24T00:16:05-04:00] [generation-run44] [stitch +15m24s] commentCobblerIssue: posted comment on #5573
+[2026-05-24T00:16:06-04:00] [generation-run44] [stitch +15m26s] closeCobblerIssue: closed #5573
+[2026-05-24T00:16:08-04:00] [generation-run44] [stitch +15m28s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-24T00:16:08-04:00] [generation-run44] [stitch +15m28s] doOneTask: task 5573 finished in 15m21s
+[2026-05-24T00:16:08-04:00] [generation-run44] [stitch +15m28s] task 5573 completed in 15m21s
+[2026-05-24T00:16:08-04:00] [generation-run44] [stitch +15m28s] reached per-cycle limit (1), pausing for measure
+[2026-05-24T00:16:08-04:00] [generation-run44] [stitch +15m28s] completed 1 task(s) in 15m28s

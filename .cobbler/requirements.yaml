@@ -5340,13 +5340,13 @@ requirements:
             issue: 5573
             weight: 1
         R3.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R3.3:
-            status: proposed
+            status: in_progress
             weight: 1
     srd099-shred:
         R1.1:
