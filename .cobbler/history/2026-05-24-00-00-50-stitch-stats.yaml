@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5573"
+task_title: '[stitch] Implement cmd/pinky output formatting and flags (srd098 R2.1, R2.2, R2.3)'
+status: success
+started_at: "2026-05-24T04:00:50Z"
+duration: 15m11s
+duration_s: 910
+tokens:
+    input: 1578048
+    output: 46188
+    cache_creation: 265218
+    cache_read: 1312804
+cost_usd: 3.894525000000001
+num_turns: 64
+rate_limit_wait_s: 2
+loc_before:
+    production: 26053
+    test: 22974
+loc_after:
+    production: 26167
+    test: 22974
+diff:
+    files: 2
+    insertions: 324
+    deletions: 8
