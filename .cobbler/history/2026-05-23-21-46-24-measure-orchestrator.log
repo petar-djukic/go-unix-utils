@@ -134,3 +134,26 @@
 [2026-05-23T21:50:26-04:00] [generation-run44] [measure +4m2s] transitionRequirements: marked 3 R-items as proposed
 [2026-05-23T21:50:26-04:00] [generation-run44] [measure +4m2s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-23T21:50:26-04:00] [generation-run44] [measure +4m2s] transitionRequirements: marked 3 R-items as proposed
+[2026-05-23T21:50:26-04:00] [generation-run44] [measure +4m3s] importIssues: creating task 0: [stitch] Implement cmd/chown recursive traversal and symlink handling (srd091 R2.1, R2.2, R2.3) (dep=-1)
+[2026-05-23T21:50:27-04:00] [generation-run44] [measure +4m4s] createCobblerIssue: created #5557 "[measure] Implement cmd/chown recursive traversal and symlink handling (srd091 R2.1, R2.2, R2.3)" gen=generation-run44 index=0 dep=-1
+[2026-05-23T21:50:27-04:00] [generation-run44] [measure +4m4s] importIssues: creating task 1: [stitch] Implement cmd/chown error handling and verbose output (srd091 R3.1, R3.2, R3.3) (dep=0)
+[2026-05-23T21:50:28-04:00] [generation-run44] [measure +4m5s] createCobblerIssue: created #5558 "[measure] Implement cmd/chown error handling and verbose output (srd091 R3.1, R3.2, R3.3)" gen=generation-run44 index=1 dep=0
+[2026-05-23T21:50:28-04:00] [generation-run44] [measure +4m5s] importIssues: creating task 2: [stitch] Implement cmd/mkfifo core FIFO creation and mode setting (srd092 R1.1, R1.2, R1.3, R1.4) (dep=-1)
+[2026-05-23T21:50:29-04:00] [generation-run44] [measure +4m5s] createCobblerIssue: created #5559 "[measure] Implement cmd/mkfifo core FIFO creation and mode setting (srd092 R1.1, R1.2, R1.3, R1.4)" gen=generation-run44 index=2 dep=-1
+[2026-05-23T21:50:29-04:00] [generation-run44] [measure +4m5s] importIssues: creating task 3: [stitch] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3) (dep=2)
+[2026-05-23T21:50:30-04:00] [generation-run44] [measure +4m6s] createCobblerIssue: created #5560 "[measure] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3)" gen=generation-run44 index=3 dep=2
+[2026-05-23T21:50:31-04:00] [generation-run44] [measure +4m7s] waitForIssuesVisible: 0/4 visible, retrying...
+[2026-05-23T21:50:32-04:00] [generation-run44] [measure +4m8s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-23T21:50:34-04:00] [generation-run44] [measure +4m10s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-23T21:50:35-04:00] [generation-run44] [measure +4m11s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-23T21:50:37-04:00] [generation-run44] [measure +4m13s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-23T21:50:41-04:00] [generation-run44] [measure +4m17s] importIssues: 4 of 4 issue(s) imported
+[2026-05-23T21:50:41-04:00] [generation-run44] [measure +4m17s] appendMeasureLog: 397 total issues in .cobbler/measure.yaml
+[2026-05-23T21:50:41-04:00] [generation-run44] [measure +4m17s] iteration 1 imported 4 issue(s)
+[2026-05-23T21:50:44-04:00] [generation-run44] [measure +4m20s] linkSubIssue: linked #5557 as sub-issue of #5556
+[2026-05-23T21:50:45-04:00] [generation-run44] [measure +4m21s] linkSubIssue: linked #5558 as sub-issue of #5556
+[2026-05-23T21:50:46-04:00] [generation-run44] [measure +4m22s] linkSubIssue: linked #5559 as sub-issue of #5556
+[2026-05-23T21:50:47-04:00] [generation-run44] [measure +4m23s] linkSubIssue: linked #5560 as sub-issue of #5556
+[2026-05-23T21:50:48-04:00] [generation-run44] [measure +4m24s] closeMeasuringPlaceholder: closed #5556
+[2026-05-23T21:50:48-04:00] [generation-run44] [measure +4m24s] finalizeMeasurePlaceholder: finalized #5556 with 4 child issue(s)
+[2026-05-23T21:50:48-04:00] [generation-run44] [measure +4m24s] completed 1 iteration(s), 4 issue(s) created in 4m24s
