@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chown implements srd091-chown R1.1-R1.4.
+// cmd/chown implements srd091-chown R1.1-R1.4, R2.1-R2.3.
 package main
 
 import (
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -52,8 +53,19 @@ Examples:
 const versionText = `chown (go-unix-utils) dev
 `
 
+type symlinkMode int
+
+const (
+	symlinkP symlinkMode = iota
+	symlinkH
+	symlinkL
+)
+
 type options struct {
-	reference string
+	reference     string
+	recursive     bool
+	noDereference bool
+	symlink       symlinkMode
 }
 
 func main() {
@@ -73,14 +85,95 @@ func main() {
 
 	exitCode := 0
 	for _, file := range files {
-		if err := os.Chown(file, uid, gid); err != nil {
-			reportError(err)
+		if err := changeOwnership(opts, uid, gid, file); err != nil {
 			exitCode = 1
 		}
 	}
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
+}
+
+func changeOwnership(opts options, uid, gid int, path string) error {
+	if !opts.recursive {
+		return chownSingle(opts, uid, gid, path)
+	}
+	return chownRecursive(opts, uid, gid, path, true)
+}
+
+func chownSingle(opts options, uid, gid int, path string) error {
+	fn := os.Chown
+	if opts.noDereference {
+		fn = os.Lchown
+	}
+	if err := fn(path, uid, gid); err != nil {
+		reportError(err)
+		return err
+	}
+	return nil
+}
+
+func chownRecursive(opts options, uid, gid int, path string, isTopLevel bool) error {
+	follow := shouldFollowLink(opts, isTopLevel)
+	fi, err := statPath(path, follow)
+	if err != nil {
+		reportError(err)
+		return err
+	}
+	var firstErr error
+	if fi.IsDir() {
+		firstErr = walkChildren(opts, uid, gid, path)
+	}
+	if err := applyChown(opts, uid, gid, path); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
+}
+
+func applyChown(opts options, uid, gid int, path string) error {
+	fn := os.Lchown
+	if opts.symlink == symlinkL {
+		fn = os.Chown
+	}
+	if err := fn(path, uid, gid); err != nil {
+		reportError(err)
+		return err
+	}
+	return nil
+}
+
+func shouldFollowLink(opts options, isTopLevel bool) bool {
+	switch opts.symlink {
+	case symlinkL:
+		return true
+	case symlinkH:
+		return isTopLevel
+	default:
+		return false
+	}
+}
+
+func statPath(path string, follow bool) (os.FileInfo, error) {
+	if follow {
+		return os.Stat(path)
+	}
+	return os.Lstat(path)
+}
+
+func walkChildren(opts options, uid, gid int, dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		reportError(err)
+		return err
+	}
+	var firstErr error
+	for _, e := range entries {
+		child := filepath.Join(dir, e.Name())
+		if err := chownRecursive(opts, uid, gid, child, false); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 func resolveOwnership(opts options, ownerSpec string) (int, int) {
@@ -197,7 +290,7 @@ func parseArgs(args []string) (options, string, []string) {
 			continue
 		}
 		if ownerSpec == "" {
-			if strings.HasPrefix(arg, "-") && len(arg) > 1 && parseShortFlags(arg[1:]) {
+			if strings.HasPrefix(arg, "-") && len(arg) > 1 && parseShortFlags(arg[1:], &opts) {
 				continue
 			}
 			if opts.reference != "" {
@@ -237,7 +330,11 @@ func parseLongFlag(arg string, opts *options) bool {
 	switch arg {
 	case "--verbose", "--changes", "--silent", "--quiet":
 	case "--recursive":
-	case "--dereference", "--no-dereference":
+		opts.recursive = true
+	case "--dereference":
+		opts.noDereference = false
+	case "--no-dereference":
+		opts.noDereference = true
 	case "--preserve-root", "--no-preserve-root":
 	default:
 		if strings.HasPrefix(arg, "--reference=") {
@@ -249,10 +346,20 @@ func parseLongFlag(arg string, opts *options) bool {
 	return true
 }
 
-func parseShortFlags(flags string) bool {
+func parseShortFlags(flags string, opts *options) bool {
 	for _, c := range flags {
 		switch c {
-		case 'v', 'c', 'f', 'R', 'h', 'H', 'L', 'P':
+		case 'v', 'c', 'f':
+		case 'R':
+			opts.recursive = true
+		case 'h':
+			opts.noDereference = true
+		case 'H':
+			opts.symlink = symlinkH
+		case 'L':
+			opts.symlink = symlinkL
+		case 'P':
+			opts.symlink = symlinkP
 		default:
 			return false
 		}
