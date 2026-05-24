@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -146,6 +147,30 @@ func TestDiff(t *testing.T) {
 	t.Run("double_dash", func(t *testing.T) {
 		runCreationTest(t, goBin, refBin, []string{"--", "-pipename"})
 	})
+
+	t.Run("all_failures", func(t *testing.T) {
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		os.WriteFile(filepath.Join(goDir, "a"), nil, 0o644)
+		os.WriteFile(filepath.Join(goDir, "b"), nil, 0o644)
+		os.WriteFile(filepath.Join(refDir, "a"), nil, 0o644)
+		os.WriteFile(filepath.Join(refDir, "b"), nil, 0o644)
+		args := []string{"a", "b"}
+		goRes := runBin(t, goBin, args, goDir)
+		refRes := runBin(t, refBin, args, refDir)
+		compareResults(t, args, goRes, refRes)
+	})
+
+	t.Run("partial_failure_last", func(t *testing.T) {
+		goDir := t.TempDir()
+		refDir := t.TempDir()
+		os.WriteFile(filepath.Join(goDir, "existing"), nil, 0o644)
+		os.WriteFile(filepath.Join(refDir, "existing"), nil, 0o644)
+		args := []string{"newpipe", "existing"}
+		goRes := runBin(t, goBin, args, goDir)
+		refRes := runBin(t, refBin, args, refDir)
+		compareResults(t, args, goRes, refRes)
+	})
 }
 
 func TestCreationPermissions(t *testing.T) {
@@ -277,5 +302,31 @@ func compareResults(t *testing.T, args []string, goRes, refRes binResult) {
 			"  ref exit:   %d\n"+
 			"  go  exit:   %d\n",
 			args, refStdout, goStdout, refStderr, goStderr, refRes.exitCode, goRes.exitCode)
+	}
+}
+
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, goBin, "--help")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(stdout, buf); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Close()
+	err = cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatal("mkfifo timed out; SIGPIPE handler may not be installed")
+	}
+	if err != nil {
+		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
 	}
 }
