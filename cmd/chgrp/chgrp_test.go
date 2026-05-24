@@ -4,12 +4,15 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"syscall"
 	"testing"
@@ -263,6 +266,105 @@ func TestDiff(t *testing.T) {
 		verifyGroup(t, filepath.Join(workDir, "d"), groupB.gid)
 		verifyGroup(t, filepath.Join(workDir, "outside"), groupB.gid)
 	})
+
+	t.Run("verbose_changed", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.WriteFile(filepath.Join(workDir, "file"), []byte("x"), 0o644)
+		args := []string{"-v", groupB.name, "file"}
+		resetFn := func() { setGroup(t, filepath.Join(workDir, "file"), groupA.gid) }
+		diffWithReset(t, goBin, refBin, args, workDir, resetFn, nil)
+	})
+
+	t.Run("verbose_retained", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.WriteFile(filepath.Join(workDir, "file"), []byte("x"), 0o644)
+		setGroup(t, filepath.Join(workDir, "file"), groupA.gid)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "v_retained",
+				Args:    []string{"-v", groupA.name, "file"},
+				WorkDir: workDir,
+			},
+		})
+	})
+
+	t.Run("changes_changed", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.WriteFile(filepath.Join(workDir, "file"), []byte("x"), 0o644)
+		args := []string{"-c", groupB.name, "file"}
+		resetFn := func() { setGroup(t, filepath.Join(workDir, "file"), groupA.gid) }
+		diffWithReset(t, goBin, refBin, args, workDir, resetFn, nil)
+	})
+
+	t.Run("changes_retained", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.WriteFile(filepath.Join(workDir, "file"), []byte("x"), 0o644)
+		setGroup(t, filepath.Join(workDir, "file"), groupA.gid)
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:    "c_retained",
+				Args:    []string{"-c", groupA.name, "file"},
+				WorkDir: workDir,
+			},
+		})
+	})
+
+	t.Run("verbose_nonexistent", func(t *testing.T) {
+		workDir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "v_nonexistent",
+				Args:      []string{"-v", groupA.name, "missing"},
+				WorkDir:   workDir,
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{normalizeBinaryName, normalizeErrorVerb},
+			},
+		})
+	})
+
+	t.Run("silent_nonexistent", func(t *testing.T) {
+		workDir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "f_nonexistent",
+				Args:      []string{"-f", groupA.name, "missing"},
+				WorkDir:   workDir,
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			},
+		})
+	})
+
+	t.Run("silent_verbose_nonexistent", func(t *testing.T) {
+		workDir := t.TempDir()
+		testutils.RunDiffTests(t, goBin, refBin, []testutils.DiffTest{
+			{
+				Name:      "fv_nonexistent",
+				Args:      []string{"-fv", groupA.name, "missing"},
+				WorkDir:   workDir,
+				ExitCode:  1,
+				Normalize: []testutils.NormalizeFunc{normalizeBinaryName},
+			},
+		})
+	})
+
+	t.Run("verbose_recursive", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.MkdirAll(filepath.Join(workDir, "d", "sub"), 0o755)
+		os.WriteFile(filepath.Join(workDir, "d", "f1"), []byte("x"), 0o644)
+		os.WriteFile(filepath.Join(workDir, "d", "sub", "f2"), []byte("x"), 0o644)
+		args := []string{"-Rv", groupB.name, "d"}
+		resetFn := func() { setGroupRecursive(t, filepath.Join(workDir, "d"), groupA.gid) }
+		diffWithReset(t, goBin, refBin, args, workDir, resetFn, []testutils.NormalizeFunc{sortLines})
+	})
+
+	t.Run("verbose_numeric_gid", func(t *testing.T) {
+		workDir := t.TempDir()
+		os.WriteFile(filepath.Join(workDir, "file"), []byte("x"), 0o644)
+		args := []string{"-v", strconv.Itoa(groupB.gid), "file"}
+		resetFn := func() { setGroup(t, filepath.Join(workDir, "file"), groupA.gid) }
+		diffWithReset(t, goBin, refBin, args, workDir, resetFn, nil)
+	})
 }
 
 var binaryNameRe = regexp.MustCompile(`(/\S+/)?g?chgrp\b`)
@@ -439,4 +541,53 @@ func splitLines(b []byte) [][]byte {
 		lines = append(lines, b[start:])
 	}
 	return lines
+}
+
+func sortLines(b []byte) []byte {
+	lines := bytes.Split(bytes.TrimRight(b, "\n"), []byte("\n"))
+	sort.Slice(lines, func(i, j int) bool { return bytes.Compare(lines[i], lines[j]) < 0 })
+	if len(lines) == 1 && len(lines[0]) == 0 {
+		return b
+	}
+	return append(bytes.Join(lines, []byte("\n")), '\n')
+}
+
+func diffWithReset(t *testing.T, goBin, refBin string, args []string, workDir string, reset func(), normalizers []testutils.NormalizeFunc) {
+	t.Helper()
+	reset()
+	goOut, goErr, goExit := captureRun(t, goBin, args, workDir)
+	reset()
+	refOut, refErr, refExit := captureRun(t, refBin, args, workDir)
+	for _, n := range normalizers {
+		goOut, goErr = n(goOut), n(goErr)
+		refOut, refErr = n(refOut), n(refErr)
+	}
+	if !bytes.Equal(goOut, refOut) {
+		t.Errorf("stdout mismatch:\n  go:  %q\n  ref: %q", goOut, refOut)
+	}
+	if !bytes.Equal(goErr, refErr) {
+		t.Errorf("stderr mismatch:\n  go:  %q\n  ref: %q", goErr, refErr)
+	}
+	if goExit != refExit {
+		t.Errorf("exit code: go=%d ref=%d", goExit, refExit)
+	}
+}
+
+func captureRun(t *testing.T, binary string, args []string, workDir string) ([]byte, []byte, int) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Dir = workDir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("run %s: %v", binary, err)
+		}
+	}
+	return stdout.Bytes(), stderr.Bytes(), exitCode
 }

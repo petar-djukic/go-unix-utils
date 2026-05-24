@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/chgrp implements srd090-chgrp R1.1-R1.4, R2.1-R2.3.
+// cmd/chgrp implements srd090-chgrp R1.1-R1.4, R2.1-R2.3, R3.1-R3.3.
 package main
 
 import (
@@ -69,6 +69,10 @@ func main() {
 
 	opts, group, files := parseArgs(os.Args[1:])
 	gid := resolveGID(opts, group)
+	groupLabel := group
+	if opts.reference != "" {
+		groupLabel = gidToName(gid)
+	}
 	if len(files) == 0 {
 		if opts.reference != "" {
 			fmt.Fprintln(os.Stderr, "chgrp: missing operand")
@@ -81,7 +85,7 @@ func main() {
 
 	exitCode := 0
 	for _, file := range files {
-		if err := changeGroup(opts, gid, file); err != nil {
+		if err := changeGroup(opts, gid, groupLabel, file); err != nil {
 			exitCode = 1
 		}
 	}
@@ -114,6 +118,14 @@ func lookupGroup(group string) int {
 	return gid
 }
 
+func gidToName(gid int) string {
+	g, err := user.LookupGroupId(strconv.Itoa(gid))
+	if err != nil {
+		return strconv.Itoa(gid)
+	}
+	return g.Name
+}
+
 func resolveReference(rfile string) int {
 	fi, err := sys.Stat(rfile)
 	if err != nil {
@@ -124,50 +136,72 @@ func resolveReference(rfile string) int {
 	return int(fi.Gid)
 }
 
-func changeGroup(opts options, gid int, path string) error {
+func changeGroup(opts options, gid int, groupLabel, path string) error {
 	if !opts.recursive {
-		return chownSingle(opts, gid, path)
+		return chownSingle(opts, gid, groupLabel, path)
 	}
-	return chownRecursive(opts, gid, path, true)
+	return chownRecursive(opts, gid, groupLabel, path, true)
 }
 
-func chownSingle(opts options, gid int, path string) error {
+func chownSingle(opts options, gid int, groupLabel, path string) error {
 	fn := os.Chown
+	statFn := sys.Stat
 	if opts.noDereference {
 		fn = os.Lchown
+		statFn = sys.Lstat
+	}
+	oldGID := -1
+	if opts.verbose || opts.changes {
+		if fi, err := statFn(path); err == nil {
+			oldGID = int(fi.Gid)
+		}
 	}
 	if err := fn(path, -1, gid); err != nil {
 		reportError(opts, err)
+		printDiagnostic(opts, path, oldGID, gid, groupLabel)
 		return err
 	}
+	printDiagnostic(opts, path, oldGID, gid, groupLabel)
 	return nil
 }
 
-func chownRecursive(opts options, gid int, path string, isTopLevel bool) error {
+func chownRecursive(opts options, gid int, groupLabel, path string, isTopLevel bool) error {
 	follow := shouldFollowLink(opts, isTopLevel)
 	fi, err := statPath(path, follow)
 	if err != nil {
 		reportError(opts, err)
+		printDiagnostic(opts, path, -1, gid, groupLabel)
 		return err
 	}
-	chownErr := applyChown(opts, gid, path)
+	var firstErr error
 	if fi.IsDir() {
-		if walkErr := walkChildren(opts, gid, path); walkErr != nil && chownErr == nil {
-			chownErr = walkErr
-		}
+		firstErr = walkChildren(opts, gid, groupLabel, path)
 	}
-	return chownErr
+	if err := applyChown(opts, gid, groupLabel, path); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
 }
 
-func applyChown(opts options, gid int, path string) error {
+func applyChown(opts options, gid int, groupLabel, path string) error {
 	fn := os.Lchown
+	statFn := sys.Lstat
 	if opts.symlink == symlinkL {
 		fn = os.Chown
+		statFn = sys.Stat
+	}
+	oldGID := -1
+	if opts.verbose || opts.changes {
+		if fi, err := statFn(path); err == nil {
+			oldGID = int(fi.Gid)
+		}
 	}
 	if err := fn(path, -1, gid); err != nil {
 		reportError(opts, err)
+		printDiagnostic(opts, path, oldGID, gid, groupLabel)
 		return err
 	}
+	printDiagnostic(opts, path, oldGID, gid, groupLabel)
 	return nil
 }
 
@@ -189,7 +223,7 @@ func statPath(path string, follow bool) (os.FileInfo, error) {
 	return os.Lstat(path)
 }
 
-func walkChildren(opts options, gid int, dir string) error {
+func walkChildren(opts options, gid int, groupLabel, dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		reportError(opts, err)
@@ -198,11 +232,31 @@ func walkChildren(opts options, gid int, dir string) error {
 	var firstErr error
 	for _, e := range entries {
 		child := filepath.Join(dir, e.Name())
-		if err := chownRecursive(opts, gid, child, false); err != nil && firstErr == nil {
+		if err := chownRecursive(opts, gid, groupLabel, child, false); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 	return firstErr
+}
+
+func printDiagnostic(opts options, path string, oldGID, newGID int, groupLabel string) {
+	if !opts.verbose && !opts.changes {
+		return
+	}
+	if oldGID < 0 {
+		if opts.verbose {
+			fmt.Fprintf(os.Stdout, "failed to change group of '%s' to %s\n", path, groupLabel)
+		}
+		return
+	}
+	if oldGID == newGID {
+		if opts.verbose {
+			fmt.Fprintf(os.Stdout, "group of '%s' retained as %s\n", path, gidToName(newGID))
+		}
+		return
+	}
+	fmt.Fprintf(os.Stdout, "changed group of '%s' from %s to %s\n",
+		path, gidToName(oldGID), groupLabel)
 }
 
 func reportError(opts options, err error) {
