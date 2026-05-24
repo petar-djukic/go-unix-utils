@@ -18607,3 +18607,179 @@
       - id: AC4
         text: "Exit codes 125, 126, 127 match GNU nice behavior for respective error conditions"
   dependency: 2
+- index: 0
+  title: '[stitch] Implement cmd/nohup core functionality (srd095 R1.1, R1.2, R1.3, R1.4)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd095-nohup.yaml (SRD for nohup -- all requirements and acceptance criteria)
+      - pkg/sys/ (InstallSIGPIPEHandler for SIGPIPE handling, IsTerminal for tty detection)
+      - cmd/nice/main.go (reference implementation of a similar process-control utility in release 11.0)
+
+    files:
+      - path: cmd/nohup/main.go
+        action: create
+        note: nohup implementation -- run command immune to SIGHUP with automatic output redirection
+
+    requirements:
+      - id: R1
+        text: Implement srd095 R1.1 -- parse COMMAND [ARG...] from command-line arguments and invoke the child process
+      - id: R2
+        text: Implement srd095 R1.2 -- set SIGHUP signal disposition to ignore before executing the child command
+      - id: R3
+        text: Implement srd095 R1.3 -- redirect stdout to nohup.out (current directory, then $HOME) when stdout is a terminal
+      - id: R4
+        text: Implement srd095 R1.4 -- redirect stderr to stdout when stderr is a terminal
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main per project shared protocol
+      - id: D2
+        text: Use os/exec.Command to run the child process, propagating its exit code to the caller
+      - id: D3
+        text: Use sys.IsTerminal to detect whether stdout/stderr are connected to a terminal for redirection decisions
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/nohup/main.go compiles with go build -o bin/nohup ./cmd/nohup/
+      - id: AC2
+        text: go vet ./cmd/nohup/ reports no errors
+      - id: AC3
+        text: Binary executes a simple command (e.g., echo hello) and the command runs immune to SIGHUP
+      - id: AC4
+        text: When stdout is a terminal, output is redirected to nohup.out in current directory or $HOME
+      - id: AC5
+        text: All four srd095 R1.x requirements are addressed in the implementation
+  dependency: -1
+- index: 1
+  title: '[stitch] Implement cmd/nohup error handling and differential tests (srd095 R2.1, R2.2, R2.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd095-nohup.yaml (SRD for nohup -- R2 group requirements)
+      - cmd/nohup/main.go (core implementation from previous task)
+      - pkg/testutils/difftest.go (RunDiffTests, DiffTest, BuildBinary API for differential testing)
+      - cmd/nice/nice_test.go (reference differential test for a similar process-control utility)
+
+    files:
+      - path: cmd/nohup/main.go
+        action: modify
+        note: Add error exit codes, help output, and version output
+      - path: cmd/nohup/nohup_test.go
+        action: create
+        note: Differential tests comparing stdout, stderr, and exit code against gnohup
+
+    requirements:
+      - id: R1
+        text: Implement srd095 R2.1 -- error exit codes per GNU convention (125 for nohup internal failure, 126 for command found but not executable, 127 for command not found)
+      - id: R2
+        text: Implement srd095 R2.2 -- help and version output flags (--help, --version)
+      - id: R3
+        text: Implement srd095 R2.3 -- differential tests against gnohup reference binary covering normal execution, error cases, and output redirection
+
+    design_decisions:
+      - id: D1
+        text: Use testutils.BuildBinary(t, ".") to compile the Go binary in tests
+      - id: D2
+        text: Use exec.LookPath("gnohup") with t.Skip if reference binary not found
+      - id: D3
+        text: Set LC_ALL=C in test environment per project shared protocol
+
+    acceptance_criteria:
+      - id: AC1
+        text: go test ./cmd/nohup/ -count=1 passes with gnohup installed
+      - id: AC2
+        text: Differential tests compare stdout, stderr, and exit code against gnohup for each test case
+      - id: AC3
+        text: Tests skip gracefully with t.Skip when gnohup is not in PATH
+      - id: AC4
+        text: go vet ./cmd/nohup/ reports no errors
+      - id: AC5
+        text: Error exit codes match GNU nohup behavior (125, 126, 127)
+  dependency: 0
+- index: 2
+  title: '[stitch] Implement cmd/users core functionality (srd096 R1.1, R1.2, R1.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd096-users.yaml (SRD for users -- all requirements and acceptance criteria)
+      - pkg/sys/ (InstallSIGPIPEHandler for SIGPIPE handling)
+
+    files:
+      - path: cmd/users/main.go
+        action: create
+        note: users implementation -- print login names of currently logged-in users from utmpx
+
+    requirements:
+      - id: R1
+        text: Implement srd096 R1.1 -- read the utmpx database and extract login names of currently logged-in users
+      - id: R2
+        text: Implement srd096 R1.2 -- sort names alphabetically and print as a space-separated single line to stdout
+      - id: R3
+        text: Implement srd096 R1.3 -- accept an optional utmpx file argument to read from a specified file instead of the system default
+
+    design_decisions:
+      - id: D1
+        text: Call sys.InstallSIGPIPEHandler() at the start of main per project shared protocol
+      - id: D2
+        text: Use the utmpx C API via cgo or the Go syscall interface to read login records, matching GNU users behavior on Darwin
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/users/main.go compiles with go build -o bin/users ./cmd/users/
+      - id: AC2
+        text: go vet ./cmd/users/ reports no errors
+      - id: AC3
+        text: Binary prints space-separated sorted login names of currently logged-in users
+      - id: AC4
+        text: All three srd096 R1.x requirements are addressed in the implementation
+  dependency: -1
+- index: 3
+  title: '[stitch] Implement cmd/users error handling and differential tests (srd096 R2.1, R2.2, R2.3)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd096-users.yaml (SRD for users -- R2 group requirements)
+      - cmd/users/main.go (core implementation from previous task)
+      - pkg/testutils/difftest.go (RunDiffTests, DiffTest, BuildBinary API for differential testing)
+
+    files:
+      - path: cmd/users/main.go
+        action: modify
+        note: Add error handling, help output, and version output
+      - path: cmd/users/users_test.go
+        action: create
+        note: Differential tests comparing stdout, stderr, and exit code against gusers
+
+    requirements:
+      - id: R1
+        text: Implement srd096 R2.1 -- error handling for invalid arguments and inaccessible utmpx file
+      - id: R2
+        text: Implement srd096 R2.2 -- help and version output flags (--help, --version)
+      - id: R3
+        text: Implement srd096 R2.3 -- differential tests against gusers reference binary covering normal output, no-users case, and error cases
+
+    design_decisions:
+      - id: D1
+        text: Use testutils.BuildBinary(t, ".") to compile the Go binary in tests
+      - id: D2
+        text: Use exec.LookPath("gusers") with t.Skip if reference binary not found
+      - id: D3
+        text: Set LC_ALL=C in test environment per project shared protocol
+
+    acceptance_criteria:
+      - id: AC1
+        text: go test ./cmd/users/ -count=1 passes with gusers installed
+      - id: AC2
+        text: Differential tests compare stdout, stderr, and exit code against gusers for each test case
+      - id: AC3
+        text: Tests skip gracefully with t.Skip when gusers is not in PATH
+      - id: AC4
+        text: go vet ./cmd/users/ reports no errors
+      - id: AC5
+        text: Error handling matches GNU users behavior for invalid inputs
+  dependency: 2
