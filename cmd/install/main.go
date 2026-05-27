@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/install implements srd101-install R1.1-R1.4, R2.1-R2.4.
+// cmd/install implements srd101-install R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -24,6 +25,9 @@ const helpText = `Usage: install [OPTION]... [-T] SOURCE DEST
 Copy files and set attributes.
 
   -b                  make a backup of each existing destination file
+  -C, --compare       compare source and destination files, and if the
+                        destination has the same content and any specified
+                        owner, group, and permissions, do not modify it
   -c                  (ignored)
   -d, --directory     treat all arguments as directory names; create all
                         components of the specified directories
@@ -48,6 +52,7 @@ type options struct {
 	group     string
 	directory bool
 	createDir bool
+	compare   bool
 	backup    bool
 	suffix    string
 	verbose   bool
@@ -153,6 +158,9 @@ func installSingle(opts options, src, dest string) error {
 				dir, unwrapErr(err))
 		}
 	}
+	if opts.compare && filesIdentical(src, dest, opts) {
+		return nil
+	}
 	if opts.backup {
 		if err := backupFile(dest, opts.suffix); err != nil {
 			return err
@@ -182,6 +190,70 @@ func backupFile(dest, suffix string) error {
 		return fmt.Errorf("cannot backup '%s': %s", dest, unwrapErr(err))
 	}
 	return nil
+}
+
+func filesIdentical(src, dest string, opts options) bool {
+	dfi, err := os.Stat(dest)
+	if err != nil {
+		return false
+	}
+	sfi, err := os.Stat(src)
+	if err != nil {
+		return false
+	}
+	if sfi.Size() != dfi.Size() {
+		return false
+	}
+	if dfi.Mode().Perm() != targetMode(opts) {
+		return false
+	}
+	return contentsEqual(src, dest)
+}
+
+func targetMode(opts options) os.FileMode {
+	if opts.mode == "" {
+		return 0755
+	}
+	perm, err := resolveMode(opts.mode)
+	if err != nil {
+		return 0755
+	}
+	return perm.Perm()
+}
+
+func contentsEqual(a, b string) bool {
+	af, err := os.Open(a)
+	if err != nil {
+		return false
+	}
+	defer af.Close()
+	bf, err := os.Open(b)
+	if err != nil {
+		return false
+	}
+	defer bf.Close()
+	const bufSize = 32 * 1024
+	abuf := make([]byte, bufSize)
+	bbuf := make([]byte, bufSize)
+	for {
+		an, aerr := io.ReadFull(af, abuf)
+		bn, berr := io.ReadFull(bf, bbuf)
+		if !bytes.Equal(abuf[:an], bbuf[:bn]) {
+			return false
+		}
+		if aerr == io.EOF && berr == io.EOF {
+			return true
+		}
+		if aerr != nil && aerr != io.ErrUnexpectedEOF {
+			return false
+		}
+		if berr != nil && berr != io.ErrUnexpectedEOF {
+			return false
+		}
+		if an != bn {
+			return false
+		}
+	}
 }
 
 func copyFile(src, dest string) error {
@@ -337,6 +409,8 @@ func parseLongFlag(args []string, i int, opts *options) int {
 		os.Exit(0)
 	case arg == "--directory":
 		opts.directory = true
+	case arg == "--compare":
+		opts.compare = true
 	case arg == "--backup":
 		opts.backup = true
 	case arg == "--verbose":
@@ -369,6 +443,8 @@ func parseShortFlags(args []string, i int, opts *options) int {
 			return i + 1
 		case 'd':
 			opts.directory = true
+		case 'C':
+			opts.compare = true
 		case 'D':
 			opts.createDir = true
 		case 'b':
