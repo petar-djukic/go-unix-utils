@@ -5,8 +5,11 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"io"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -36,13 +39,13 @@ func TestDiff(t *testing.T) {
 	exclusiveNorm := []testutils.NormalizeFunc{programNameNormalizer, helpLineNormalizer}
 
 	tests := []testutils.DiffTest{
-		// R1.1, R1.2, R1.3: FILE argument reports containing filesystem
+		// R1.1, R1.2, R1.3, R4.1: FILE argument reports containing filesystem, exit 0
 		{Name: "root-fs", Args: []string{"/"}, Env: []string{"LC_ALL=C"}},
 		// R1.4: regular file resolves to containing filesystem
 		{Name: "file-arg", Args: []string{"/etc/hosts"}, Env: []string{"LC_ALL=C"}},
 		// R1.4, R1.5: multiple FILE arguments, column alignment across rows
 		{Name: "multiple-files", Args: []string{"/", "/tmp"}, Env: []string{"LC_ALL=C"}},
-		// R1.4: non-existent file produces diagnostic and exit 1
+		// R1.4, R4.2: non-existent file produces diagnostic to stderr and exit 1
 		{
 			Name:      "nonexistent",
 			Args:      []string{"/nonexistent-path-12345"},
@@ -50,7 +53,7 @@ func TestDiff(t *testing.T) {
 			Env:       []string{"LC_ALL=C"},
 			Normalize: errNorm,
 		},
-		// R1.4: mix of valid and invalid FILE arguments
+		// R1.4, R4.1, R4.2: mix of valid and invalid — exits 1 despite partial success
 		{
 			Name:      "mixed-valid-invalid",
 			Args:      []string{"/", "/nonexistent-path-12345"},
@@ -135,4 +138,32 @@ func TestDiff(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+// R4.3: SIGPIPE handler exits cleanly when stdout consumer closes early.
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, goBin, "-a")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(stdout, buf); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Close()
+	err = cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatal("df timed out; SIGPIPE handler may not be installed")
+	}
+	if err != nil {
+		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
 }
