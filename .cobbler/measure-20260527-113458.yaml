@@ -1,0 +1,170 @@
+- index: 0
+  title: "cmd/pathchk: implement srd103 R2.1, R2.2, R2.3"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd103-pathchk.yaml (full SRD -- implement requirements R2.1, R2.2, R2.3)
+      - CLAUDE.md (project conventions, build commands, differential testing pattern, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler pattern -- all cmd/ utilities must call this at start of main)
+
+    files:
+      - path: cmd/pathchk/main.go
+        action: create
+        note: pathchk utility -- validates pathnames against POSIX portability rules
+
+    requirements:
+      - id: R1
+        text: "Implement srd103-pathchk requirement R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd103-pathchk requirement R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd103-pathchk requirement R2.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol in CLAUDE.md"
+      - id: D2
+        text: "Build with: go build -o bin/pathchk ./cmd/pathchk/"
+      - id: D3
+        text: "The reference binary for differential testing is gpathchk (Homebrew GNU coreutils with g-prefix)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/pathchk/main.go compiles without errors: go build -o bin/pathchk ./cmd/pathchk/"
+      - id: AC2
+        text: "go vet ./cmd/pathchk/... reports no issues"
+      - id: AC3
+        text: "All behavior specified in srd103-pathchk R2.1, R2.2, R2.3 is implemented"
+
+- index: 1
+  title: "cmd/pathchk: differential tests for srd103 R2.1, R2.2, R2.3"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd103-pathchk.yaml (full SRD -- test requirements R2.1, R2.2, R2.3)
+      - cmd/pathchk/main.go (implementation to test -- created in prior task)
+      - CLAUDE.md (differential testing pattern, BuildBinary usage, LookPath skip convention)
+      - pkg/testutils/difftest.go (DiffTest struct, RunDiffTests function)
+
+    files:
+      - path: cmd/pathchk/pathchk_test.go
+        action: create
+        note: differential tests comparing Go pathchk against gpathchk reference binary
+
+    requirements:
+      - id: R1
+        text: "Write differential tests covering srd103-pathchk R2.1 -- test cases exercise the behavior specified in that requirement"
+      - id: R2
+        text: "Write differential tests covering srd103-pathchk R2.2 -- test cases exercise the behavior specified in that requirement"
+      - id: R3
+        text: "Write differential tests covering srd103-pathchk R2.3 -- test cases exercise the behavior specified in that requirement"
+
+    design_decisions:
+      - id: D1
+        text: "Use testutils.BuildBinary(t, \".\") to compile the Go binary and exec.LookPath(\"gpathchk\") for the reference binary"
+      - id: D2
+        text: "Call t.Skip if gpathchk is not found in PATH -- tests must pass on machines without Homebrew GNU binaries"
+      - id: D3
+        text: "Define tests as []testutils.DiffTest and run via testutils.RunDiffTests(t, goBin, refBin, tests)"
+      - id: D4
+        text: "Set LC_ALL=C in test environment to ensure consistent behavior between Go and GNU binaries"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/pathchk/... -count=1 passes (or skips gracefully if gpathchk not found)"
+      - id: AC2
+        text: "Tests cover all behavior specified in srd103-pathchk R2.1, R2.2, R2.3 with concrete inputs and expected outcomes"
+      - id: AC3
+        text: "TestDiff function follows the differential testing pattern from CLAUDE.md"
+
+- index: 2
+  title: "cmd/test: implement srd104 R1.1, R1.2, R2.1, R2.2"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd104-test.yaml (full SRD -- implement requirements R1.1, R1.2, R2.1, R2.2)
+      - CLAUDE.md (project conventions, build commands, SIGPIPE handling)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler pattern)
+
+    files:
+      - path: cmd/test/main.go
+        action: create
+        note: "test utility -- evaluates conditional expressions (file tests, string comparisons, integer arithmetic)"
+
+    requirements:
+      - id: R1
+        text: "Implement srd104-test requirement R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd104-test requirement R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd104-test requirement R2.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd104-test requirement R2.2 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per the shared SIGPIPE protocol in CLAUDE.md"
+      - id: D2
+        text: "Build with: go build -o bin/test ./cmd/test/"
+      - id: D3
+        text: "The reference binary for differential testing is gtest (Homebrew GNU coreutils with g-prefix)"
+      - id: D4
+        text: "Structure the implementation so requirements R3.1, R3.2, R4.1, R4.2 can be added in a follow-up task without restructuring existing code"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/test/main.go compiles without errors: go build -o bin/test ./cmd/test/"
+      - id: AC2
+        text: "go vet ./cmd/test/... reports no issues"
+      - id: AC3
+        text: "All behavior specified in srd104-test R1.1, R1.2, R2.1, R2.2 is implemented"
+      - id: AC4
+        text: "The code structure supports future extension for R3.x and R4.x requirements without refactoring"
+
+- index: 3
+  title: "cmd/test: implement srd104 R3.1, R3.2, R4.1, R4.2"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd104-test.yaml (full SRD -- implement requirements R3.1, R3.2, R4.1, R4.2)
+      - cmd/test/main.go (existing implementation from prior task -- contains R1.1, R1.2, R2.1, R2.2)
+      - CLAUDE.md (project conventions)
+
+    files:
+      - path: cmd/test/main.go
+        action: modify
+        note: "extend test utility with R3.1, R3.2, R4.1, R4.2 functionality"
+
+    requirements:
+      - id: R1
+        text: "Implement srd104-test requirement R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd104-test requirement R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd104-test requirement R4.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd104-test requirement R4.2 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/test/main.go created in the prior task -- do not rewrite or restructure existing code for R1.x and R2.x"
+      - id: D2
+        text: "Follow the same patterns and code organization established in the existing main.go for consistency"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/test/main.go compiles without errors: go build -o bin/test ./cmd/test/"
+      - id: AC2
+        text: "go vet ./cmd/test/... reports no issues"
+      - id: AC3
+        text: "All behavior specified in srd104-test R3.1, R3.2, R4.1, R4.2 is implemented"
+      - id: AC4
+        text: "Previously implemented behavior for R1.1, R1.2, R2.1, R2.2 is not broken by the changes"
