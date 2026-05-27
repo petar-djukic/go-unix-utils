@@ -20168,3 +20168,172 @@
       - id: AC4
         text: "go vet ./cmd/dir/ reports no issues"
   dependency: 1
+- index: 0
+  title: '[stitch] cmd/dir: implement srd107 R2.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd107-dir.yaml (R2.4 requirement details)
+      - cmd/dir/main.go (existing implementation -- R1.1-R1.5, R2.1-R2.3 already implemented)
+
+    files:
+      - path: cmd/dir/main.go
+        action: modify
+        note: Add R2.4 functionality to existing dir implementation
+
+    requirements:
+      - id: R1
+        text: "Implement srd107 R2.4 as specified in the SRD, extending the existing cmd/dir implementation"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/dir/main.go -- do not rewrite or restructure code for R1.1-R1.5, R2.1-R2.3"
+      - id: D2
+        text: "Preserve the existing sys.InstallSIGPIPEHandler() call at the start of main"
+      - id: D3
+        text: "dir is equivalent to ls -C -b -- maintain this equivalence when adding R2.4"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/dir/main.go compiles with go build -o bin/dir ./cmd/dir/"
+      - id: AC2
+        text: "R2.4 behavior matches the SRD specification"
+      - id: AC3
+        text: "Existing functionality for R1.1-R1.5, R2.1-R2.3 is preserved unchanged"
+      - id: AC4
+        text: "go vet ./cmd/dir/ reports no issues"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/dir: test srd107 R2.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd107-dir.yaml (R2.4 requirement and acceptance criteria)
+      - cmd/dir/main.go (implementation to test)
+      - cmd/dir/dir_test.go (existing tests to extend)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+
+    files:
+      - path: cmd/dir/dir_test.go
+        action: modify
+        note: Add differential test cases for R2.4
+
+    requirements:
+      - id: R1
+        text: "Add differential test cases to cmd/dir/dir_test.go that verify srd107 R2.4 behavior against the gdir reference binary"
+
+    design_decisions:
+      - id: D1
+        text: "Use testutils.RunDiffTests with testutils.BuildBinary(t, \".\") for the Go binary and exec.LookPath(\"gdir\") for the reference binary"
+      - id: D2
+        text: "Call t.Skip if the gdir reference binary is not found in PATH"
+      - id: D3
+        text: "Add test cases to the existing []testutils.DiffTest slice -- do not create a separate test function"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/dir/ -count=1 passes (or skips if gdir not installed)"
+      - id: AC2
+        text: "New test cases exercise the R2.4 behavior specified in the SRD"
+      - id: AC3
+        text: "Existing test cases for R1.1-R1.5, R2.1-R2.3 are preserved unchanged"
+      - id: AC4
+        text: "Tests set LC_ALL=C in the environment"
+  dependency: 0
+- index: 2
+  title: '[stitch] cmd/vdir: implement srd108 R1.1, R1.2, R1.3, R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd108-vdir.yaml (R1.1-R1.4 requirement details)
+      - cmd/dir/main.go (reference implementation for a similar ls-wrapper utility)
+      - pkg/sys/sigpipe.go (SIGPIPE handler API)
+
+    files:
+      - path: cmd/vdir/main.go
+        action: create
+        note: Initial vdir implementation covering R1.1-R1.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd108 R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd108 R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd108 R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd108 R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main"
+      - id: D2
+        text: "vdir is equivalent to ls -l -b -- implement accordingly per the SRD"
+      - id: D3
+        text: "Use cmd/dir/main.go as a structural reference for flag parsing and output patterns"
+      - id: D4
+        text: "Write to os.Stdout for all normal output and os.Stderr for error messages"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/vdir/main.go compiles with go build -o bin/vdir ./cmd/vdir/"
+      - id: AC2
+        text: "R1.1 behavior matches the SRD specification"
+      - id: AC3
+        text: "R1.2 behavior matches the SRD specification"
+      - id: AC4
+        text: "R1.3 behavior matches the SRD specification"
+      - id: AC5
+        text: "R1.4 behavior matches the SRD specification"
+      - id: AC6
+        text: "go vet ./cmd/vdir/ reports no issues"
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/vdir: implement srd108 R1.5, R1.6, R2.1, R2.2'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd108-vdir.yaml (R1.5, R1.6, R2.1, R2.2 requirement details)
+      - cmd/vdir/main.go (existing implementation from prior task covering R1.1-R1.4)
+
+    files:
+      - path: cmd/vdir/main.go
+        action: modify
+        note: Extend vdir implementation with R1.5, R1.6, R2.1, R2.2
+
+    requirements:
+      - id: R1
+        text: "Implement srd108 R1.5 as specified in the SRD"
+      - id: R2
+        text: "Implement srd108 R1.6 as specified in the SRD"
+      - id: R3
+        text: "Implement srd108 R2.1 as specified in the SRD"
+      - id: R4
+        text: "Implement srd108 R2.2 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/vdir/main.go -- do not rewrite or restructure code for R1.1-R1.4"
+      - id: D2
+        text: "Preserve the sys.InstallSIGPIPEHandler() call and existing flag parsing structure"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/vdir/main.go compiles with go build -o bin/vdir ./cmd/vdir/"
+      - id: AC2
+        text: "R1.5 behavior matches the SRD specification"
+      - id: AC3
+        text: "R1.6 behavior matches the SRD specification"
+      - id: AC4
+        text: "R2.1 behavior matches the SRD specification"
+      - id: AC5
+        text: "R2.2 behavior matches the SRD specification"
+      - id: AC6
+        text: "Existing functionality for R1.1-R1.4 is preserved unchanged"
+      - id: AC7
+        text: "go vet ./cmd/vdir/ reports no issues"
+  dependency: 2
