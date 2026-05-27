@@ -1,0 +1,191 @@
+- index: 0
+  title: "[stitch] cmd/dircolors: implement srd109 R1.1, R1.2, R1.3, R1.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd109-dircolors.yaml (full SRD -- read all requirements R1.1 through R3.5 for overall design context)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler pattern)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+      - cmd/printenv/main.go (reference cmd/ implementation pattern for a simple utility)
+
+    files:
+      - path: cmd/dircolors/main.go
+        action: create
+        note: dircolors utility -- main entry point, argument parsing, and R1 group implementation
+      - path: cmd/dircolors/dircolors_test.go
+        action: create
+        note: differential tests covering R1.1 through R1.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd109 R1.1 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R2
+        text: "Implement srd109 R1.2 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R3
+        text: "Implement srd109 R1.3 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R4
+        text: "Implement srd109 R1.4 -- read the SRD for the exact requirement text and acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project convention"
+      - id: D2
+        text: "Use testutils.BuildBinary and testutils.RunDiffTests for differential testing"
+      - id: D3
+        text: "Reference binary is gdircolors via exec.LookPath; t.Skip if not found"
+      - id: D4
+        text: "Set LC_ALL=C in test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/dircolors/main.go compiles with go build -o bin/dircolors ./cmd/dircolors/"
+      - id: AC2
+        text: "go vet ./cmd/dircolors/ passes with no warnings"
+      - id: AC3
+        text: "go test ./cmd/dircolors/ -count=1 passes (tests skip gracefully if gdircolors not in PATH)"
+      - id: AC4
+        text: "All four SRD requirements R1.1, R1.2, R1.3, R1.4 have corresponding differential test cases in dircolors_test.go"
+
+- index: 1
+  title: "[stitch] cmd/dircolors: implement srd109 R2.1, R2.2, R2.3, R2.4"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd109-dircolors.yaml (full SRD -- focus on R2 group requirements)
+      - cmd/dircolors/main.go (existing implementation from prior task)
+      - cmd/dircolors/dircolors_test.go (existing tests from prior task)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+
+    files:
+      - path: cmd/dircolors/main.go
+        action: modify
+        note: add R2.1 through R2.4 functionality
+      - path: cmd/dircolors/dircolors_test.go
+        action: modify
+        note: add differential tests for R2.1 through R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd109 R2.1 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R2
+        text: "Implement srd109 R2.2 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R3
+        text: "Implement srd109 R2.3 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R4
+        text: "Implement srd109 R2.4 -- read the SRD for the exact requirement text and acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing main.go -- do not restructure or rewrite prior code"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in dircolors_test.go"
+      - id: D3
+        text: "Reference binary is gdircolors via exec.LookPath; t.Skip if not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/dircolors ./cmd/dircolors/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/dircolors/ passes with no warnings"
+      - id: AC3
+        text: "go test ./cmd/dircolors/ -count=1 passes (all existing and new tests)"
+      - id: AC4
+        text: "All four SRD requirements R2.1, R2.2, R2.3, R2.4 have corresponding differential test cases"
+
+- index: 2
+  title: "[stitch] cmd/dircolors: implement srd109 R2.5, R3.1, R3.2, R3.3"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd109-dircolors.yaml (full SRD -- focus on R2.5 and R3.1 through R3.3)
+      - cmd/dircolors/main.go (existing implementation from prior tasks)
+      - cmd/dircolors/dircolors_test.go (existing tests from prior tasks)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+
+    files:
+      - path: cmd/dircolors/main.go
+        action: modify
+        note: add R2.5, R3.1, R3.2, R3.3 functionality
+      - path: cmd/dircolors/dircolors_test.go
+        action: modify
+        note: add differential tests for R2.5, R3.1, R3.2, R3.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd109 R2.5 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R2
+        text: "Implement srd109 R3.1 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R3
+        text: "Implement srd109 R3.2 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R4
+        text: "Implement srd109 R3.3 -- read the SRD for the exact requirement text and acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing main.go -- do not restructure or rewrite prior code"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in dircolors_test.go"
+      - id: D3
+        text: "Reference binary is gdircolors via exec.LookPath; t.Skip if not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/dircolors ./cmd/dircolors/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/dircolors/ passes with no warnings"
+      - id: AC3
+        text: "go test ./cmd/dircolors/ -count=1 passes (all existing and new tests)"
+      - id: AC4
+        text: "All four SRD requirements R2.5, R3.1, R3.2, R3.3 have corresponding differential test cases"
+
+- index: 3
+  title: "[stitch] cmd/dircolors: implement srd109 R3.4, R3.5"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd109-dircolors.yaml (full SRD -- focus on R3.4 and R3.5)
+      - cmd/dircolors/main.go (existing implementation from prior tasks)
+      - cmd/dircolors/dircolors_test.go (existing tests from prior tasks)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests API)
+
+    files:
+      - path: cmd/dircolors/main.go
+        action: modify
+        note: add R3.4 and R3.5 functionality
+      - path: cmd/dircolors/dircolors_test.go
+        action: modify
+        note: add differential tests for R3.4 and R3.5
+
+    requirements:
+      - id: R1
+        text: "Implement srd109 R3.4 -- read the SRD for the exact requirement text and acceptance criteria"
+      - id: R2
+        text: "Implement srd109 R3.5 -- read the SRD for the exact requirement text and acceptance criteria"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing main.go -- do not restructure or rewrite prior code"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in dircolors_test.go"
+      - id: D3
+        text: "Reference binary is gdircolors via exec.LookPath; t.Skip if not found"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/dircolors ./cmd/dircolors/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/dircolors/ passes with no warnings"
+      - id: AC3
+        text: "go test ./cmd/dircolors/ -count=1 passes (all existing and new tests)"
+      - id: AC4
+        text: "SRD requirements R3.4 and R3.5 have corresponding differential test cases"
+      - id: AC5
+        text: "All 15 srd109 requirements (R1.1-R1.4, R2.1-R2.5, R3.1-R3.5) are now implemented and tested across all four tasks"
