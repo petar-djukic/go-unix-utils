@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5598"
+task_title: '[stitch] cmd/pathchk: pathname validation core (srd103 R1.1-R1.4)'
+status: success
+started_at: "2026-05-27T15:32:17Z"
+duration: 2m30s
+duration_s: 150
+tokens:
+    input: 320177
+    output: 1776
+    cache_creation: 222217
+    cache_read: 97952
+cost_usd: 1.9324094
+num_turns: 26
+rate_limit_wait_s: 11
+loc_before:
+    production: 27855
+    test: 23480
+loc_after:
+    production: 27855
+    test: 23480
+diff:
+    files: 1
+    insertions: 136
+    deletions: 0
