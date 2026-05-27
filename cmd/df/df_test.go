@@ -29,7 +29,7 @@ func TestDiff(t *testing.T) {
 		{Name: "root-fs", Args: []string{"/"}, Env: []string{"LC_ALL=C"}},
 		// R1.4: regular file resolves to containing filesystem
 		{Name: "file-arg", Args: []string{"/etc/hosts"}, Env: []string{"LC_ALL=C"}},
-		// R1.4: multiple FILE arguments
+		// R1.4, R1.5: multiple FILE arguments, column alignment across rows
 		{Name: "multiple-files", Args: []string{"/", "/tmp"}, Env: []string{"LC_ALL=C"}},
 		// R1.4: non-existent file produces diagnostic and exit 1
 		{
@@ -49,6 +49,20 @@ func TestDiff(t *testing.T) {
 		},
 		// R1.4: duplicate FILE arguments show duplicate rows
 		{Name: "duplicate-file", Args: []string{"/", "/"}, Env: []string{"LC_ALL=C"}},
+		// R1.5: column width alignment with human-readable sizes
+		{Name: "h-alignment", Args: []string{"-h", "/", "/tmp"}, Env: []string{"LC_ALL=C"}},
+		// R2.1: human-readable binary unit sizes
+		{Name: "human-readable", Args: []string{"-h", "/"}, Env: []string{"LC_ALL=C"}},
+		// R2.1: long flag form
+		{Name: "human-readable-long", Args: []string{"--human-readable", "/"}, Env: []string{"LC_ALL=C"}},
+		// R2.2: SI unit sizes
+		{Name: "si-units", Args: []string{"-H", "/"}, Env: []string{"LC_ALL=C"}},
+		// R2.2: long flag form
+		{Name: "si-units-long", Args: []string{"--si", "/"}, Env: []string{"LC_ALL=C"}},
+		// R2.3: last flag wins — -h after -H
+		{Name: "last-h-wins", Args: []string{"-H", "-h", "/"}, Env: []string{"LC_ALL=C"}},
+		// R2.3: last flag wins — -H after -h
+		{Name: "last-H-wins", Args: []string{"-h", "-H", "/"}, Env: []string{"LC_ALL=C"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

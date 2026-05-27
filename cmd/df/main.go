@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd106-df R1.1-R1.4.
+// Implements srd106-df R1.1-R1.5, R2.1-R2.3.
 package main
 
 import (
@@ -17,18 +17,35 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type sizeMode int
+
+const (
+	modeDefault sizeMode = iota
+	modeHuman
+	modeSI
+)
+
 type fsEntry struct {
 	filesystem string
 	blocks1K   int64
 	used       int64
 	available  int64
+	sizeBytes  int64
+	usedBytes  int64
+	availBytes int64
 	usePercent string
 	mountedOn  string
 }
 
-var headers = [6]string{
+var defaultHeaders = [6]string{
 	"Filesystem", "1K-blocks", "Used", "Available", "Use%", "Mounted on",
 }
+
+var humanHeaders = [6]string{
+	"Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on",
+}
+
+var humanSuffixes = []string{"", "K", "M", "G", "T", "P", "E"}
 
 func main() {
 	sys.InstallSIGPIPEHandler()
@@ -36,24 +53,48 @@ func main() {
 }
 
 func run(args []string) int {
-	if len(args) == 0 {
-		return listAll()
+	mode, files := parseArgs(args)
+	if len(files) == 0 {
+		return listAll(mode)
 	}
-	return listPaths(args)
+	return listPaths(files, mode)
 }
 
-func listAll() int {
+func parseArgs(args []string) (sizeMode, []string) {
+	mode := modeDefault
+	var files []string
+	endOfFlags := false
+	for _, arg := range args {
+		if endOfFlags {
+			files = append(files, arg)
+			continue
+		}
+		switch arg {
+		case "--":
+			endOfFlags = true
+		case "-h", "--human-readable":
+			mode = modeHuman
+		case "-H", "--si":
+			mode = modeSI
+		default:
+			files = append(files, arg)
+		}
+	}
+	return mode, files
+}
+
+func listAll(mode sizeMode) int {
 	stats, err := getAllMounts()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "df: %v\n", err)
 		return 1
 	}
 	entries := filterAndDedup(stats)
-	printTable(entries)
+	printTable(entries, mode)
 	return 0
 }
 
-func listPaths(paths []string) int {
+func listPaths(paths []string, mode sizeMode) int {
 	stats, err := getAllMounts()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "df: %v\n", err)
@@ -72,7 +113,7 @@ func listPaths(paths []string) int {
 		entries = append(entries, entry)
 	}
 	if len(entries) > 0 {
-		printTable(entries)
+		printTable(entries, mode)
 	}
 	return exitCode
 }
@@ -166,14 +207,20 @@ func mountDev(mount string) (int32, bool) {
 
 func buildEntry(stat unix.Statfs_t) fsEntry {
 	bsize := uint64(stat.Bsize)
-	total := int64(stat.Blocks * bsize / 1024)
-	free := int64(stat.Bfree * bsize / 1024)
-	avail := int64(stat.Bavail * bsize / 1024)
+	totalBytes := int64(stat.Blocks * bsize)
+	freeBytes := int64(stat.Bfree * bsize)
+	availBytes := int64(stat.Bavail * bsize)
+	total := totalBytes / 1024
+	free := freeBytes / 1024
+	avail := availBytes / 1024
 	return fsEntry{
 		filesystem: cstring(stat.Mntfromname[:]),
 		blocks1K:   total,
 		used:       total - free,
 		available:  avail,
+		sizeBytes:  totalBytes,
+		usedBytes:  totalBytes - freeBytes,
+		availBytes: availBytes,
 		usePercent: computeUsePercent(total, avail),
 		mountedOn:  cstring(stat.Mntonname[:]),
 	}
@@ -191,36 +238,81 @@ func computeUsePercent(total, avail int64) string {
 	return strconv.FormatInt(pct, 10) + "%"
 }
 
-func printTable(entries []fsEntry) {
-	w := computeWidths(entries)
-	printLine(headers, w)
-	for _, e := range entries {
-		printLine(entryStrings(e), w)
+func humanSize(bytes int64, base float64) string {
+	if bytes == 0 {
+		return "0"
+	}
+	val := float64(bytes)
+	idx := 0
+	for idx < len(humanSuffixes)-1 && val >= base {
+		val /= base
+		idx++
+	}
+	return formatHuman(val, humanSuffixes[idx])
+}
+
+func formatHuman(val float64, suffix string) string {
+	if suffix == "" {
+		return strconv.FormatInt(int64(math.Ceil(val)), 10)
+	}
+	ceiled := math.Ceil(val*10) / 10
+	if ceiled < 10 {
+		return fmt.Sprintf("%.1f%s", ceiled, suffix)
+	}
+	return fmt.Sprintf("%d%s", int64(math.Ceil(val)), suffix)
+}
+
+func formatSize(blocks1K, sizeBytes int64, mode sizeMode) string {
+	switch mode {
+	case modeHuman:
+		return humanSize(sizeBytes, 1024)
+	case modeSI:
+		return humanSize(sizeBytes, 1000)
+	default:
+		return strconv.FormatInt(blocks1K, 10)
 	}
 }
 
-func entryStrings(e fsEntry) [6]string {
+func getHeaders(mode sizeMode) [6]string {
+	if mode != modeDefault {
+		return humanHeaders
+	}
+	return defaultHeaders
+}
+
+func printTable(entries []fsEntry, mode sizeMode) {
+	w := computeWidths(entries, mode)
+	printLine(getHeaders(mode), w)
+	for _, e := range entries {
+		printLine(entryStrings(e, mode), w)
+	}
+}
+
+func entryStrings(e fsEntry, mode sizeMode) [6]string {
 	return [6]string{
 		e.filesystem,
-		strconv.FormatInt(e.blocks1K, 10),
-		strconv.FormatInt(e.used, 10),
-		strconv.FormatInt(e.available, 10),
+		formatSize(e.blocks1K, e.sizeBytes, mode),
+		formatSize(e.used, e.usedBytes, mode),
+		formatSize(e.available, e.availBytes, mode),
 		e.usePercent,
 		e.mountedOn,
 	}
 }
 
-func computeWidths(entries []fsEntry) [6]int {
-	w := [6]int{
-		len(headers[0]), len(headers[1]), len(headers[2]),
-		len(headers[3]), len(headers[4]), len(headers[5]),
-	}
+func computeWidths(entries []fsEntry, mode sizeMode) [6]int {
+	h := getHeaders(mode)
+	w := [6]int{len(h[0]), len(h[1]), len(h[2]), len(h[3]), len(h[4]), len(h[5])}
 	for _, e := range entries {
-		cols := entryStrings(e)
+		cols := entryStrings(e, mode)
 		for i := range w {
 			if len(cols[i]) > w[i] {
 				w[i] = len(cols[i])
 			}
+		}
+	}
+	for i := 1; i <= 3; i++ {
+		if w[i] < 5 {
+			w[i] = 5
 		}
 	}
 	return w
