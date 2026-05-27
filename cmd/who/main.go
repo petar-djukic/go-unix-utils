@@ -50,6 +50,7 @@ type whoEntry struct {
 	line string
 	time time.Time
 	host string
+	pid  int
 }
 
 func main() {
@@ -136,6 +137,7 @@ func readEntries(amI bool) []whoEntry {
 			line: line,
 			time: time.Unix(int64(entry.ut_tv.tv_sec), 0),
 			host: C.GoString(&entry.ut_host[0]),
+			pid:  int(entry.ut_pid),
 		})
 	}
 	return entries
@@ -171,16 +173,18 @@ func currentLine() string {
 func printHeader(users bool) error {
 	var hdr string
 	if users && showIdle {
-		hdr = fmt.Sprintf("%-8s %-12s %-16s %-6s%s", "NAME", "LINE", "TIME", "IDLE", "COMMENT")
+		hdr = fmt.Sprintf("%-8s %-12s %-12s %-6s %10s %s", "NAME", "LINE", "TIME", "IDLE", "PID", "COMMENT")
+	} else if showBoot || showIdle {
+		hdr = fmt.Sprintf("%-8s %-12s %-12s %10s %s", "NAME", "LINE", "TIME", "PID", "COMMENT")
 	} else {
-		hdr = fmt.Sprintf("%-8s %-12s %-16s %s", "NAME", "LINE", "TIME", "COMMENT")
+		hdr = fmt.Sprintf("%-8s %-12s %-12s %s", "NAME", "LINE", "TIME", "COMMENT")
 	}
 	_, err := fmt.Fprintln(os.Stdout, hdr)
 	return err
 }
 
 func printEntry(e whoEntry) error {
-	timeStr := e.time.Format("2006-01-02 15:04")
+	timeStr := e.time.Format("Jan _2 15:04")
 	if showIdle {
 		return printEntryWithIdle(e, timeStr)
 	}
@@ -198,9 +202,9 @@ func printEntryWithIdle(e whoEntry, timeStr string) error {
 	idle := idleString(e.line)
 	var line string
 	if e.host != "" {
-		line = fmt.Sprintf("%-8s %-12s %s %5s (%s)", e.user, e.line, timeStr, idle, e.host)
+		line = fmt.Sprintf("%-8s %-12s %s %-6s %10d (%s)", e.user, e.line, timeStr, idle, e.pid, e.host)
 	} else {
-		line = fmt.Sprintf("%-8s %-12s %s %5s", e.user, e.line, timeStr, idle)
+		line = fmt.Sprintf("%-8s %-12s %s %-6s %10d", e.user, e.line, timeStr, idle, e.pid)
 	}
 	_, err := fmt.Fprintln(os.Stdout, line)
 	return err
@@ -216,7 +220,7 @@ func idleString(ttyName string) string {
 		return "."
 	}
 	if secs >= 24*60*60 {
-		return "old"
+		return " old"
 	}
 	return fmt.Sprintf("%02d:%02d", secs/3600, (secs%3600)/60)
 }
@@ -226,7 +230,7 @@ func printBootEntry() error {
 	if !found {
 		return nil
 	}
-	timeStr := bootTime.Format("2006-01-02 15:04")
+	timeStr := bootTime.Format("Jan _2 15:04")
 	line := fmt.Sprintf("%-8s %-12s %s", "", "system boot", timeStr)
 	_, err := fmt.Fprintln(os.Stdout, line)
 	return err
