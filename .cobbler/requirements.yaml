@@ -5479,7 +5479,8 @@ requirements:
             weight: 1
     srd102-tsort:
         R1.1:
-            status: in_progress
+            status: complete
+            issue: 5597
             weight: 1
         R1.2:
             status: proposed
@@ -5491,7 +5492,8 @@ requirements:
             status: proposed
             weight: 1
         R2.1:
-            status: in_progress
+            status: complete
+            issue: 5597
             weight: 1
         R2.2:
             status: proposed
