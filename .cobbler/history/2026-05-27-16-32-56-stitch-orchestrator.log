@@ -225,3 +225,9 @@
 [2026-05-27T16:36:42-04:00] [generation-run44] [stitch +3m46s] doOneTask: closing task 5611
 [2026-05-27T16:36:42-04:00] [generation-run44] [stitch +3m46s] closeStitchTask: closing #5611 "[stitch] cmd/dir: test srd107 R2.4"
 [2026-05-27T16:36:43-04:00] [generation-run44] [stitch +3m48s] commentCobblerIssue: posted comment on #5611
+[2026-05-27T16:36:46-04:00] [generation-run44] [stitch +3m50s] closeCobblerIssue: closed #5611
+[2026-05-27T16:36:48-04:00] [generation-run44] [stitch +3m52s] closeStitchTask: #5611 closed
+[2026-05-27T16:36:49-04:00] [generation-run44] [stitch +3m53s] doOneTask: task 5611 finished in 3m45s
+[2026-05-27T16:36:49-04:00] [generation-run44] [stitch +3m53s] task 5611 completed in 3m45s
+[2026-05-27T16:36:49-04:00] [generation-run44] [stitch +3m53s] reached per-cycle limit (1), pausing for measure
+[2026-05-27T16:36:49-04:00] [generation-run44] [stitch +3m53s] completed 1 task(s) in 3m53s
