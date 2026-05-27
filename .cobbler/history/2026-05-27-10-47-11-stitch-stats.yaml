@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5587"
+task_title: '[stitch] cmd/shred (contract) -- srd099-shred'
+status: success
+started_at: "2026-05-27T14:47:11Z"
+duration: 2m4s
+duration_s: 123
+tokens:
+    input: 443305
+    output: 3890
+    cache_creation: 222522
+    cache_read: 220771
+cost_usd: 1.98997075
+num_turns: 21
+rate_limit_wait_s: 1
+loc_before:
+    production: 26700
+    test: 23072
+loc_after:
+    production: 26910
+    test: 23072
+diff:
+    files: 2
+    insertions: 317
+    deletions: 0
