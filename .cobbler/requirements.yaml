@@ -5715,16 +5715,20 @@ requirements:
             issue: 5612
             weight: 1
         R1.5:
-            status: in_progress
+            status: uncertain
+            issue: 5613
             weight: 1
         R1.6:
-            status: in_progress
+            status: uncertain
+            issue: 5613
             weight: 1
         R2.1:
-            status: in_progress
+            status: uncertain
+            issue: 5613
             weight: 1
         R2.2:
-            status: in_progress
+            status: uncertain
+            issue: 5613
             weight: 1
         R2.3:
             status: ready
