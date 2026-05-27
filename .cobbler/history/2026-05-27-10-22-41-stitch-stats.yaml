@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5582"
+task_title: '[stitch] cmd/who implementation -- srd097-who R2.1, R2.2, R2.3, R2.4'
+status: success
+started_at: "2026-05-27T14:22:41Z"
+duration: 5m31s
+duration_s: 330
+tokens:
+    input: 481898
+    output: 18202
+    cache_creation: 236290
+    cache_read: 245597
+cost_usd: 2.4693244999999995
+num_turns: 31
+rate_limit_wait_s: 3
+loc_before:
+    production: 26338
+    test: 23023
+loc_after:
+    production: 26478
+    test: 23023
+diff:
+    files: 2
+    insertions: 283
+    deletions: 7
