@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// cmd/install implements srd101-install R1.1-R1.4.
+// cmd/install implements srd101-install R1.1-R1.4, R2.1-R2.4.
 package main
 
 import (
@@ -23,10 +23,18 @@ const helpText = `Usage: install [OPTION]... [-T] SOURCE DEST
 
 Copy files and set attributes.
 
+  -b                  make a backup of each existing destination file
   -c                  (ignored)
+  -d, --directory     treat all arguments as directory names; create all
+                        components of the specified directories
+  -D                  create all leading components of DEST except the last,
+                        or all components of --target-directory, then copy SOURCE to DEST
   -g GROUP            set group ownership
   -m MODE             set permission mode (as in chmod), instead of rwxr-xr-x
   -o OWNER            set ownership
+      --backup        make a backup of each existing destination file
+      --suffix=SUFFIX override the usual backup suffix
+  -v, --verbose       print the name of each directory as it is created
       --help          display this help and exit
       --version       output version information and exit
 `
@@ -35,18 +43,29 @@ const versionText = `install (go-unix-utils) dev
 `
 
 type options struct {
-	mode  string
-	owner string
-	group string
+	mode      string
+	owner     string
+	group     string
+	directory bool
+	createDir bool
+	backup    bool
+	suffix    string
+	verbose   bool
 }
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 
 	opts, args := parseArgs(os.Args[1:])
+	if opts.suffix == "" {
+		opts.suffix = "~"
+	}
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "install: missing file operand")
 		os.Exit(1)
+	}
+	if opts.directory {
+		os.Exit(createDirectories(opts, args))
 	}
 	if len(args) == 1 {
 		fmt.Fprintf(os.Stderr,
@@ -69,6 +88,33 @@ func main() {
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
+}
+
+func createDirectories(opts options, dirs []string) int {
+	exitCode := 0
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "install: cannot create directory '%s': %s\n",
+				dir, unwrapErr(err))
+			exitCode = 1
+			continue
+		}
+		if err := setMode(opts, dir); err != nil {
+			fmt.Fprintf(os.Stderr, "install: %s\n", err)
+			exitCode = 1
+			continue
+		}
+		if err := setOwnership(opts, dir); err != nil {
+			fmt.Fprintf(os.Stderr, "install: %s\n", err)
+			exitCode = 1
+			continue
+		}
+		if opts.verbose {
+			fmt.Fprintf(os.Stdout,
+				"install: creating directory '%s'\n", dir)
+		}
+	}
+	return exitCode
 }
 
 func installMultiple(opts options, sources []string, dest string) int {
@@ -100,13 +146,42 @@ func installSingle(opts options, src, dest string) error {
 	if fi, err := os.Stat(dest); err == nil && fi.IsDir() {
 		dest = filepath.Join(dest, filepath.Base(src))
 	}
+	if opts.createDir {
+		dir := filepath.Dir(dest)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("cannot create directory '%s': %s",
+				dir, unwrapErr(err))
+		}
+	}
+	if opts.backup {
+		if err := backupFile(dest, opts.suffix); err != nil {
+			return err
+		}
+	}
 	if err := copyFile(src, dest); err != nil {
 		return err
 	}
 	if err := setMode(opts, dest); err != nil {
 		return err
 	}
-	return setOwnership(opts, dest)
+	if err := setOwnership(opts, dest); err != nil {
+		return err
+	}
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "'%s' -> '%s'\n", src, dest)
+	}
+	return nil
+}
+
+func backupFile(dest, suffix string) error {
+	if _, err := os.Stat(dest); err != nil {
+		return nil
+	}
+	backup := dest + suffix
+	if err := os.Rename(dest, backup); err != nil {
+		return fmt.Errorf("cannot backup '%s': %s", dest, unwrapErr(err))
+	}
+	return nil
 }
 
 func copyFile(src, dest string) error {
@@ -260,12 +335,20 @@ func parseLongFlag(args []string, i int, opts *options) int {
 	case arg == "--version":
 		fmt.Fprint(os.Stdout, versionText)
 		os.Exit(0)
+	case arg == "--directory":
+		opts.directory = true
+	case arg == "--backup":
+		opts.backup = true
+	case arg == "--verbose":
+		opts.verbose = true
 	case strings.HasPrefix(arg, "--mode="):
 		opts.mode = arg[len("--mode="):]
 	case strings.HasPrefix(arg, "--owner="):
 		opts.owner = arg[len("--owner="):]
 	case strings.HasPrefix(arg, "--group="):
 		opts.group = arg[len("--group="):]
+	case strings.HasPrefix(arg, "--suffix="):
+		opts.suffix = arg[len("--suffix="):]
 	}
 	return i + 1
 }
@@ -284,6 +367,14 @@ func parseShortFlags(args []string, i int, opts *options) int {
 		case 'g':
 			opts.group = consumeValue(flags, j+1, args, &i)
 			return i + 1
+		case 'd':
+			opts.directory = true
+		case 'D':
+			opts.createDir = true
+		case 'b':
+			opts.backup = true
+		case 'v':
+			opts.verbose = true
 		case 'c':
 			j++
 			continue
