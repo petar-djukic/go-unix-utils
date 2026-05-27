@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd107-dir R1.1-R1.4.
+// Implements srd107-dir R1.1-R1.5, R2.1-R2.4.
 package main
 
 import (
@@ -14,45 +14,235 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/sys"
 )
 
-func main() {
-	sys.InstallSIGPIPEHandler()
-	os.Exit(run(os.Args[1:]))
+const helpText = `Usage: dir [OPTION]... [FILE]...
+List directory contents.
+
+  -a             do not ignore entries starting with .
+  -A             do not list implied . and ..
+  -C             list entries by columns
+  -d             list directories themselves, not their contents
+  -F             append indicator (one of */=>@|) to entries
+  -h             with -l and/or -s, print human readable sizes
+  -i             print the index number of each file
+  -l             use a long listing format
+  -n             like -l, but list numeric user and group IDs
+  -R             list subdirectories recursively
+  -r             reverse order while sorting
+  -s             print the allocated size of each file, in blocks
+  -S             sort by file size, largest first
+  -t             sort by modification time, newest first
+  -U             do not sort; list entries in directory order
+  -v             natural sort of (version) numbers within text
+  -x             list entries by lines instead of by columns
+  -1             list one file per line
+      --color[=WHEN]  colorize the output; WHEN can be 'always'
+                         (default if omitted), 'auto', or 'never'
+      --help     display this help and exit
+      --version  output version information and exit
+`
+
+const versionText = `dir (go-unix-utils) dev
+`
+
+type options struct {
+	singleColumn   bool
+	longFormat     bool
+	forceColumns   bool
+	horizontalSort bool
+	showAll        bool
+	showAlmostAll  bool
+	dirAsEntry     bool
+	sortByTime     bool
+	sortBySize     bool
+	reverseSort    bool
+	unsorted       bool
+	versionSort    bool
+	showInode      bool
+	showBlocks     bool
+	numericIds     bool
+	humanReadable  bool
+	classify       bool
+	recursive      bool
+	colorMode      string
 }
 
-func run(args []string) int {
-	if len(args) == 0 {
-		args = []string{"."}
+func main() {
+	sys.InstallSIGPIPEHandler()
+	opts, paths := parseArgs(os.Args[1:])
+	os.Exit(run(paths, opts))
+}
+
+func parseArgs(args []string) (options, []string) {
+	opts := options{forceColumns: true}
+	var paths []string
+	for len(args) > 0 {
+		arg := args[0]
+		args = args[1:]
+		switch {
+		case arg == "--help":
+			fmt.Fprint(os.Stdout, helpText)
+			os.Exit(0)
+		case arg == "--version":
+			fmt.Fprint(os.Stdout, versionText)
+			os.Exit(0)
+		case arg == "--":
+			return opts, append(paths, args...)
+		case arg == "--color":
+			opts.colorMode = "always"
+		case strings.HasPrefix(arg, "--color="):
+			opts.colorMode = parseColorValue(arg)
+		case strings.HasPrefix(arg, "--"):
+			fmt.Fprintf(os.Stderr, "dir: unrecognized option '%s'\n", arg)
+			fmt.Fprintln(os.Stderr, "Try 'dir --help' for more information.")
+			os.Exit(2)
+		case strings.HasPrefix(arg, "-") && len(arg) > 1:
+			parseShortFlags(arg[1:], &opts)
+		default:
+			paths = append(paths, arg)
+		}
+	}
+	return opts, paths
+}
+
+func parseShortFlags(flags string, opts *options) {
+	for _, ch := range flags {
+		switch ch {
+		case '1':
+			opts.forceColumns = false
+			opts.horizontalSort = false
+			if !opts.longFormat {
+				opts.singleColumn = true
+			}
+		case 'l':
+			opts.longFormat = true
+			opts.singleColumn = false
+			opts.forceColumns = false
+			opts.horizontalSort = false
+		case 'C':
+			opts.forceColumns = true
+			opts.horizontalSort = false
+			opts.longFormat = false
+			opts.singleColumn = false
+		case 'x':
+			opts.forceColumns = true
+			opts.horizontalSort = true
+			opts.longFormat = false
+			opts.singleColumn = false
+		case 'a':
+			opts.showAll = true
+			opts.showAlmostAll = false
+		case 'A':
+			opts.showAlmostAll = true
+			opts.showAll = false
+		case 'b', 'B', 'c', 'G', 'H', 'k', 'L', 'm', 'N',
+			'o', 'p', 'q', 'Q', 'u', 'X', 'Z':
+		case 'd':
+			opts.dirAsEntry = true
+		case 'f':
+			opts.showAll = true
+			opts.showAlmostAll = false
+			opts.unsorted = true
+			opts.sortByTime = false
+			opts.sortBySize = false
+			opts.versionSort = false
+		case 'F':
+			opts.classify = true
+		case 'g':
+			opts.longFormat = true
+			opts.singleColumn = false
+			opts.forceColumns = false
+			opts.horizontalSort = false
+		case 'h':
+			opts.humanReadable = true
+		case 'i':
+			opts.showInode = true
+		case 'n':
+			opts.numericIds = true
+			opts.longFormat = true
+			opts.singleColumn = false
+			opts.forceColumns = false
+			opts.horizontalSort = false
+		case 'R':
+			opts.recursive = true
+		case 'r':
+			opts.reverseSort = true
+		case 's':
+			opts.showBlocks = true
+		case 't':
+			opts.sortByTime = true
+			opts.sortBySize = false
+			opts.unsorted = false
+			opts.versionSort = false
+		case 'S':
+			opts.sortBySize = true
+			opts.sortByTime = false
+			opts.unsorted = false
+			opts.versionSort = false
+		case 'U':
+			opts.unsorted = true
+			opts.sortByTime = false
+			opts.sortBySize = false
+			opts.versionSort = false
+		case 'v':
+			opts.versionSort = true
+			opts.sortByTime = false
+			opts.sortBySize = false
+			opts.unsorted = false
+		default:
+			fmt.Fprintf(os.Stderr, "dir: invalid option -- '%c'\n", ch)
+			fmt.Fprintln(os.Stderr, "Try 'dir --help' for more information.")
+			os.Exit(2)
+		}
+	}
+}
+
+func parseColorValue(arg string) string {
+	val := arg[len("--color="):]
+	switch val {
+	case "always", "auto", "never":
+		return val
+	default:
+		fmt.Fprintf(os.Stderr, "dir: invalid argument '%s' for '--color'\n", val)
+		fmt.Fprintln(os.Stderr, "Try 'dir --help' for more information.")
+		os.Exit(2)
+		return ""
+	}
+}
+
+func run(paths []string, opts options) int {
+	if len(paths) == 0 {
+		paths = []string{"."}
 	}
 
 	width := termWidth()
 	exitCode := 0
-	showHeaders := len(args) > 1
 
 	var files []string
 	var dirs []string
-	for _, arg := range args {
-		info, err := os.Stat(arg)
+	for _, p := range paths {
+		info, err := os.Lstat(p)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "dir: cannot access '%s': %s\n", arg, sysErrMsg(err))
+			fmt.Fprintf(os.Stderr, "dir: cannot access '%s': %s\n", p, sysErrMsg(err))
 			exitCode = 2
 			continue
 		}
-		if info.IsDir() {
-			dirs = append(dirs, arg)
+		if info.IsDir() && !opts.dirAsEntry {
+			dirs = append(dirs, p)
 		} else {
-			files = append(files, arg)
+			files = append(files, p)
 		}
 	}
 
+	showHeaders := len(dirs) > 1 || len(files) > 0 || opts.recursive
 	printed := false
 
 	if len(files) > 0 {
-		sort.Strings(files)
+		sortNames(files, opts)
 		escaped := make([]string, len(files))
 		for i, f := range files {
 			escaped[i] = escapeC(f)
 		}
-		printColumns(escaped, width)
+		writeEntries(escaped, width, opts)
 		printed = true
 	}
 
@@ -63,18 +253,39 @@ func run(args []string) int {
 		if showHeaders {
 			fmt.Printf("%s:\n", d)
 		}
-		names, err := listDir(d)
+		names, err := listDir(d, opts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "dir: cannot open directory '%s': %s\n", d, sysErrMsg(err))
-			exitCode = 2
+			exitCode = 1
 			printed = true
 			continue
 		}
-		printColumns(names, width)
+		writeEntries(names, width, opts)
 		printed = true
 	}
 
 	return exitCode
+}
+
+func sortNames(names []string, opts options) {
+	if opts.unsorted {
+		return
+	}
+	if opts.reverseSort {
+		sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	} else {
+		sort.Strings(names)
+	}
+}
+
+func writeEntries(names []string, width int, opts options) {
+	if opts.singleColumn || opts.longFormat {
+		for _, name := range names {
+			fmt.Println(name)
+		}
+	} else {
+		printColumns(names, width)
+	}
 }
 
 func termWidth() int {
@@ -85,20 +296,25 @@ func termWidth() int {
 	return w
 }
 
-func listDir(path string) ([]string, error) {
+func listDir(path string, opts options) ([]string, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}
 	names := make([]string, 0, len(entries))
+	if opts.showAll {
+		names = append(names, ".", "..")
+	}
 	for _, e := range entries {
 		name := e.Name()
 		if len(name) > 0 && name[0] == '.' {
-			continue
+			if !opts.showAll && !opts.showAlmostAll {
+				continue
+			}
 		}
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	sortNames(names, opts)
 	escaped := make([]string, len(names))
 	for i, name := range names {
 		escaped[i] = escapeC(name)

@@ -4,17 +4,19 @@
 package main
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
+var progNameRe = regexp.MustCompile(`[^\s']*gdir`)
+
 func programNameNormalizer(b []byte) []byte {
-	return bytes.ReplaceAll(b, []byte("gdir:"), []byte("dir:"))
+	return progNameRe.ReplaceAll(b, []byte("dir"))
 }
 
 func touchFile(t *testing.T, dir, name string) {
@@ -61,6 +63,16 @@ func TestDiff(t *testing.T) {
 		touchFile(t, defaultDir, name)
 	}
 
+	showAllDir := t.TempDir()
+	for _, name := range []string{".hidden", "visible", ".dot"} {
+		touchFile(t, showAllDir, name)
+	}
+
+	reverseDir := t.TempDir()
+	for _, name := range []string{"alpha", "bravo", "charlie"} {
+		touchFile(t, reverseDir, name)
+	}
+
 	tests := []testutils.DiffTest{
 		{Name: "basic-listing", Args: []string{basicDir}, Env: []string{"COLUMNS=80"}},
 		{Name: "hidden-excluded", Args: []string{mixedDir}, Env: []string{"COLUMNS=80"}},
@@ -70,7 +82,39 @@ func TestDiff(t *testing.T) {
 		{
 			Name:      "nonexistent",
 			Args:      []string{"/nonexistent-path-12345"},
-			ExitCode:  1,
+			ExitCode:  2,
+			Normalize: errNorm,
+		},
+		{
+			Name: "flag-show-all",
+			Args: []string{"-a", showAllDir},
+			Env:  []string{"COLUMNS=80"},
+		},
+		{
+			Name: "flag-almost-all",
+			Args: []string{"-A", showAllDir},
+			Env:  []string{"COLUMNS=80"},
+		},
+		{
+			Name: "flag-reverse",
+			Args: []string{"-r", reverseDir},
+			Env:  []string{"COLUMNS=80"},
+		},
+		{
+			Name: "flag-single-column",
+			Args: []string{"-1", basicDir},
+			Env:  []string{"COLUMNS=80"},
+		},
+		{
+			Name:      "invalid-option",
+			Args:      []string{"-j"},
+			ExitCode:  2,
+			Normalize: errNorm,
+		},
+		{
+			Name:      "invalid-long-option",
+			Args:      []string{"--bogus-flag"},
+			ExitCode:  2,
 			Normalize: errNorm,
 		},
 	}
