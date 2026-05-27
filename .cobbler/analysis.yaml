@@ -669,11 +669,11 @@ code_status:
         - version: "13.0"
           name: Batch 13.0 — directory listing and filesystem (df, dir, vdir, dircolors)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel13.0-uc001-df
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel13.0-uc002-dir
