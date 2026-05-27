@@ -222,6 +222,10 @@ func parseDatabase(r io.Reader, filename string) (string, error) {
 			entries = append(entries, ext+"="+fields[1])
 			continue
 		}
+
+		if len(fields) < 2 {
+			return "", fmt.Errorf("dircolors: %s:%d: invalid line;  missing second token\n", displayName, lineNum)
+		}
 	}
 
 	if err := scanner.Err(); err != nil {

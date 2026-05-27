@@ -4,7 +4,9 @@
 package main_test
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
@@ -118,7 +120,67 @@ func TestDiff(t *testing.T) {
 			ExitCode:  1,
 			Normalize: []testutils.NormalizeFunc{discardStderr},
 		},
+		{
+			Name:  "R2.1 inline comments after value",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("DIR 01;34 # a directory\n.tar 01;31 # archive\n"),
+		},
+		{
+			Name:      "R2.1 unrecognized bare keyword",
+			Args:      []string{"--sh", "-"},
+			Stdin:     []byte("FOOBAR\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:  "R2.1 unrecognized keyword with value ignored",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("DIR 01;34\nFOOBAR 01;31\n.tar 01;31\n"),
+		},
+		{
+			Name:  "R2.2 TERM lines match current terminal",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("TERM xterm*\nDIR 01;34\n.tar 01;31\n"),
+			Env:   []string{"TERM=xterm-256color"},
+		},
+		{
+			Name:  "R2.2 TERM lines do not match current terminal",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("TERM xterm*\nDIR 01;34\n.tar 01;31\n"),
+			Env:   []string{"TERM=dumb"},
+		},
+		{
+			Name:  "R2.3 multiple file type keywords",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("DIR 01;34\nLINK 01;36\nEXEC 01;32\nFIFO 40;33\nSOCK 01;35\nBLK 40;33;01\nCHR 40;33;01\nORPHAN 40;31;01\nSETUID 37;41\nSETGID 30;43\nSTICKY 37;44\nOTHER_WRITABLE 34;42\nSTICKY_OTHER_WRITABLE 30;42\nCAPABILITY 00\nMULTIHARDLINK 00\nNORMAL 00\nFILE 00\nRESET 0\nMISSING 00\n"),
+		},
+		{
+			Name:  "R2.3 extension dot prefix becomes star-dot",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte(".tar 01;31\n.gz 01;31\n"),
+		},
+		{
+			Name:  "R2.3 extension star-dot prefix preserved",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("*.tar 01;31\n*.gz 01;31\n"),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+
+	dbContent := []byte("DIR 01;34\nLINK 01;36\n.tar 01;31\n")
+	tmpDir := t.TempDir()
+	dbFile := filepath.Join(tmpDir, "colors.db")
+	if err := os.WriteFile(dbFile, dbContent, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	fileTests := []testutils.DiffTest{
+		{
+			Name: "R2.4 database from file argument",
+			Args: []string{"--sh", dbFile},
+		},
+	}
+
+	testutils.RunDiffTests(t, goBin, refBin, fileTests)
 }
