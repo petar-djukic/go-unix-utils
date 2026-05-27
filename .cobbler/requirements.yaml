@@ -5647,13 +5647,16 @@ requirements:
             issue: 5615
             weight: 1
         R3.5:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5616
             weight: 1
         R3.6:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5616
             weight: 1
         R3.7:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5616
             weight: 1
         R4.1:
             status: proposed
