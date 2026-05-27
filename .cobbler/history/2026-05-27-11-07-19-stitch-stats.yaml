@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5593"
+task_title: '[stitch] cmd/install srd101-install R2.1, R2.2, R2.3, R2.4 (implementation)'
+status: success
+started_at: "2026-05-27T15:07:19Z"
+duration: 2m46s
+duration_s: 166
+tokens:
+    input: 669779
+    output: 5595
+    cache_creation: 230532
+    cache_read: 439229
+cost_usd: 2.2089967499999994
+num_turns: 29
+rate_limit_wait_s: 9
+loc_before:
+    production: 27408
+    test: 23072
+loc_after:
+    production: 27499
+    test: 23072
+diff:
+    files: 2
+    insertions: 217
+    deletions: 5
