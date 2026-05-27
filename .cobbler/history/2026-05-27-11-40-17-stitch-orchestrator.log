@@ -158,3 +158,9 @@
 [2026-05-27T11:43:51-04:00] [generation-run44] [stitch +3m34s] doOneTask: closing task 5601
 [2026-05-27T11:43:51-04:00] [generation-run44] [stitch +3m34s] closeStitchTask: closing #5601 "[stitch] cmd/pathchk: differential tests for srd103 R2.1, R2.2, R2.3"
 [2026-05-27T11:43:52-04:00] [generation-run44] [stitch +3m35s] commentCobblerIssue: posted comment on #5601
+[2026-05-27T11:43:55-04:00] [generation-run44] [stitch +3m38s] closeCobblerIssue: closed #5601
+[2026-05-27T11:43:58-04:00] [generation-run44] [stitch +3m41s] closeStitchTask: #5601 closed
+[2026-05-27T11:43:58-04:00] [generation-run44] [stitch +3m41s] doOneTask: task 5601 finished in 3m31s
+[2026-05-27T11:43:58-04:00] [generation-run44] [stitch +3m41s] task 5601 completed in 3m31s
+[2026-05-27T11:43:58-04:00] [generation-run44] [stitch +3m41s] reached per-cycle limit (1), pausing for measure
+[2026-05-27T11:43:58-04:00] [generation-run44] [stitch +3m41s] completed 1 task(s) in 3m41s
