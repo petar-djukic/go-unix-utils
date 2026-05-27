@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5584"
+task_title: '[stitch] cmd/who differential tests -- srd097-who'
+status: success
+started_at: "2026-05-27T14:30:10Z"
+duration: 6m30s
+duration_s: 390
+tokens:
+    input: 753646
+    output: 20135
+    cache_creation: 246443
+    cache_read: 507187
+cost_usd: 2.713891
+num_turns: 26
+rate_limit_wait_s: 3
+loc_before:
+    production: 26478
+    test: 23023
+loc_after:
+    production: 26482
+    test: 23072
+diff:
+    files: 3
+    insertions: 180
+    deletions: 7
