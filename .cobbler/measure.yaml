@@ -19296,3 +19296,172 @@
       - id: AC4
         text: "sys.InstallSIGPIPEHandler() is called at start of main"
   dependency: -1
+- index: 0
+  title: '[stitch] cmd/shred (contract) -- srd099-shred'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd099-shred.yaml (all requirements and acceptance criteria for shred)
+      - cmd/chmod/main.go (reference cmd/ package pattern -- flag parsing, SIGPIPE handler, exit codes)
+      - pkg/sys/sigpipe.go (SIGPIPE handler import path)
+
+    files:
+      - path: cmd/shred/main.go
+        action: create
+        note: "Package main with flag definitions, main() skeleton, and stub functions for all shred operations"
+
+    requirements:
+      - id: R1
+        text: "Define all flag variables matching every flag specified in srd099-shred with correct Go types and default values"
+      - id: R2
+        text: "Implement main() with sys.InstallSIGPIPEHandler(), flag.Parse(), argument validation that prints usage to stderr and exits 1 on no file arguments, and a dispatch loop over file arguments"
+      - id: R3
+        text: "Define stub functions for each operation required by the SRD -- each stub must have the correct signature and return nil or a placeholder error so the package compiles"
+      - id: R4
+        text: "Include --help and --version output matching GNU shred format with all flags documented"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project shared protocol"
+      - id: D2
+        text: "Use Go standard library flag package for command-line argument parsing"
+      - id: D3
+        text: "All stub functions must compile cleanly -- the contract must pass go build and go vet"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/shred/main.go exists with package main declaration"
+      - id: AC2
+        text: "go build ./cmd/shred/ succeeds with no errors"
+      - id: AC3
+        text: "go vet ./cmd/shred/ passes with no warnings"
+      - id: AC4
+        text: "All flags from srd099-shred are defined as flag variables with correct types and defaults"
+      - id: AC5
+        text: "main() calls sys.InstallSIGPIPEHandler() before any I/O and flag.Parse() before accessing flag values"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/chroot implementation -- srd100-chroot R2.1, R2.2, R2.3'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd100-chroot.yaml (all requirements -- focus on R2.1, R2.2, R2.3)
+      - cmd/chroot/main.go (existing implementation covering R1.1, R1.2, R1.3 -- core chroot and command execution)
+
+    files:
+      - path: cmd/chroot/main.go
+        action: modify
+        note: "Add R2.1, R2.2, R2.3 functionality to existing chroot implementation"
+
+    requirements:
+      - id: R1
+        text: "Implement srd100-chroot R2.1 as specified in the SRD -- read the requirement text and implement exactly what it describes"
+      - id: R2
+        text: "Implement srd100-chroot R2.2 as specified in the SRD -- read the requirement text and implement exactly what it describes"
+      - id: R3
+        text: "Implement srd100-chroot R2.3 as specified in the SRD -- read the requirement text and implement exactly what it describes"
+
+    design_decisions:
+      - id: D1
+        text: "Build on the existing R1.1-R1.3 implementation in cmd/chroot/main.go -- do not restructure or rewrite existing code"
+      - id: D2
+        text: "Follow the same error handling and exit code patterns already established in the existing implementation"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/chroot/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/chroot/ passes with no warnings"
+      - id: AC3
+        text: "srd100-chroot R2.1 is fully implemented per the SRD requirement text"
+      - id: AC4
+        text: "srd100-chroot R2.2 is fully implemented per the SRD requirement text"
+      - id: AC5
+        text: "srd100-chroot R2.3 is fully implemented per the SRD requirement text"
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/shred implementation -- srd099-shred R1.1, R1.2, R1.3, R1.4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd099-shred.yaml (requirements R1.1, R1.2, R1.3, R1.4 -- read full text and acceptance criteria)
+      - cmd/shred/main.go (contract stubs -- flag definitions and function signatures to fill in)
+
+    files:
+      - path: cmd/shred/main.go
+        action: modify
+        note: "Replace stub function bodies with full R1.1-R1.4 implementations"
+
+    requirements:
+      - id: R1
+        text: "Implement srd099-shred R1.1 as specified in the SRD -- replace the corresponding stub with a full implementation"
+      - id: R2
+        text: "Implement srd099-shred R1.2 as specified in the SRD -- replace the corresponding stub with a full implementation"
+      - id: R3
+        text: "Implement srd099-shred R1.3 as specified in the SRD -- replace the corresponding stub with a full implementation"
+      - id: R4
+        text: "Implement srd099-shred R1.4 as specified in the SRD -- replace the corresponding stub with a full implementation"
+
+    design_decisions:
+      - id: D1
+        text: "Preserve the function signatures from the contract -- replace stub bodies only, do not change signatures or flag definitions"
+      - id: D2
+        text: "Follow implementation patterns specified in the SRD for the R1 requirement group"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/shred/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/shred/ passes with no warnings"
+      - id: AC3
+        text: "All four requirements (R1.1, R1.2, R1.3, R1.4) from srd099-shred are fully implemented per SRD text"
+      - id: AC4
+        text: "No stub or placeholder function bodies remain for R1.x requirements"
+      - id: AC5
+        text: "Flag definitions and function signatures from the contract are preserved"
+  dependency: 0
+- index: 3
+  title: '[stitch] cmd/shred implementation -- srd099-shred R2.1, R2.2, R2.3, R2.4'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd099-shred.yaml (requirements R2.1, R2.2, R2.3, R2.4 -- read full text and acceptance criteria)
+      - cmd/shred/main.go (existing implementation with R1.1-R1.4 complete -- understand the core overwrite logic before adding R2 features)
+
+    files:
+      - path: cmd/shred/main.go
+        action: modify
+        note: "Add R2.1-R2.4 functionality to existing shred implementation"
+
+    requirements:
+      - id: R1
+        text: "Implement srd099-shred R2.1 as specified in the SRD -- read the requirement text and implement exactly what it describes"
+      - id: R2
+        text: "Implement srd099-shred R2.2 as specified in the SRD -- read the requirement text and implement exactly what it describes"
+      - id: R3
+        text: "Implement srd099-shred R2.3 as specified in the SRD -- read the requirement text and implement exactly what it describes"
+      - id: R4
+        text: "Implement srd099-shred R2.4 as specified in the SRD -- read the requirement text and implement exactly what it describes"
+
+    design_decisions:
+      - id: D1
+        text: "Build on the existing R1.x implementation -- do not restructure or rewrite R1.x code"
+      - id: D2
+        text: "Follow implementation patterns specified in the SRD for the R2 requirement group"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build ./cmd/shred/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/shred/ passes with no warnings"
+      - id: AC3
+        text: "All four requirements (R2.1, R2.2, R2.3, R2.4) from srd099-shred are fully implemented per SRD text"
+      - id: AC4
+        text: "Existing R1.x functionality is preserved unchanged"
+      - id: AC5
+        text: "No stub or placeholder function bodies remain for R2.x requirements"
+  dependency: 2
