@@ -1,0 +1,203 @@
+- index: 0
+  title: "[stitch] cmd/df: implement srd106 R1.1, R1.2, R1.3, R1.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd106-df.yaml (SRD for df -- read requirements R1.1, R1.2, R1.3, R1.4)
+      - pkg/testutils/ (DiffTest, RunDiffTests, BuildBinary -- differential testing framework)
+      - pkg/sys/ (InstallSIGPIPEHandler -- SIGPIPE handling for stdout writers)
+      - pkg/format/ (HumanSize, HumanSizeOpts -- human-readable size formatting if needed by R1.x)
+      - cmd/du/main.go (reference: filesystem utility pattern using sys and format packages)
+      - cmd/du/du_test.go (reference: differential testing pattern for a filesystem utility)
+
+    files:
+      - path: cmd/df/main.go
+        action: create
+        note: "df implementation -- filesystem disk space usage reporting"
+      - path: cmd/df/df_test.go
+        action: create
+        note: "Differential tests against gdf reference binary"
+
+    requirements:
+      - id: R1
+        text: "Implement srd106 requirement R1.1 per the SRD"
+      - id: R2
+        text: "Implement srd106 requirement R1.2 per the SRD"
+      - id: R3
+        text: "Implement srd106 requirement R1.3 per the SRD"
+      - id: R4
+        text: "Implement srd106 requirement R1.4 per the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per shared protocol"
+      - id: D2
+        text: "Use testutils.BuildBinary(t, \".\") and testutils.RunDiffTests for differential testing against gdf"
+      - id: D3
+        text: "Set LC_ALL=C in all test DiffTest.Env entries per project protocol"
+      - id: D4
+        text: "Call exec.LookPath(\"gdf\") and t.Skip if gdf is not found per graceful-skip protocol"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/df/main.go compiles: go build ./cmd/df/"
+      - id: AC2
+        text: "Differential tests pass: go test ./cmd/df/ -count=1"
+      - id: AC3
+        text: "SRD requirements R1.1, R1.2, R1.3, R1.4 each have at least one differential test case"
+      - id: AC4
+        text: "go vet ./cmd/df/ reports no issues"
+
+- index: 1
+  title: "[stitch] cmd/dir: implement srd107 R1.1, R1.2, R1.3, R1.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd107-dir.yaml (SRD for dir -- read requirements R1.1, R1.2, R1.3, R1.4)
+      - pkg/testutils/ (DiffTest, RunDiffTests, BuildBinary -- differential testing framework)
+      - pkg/sys/ (InstallSIGPIPEHandler, Stat, Lstat, IsTerminal, TerminalWidth -- syscall and terminal abstractions)
+      - pkg/format/ (FileTypeColor, Columns, PadRight, ColorEnabled -- directory listing output formatting)
+      - cmd/du/main.go (reference: utility pattern using sys and format packages)
+      - cmd/du/du_test.go (reference: differential testing pattern)
+
+    files:
+      - path: cmd/dir/main.go
+        action: create
+        note: "dir implementation -- list directory contents in multi-column format (ls -C -b equivalent)"
+      - path: cmd/dir/dir_test.go
+        action: create
+        note: "Differential tests against gdir reference binary"
+
+    requirements:
+      - id: R1
+        text: "Implement srd107 requirement R1.1 per the SRD"
+      - id: R2
+        text: "Implement srd107 requirement R1.2 per the SRD"
+      - id: R3
+        text: "Implement srd107 requirement R1.3 per the SRD"
+      - id: R4
+        text: "Implement srd107 requirement R1.4 per the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per shared protocol"
+      - id: D2
+        text: "Use testutils.BuildBinary(t, \".\") and testutils.RunDiffTests for differential testing against gdir"
+      - id: D3
+        text: "Set LC_ALL=C in all test DiffTest.Env entries per project protocol"
+      - id: D4
+        text: "Call exec.LookPath(\"gdir\") and t.Skip if gdir is not found per graceful-skip protocol"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/dir/main.go compiles: go build ./cmd/dir/"
+      - id: AC2
+        text: "Differential tests pass: go test ./cmd/dir/ -count=1"
+      - id: AC3
+        text: "SRD requirements R1.1, R1.2, R1.3, R1.4 each have at least one differential test case"
+      - id: AC4
+        text: "go vet ./cmd/dir/ reports no issues"
+
+- index: 2
+  title: "[stitch] cmd/df: implement srd106 R1.5, R2.1, R2.2, R2.3"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd106-df.yaml (SRD for df -- read requirements R1.5, R2.1, R2.2, R2.3)
+      - cmd/df/main.go (existing df implementation from prior task -- extend, do not rewrite)
+      - cmd/df/df_test.go (existing differential tests from prior task -- add new test cases)
+      - pkg/testutils/ (DiffTest, RunDiffTests -- differential testing framework)
+      - pkg/sys/ (syscall abstractions if needed by new requirements)
+      - pkg/format/ (HumanSize, formatting utilities if needed by new requirements)
+
+    files:
+      - path: cmd/df/main.go
+        action: modify
+        note: "Add srd106 R1.5, R2.1, R2.2, R2.3 functionality to existing df implementation"
+      - path: cmd/df/df_test.go
+        action: modify
+        note: "Add differential test cases for R1.5, R2.1, R2.2, R2.3"
+
+    requirements:
+      - id: R1
+        text: "Implement srd106 requirement R1.5 per the SRD"
+      - id: R2
+        text: "Implement srd106 requirement R2.1 per the SRD"
+      - id: R3
+        text: "Implement srd106 requirement R2.2 per the SRD"
+      - id: R4
+        text: "Implement srd106 requirement R2.3 per the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/df implementation -- do not rewrite main.go from scratch"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in df_test.go"
+      - id: D3
+        text: "Set LC_ALL=C in all new test DiffTest.Env entries per project protocol"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/df/main.go compiles: go build ./cmd/df/"
+      - id: AC2
+        text: "All differential tests pass: go test ./cmd/df/ -count=1 (both existing and new)"
+      - id: AC3
+        text: "SRD requirements R1.5, R2.1, R2.2, R2.3 each have at least one differential test case"
+      - id: AC4
+        text: "go vet ./cmd/df/ reports no issues"
+
+- index: 3
+  title: "[stitch] cmd/dir: implement srd107 R1.5, R2.1, R2.2, R2.3"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd107-dir.yaml (SRD for dir -- read requirements R1.5, R2.1, R2.2, R2.3)
+      - cmd/dir/main.go (existing dir implementation from prior task -- extend, do not rewrite)
+      - cmd/dir/dir_test.go (existing differential tests from prior task -- add new test cases)
+      - pkg/testutils/ (DiffTest, RunDiffTests -- differential testing framework)
+      - pkg/sys/ (syscall and terminal abstractions if needed by new requirements)
+      - pkg/format/ (formatting utilities if needed by new requirements)
+
+    files:
+      - path: cmd/dir/main.go
+        action: modify
+        note: "Add srd107 R1.5, R2.1, R2.2, R2.3 functionality to existing dir implementation"
+      - path: cmd/dir/dir_test.go
+        action: modify
+        note: "Add differential test cases for R1.5, R2.1, R2.2, R2.3"
+
+    requirements:
+      - id: R1
+        text: "Implement srd107 requirement R1.5 per the SRD"
+      - id: R2
+        text: "Implement srd107 requirement R2.1 per the SRD"
+      - id: R3
+        text: "Implement srd107 requirement R2.2 per the SRD"
+      - id: R4
+        text: "Implement srd107 requirement R2.3 per the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/dir implementation -- do not rewrite main.go from scratch"
+      - id: D2
+        text: "Add new DiffTest entries to the existing tests slice in dir_test.go"
+      - id: D3
+        text: "Set LC_ALL=C in all new test DiffTest.Env entries per project protocol"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/dir/main.go compiles: go build ./cmd/dir/"
+      - id: AC2
+        text: "All differential tests pass: go test ./cmd/dir/ -count=1 (both existing and new)"
+      - id: AC3
+        text: "SRD requirements R1.5, R2.1, R2.2, R2.3 each have at least one differential test case"
+      - id: AC4
+        text: "go vet ./cmd/dir/ reports no issues"

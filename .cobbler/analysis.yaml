@@ -649,7 +649,7 @@ code_status:
         - version: "12.1"
           name: Batch 12.1 — miscellaneous utilities (tsort, pathchk, test)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel12.1-uc001-tsort
               specstatus: spec_complete
@@ -663,7 +663,7 @@ code_status:
               testfiles: 0
             - id: rel12.1-uc003-test
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "13.0"
