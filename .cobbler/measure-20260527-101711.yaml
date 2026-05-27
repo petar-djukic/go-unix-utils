@@ -1,0 +1,168 @@
+- index: 0
+  title: "cmd/who implementation -- srd097-who R2.1, R2.2, R2.3, R2.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd097-who.yaml (requirements R2.1-R2.4)
+      - cmd/users/main.go (utmpx reading pattern -- users is already implemented)
+      - cmd/pinky/main.go (utmpx reading pattern -- pinky is already implemented)
+      - pkg/sys/ (system call abstractions)
+
+    files:
+      - path: cmd/who/main.go
+        action: create
+        note: who utility implementation covering R2.1-R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd097-who R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd097-who R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd097-who R2.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd097-who R2.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per shared protocol"
+      - id: D2
+        text: "Follow the utmpx reading pattern established in cmd/users/ and cmd/pinky/"
+      - id: D3
+        text: "Use os.Exit for non-zero exit codes to match GNU who behavior"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/who/main.go compiles with go build ./cmd/who/"
+      - id: AC2
+        text: "go vet ./cmd/who/ passes with no warnings"
+      - id: AC3
+        text: "All behaviors specified in srd097-who R2.1-R2.4 are implemented"
+      - id: AC4
+        text: "sys.InstallSIGPIPEHandler() is called at start of main"
+
+- index: 1
+  title: "cmd/who implementation -- srd097-who R3.1, R3.2, R3.3"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd097-who.yaml (requirements R3.1-R3.3)
+      - cmd/who/main.go (existing implementation from prior task)
+
+    files:
+      - path: cmd/who/main.go
+        action: modify
+        note: extend who implementation with R3.1-R3.3 functionality
+
+    requirements:
+      - id: R1
+        text: "Implement srd097-who R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd097-who R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd097-who R3.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing main.go from the prior task -- do not rewrite"
+      - id: D2
+        text: "Follow the same utmpx and output patterns already established in main.go"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/who/main.go compiles with go build ./cmd/who/"
+      - id: AC2
+        text: "go vet ./cmd/who/ passes with no warnings"
+      - id: AC3
+        text: "All behaviors specified in srd097-who R3.1-R3.3 are implemented"
+
+- index: 2
+  title: "cmd/who differential tests -- srd097-who"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd097-who.yaml (all requirements for test coverage)
+      - docs/specs/test-suites/test-rel-11.1.yaml (test suite specification)
+      - cmd/who/main.go (implementation under test)
+      - cmd/users/users_test.go (differential test pattern for utmpx utility)
+      - pkg/testutils/ (DiffTest struct and RunDiffTests function)
+
+    files:
+      - path: cmd/who/who_test.go
+        action: create
+        note: differential tests comparing who against gwho reference binary
+
+    requirements:
+      - id: R1
+        text: "Create TestDiff function using testutils.BuildBinary and testutils.RunDiffTests"
+      - id: R2
+        text: "Add DiffTest cases covering srd097-who R2.1-R2.4 behaviors"
+      - id: R3
+        text: "Add DiffTest cases covering srd097-who R3.1-R3.3 behaviors"
+      - id: R4
+        text: "Skip gracefully when gwho reference binary is not in PATH"
+
+    design_decisions:
+      - id: D1
+        text: "Use exec.LookPath(\"gwho\") and t.Skip if not found per shared protocol"
+      - id: D2
+        text: "Set LC_ALL=C in test environment to ensure deterministic output comparison"
+      - id: D3
+        text: "Use timestamp or session-dependent normalizers where who output varies between runs"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "who_test.go compiles with go vet ./cmd/who/"
+      - id: AC2
+        text: "Tests skip cleanly when gwho is not installed"
+      - id: AC3
+        text: "Tests pass against gwho reference binary when available"
+      - id: AC4
+        text: "Test cases cover all implemented srd097-who requirements (R2.1-R3.3)"
+
+- index: 3
+  title: "cmd/chroot implementation -- srd100-chroot R1.1, R1.2, R1.3"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd100-chroot.yaml (requirements R1.1-R1.3)
+      - pkg/sys/ (system call abstractions)
+
+    files:
+      - path: cmd/chroot/main.go
+        action: create
+        note: chroot utility implementation covering R1.1-R1.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd100-chroot R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd100-chroot R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd100-chroot R1.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per shared protocol"
+      - id: D2
+        text: "Use syscall.Chroot for the chroot(2) system call"
+      - id: D3
+        text: "Use os.Exit for non-zero exit codes to match GNU chroot behavior"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/chroot/main.go compiles with go build ./cmd/chroot/"
+      - id: AC2
+        text: "go vet ./cmd/chroot/ passes with no warnings"
+      - id: AC3
+        text: "All behaviors specified in srd100-chroot R1.1-R1.3 are implemented"
+      - id: AC4
+        text: "sys.InstallSIGPIPEHandler() is called at start of main"
