@@ -63,6 +63,26 @@ func TestDiff(t *testing.T) {
 		{Name: "last-h-wins", Args: []string{"-H", "-h", "/"}, Env: []string{"LC_ALL=C"}},
 		// R2.3: last flag wins — -H after -h
 		{Name: "last-H-wins", Args: []string{"-h", "-H", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.1: filesystem type display
+		{Name: "type-display", Args: []string{"-T", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.1: long flag form
+		{Name: "type-display-long", Args: []string{"--print-type", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.1: type with human-readable sizes
+		{Name: "type-human", Args: []string{"-T", "-h", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.2: inode display
+		{Name: "inodes", Args: []string{"-i", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.2: long flag form
+		{Name: "inodes-long", Args: []string{"--inodes", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.2+R3.1: inode display with type column
+		{Name: "inodes-type", Args: []string{"-i", "-T", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.3: include pseudo-filesystems with file argument
+		{Name: "all-with-file", Args: []string{"-a", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.4: local filesystems only
+		{Name: "local-only", Args: []string{"-l", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.4: long flag form
+		{Name: "local-only-long", Args: []string{"--local", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.4: local with type display
+		{Name: "local-type", Args: []string{"-l", "-T", "/"}, Env: []string{"LC_ALL=C"}},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

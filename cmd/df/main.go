@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd106-df R1.1-R1.5, R2.1-R2.3.
+// Implements srd106-df R1.1-R1.5, R2.1-R2.3, R3.1-R3.4.
 package main
 
 import (
@@ -25,24 +25,29 @@ const (
 	modeSI
 )
 
+type options struct {
+	sizeMode   sizeMode
+	showType   bool
+	showInodes bool
+	showAll    bool
+	localOnly  bool
+}
+
 type fsEntry struct {
-	filesystem string
-	blocks1K   int64
-	used       int64
-	available  int64
-	sizeBytes  int64
-	usedBytes  int64
-	availBytes int64
-	usePercent string
-	mountedOn  string
-}
-
-var defaultHeaders = [6]string{
-	"Filesystem", "1K-blocks", "Used", "Available", "Use%", "Mounted on",
-}
-
-var humanHeaders = [6]string{
-	"Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on",
+	filesystem      string
+	fsType          string
+	blocks1K        int64
+	used            int64
+	available       int64
+	sizeBytes       int64
+	usedBytes       int64
+	availBytes      int64
+	usePercent      string
+	inodes          int64
+	inodesUsed      int64
+	inodesFree      int64
+	inodeUsePercent string
+	mountedOn       string
 }
 
 var humanSuffixes = []string{"", "K", "M", "G", "T", "P", "E"}
@@ -53,15 +58,15 @@ func main() {
 }
 
 func run(args []string) int {
-	mode, files := parseArgs(args)
+	opts, files := parseArgs(args)
 	if len(files) == 0 {
-		return listAll(mode)
+		return listAll(opts)
 	}
-	return listPaths(files, mode)
+	return listPaths(files, opts)
 }
 
-func parseArgs(args []string) (sizeMode, []string) {
-	mode := modeDefault
+func parseArgs(args []string) (options, []string) {
+	var opts options
 	var files []string
 	endOfFlags := false
 	for _, arg := range args {
@@ -73,28 +78,36 @@ func parseArgs(args []string) (sizeMode, []string) {
 		case "--":
 			endOfFlags = true
 		case "-h", "--human-readable":
-			mode = modeHuman
+			opts.sizeMode = modeHuman
 		case "-H", "--si":
-			mode = modeSI
+			opts.sizeMode = modeSI
+		case "-T", "--print-type":
+			opts.showType = true
+		case "-i", "--inodes":
+			opts.showInodes = true
+		case "-a", "--all":
+			opts.showAll = true
+		case "-l", "--local":
+			opts.localOnly = true
 		default:
 			files = append(files, arg)
 		}
 	}
-	return mode, files
+	return opts, files
 }
 
-func listAll(mode sizeMode) int {
+func listAll(opts options) int {
 	stats, err := getAllMounts()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "df: %v\n", err)
 		return 1
 	}
-	entries := filterAndDedup(stats)
-	printTable(entries, mode)
+	entries := filterAndDedup(stats, opts)
+	printTable(entries, opts)
 	return 0
 }
 
-func listPaths(paths []string, mode sizeMode) int {
+func listPaths(paths []string, opts options) int {
 	stats, err := getAllMounts()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "df: %v\n", err)
@@ -113,7 +126,7 @@ func listPaths(paths []string, mode sizeMode) int {
 		entries = append(entries, entry)
 	}
 	if len(entries) > 0 {
-		printTable(entries, mode)
+		printTable(entries, opts)
 	}
 	return exitCode
 }
@@ -143,14 +156,19 @@ func isDummyType(t string) bool {
 	return t == "devfs" || t == "autofs"
 }
 
-func filterAndDedup(stats []unix.Statfs_t) []fsEntry {
+func filterAndDedup(stats []unix.Statfs_t, opts options) []fsEntry {
 	seen := make(map[int32]bool)
 	entries := make([]fsEntry, 0, len(stats))
 	for _, s := range stats {
-		if isDummyType(cstring(s.Fstypename[:])) {
-			continue
+		if !opts.showAll {
+			if isDummyType(cstring(s.Fstypename[:])) {
+				continue
+			}
+			if s.Blocks == 0 {
+				continue
+			}
 		}
-		if s.Blocks == 0 {
+		if opts.localOnly && s.Flags&unix.MNT_LOCAL == 0 {
 			continue
 		}
 		dev, ok := mountDev(cstring(s.Mntonname[:]))
@@ -213,16 +231,23 @@ func buildEntry(stat unix.Statfs_t) fsEntry {
 	total := totalBytes / 1024
 	free := freeBytes / 1024
 	avail := availBytes / 1024
+	inodes := int64(stat.Files)
+	inodesFree := int64(stat.Ffree)
 	return fsEntry{
-		filesystem: cstring(stat.Mntfromname[:]),
-		blocks1K:   total,
-		used:       total - free,
-		available:  avail,
-		sizeBytes:  totalBytes,
-		usedBytes:  totalBytes - freeBytes,
-		availBytes: availBytes,
-		usePercent: computeUsePercent(total, avail),
-		mountedOn:  cstring(stat.Mntonname[:]),
+		filesystem:      cstring(stat.Mntfromname[:]),
+		fsType:          cstring(stat.Fstypename[:]),
+		blocks1K:        total,
+		used:            total - free,
+		available:       avail,
+		sizeBytes:       totalBytes,
+		usedBytes:       totalBytes - freeBytes,
+		availBytes:      availBytes,
+		usePercent:      computeUsePercent(total, avail),
+		inodes:          inodes,
+		inodesUsed:      inodes - inodesFree,
+		inodesFree:      inodesFree,
+		inodeUsePercent: computeUsePercent(inodes, inodesFree),
+		mountedOn:       cstring(stat.Mntonname[:]),
 	}
 }
 
@@ -273,44 +298,78 @@ func formatSize(blocks1K, sizeBytes int64, mode sizeMode) string {
 	}
 }
 
-func getHeaders(mode sizeMode) [6]string {
-	if mode != modeDefault {
-		return humanHeaders
+func getHeaders(opts options) []string {
+	var h []string
+	h = append(h, "Filesystem")
+	if opts.showType {
+		h = append(h, "Type")
 	}
-	return defaultHeaders
+	if opts.showInodes {
+		h = append(h, "Inodes", "IUsed", "IFree", "IUse%")
+	} else if opts.sizeMode != modeDefault {
+		h = append(h, "Size", "Used", "Avail", "Use%")
+	} else {
+		h = append(h, "1K-blocks", "Used", "Available", "Use%")
+	}
+	h = append(h, "Mounted on")
+	return h
 }
 
-func printTable(entries []fsEntry, mode sizeMode) {
-	w := computeWidths(entries, mode)
-	printLine(getHeaders(mode), w)
+func getAlignment(opts options) []bool {
+	var a []bool
+	a = append(a, false)
+	if opts.showType {
+		a = append(a, false)
+	}
+	a = append(a, true, true, true, true)
+	a = append(a, false)
+	return a
+}
+
+func entryStrings(e fsEntry, opts options) []string {
+	var cols []string
+	cols = append(cols, e.filesystem)
+	if opts.showType {
+		cols = append(cols, e.fsType)
+	}
+	if opts.showInodes {
+		cols = append(cols,
+			strconv.FormatInt(e.inodes, 10),
+			strconv.FormatInt(e.inodesUsed, 10),
+			strconv.FormatInt(e.inodesFree, 10),
+			e.inodeUsePercent,
+		)
+	} else {
+		cols = append(cols,
+			formatSize(e.blocks1K, e.sizeBytes, opts.sizeMode),
+			formatSize(e.used, e.usedBytes, opts.sizeMode),
+			formatSize(e.available, e.availBytes, opts.sizeMode),
+			e.usePercent,
+		)
+	}
+	cols = append(cols, e.mountedOn)
+	return cols
+}
+
+func computeWidths(entries []fsEntry, opts options) []int {
+	h := getHeaders(opts)
+	w := make([]int, len(h))
+	for i, s := range h {
+		w[i] = len(s)
+	}
 	for _, e := range entries {
-		printLine(entryStrings(e, mode), w)
-	}
-}
-
-func entryStrings(e fsEntry, mode sizeMode) [6]string {
-	return [6]string{
-		e.filesystem,
-		formatSize(e.blocks1K, e.sizeBytes, mode),
-		formatSize(e.used, e.usedBytes, mode),
-		formatSize(e.available, e.availBytes, mode),
-		e.usePercent,
-		e.mountedOn,
-	}
-}
-
-func computeWidths(entries []fsEntry, mode sizeMode) [6]int {
-	h := getHeaders(mode)
-	w := [6]int{len(h[0]), len(h[1]), len(h[2]), len(h[3]), len(h[4]), len(h[5])}
-	for _, e := range entries {
-		cols := entryStrings(e, mode)
+		cols := entryStrings(e, opts)
 		for i := range w {
 			if len(cols[i]) > w[i] {
 				w[i] = len(cols[i])
 			}
 		}
 	}
-	for i := 1; i <= 3; i++ {
+	start := 1
+	if opts.showType {
+		start = 2
+	}
+	for i := start; i < start+3 && i < len(w); i++ {
 		if w[i] < 5 {
 			w[i] = 5
 		}
@@ -318,15 +377,27 @@ func computeWidths(entries []fsEntry, mode sizeMode) [6]int {
 	return w
 }
 
-func printLine(cols [6]string, w [6]int) {
-	fmt.Printf("%s %s %s %s %s %s\n",
-		format.PadRight(cols[0], w[0]),
-		format.PadLeft(cols[1], w[1]),
-		format.PadLeft(cols[2], w[2]),
-		format.PadLeft(cols[3], w[3]),
-		format.PadLeft(cols[4], w[4]),
-		cols[5],
-	)
+func printTable(entries []fsEntry, opts options) {
+	w := computeWidths(entries, opts)
+	align := getAlignment(opts)
+	printLine(getHeaders(opts), w, align)
+	for _, e := range entries {
+		printLine(entryStrings(e, opts), w, align)
+	}
+}
+
+func printLine(cols []string, w []int, rightAlign []bool) {
+	parts := make([]string, len(cols))
+	for i, col := range cols {
+		if i == len(cols)-1 {
+			parts[i] = col
+		} else if rightAlign[i] {
+			parts[i] = format.PadLeft(col, w[i])
+		} else {
+			parts[i] = format.PadRight(col, w[i])
+		}
+	}
+	fmt.Println(strings.Join(parts, " "))
 }
 
 func cstring(b []byte) string {
