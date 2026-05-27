@@ -72,12 +72,46 @@ func (p *parser) remaining() int {
 }
 
 func (p *parser) expr() bool {
+	result := p.andExpr()
+	for p.peek() == "-o" {
+		p.advance()
+		right := p.andExpr()
+		result = result || right
+	}
+	return result
+}
+
+func (p *parser) andExpr() bool {
+	result := p.notExpr()
+	for p.peek() == "-a" {
+		p.advance()
+		right := p.notExpr()
+		result = result && right
+	}
+	return result
+}
+
+func (p *parser) notExpr() bool {
+	if p.peek() == "!" {
+		p.advance()
+		return !p.notExpr()
+	}
 	return p.primary()
 }
 
 func (p *parser) primary() bool {
 	if p.remaining() == 0 {
 		exitError("missing argument")
+	}
+
+	if p.peek() == "(" {
+		p.advance()
+		result := p.expr()
+		if p.peek() != ")" {
+			exitError("missing ')'")
+		}
+		p.advance()
+		return result
 	}
 
 	if p.remaining() >= 3 && isBinaryOp(p.args[p.pos+1]) {
