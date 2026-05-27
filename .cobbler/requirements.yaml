@@ -5694,7 +5694,8 @@ requirements:
             issue: 5608
             weight: 1
         R2.4:
-            status: in_progress
+            status: uncertain
+            issue: 5610
             weight: 1
     srd108-vdir:
         R1.1:
