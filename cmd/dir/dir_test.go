@@ -4,6 +4,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,6 +74,11 @@ func TestDiff(t *testing.T) {
 		touchFile(t, reverseDir, name)
 	}
 
+	sigpipeDir := t.TempDir()
+	for i := range 200 {
+		touchFile(t, sigpipeDir, fmt.Sprintf("file_%03d", i))
+	}
+
 	tests := []testutils.DiffTest{
 		{Name: "basic-listing", Args: []string{basicDir}, Env: []string{"COLUMNS=80"}},
 		{Name: "hidden-excluded", Args: []string{mixedDir}, Env: []string{"COLUMNS=80"}},
@@ -116,6 +122,16 @@ func TestDiff(t *testing.T) {
 			Args:      []string{"--bogus-flag"},
 			ExitCode:  2,
 			Normalize: errNorm,
+		},
+		{
+			Name: "sigpipe-large-output",
+			Args: []string{sigpipeDir},
+			Env:  []string{"COLUMNS=80"},
+		},
+		{
+			Name: "sigpipe-large-single-column",
+			Args: []string{"-1", sigpipeDir},
+			Env:  []string{"COLUMNS=80"},
 		},
 	}
 
