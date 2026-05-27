@@ -164,6 +164,54 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--sh", "-"},
 			Stdin: []byte("*.tar 01;31\n*.gz 01;31\n"),
 		},
+		{
+			Name:  "R2.5 read database from stdin via dash",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("DIR 01;34\nLINK 01;36\n.tar 01;31\n"),
+		},
+		{
+			Name:  "R2.5 stdin empty produces empty LS_COLORS",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte(""),
+		},
+		{
+			Name:  "R2.5 stdin with TERM and extensions",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("TERM xterm*\nDIR 01;34\nEXEC 01;32\n.gz 01;31\n"),
+		},
+		{
+			Name: "R3.1 print-database outputs built-in defaults",
+			Args: []string{"-p"},
+		},
+		{
+			Name: "R3.1 print-database via long flag",
+			Args: []string{"--print-database"},
+		},
+		{
+			Name:      "R3.2 print-database incompatible with file operand",
+			Args:      []string{"-p", "/dev/null"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "R3.2 print-database incompatible with dash operand",
+			Args:      []string{"--print-database", "-"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name: "R3.3 exit 0 on successful bourne output",
+			Args: []string{"--sh"},
+		},
+		{
+			Name: "R3.3 exit 0 on successful csh output",
+			Args: []string{"--csh"},
+		},
+		{
+			Name:  "R3.3 exit 0 on successful stdin parse",
+			Args:  []string{"--sh", "-"},
+			Stdin: []byte("DIR 01;34\n"),
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
