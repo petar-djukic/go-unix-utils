@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5601"
+task_title: '[stitch] cmd/pathchk: differential tests for srd103 R2.1, R2.2, R2.3'
+status: success
+started_at: "2026-05-27T15:40:30Z"
+duration: 3m24s
+duration_s: 203
+tokens:
+    input: 675625
+    output: 6373
+    cache_creation: 240598
+    cache_read: 435010
+cost_usd: 2.1036052499999998
+num_turns: 31
+loc_before:
+    production: 27855
+    test: 23480
+loc_after:
+    production: 27855
+    test: 23509
+diff:
+    files: 2
+    insertions: 156
+    deletions: 0
