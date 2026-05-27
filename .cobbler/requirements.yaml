@@ -5658,16 +5658,20 @@ requirements:
             weight: 1
     srd107-dir:
         R1.1:
-            status: in_progress
+            status: complete
+            issue: 5606
             weight: 1
         R1.2:
-            status: in_progress
+            status: complete
+            issue: 5606
             weight: 1
         R1.3:
-            status: in_progress
+            status: complete
+            issue: 5606
             weight: 1
         R1.4:
-            status: in_progress
+            status: complete
+            issue: 5606
             weight: 1
         R1.5:
             status: proposed
