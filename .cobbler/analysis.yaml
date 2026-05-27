@@ -629,7 +629,7 @@ code_status:
         - version: "12.0"
           name: Batch 12.0 — file security and installation (shred, chroot, install)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel12.0-uc001-shred
               specstatus: spec_complete
@@ -643,7 +643,7 @@ code_status:
               testfiles: 0
             - id: rel12.0-uc003-install
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "12.1"
