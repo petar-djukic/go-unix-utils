@@ -5599,16 +5599,20 @@ requirements:
             weight: 1
     srd106-df:
         R1.1:
-            status: in_progress
+            status: complete
+            issue: 5605
             weight: 1
         R1.2:
-            status: in_progress
+            status: complete
+            issue: 5605
             weight: 1
         R1.3:
-            status: in_progress
+            status: complete
+            issue: 5605
             weight: 1
         R1.4:
-            status: in_progress
+            status: complete
+            issue: 5605
             weight: 1
         R1.5:
             status: proposed
