@@ -19465,3 +19465,173 @@
       - id: AC5
         text: "No stub or placeholder function bodies remain for R2.x requirements"
   dependency: 2
+- index: 0
+  title: cmd/install srd101-install R1.1, R1.2, R1.3, R1.4 (implementation)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd101-install.yaml (requirements R1.1 through R1.4)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for SIGPIPE and differential testing patterns)
+      - pkg/sys/sys.go (FileInfo, Stat, Lstat for file metadata)
+      - CLAUDE.md (build instructions and SIGPIPE handler requirement)
+
+    files:
+      - path: cmd/install/main.go
+        action: create
+        note: "install utility -- initial implementation covering srd101-install R1.1 through R1.4"
+
+    requirements:
+      - id: R1
+        text: "Implement srd101-install R1.1 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R2
+        text: "Implement srd101-install R1.2 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R3
+        text: "Implement srd101-install R1.3 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R4
+        text: "Implement srd101-install R1.4 as specified in the SRD. Read the SRD to determine the exact requirement."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main() per the shared SIGPIPE protocol in ARCHITECTURE.yaml"
+      - id: D2
+        text: "Use go build -o bin/install ./cmd/install/ to verify compilation. The bin/ directory is git-ignored."
+      - id: D3
+        text: "Use standard library os, io, and filepath packages for file operations. Import pkg/sys only if the SRD requires extended file metadata (Stat, Lstat, FileInfo)."
+      - id: D4
+        text: "This is the first of three implementation tasks for cmd/install. Implement only R1.1-R1.4. Later tasks will add R2.x and R3.x requirements."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/install/main.go exists and compiles with go vet ./cmd/install/..."
+      - id: AC2
+        text: "go build -o bin/install ./cmd/install/ succeeds without errors"
+      - id: AC3
+        text: "All four SRD requirements R1.1, R1.2, R1.3, and R1.4 from srd101-install are implemented"
+      - id: AC4
+        text: "The main function calls sys.InstallSIGPIPEHandler() before any other logic"
+  dependency: -1
+- index: 1
+  title: cmd/install srd101-install R2.1, R2.2, R2.3, R2.4 (implementation)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd101-install.yaml (requirements R2.1 through R2.4)
+      - cmd/install/main.go (existing implementation from prior task covering R1.1-R1.4)
+      - CLAUDE.md (build instructions)
+
+    files:
+      - path: cmd/install/main.go
+        action: modify
+        note: "Add srd101-install R2.1 through R2.4 functionality to existing install implementation"
+
+    requirements:
+      - id: R1
+        text: "Implement srd101-install R2.1 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R2
+        text: "Implement srd101-install R2.2 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R3
+        text: "Implement srd101-install R2.3 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R4
+        text: "Implement srd101-install R2.4 as specified in the SRD. Read the SRD to determine the exact requirement."
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/install/main.go from the prior task. Do not rewrite the file -- add the R2.x functionality to the existing flag parsing and execution logic."
+      - id: D2
+        text: "Use standard library os, io, and filepath packages for file operations. Import pkg/sys only if the SRD requires extended file metadata."
+      - id: D3
+        text: "This is the second of three implementation tasks. Implement only R2.1-R2.4. R1.x is already implemented. R3.x will be added in a subsequent task."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/install/main.go compiles with go vet ./cmd/install/..."
+      - id: AC2
+        text: "go build -o bin/install ./cmd/install/ succeeds without errors"
+      - id: AC3
+        text: "All four SRD requirements R2.1, R2.2, R2.3, and R2.4 from srd101-install are implemented"
+      - id: AC4
+        text: "Previously implemented R1.x functionality is preserved and not broken"
+  dependency: 0
+- index: 2
+  title: cmd/install srd101-install R3.1, R3.2, R3.3 (implementation)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd101-install.yaml (requirements R3.1 through R3.3)
+      - cmd/install/main.go (existing implementation from prior tasks covering R1.1-R1.4 and R2.1-R2.4)
+      - CLAUDE.md (build instructions)
+
+    files:
+      - path: cmd/install/main.go
+        action: modify
+        note: "Add srd101-install R3.1 through R3.3 functionality to complete the install implementation"
+
+    requirements:
+      - id: R1
+        text: "Implement srd101-install R3.1 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R2
+        text: "Implement srd101-install R3.2 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R3
+        text: "Implement srd101-install R3.3 as specified in the SRD. Read the SRD to determine the exact requirement."
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/install/main.go from prior tasks. Do not rewrite the file -- add the R3.x functionality to the existing flag parsing and execution logic."
+      - id: D2
+        text: "This is the final implementation task for cmd/install. After this task, all 11 SRD requirements (R1.1-R1.4, R2.1-R2.4, R3.1-R3.3) will be implemented. Differential tests will be added in a separate task."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/install/main.go compiles with go vet ./cmd/install/..."
+      - id: AC2
+        text: "go build -o bin/install ./cmd/install/ succeeds without errors"
+      - id: AC3
+        text: "All three SRD requirements R3.1, R3.2, and R3.3 from srd101-install are implemented"
+      - id: AC4
+        text: "Previously implemented R1.x and R2.x functionality is preserved and not broken"
+  dependency: 1
+- index: 3
+  title: cmd/shred srd099-shred R3.1, R3.2, R3.3 (implementation)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd099-shred.yaml (requirements R3.1 through R3.3)
+      - cmd/shred/main.go (may already exist with R1.x and R2.x implemented -- check before writing)
+      - docs/ARCHITECTURE.yaml (shared_protocols section for SIGPIPE pattern)
+      - CLAUDE.md (build instructions and SIGPIPE handler requirement)
+
+    files:
+      - path: cmd/shred/main.go
+        action: modify
+        note: "Add srd099-shred R3.1 through R3.3 functionality. If the file does not exist, create it with the full implementation including SIGPIPE handler."
+
+    requirements:
+      - id: R1
+        text: "Implement srd099-shred R3.1 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R2
+        text: "Implement srd099-shred R3.2 as specified in the SRD. Read the SRD to determine the exact requirement."
+      - id: R3
+        text: "Implement srd099-shred R3.3 as specified in the SRD. Read the SRD to determine the exact requirement."
+
+    design_decisions:
+      - id: D1
+        text: "If cmd/shred/main.go already exists (from prior R1.x and R2.x tasks), extend it. If it does not exist, create it with sys.InstallSIGPIPEHandler() at the start of main()."
+      - id: D2
+        text: "Use go build -o bin/shred ./cmd/shred/ to verify compilation. The bin/ directory is git-ignored."
+      - id: D3
+        text: "Use standard library os, io, and crypto/rand packages for file operations and random data generation. Import pkg/sys only if the SRD requires it."
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/shred/main.go compiles with go vet ./cmd/shred/..."
+      - id: AC2
+        text: "go build -o bin/shred ./cmd/shred/ succeeds without errors"
+      - id: AC3
+        text: "All three SRD requirements R3.1, R3.2, and R3.3 from srd099-shred are implemented"
+      - id: AC4
+        text: "If the file was created new, main() calls sys.InstallSIGPIPEHandler() before any other logic"
+  dependency: -1
