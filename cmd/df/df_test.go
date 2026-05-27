@@ -15,6 +15,16 @@ func programNameNormalizer(b []byte) []byte {
 	return bytes.ReplaceAll(b, []byte("gdf:"), []byte("df:"))
 }
 
+func helpLineNormalizer(b []byte) []byte {
+	lines := bytes.Split(b, []byte("\n"))
+	for i, line := range lines {
+		if bytes.HasPrefix(line, []byte("Try '")) {
+			lines[i] = []byte("Try 'df --help' for more information.")
+		}
+	}
+	return bytes.Join(lines, []byte("\n"))
+}
+
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
 	refBin, err := exec.LookPath("gdf")
@@ -23,6 +33,7 @@ func TestDiff(t *testing.T) {
 	}
 
 	errNorm := []testutils.NormalizeFunc{programNameNormalizer}
+	exclusiveNorm := []testutils.NormalizeFunc{programNameNormalizer, helpLineNormalizer}
 
 	tests := []testutils.DiffTest{
 		// R1.1, R1.2, R1.3: FILE argument reports containing filesystem
@@ -83,6 +94,44 @@ func TestDiff(t *testing.T) {
 		{Name: "local-only-long", Args: []string{"--local", "/"}, Env: []string{"LC_ALL=C"}},
 		// R3.4: local with type display
 		{Name: "local-type", Args: []string{"-l", "-T", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.5: include only apfs filesystems
+		{Name: "type-filter", Args: []string{"-t", "apfs", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.5: long flag form
+		{Name: "type-filter-long", Args: []string{"--type=apfs", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.6: exclude devfs filesystems
+		{Name: "exclude-type", Args: []string{"-x", "devfs", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.6: long flag form
+		{Name: "exclude-type-long", Args: []string{"--exclude-type=devfs", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.5+R3.6: same type both selected and excluded is an error
+		{
+			Name:      "type-include-exclude",
+			Args:      []string{"-t", "apfs", "-x", "apfs", "/"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: errNorm,
+		},
+		// R3.5: type filter with type display
+		{Name: "type-filter-display", Args: []string{"-t", "apfs", "-T", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.7: output column selection
+		{Name: "output-columns", Args: []string{"--output=source,size,used,avail,pcent,target", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.7: bare --output (all fields)
+		{Name: "output-all", Args: []string{"--output", "/"}, Env: []string{"LC_ALL=C"}},
+		// R3.7: --output incompatible with -i
+		{
+			Name:      "output-inodes-exclusive",
+			Args:      []string{"--output", "-i", "/"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: exclusiveNorm,
+		},
+		// R3.7: --output incompatible with -T
+		{
+			Name:      "output-type-exclusive",
+			Args:      []string{"--output", "-T", "/"},
+			ExitCode:  1,
+			Env:       []string{"LC_ALL=C"},
+			Normalize: exclusiveNorm,
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)

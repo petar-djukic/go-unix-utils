@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd106-df R1.1-R1.5, R2.1-R2.3, R3.1-R3.4.
+// Implements srd106-df R1.1-R1.5, R2.1-R2.3, R3.1-R3.7.
 package main
 
 import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -26,11 +27,15 @@ const (
 )
 
 type options struct {
-	sizeMode   sizeMode
-	showType   bool
-	showInodes bool
-	showAll    bool
-	localOnly  bool
+	sizeMode     sizeMode
+	showType     bool
+	showInodes   bool
+	showAll      bool
+	localOnly    bool
+	includeTypes []string
+	excludeTypes []string
+	outputFields []string
+	outputMode   bool
 }
 
 type fsEntry struct {
@@ -48,6 +53,7 @@ type fsEntry struct {
 	inodesFree      int64
 	inodeUsePercent string
 	mountedOn       string
+	file            string
 }
 
 var humanSuffixes = []string{"", "K", "M", "G", "T", "P", "E"}
@@ -59,41 +65,91 @@ func main() {
 
 func run(args []string) int {
 	opts, files := parseArgs(args)
+	if msg := validateOpts(opts); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
+		return 1
+	}
 	if len(files) == 0 {
 		return listAll(opts)
 	}
 	return listPaths(files, opts)
 }
 
+func validateOpts(opts options) string {
+	if opts.outputMode && opts.showInodes {
+		return "df: options -i and --output are mutually exclusive\n" +
+			"Try 'df --help' for more information."
+	}
+	if opts.outputMode && opts.showType {
+		return "df: options -T and --output are mutually exclusive\n" +
+			"Try 'df --help' for more information."
+	}
+	for _, t := range opts.includeTypes {
+		if slices.Contains(opts.excludeTypes, t) {
+			return fmt.Sprintf("df: file system type '%s' both selected and excluded", t)
+		}
+	}
+	return ""
+}
+
 func parseArgs(args []string) (options, []string) {
 	var opts options
 	var files []string
 	endOfFlags := false
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if endOfFlags {
 			files = append(files, arg)
 			continue
 		}
-		switch arg {
-		case "--":
+		if arg == "--" {
 			endOfFlags = true
-		case "-h", "--human-readable":
-			opts.sizeMode = modeHuman
-		case "-H", "--si":
-			opts.sizeMode = modeSI
-		case "-T", "--print-type":
-			opts.showType = true
-		case "-i", "--inodes":
-			opts.showInodes = true
-		case "-a", "--all":
-			opts.showAll = true
-		case "-l", "--local":
-			opts.localOnly = true
-		default:
+			continue
+		}
+		consumed, skip := parseFlag(&opts, arg, args, i)
+		if consumed {
+			i += skip
+		} else {
 			files = append(files, arg)
 		}
 	}
 	return opts, files
+}
+
+func parseFlag(opts *options, arg string, args []string, i int) (bool, int) {
+	switch {
+	case arg == "-h" || arg == "--human-readable":
+		opts.sizeMode = modeHuman
+	case arg == "-H" || arg == "--si":
+		opts.sizeMode = modeSI
+	case arg == "-T" || arg == "--print-type":
+		opts.showType = true
+	case arg == "-i" || arg == "--inodes":
+		opts.showInodes = true
+	case arg == "-a" || arg == "--all":
+		opts.showAll = true
+	case arg == "-l" || arg == "--local":
+		opts.localOnly = true
+	case arg == "-t" && i+1 < len(args):
+		opts.includeTypes = append(opts.includeTypes, args[i+1])
+		return true, 1
+	case strings.HasPrefix(arg, "--type="):
+		opts.includeTypes = append(opts.includeTypes, arg[7:])
+	case arg == "-x" && i+1 < len(args):
+		opts.excludeTypes = append(opts.excludeTypes, args[i+1])
+		return true, 1
+	case strings.HasPrefix(arg, "--exclude-type="):
+		opts.excludeTypes = append(opts.excludeTypes, arg[15:])
+	case arg == "--output":
+		opts.outputMode = true
+		opts.outputFields = allOutputFields()
+	case strings.HasPrefix(arg, "--output="):
+		opts.outputMode = true
+		opts.outputFields = strings.Split(arg[9:], ",")
+	default:
+		return false, 0
+	}
+	return true, 0
 }
 
 func listAll(opts options) int {
@@ -123,6 +179,10 @@ func listPaths(paths []string, opts options) int {
 			exitCode = 1
 			continue
 		}
+		if !matchesTypeFilter(entry.fsType, opts) {
+			continue
+		}
+		entry.file = path
 		entries = append(entries, entry)
 	}
 	if len(entries) > 0 {
@@ -156,12 +216,20 @@ func isDummyType(t string) bool {
 	return t == "devfs" || t == "autofs"
 }
 
+func matchesTypeFilter(fsType string, opts options) bool {
+	if len(opts.includeTypes) > 0 && !slices.Contains(opts.includeTypes, fsType) {
+		return false
+	}
+	return !slices.Contains(opts.excludeTypes, fsType)
+}
+
 func filterAndDedup(stats []unix.Statfs_t, opts options) []fsEntry {
 	seen := make(map[int32]bool)
 	entries := make([]fsEntry, 0, len(stats))
 	for _, s := range stats {
+		fsType := cstring(s.Fstypename[:])
 		if !opts.showAll {
-			if isDummyType(cstring(s.Fstypename[:])) {
+			if isDummyType(fsType) {
 				continue
 			}
 			if s.Blocks == 0 {
@@ -169,6 +237,9 @@ func filterAndDedup(stats []unix.Statfs_t, opts options) []fsEntry {
 			}
 		}
 		if opts.localOnly && s.Flags&unix.MNT_LOCAL == 0 {
+			continue
+		}
+		if !matchesTypeFilter(fsType, opts) {
 			continue
 		}
 		dev, ok := mountDev(cstring(s.Mntonname[:]))
@@ -179,7 +250,9 @@ func filterAndDedup(stats []unix.Statfs_t, opts options) []fsEntry {
 			continue
 		}
 		seen[dev] = true
-		entries = append(entries, buildEntry(s))
+		entry := buildEntry(s)
+		entry.file = "-"
+		entries = append(entries, entry)
 	}
 	return entries
 }
@@ -298,6 +371,17 @@ func formatSize(blocks1K, sizeBytes int64, mode sizeMode) string {
 	}
 }
 
+func formatInodeField(count int64, mode sizeMode) string {
+	switch mode {
+	case modeHuman:
+		return humanSize(count, 1024)
+	case modeSI:
+		return humanSize(count, 1000)
+	default:
+		return strconv.FormatInt(count, 10)
+	}
+}
+
 func getHeaders(opts options) []string {
 	var h []string
 	h = append(h, "Filesystem")
@@ -378,11 +462,148 @@ func computeWidths(entries []fsEntry, opts options) []int {
 }
 
 func printTable(entries []fsEntry, opts options) {
+	if opts.outputMode {
+		printOutputTable(entries, opts)
+		return
+	}
 	w := computeWidths(entries, opts)
 	align := getAlignment(opts)
 	printLine(getHeaders(opts), w, align)
 	for _, e := range entries {
 		printLine(entryStrings(e, opts), w, align)
+	}
+}
+
+func allOutputFields() []string {
+	return []string{
+		"source", "fstype", "itotal", "iused", "iavail", "ipcent",
+		"size", "used", "avail", "pcent", "file", "target",
+	}
+}
+
+func outputHeader(field string, mode sizeMode) string {
+	switch field {
+	case "source":
+		return "Filesystem"
+	case "fstype":
+		return "Type"
+	case "itotal":
+		return "Inodes"
+	case "iused":
+		return "IUsed"
+	case "iavail":
+		return "IFree"
+	case "ipcent":
+		return "IUse%"
+	case "size":
+		if mode != modeDefault {
+			return "Size"
+		}
+		return "1K-blocks"
+	case "used":
+		return "Used"
+	case "avail":
+		return "Avail"
+	case "pcent":
+		return "Use%"
+	case "file":
+		return "File"
+	case "target":
+		return "Mounted on"
+	}
+	return field
+}
+
+func outputRightAlign(field string) bool {
+	switch field {
+	case "source", "fstype", "file", "target":
+		return false
+	default:
+		return true
+	}
+}
+
+func outputValue(e fsEntry, field string, opts options) string {
+	switch field {
+	case "source":
+		return e.filesystem
+	case "fstype":
+		return e.fsType
+	case "itotal":
+		return formatInodeField(e.inodes, opts.sizeMode)
+	case "iused":
+		return formatInodeField(e.inodesUsed, opts.sizeMode)
+	case "iavail":
+		return formatInodeField(e.inodesFree, opts.sizeMode)
+	case "ipcent":
+		return e.inodeUsePercent
+	case "size":
+		return formatSize(e.blocks1K, e.sizeBytes, opts.sizeMode)
+	case "used":
+		return formatSize(e.used, e.usedBytes, opts.sizeMode)
+	case "avail":
+		return formatSize(e.available, e.availBytes, opts.sizeMode)
+	case "pcent":
+		return e.usePercent
+	case "file":
+		return e.file
+	case "target":
+		return e.mountedOn
+	}
+	return ""
+}
+
+func getOutputHeaders(fields []string, mode sizeMode) []string {
+	h := make([]string, len(fields))
+	for i, f := range fields {
+		h[i] = outputHeader(f, mode)
+	}
+	return h
+}
+
+func getOutputAlignment(fields []string) []bool {
+	a := make([]bool, len(fields))
+	for i, f := range fields {
+		a[i] = outputRightAlign(f)
+	}
+	return a
+}
+
+func getOutputValues(e fsEntry, fields []string, opts options) []string {
+	vals := make([]string, len(fields))
+	for i, f := range fields {
+		vals[i] = outputValue(e, f, opts)
+	}
+	return vals
+}
+
+func computeRowWidths(headers []string, rows [][]string) []int {
+	w := make([]int, len(headers))
+	for i, h := range headers {
+		w[i] = len(h)
+	}
+	for _, row := range rows {
+		for i, col := range row {
+			if len(col) > w[i] {
+				w[i] = len(col)
+			}
+		}
+	}
+	return w
+}
+
+func printOutputTable(entries []fsEntry, opts options) {
+	fields := opts.outputFields
+	headers := getOutputHeaders(fields, opts.sizeMode)
+	align := getOutputAlignment(fields)
+	rows := make([][]string, len(entries))
+	for i, e := range entries {
+		rows[i] = getOutputValues(e, fields, opts)
+	}
+	w := computeRowWidths(headers, rows)
+	printLine(headers, w, align)
+	for _, row := range rows {
+		printLine(row, w, align)
 	}
 }
 
