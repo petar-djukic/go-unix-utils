@@ -5782,16 +5782,20 @@ requirements:
             issue: 5621
             weight: 1
         R2.5:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5622
             weight: 1
         R3.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5622
             weight: 1
         R3.2:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5622
             weight: 1
         R3.3:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5622
             weight: 1
         R3.4:
             status: proposed

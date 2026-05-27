@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5622"
+task_title: '[stitch] cmd/dircolors: implement srd109 R2.5, R3.1, R3.2, R3.3'
+status: success
+started_at: "2026-05-27T21:56:09Z"
+duration: 2m10s
+duration_s: 129
+tokens:
+    input: 359822
+    output: 3112
+    cache_creation: 235769
+    cache_read: 124045
+cost_usd: 1.8605957499999999
+num_turns: 14
+loc_before:
+    production: 30269
+    test: 24190
+loc_after:
+    production: 30269
+    test: 24238
+diff:
+    files: 2
+    insertions: 136
+    deletions: 0
