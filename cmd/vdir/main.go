@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd108-vdir R1.1-R1.4, R2.1-R2.4.
+// Implements srd108-vdir R1.1-R1.6, R2.1-R2.4.
 package main
 
 import (
@@ -204,7 +204,7 @@ func classifyPaths(paths []string, opts options) ([]fileEntry, []string, int) {
 		fi, err := sys.Lstat(p)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "vdir: cannot access '%s': %s\n", p, sysErrMsg(err))
-			exitCode = 2
+			exitCode = 1
 			continue
 		}
 		if fi.Mode.IsDir() && !opts.dirAsEntry {
