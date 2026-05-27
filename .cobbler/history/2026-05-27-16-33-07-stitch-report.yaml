@@ -1,0 +1,23 @@
+task_id: "5611"
+task_title: '[stitch] cmd/dir: test srd107 R2.4'
+status: success
+branch: task/generation-run44-5611
+diff:
+    files: 2
+    insertions: 210
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-27-16-32-56-stitch-orchestrator.log
+      status: M
+      insertions: 195
+      deletions: 0
+    - path: cmd/dir/dir_test.go
+      status: M
+      insertions: 16
+      deletions: 0
+loc_before:
+    production: 28971
+    test: 23820
+loc_after:
+    production: 28971
+    test: 23836
