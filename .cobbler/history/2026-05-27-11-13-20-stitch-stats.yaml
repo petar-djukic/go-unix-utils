@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5595"
+task_title: '[stitch] cmd/shred srd099-shred R3.1, R3.2, R3.3 (implementation)'
+status: success
+started_at: "2026-05-27T15:13:20Z"
+duration: 1m7s
+duration_s: 66
+tokens:
+    input: 264800
+    output: 683
+    cache_creation: 216917
+    cache_read: 47877
+cost_usd: 1.777011
+num_turns: 7
+rate_limit_wait_s: 3
+loc_before:
+    production: 27575
+    test: 23072
+loc_after:
+    production: 27575
+    test: 23072
+diff:
+    files: 1
+    insertions: 74
+    deletions: 0
