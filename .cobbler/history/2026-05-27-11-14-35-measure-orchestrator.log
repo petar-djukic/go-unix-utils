@@ -131,3 +131,29 @@
 [2026-05-27T11:18:45-04:00] [generation-run44] [measure +4m10s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-27T11:18:45-04:00] [generation-run44] [measure +4m10s] transitionRequirements: marked 3 R-items as proposed
 [2026-05-27T11:18:45-04:00] [generation-run44] [measure +4m10s] transitionRequirements: marked 4 R-items as proposed
+[2026-05-27T11:18:45-04:00] [generation-run44] [measure +4m10s] importIssues: creating task 0: cmd/tsort: core sort and I/O (srd102 R1.1-R1.4) (dep=-1)
+[2026-05-27T11:18:46-04:00] [generation-run44] [measure +4m11s] importIssues: createCobblerIssue failed for "cmd/tsort: core sort and I/O (srd102 R1.1-R1.4)": gh issue create: exit status 1
+[2026-05-27T11:18:46-04:00] [generation-run44] [measure +4m11s] importIssues: creating task 1: cmd/tsort: error handling and cycles (srd102 R2.1-R2.3) (dep=0)
+[2026-05-27T11:18:47-04:00] [generation-run44] [measure +4m12s] importIssues: createCobblerIssue failed for "cmd/tsort: error handling and cycles (srd102 R2.1-R2.3)": gh issue create: exit status 1
+[2026-05-27T11:18:47-04:00] [generation-run44] [measure +4m12s] importIssues: creating task 2: cmd/tsort: differential tests (srd102 R1.1-R2.3) (dep=1)
+[2026-05-27T11:18:49-04:00] [generation-run44] [measure +4m14s] createCobblerIssue: created #5597 "[measure] cmd/tsort: differential tests (srd102 R1.1-R2.3)" gen=generation-run44 index=2 dep=1
+[2026-05-27T11:18:49-04:00] [generation-run44] [measure +4m14s] importIssues: creating task 3: cmd/pathchk: pathname validation core (srd103 R1.1-R1.4) (dep=-1)
+[2026-05-27T11:18:50-04:00] [generation-run44] [measure +4m16s] createCobblerIssue: created #5598 "[measure] cmd/pathchk: pathname validation core (srd103 R1.1-R1.4)" gen=generation-run44 index=3 dep=-1
+[2026-05-27T11:18:51-04:00] [generation-run44] [measure +4m16s] waitForIssuesVisible: 0/2 visible, retrying...
+[2026-05-27T11:18:52-04:00] [generation-run44] [measure +4m18s] waitForIssuesVisible: 0/2 visible, retrying...
+[2026-05-27T11:18:54-04:00] [generation-run44] [measure +4m19s] waitForIssuesVisible: 0/2 visible, retrying...
+[2026-05-27T11:18:57-04:00] [generation-run44] [measure +4m22s] promoteReadyIssues: add ready label to #5598: exit status 1
+[2026-05-27T11:18:58-04:00] [generation-run44] [measure +4m23s] promoteReadyIssues: add ready label to #5597: exit status 1
+[2026-05-27T11:18:58-04:00] [generation-run44] [measure +4m23s] importIssues: 2 of 4 issue(s) imported
+[2026-05-27T11:18:58-04:00] [generation-run44] [measure +4m23s] appendMeasureLog: 429 total issues in .cobbler/measure.yaml
+[2026-05-27T11:18:58-04:00] [generation-run44] [measure +4m23s] iteration 1 imported 2 issue(s)
+[2026-05-27T11:18:59-04:00] [generation-run44] [measure +4m24s] finalizeMeasurePlaceholder: edit title #5596 warning: exit status 1
+[2026-05-27T11:19:02-04:00] [generation-run44] [measure +4m28s] linkSubIssue: linked #5597 as sub-issue of #5596
+[2026-05-27T11:19:04-04:00] [generation-run44] [measure +4m29s] finalizeMeasurePlaceholder: linkSubIssue #5598 -> #5596 warning: linking #5598 as sub-issue of #5596: exit status 1 (output: {
+  "message": "Requires authentication",
+  "documentation_url": "https://docs.github.com/rest",
+  "status": "401"
+}gh: Requires authentication (HTTP 401))
+[2026-05-27T11:19:06-04:00] [generation-run44] [measure +4m31s] closeMeasuringPlaceholder: close #5596 warning: exit status 1
+[2026-05-27T11:19:06-04:00] [generation-run44] [measure +4m31s] finalizeMeasurePlaceholder: finalized #5596 with 2 child issue(s)
+[2026-05-27T11:19:06-04:00] [generation-run44] [measure +4m31s] completed 1 iteration(s), 2 issue(s) created in 4m31s

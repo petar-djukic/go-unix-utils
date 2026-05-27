@@ -1,0 +1,24 @@
+[2026-05-27T11:19:08-04:00] [generation-run44] [stitch +0s] starting (limit=1)
+[2026-05-27T11:19:08-04:00] [generation-run44] [stitch +0s] stitch config: silence=true stitchTotal=0 stitchPerCycle=1 measure=4 generationBranch=""
+[2026-05-27T11:19:08-04:00] [generation-run44] [stitch +0s] resolved branch=generation-run44
+[2026-05-27T11:19:08-04:00] [generation-run44] [stitch +0s] repoRoot=/Users/pdiddy/COBBLER/generation-run44
+[2026-05-27T11:19:09-04:00] [generation-run44] [stitch +0s] using GitHub repo petar-djukic/go-unix-utils generation generation-run44 for issues
+[2026-05-27T11:19:09-04:00] [generation-run44] [stitch +1s] worktreeBase=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees
+[2026-05-27T11:19:09-04:00] [generation-run44] [stitch +1s] baseBranch=generation-run44
+[2026-05-27T11:19:09-04:00] [generation-run44] [stitch +1s] recovering stale tasks
+[2026-05-27T11:19:09-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for stale branches with pattern task/generation-run44-*
+[2026-05-27T11:19:09-04:00] [generation-run44] [stitch +1s] recoverStaleBranches: no stale branches found
+[2026-05-27T11:19:09-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for orphaned in_progress issues
+[2026-05-27T11:19:10-04:00] [generation-run44] [stitch +2s] recoverStaleTasks: pruning worktrees
+[2026-05-27T11:19:10-04:00] [generation-run44] [stitch +2s] recoverStaleTasks: no stale state found
+[2026-05-27T11:19:10-04:00] [generation-run44] [stitch +2s] looking for next ready task (completed 0 so far)
+[2026-05-27T11:19:10-04:00] [generation-run44] [stitch +2s] pickTask: calling pickReadyIssue repo=petar-djukic/go-unix-utils generation=generation-run44
+[2026-05-27T11:19:22-04:00] [generation-run44] [stitch +14s] pickReadyIssue: picked #5596 "[measuring] generation-run44 task 0" gen=generation-run44
+[2026-05-27T11:19:22-04:00] [generation-run44] [stitch +14s] pickTask: description validation warning: not valid YAML: yaml: unmarshal errors:
+  line 1: cannot unmarshal !!str `Cobbler...` into map[string]interface {}
+[2026-05-27T11:19:22-04:00] [generation-run44] [stitch +14s] pickTask: picked #5596 id=5596 branch=task/generation-run44-5596 worktree=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5596
+[2026-05-27T11:19:22-04:00] [generation-run44] [stitch +14s] pickTask: title="[measuring] generation-run44 task 0"
+[2026-05-27T11:19:22-04:00] [generation-run44] [stitch +14s] pickTask: descriptionLen=149
+[2026-05-27T11:19:22-04:00] [generation-run44] [stitch +14s] executing task 1: id=5596 title="[measuring] generation-run44 task 0"
+[2026-05-27T11:19:22-04:00] [generation-run44] [stitch +14s] doOneTask: starting task 5596 ([measuring] generation-run44 task 0)
+[2026-05-27T11:19:22-04:00] [generation-run44] [stitch +14s] doOneTask: task #5596 claimed via pickReadyIssue label
