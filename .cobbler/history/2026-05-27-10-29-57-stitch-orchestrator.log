@@ -151,3 +151,9 @@
 [2026-05-27T10:36:38-04:00] [generation-run44] [stitch +6m40s] doOneTask: closing task 5584
 [2026-05-27T10:36:38-04:00] [generation-run44] [stitch +6m40s] closeStitchTask: closing #5584 "[stitch] cmd/who differential tests -- srd097-who"
 [2026-05-27T10:36:39-04:00] [generation-run44] [stitch +6m42s] commentCobblerIssue: posted comment on #5584
+[2026-05-27T10:36:43-04:00] [generation-run44] [stitch +6m46s] closeCobblerIssue: closed #5584
+[2026-05-27T10:36:46-04:00] [generation-run44] [stitch +6m48s] closeStitchTask: #5584 closed
+[2026-05-27T10:36:47-04:00] [generation-run44] [stitch +6m49s] doOneTask: task 5584 finished in 6m39s
+[2026-05-27T10:36:47-04:00] [generation-run44] [stitch +6m49s] task 5584 completed in 6m39s
+[2026-05-27T10:36:47-04:00] [generation-run44] [stitch +6m49s] reached per-cycle limit (1), pausing for measure
+[2026-05-27T10:36:47-04:00] [generation-run44] [stitch +6m49s] completed 1 task(s) in 6m49s
