@@ -1,0 +1,188 @@
+- index: 0
+  title: "cmd/df: implement srd106 R3.1, R3.2, R3.3, R3.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd106-df.yaml (SRD with requirement definitions for R3.1-R3.4)
+      - cmd/df/main.go (existing implementation covering R1.x and R2.x)
+      - cmd/df/df_test.go (existing differential tests)
+      - pkg/format/format.go (HumanSize and formatting helpers used by df)
+      - pkg/sys/stat.go (filesystem metadata abstractions)
+
+    files:
+      - path: cmd/df/main.go
+        action: modify
+        note: Add implementation for srd106-df requirements R3.1, R3.2, R3.3, R3.4
+      - path: cmd/df/df_test.go
+        action: modify
+        note: Add differential test cases covering R3.1, R3.2, R3.3, R3.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd106-df requirement R3.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd106-df requirement R3.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd106-df requirement R3.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd106-df requirement R3.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/df implementation -- do not rewrite code that already satisfies R1.x and R2.x requirements"
+      - id: D2
+        text: "Add differential tests using testutils.RunDiffTests comparing against the gdf reference binary from Homebrew coreutils"
+      - id: D3
+        text: "All differential tests must set LC_ALL=C in the environment to ensure output parity between Go and GNU binaries"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/df ./cmd/df/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/df/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/df/ -count=1 passes (skips gracefully if gdf not in PATH)"
+      - id: AC4
+        text: "Each of R3.1, R3.2, R3.3, R3.4 has at least one differential test case in df_test.go"
+
+- index: 1
+  title: "cmd/df: implement srd106 R3.5, R3.6, R3.7"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd106-df.yaml (SRD with requirement definitions for R3.5-R3.7)
+      - cmd/df/main.go (existing implementation including R3.1-R3.4 from prior task)
+      - cmd/df/df_test.go (existing differential tests)
+      - pkg/format/format.go (HumanSize and formatting helpers)
+
+    files:
+      - path: cmd/df/main.go
+        action: modify
+        note: Add implementation for srd106-df requirements R3.5, R3.6, R3.7
+      - path: cmd/df/df_test.go
+        action: modify
+        note: Add differential test cases covering R3.5, R3.6, R3.7
+
+    requirements:
+      - id: R1
+        text: "Implement srd106-df requirement R3.5 as specified in the SRD"
+      - id: R2
+        text: "Implement srd106-df requirement R3.6 as specified in the SRD"
+      - id: R3
+        text: "Implement srd106-df requirement R3.7 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/df implementation -- do not rewrite code that already satisfies R1.x through R3.4 requirements"
+      - id: D2
+        text: "Add differential tests using testutils.RunDiffTests comparing against the gdf reference binary from Homebrew coreutils"
+      - id: D3
+        text: "All differential tests must set LC_ALL=C in the environment to ensure output parity between Go and GNU binaries"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/df ./cmd/df/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/df/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/df/ -count=1 passes (skips gracefully if gdf not in PATH)"
+      - id: AC4
+        text: "Each of R3.5, R3.6, R3.7 has at least one differential test case in df_test.go"
+
+- index: 2
+  title: "cmd/df: implement srd106 R4.1, R4.2, R4.3"
+  dependency: 1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd106-df.yaml (SRD with requirement definitions for R4.1-R4.3)
+      - cmd/df/main.go (existing implementation including R3.1-R3.7 from prior tasks)
+      - cmd/df/df_test.go (existing differential tests)
+      - pkg/sys/stat.go (filesystem metadata abstractions)
+
+    files:
+      - path: cmd/df/main.go
+        action: modify
+        note: Add implementation for srd106-df requirements R4.1, R4.2, R4.3
+      - path: cmd/df/df_test.go
+        action: modify
+        note: Add differential test cases covering R4.1, R4.2, R4.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd106-df requirement R4.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd106-df requirement R4.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd106-df requirement R4.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/df implementation -- do not rewrite code that already satisfies R1.x through R3.7 requirements"
+      - id: D2
+        text: "Add differential tests using testutils.RunDiffTests comparing against the gdf reference binary from Homebrew coreutils"
+      - id: D3
+        text: "All differential tests must set LC_ALL=C in the environment to ensure output parity between Go and GNU binaries"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/df ./cmd/df/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/df/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/df/ -count=1 passes (skips gracefully if gdf not in PATH)"
+      - id: AC4
+        text: "Each of R4.1, R4.2, R4.3 has at least one differential test case in df_test.go"
+      - id: AC5
+        text: "All srd106-df ready requirements (R3.1 through R4.3) are now implemented and tested"
+
+- index: 3
+  title: "cmd/vdir: implement srd108 R2.3, R2.4"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd108-vdir.yaml (SRD with requirement definitions for R2.3-R2.4)
+      - cmd/vdir/main.go (existing implementation covering R1.1-R1.6, R2.1-R2.2)
+      - cmd/vdir/vdir_test.go (existing differential tests)
+      - cmd/ls/main.go (vdir is equivalent to ls -l -b and may share implementation patterns)
+
+    files:
+      - path: cmd/vdir/main.go
+        action: modify
+        note: Add implementation for srd108-vdir requirements R2.3 and R2.4
+      - path: cmd/vdir/vdir_test.go
+        action: modify
+        note: Add differential test cases covering R2.3 and R2.4
+
+    requirements:
+      - id: R1
+        text: "Implement srd108-vdir requirement R2.3 as specified in the SRD"
+      - id: R2
+        text: "Implement srd108-vdir requirement R2.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/vdir implementation -- do not rewrite code that already satisfies R1.1-R2.2 requirements"
+      - id: D2
+        text: "Add differential tests using testutils.RunDiffTests comparing against the gvdir reference binary from Homebrew coreutils"
+      - id: D3
+        text: "All differential tests must set LC_ALL=C in the environment to ensure output parity between Go and GNU binaries"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/vdir ./cmd/vdir/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/vdir/ reports no issues"
+      - id: AC3
+        text: "go test ./cmd/vdir/ -count=1 passes (skips gracefully if gvdir not in PATH)"
+      - id: AC4
+        text: "Each of R2.3 and R2.4 has at least one differential test case in vdir_test.go"
+      - id: AC5
+        text: "All srd108-vdir ready requirements (R2.3, R2.4) are now implemented and tested"

@@ -5631,34 +5631,34 @@ requirements:
             issue: 5607
             weight: 1
         R3.1:
-            status: ready
+            status: proposed
             weight: 1
         R3.2:
-            status: ready
+            status: proposed
             weight: 1
         R3.3:
-            status: ready
+            status: proposed
             weight: 1
         R3.4:
-            status: ready
+            status: proposed
             weight: 1
         R3.5:
-            status: ready
+            status: proposed
             weight: 1
         R3.6:
-            status: ready
+            status: proposed
             weight: 1
         R3.7:
-            status: ready
+            status: proposed
             weight: 1
         R4.1:
-            status: ready
+            status: proposed
             weight: 1
         R4.2:
-            status: ready
+            status: proposed
             weight: 1
         R4.3:
-            status: ready
+            status: proposed
             weight: 1
     srd107-dir:
         R1.1:
@@ -5731,10 +5731,10 @@ requirements:
             issue: 5613
             weight: 1
         R2.3:
-            status: ready
+            status: proposed
             weight: 1
         R2.4:
-            status: ready
+            status: proposed
             weight: 1
     srd109-dircolors:
         R1.1:
