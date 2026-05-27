@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5612"
+task_title: '[stitch] cmd/vdir: implement srd108 R1.1, R1.2, R1.3, R1.4'
+status: success
+started_at: "2026-05-27T20:37:02Z"
+duration: 18m6s
+duration_s: 1086
+tokens:
+    input: 1178326
+    output: 66770
+    cache_creation: 291931
+    cache_read: 886378
+cost_usd: 4.3862336
+num_turns: 53
+rate_limit_wait_s: 2
+loc_before:
+    production: 28971
+    test: 23836
+loc_after:
+    production: 29465
+    test: 23836
+diff:
+    files: 2
+    insertions: 690
+    deletions: 0
