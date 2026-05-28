@@ -5896,13 +5896,16 @@ requirements:
             weight: 1
     srd113-pee:
         R1.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5633
             weight: 1
         R1.2:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5633
             weight: 1
         R1.3:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5633
             weight: 1
         R2.1:
             status: ready
