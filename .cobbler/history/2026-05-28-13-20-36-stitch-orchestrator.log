@@ -137,3 +137,14 @@
 [2026-05-28T13:23:34-04:00] [generation-run44] [stitch +2m11s] closeStitchTask: closing #5636 "[stitch] cmd/vidir implementation (srd114-vidir R1.1, R1.2, R1.3, R1.4)"
 [2026-05-28T13:23:36-04:00] [generation-run44] [stitch +2m12s] commentCobblerIssue: posted comment on #5636
 [2026-05-28T13:23:36-04:00] [generation-run44] [stitch +2m12s] updateRequirementsFile: marked 4 R-items as complete_with_failures for issue #5636
+[2026-05-28T13:23:39-04:00] [generation-run44] [stitch +2m15s] closeCobblerIssue: closed #5636
+[2026-05-28T13:23:41-04:00] [generation-run44] [stitch +2m18s] closeStitchTask: #5636 closed
+[2026-05-28T13:23:42-04:00] [generation-run44] [stitch +2m18s] sweepCompletedTasks: all R-items for #5636 already complete, closing
+[2026-05-28T13:23:43-04:00] [generation-run44] [stitch +2m19s] commentCobblerIssue: posted comment on #5636
+[2026-05-28T13:23:44-04:00] [generation-run44] [stitch +2m21s] closeCobblerIssue: closed #5636
+[2026-05-28T13:25:57-04:00] [generation-run44] [stitch +2m51s] closeCobblerIssue: promoteReadyIssues warning: promoteReadyIssues: gh api repos issues: exit status 1
+[2026-05-28T13:25:57-04:00] [generation-run44] [stitch +2m51s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-28T13:25:57-04:00] [generation-run44] [stitch +2m51s] doOneTask: task 5636 finished in 2m44s
+[2026-05-28T13:25:57-04:00] [generation-run44] [stitch +2m51s] task 5636 completed in 2m44s
+[2026-05-28T13:25:57-04:00] [generation-run44] [stitch +2m51s] reached per-cycle limit (1), pausing for measure
+[2026-05-28T13:25:57-04:00] [generation-run44] [stitch +2m51s] completed 1 task(s) in 2m51s
