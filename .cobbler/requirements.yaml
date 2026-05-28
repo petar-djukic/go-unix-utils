@@ -5483,23 +5483,23 @@ requirements:
             issue: 5597
             weight: 1
         R1.2:
-            status: proposed
+            status: ready
             weight: 1
         R1.3:
-            status: proposed
+            status: ready
             weight: 1
         R1.4:
-            status: proposed
+            status: ready
             weight: 1
         R2.1:
             status: complete
             issue: 5597
             weight: 1
         R2.2:
-            status: proposed
+            status: ready
             weight: 1
         R2.3:
-            status: proposed
+            status: ready
             weight: 1
     srd103-pathchk:
         R1.1:
@@ -5798,10 +5798,10 @@ requirements:
             issue: 5622
             weight: 1
         R3.4:
-            status: in_progress
+            status: ready
             weight: 1
         R3.5:
-            status: in_progress
+            status: ready
             weight: 1
     srd110-pr:
         R1.1:
