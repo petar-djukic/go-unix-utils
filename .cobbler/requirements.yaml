@@ -5803,10 +5803,12 @@ requirements:
             issue: 5622
             weight: 1
         R3.4:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5630
             weight: 1
         R3.5:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5630
             weight: 1
     srd110-pr:
         R1.1:
