@@ -708,7 +708,7 @@ code_status:
               testfiles: 0
             - id: rel14.0-uc003-vidir
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
         - version: "15.0"

@@ -224,16 +224,16 @@ requirements:
             weight: 1
     srd004-ts:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R1.2:
-            status: ready
+            status: proposed
             weight: 1
         R1.3:
-            status: ready
+            status: proposed
             weight: 1
         R1.4:
-            status: ready
+            status: proposed
             weight: 1
         R1.5:
             status: ready
@@ -5570,7 +5570,7 @@ requirements:
             weight: 1
     srd105-stty:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
             status: ready
@@ -5812,7 +5812,7 @@ requirements:
             weight: 1
     srd110-pr:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
             status: ready
@@ -5843,7 +5843,7 @@ requirements:
             weight: 1
     srd111-ptx:
         R1.1:
-            status: ready
+            status: proposed
             weight: 1
         R2.1:
             status: ready
