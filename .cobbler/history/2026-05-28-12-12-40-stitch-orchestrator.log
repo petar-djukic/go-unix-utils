@@ -329,3 +329,13 @@ TMP=$(mktemp); echo 'a b b c' > "$TMP"; ./bin/tsort "$TMP"; ...
 [2026-05-28T12:32:47-04:00] [generation-run44] [stitch +20m7s] closeStitchTask: closing #5625 "[stitch] cmd/tsort implementation (srd102-tsort R1.2, R1.3, R1.4)"
 [2026-05-28T12:32:48-04:00] [generation-run44] [stitch +20m8s] commentCobblerIssue: posted comment on #5625
 [2026-05-28T12:32:48-04:00] [generation-run44] [stitch +20m8s] updateRequirementsFile: marked 3 R-items as complete_with_failures for issue #5625
+[2026-05-28T12:32:51-04:00] [generation-run44] [stitch +20m11s] closeCobblerIssue: closed #5625
+[2026-05-28T12:32:54-04:00] [generation-run44] [stitch +20m14s] closeStitchTask: #5625 closed
+[2026-05-28T12:32:54-04:00] [generation-run44] [stitch +20m14s] sweepCompletedTasks: all R-items for #5627 already complete, closing
+[2026-05-28T12:32:55-04:00] [generation-run44] [stitch +20m16s] commentCobblerIssue: posted comment on #5627
+[2026-05-28T12:32:58-04:00] [generation-run44] [stitch +20m18s] closeCobblerIssue: closed #5627
+[2026-05-28T12:33:00-04:00] [generation-run44] [stitch +20m20s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-28T12:33:00-04:00] [generation-run44] [stitch +20m20s] doOneTask: task 5625 finished in 20m13s
+[2026-05-28T12:33:00-04:00] [generation-run44] [stitch +20m20s] task 5625 completed in 20m13s
+[2026-05-28T12:33:00-04:00] [generation-run44] [stitch +20m20s] reached per-cycle limit (1), pausing for measure
+[2026-05-28T12:33:00-04:00] [generation-run44] [stitch +20m20s] completed 1 task(s) in 20m20s
