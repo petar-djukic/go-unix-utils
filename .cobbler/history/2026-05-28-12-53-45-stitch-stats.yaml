@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5632"
+task_title: '[stitch] cmd/chronic differential tests (srd112-chronic R2.1, R2.2, R2.3)'
+status: success
+started_at: "2026-05-28T16:53:45Z"
+duration: 10m3s
+duration_s: 603
+tokens:
+    input: 691880
+    output: 24155
+    cache_creation: 250695
+    cache_read: 441169
+cost_usd: 2.6408276499999994
+num_turns: 40
+loc_before:
+    production: 30570
+    test: 24358
+loc_after:
+    production: 30570
+    test: 24420
+diff:
+    files: 2
+    insertions: 231
+    deletions: 0
