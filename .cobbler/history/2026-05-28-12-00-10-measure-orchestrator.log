@@ -131,3 +131,24 @@
 [2026-05-28T12:06:00-04:00] [generation-run44] [measure +5m49s] validateMeasureOutput: [3] "cmd/tsort differential tests (srd102-tsort R2.2, R2.3)": file cmd/tsort/tsort_test.go matches package name (P7 violation)
 [2026-05-28T12:06:04-04:00] [generation-run44] [measure +5m54s] transitionRequirements: marked 3 R-items as proposed
 [2026-05-28T12:06:04-04:00] [generation-run44] [measure +5m54s] transitionRequirements: marked 2 R-items as proposed
+[2026-05-28T12:06:04-04:00] [generation-run44] [measure +5m54s] importIssues: creating task 0: cmd/tsort implementation (srd102-tsort R1.2, R1.3, R1.4) (dep=-1)
+[2026-05-28T12:06:06-04:00] [generation-run44] [measure +5m55s] createCobblerIssue: created #5625 "[measure] cmd/tsort implementation (srd102-tsort R1.2, R1.3, R1.4)" gen=generation-run44 index=0 dep=-1
+[2026-05-28T12:06:06-04:00] [generation-run44] [measure +5m55s] importIssues: creating task 1: cmd/tsort implementation (srd102-tsort R2.2, R2.3) (dep=0)
+[2026-05-28T12:06:07-04:00] [generation-run44] [measure +5m57s] createCobblerIssue: created #5626 "[measure] cmd/tsort implementation (srd102-tsort R2.2, R2.3)" gen=generation-run44 index=1 dep=0
+[2026-05-28T12:06:07-04:00] [generation-run44] [measure +5m57s] importIssues: creating task 2: cmd/tsort differential tests (srd102-tsort R1.2, R1.3, R1.4) (dep=1)
+[2026-05-28T12:06:09-04:00] [generation-run44] [measure +5m59s] createCobblerIssue: created #5627 "[measure] cmd/tsort differential tests (srd102-tsort R1.2, R1.3, R1.4)" gen=generation-run44 index=2 dep=1
+[2026-05-28T12:06:09-04:00] [generation-run44] [measure +5m59s] importIssues: creating task 3: cmd/tsort differential tests (srd102-tsort R2.2, R2.3) (dep=2)
+[2026-05-28T12:06:10-04:00] [generation-run44] [measure +6m0s] createCobblerIssue: created #5628 "[measure] cmd/tsort differential tests (srd102-tsort R2.2, R2.3)" gen=generation-run44 index=3 dep=2
+[2026-05-28T12:06:11-04:00] [generation-run44] [measure +6m0s] waitForIssuesVisible: 2/4 visible, retrying...
+[2026-05-28T12:06:12-04:00] [generation-run44] [measure +6m2s] waitForIssuesVisible: 2/4 visible, retrying...
+[2026-05-28T12:06:14-04:00] [generation-run44] [measure +6m3s] waitForIssuesVisible: 2/4 visible, retrying...
+[2026-05-28T12:06:18-04:00] [generation-run44] [measure +6m7s] importIssues: 4 of 4 issue(s) imported
+[2026-05-28T12:06:18-04:00] [generation-run44] [measure +6m7s] appendMeasureLog: 453 total issues in .cobbler/measure.yaml
+[2026-05-28T12:06:18-04:00] [generation-run44] [measure +6m7s] iteration 1 imported 4 issue(s)
+[2026-05-28T12:06:22-04:00] [generation-run44] [measure +6m12s] linkSubIssue: linked #5625 as sub-issue of #5624
+[2026-05-28T12:06:23-04:00] [generation-run44] [measure +6m13s] linkSubIssue: linked #5626 as sub-issue of #5624
+[2026-05-28T12:06:25-04:00] [generation-run44] [measure +6m14s] linkSubIssue: linked #5627 as sub-issue of #5624
+[2026-05-28T12:06:26-04:00] [generation-run44] [measure +6m15s] linkSubIssue: linked #5628 as sub-issue of #5624
+[2026-05-28T12:06:28-04:00] [generation-run44] [measure +6m18s] closeMeasuringPlaceholder: closed #5624
+[2026-05-28T12:06:28-04:00] [generation-run44] [measure +6m18s] finalizeMeasurePlaceholder: finalized #5624 with 4 child issue(s)
+[2026-05-28T12:06:28-04:00] [generation-run44] [measure +6m18s] completed 1 iteration(s), 4 issue(s) created in 6m18s

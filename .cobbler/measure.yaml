@@ -20710,3 +20710,156 @@
       - id: AC5
         text: "All 15 srd109 requirements (R1.1-R1.4, R2.1-R2.5, R3.1-R3.5) are now implemented and tested across all four tasks"
   dependency: 2
+- index: 0
+  title: cmd/tsort implementation (srd102-tsort R1.2, R1.3, R1.4)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd102-tsort.yaml (requirements R1.2, R1.3, R1.4)
+      - cmd/tsort/main.go (existing implementation from completed requirements R1.1 and R2.1)
+      - pkg/sys/ (InstallSIGPIPEHandler pattern)
+
+    files:
+      - path: cmd/tsort/main.go
+        action: modify
+        note: "Extend tsort implementation to cover requirements R1.2, R1.3, R1.4"
+
+    requirements:
+      - id: R1
+        text: "Implement srd102-tsort requirement R1.2 as specified in the SRD"
+      - id: R2
+        text: "Implement srd102-tsort requirement R1.3 as specified in the SRD"
+      - id: R3
+        text: "Implement srd102-tsort requirement R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/tsort/main.go -- do not rewrite code from previously completed requirements (R1.1, R2.1)"
+      - id: D2
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project convention"
+      - id: D3
+        text: "Build with: go build -o bin/tsort ./cmd/tsort/"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/tsort ./cmd/tsort/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/tsort/ reports no issues"
+      - id: AC3
+        text: "All behaviors specified in srd102-tsort R1.2, R1.3, R1.4 are implemented in cmd/tsort/main.go"
+  dependency: -1
+- index: 1
+  title: cmd/tsort implementation (srd102-tsort R2.2, R2.3)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd102-tsort.yaml (requirements R2.2, R2.3)
+      - cmd/tsort/main.go (existing implementation including R1.x requirements)
+
+    files:
+      - path: cmd/tsort/main.go
+        action: modify
+        note: "Add R2.2 and R2.3 functionality to tsort"
+
+    requirements:
+      - id: R1
+        text: "Implement srd102-tsort requirement R2.2 as specified in the SRD"
+      - id: R2
+        text: "Implement srd102-tsort requirement R2.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing cmd/tsort/main.go -- do not rewrite code from previously completed requirements"
+      - id: D2
+        text: "Build with: go build -o bin/tsort ./cmd/tsort/"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/tsort ./cmd/tsort/ compiles without errors"
+      - id: AC2
+        text: "go vet ./cmd/tsort/ reports no issues"
+      - id: AC3
+        text: "All behaviors specified in srd102-tsort R2.2, R2.3 are implemented in cmd/tsort/main.go"
+  dependency: 0
+- index: 2
+  title: cmd/tsort differential tests (srd102-tsort R1.2, R1.3, R1.4)
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd102-tsort.yaml (requirements R1.2, R1.3, R1.4 for test case design)
+      - cmd/tsort/main.go (implementation under test)
+      - cmd/tsort/tsort_test.go (existing test file if present)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest struct)
+
+    files:
+      - path: cmd/tsort/tsort_test.go
+        action: modify
+        note: "Add differential test cases covering R1.2, R1.3, R1.4 behaviors"
+
+    requirements:
+      - id: R1
+        text: "Add differential test cases exercising srd102-tsort R1.2 behaviors against the GNU gtsort reference binary"
+      - id: R2
+        text: "Add differential test cases exercising srd102-tsort R1.3 behaviors against the GNU gtsort reference binary"
+      - id: R3
+        text: "Add differential test cases exercising srd102-tsort R1.4 behaviors against the GNU gtsort reference binary"
+
+    design_decisions:
+      - id: D1
+        text: "Use testutils.BuildBinary(t, \".\") to compile cmd/tsort and exec.LookPath(\"gtsort\") for the reference binary"
+      - id: D2
+        text: "Call t.Skip if gtsort is not found in PATH per project convention"
+      - id: D3
+        text: "Define test cases as []testutils.DiffTest and pass to testutils.RunDiffTests"
+      - id: D4
+        text: "Set LC_ALL=C in test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/tsort/ -count=1 passes when gtsort is available, or skips gracefully when it is not"
+      - id: AC2
+        text: "Test cases cover all behaviors specified in srd102-tsort R1.2, R1.3, R1.4"
+      - id: AC3
+        text: "Tests follow the differential testing pattern: BuildBinary, LookPath, RunDiffTests"
+  dependency: 1
+- index: 3
+  title: cmd/tsort differential tests (srd102-tsort R2.2, R2.3)
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd102-tsort.yaml (requirements R2.2, R2.3 for test case design)
+      - cmd/tsort/main.go (implementation under test)
+      - cmd/tsort/tsort_test.go (existing test file with R1.x test cases)
+      - pkg/testutils/ (RunDiffTests, BuildBinary, DiffTest struct)
+
+    files:
+      - path: cmd/tsort/tsort_test.go
+        action: modify
+        note: "Add differential test cases covering R2.2, R2.3 behaviors"
+
+    requirements:
+      - id: R1
+        text: "Add differential test cases exercising srd102-tsort R2.2 behaviors against the GNU gtsort reference binary"
+      - id: R2
+        text: "Add differential test cases exercising srd102-tsort R2.3 behaviors against the GNU gtsort reference binary"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing TestDiff function with new DiffTest entries -- do not create a separate test function"
+      - id: D2
+        text: "Use testutils.BuildBinary(t, \".\") and exec.LookPath(\"gtsort\") following the existing pattern in the file"
+      - id: D3
+        text: "Set LC_ALL=C in test environment per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go test ./cmd/tsort/ -count=1 passes when gtsort is available, or skips gracefully when it is not"
+      - id: AC2
+        text: "Test cases cover all behaviors specified in srd102-tsort R2.2, R2.3"
+      - id: AC3
+        text: "New test cases integrate with existing test cases without duplication or conflict"
+  dependency: 2
