@@ -21179,3 +21179,150 @@
       - id: AC5
         text: "All test cases from srd114-vidir R2.1 and R2.2 are present as DiffTest entries"
   dependency: 1
+- index: 0
+  title: '[stitch] cmd/pr implementation (srd110-pr R1.1)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd110-pr.yaml (full SRD for pr -- read all requirements, implement only R1.1)
+      - pkg/sys/sigpipe.go (SIGPIPE handler pattern -- call sys.InstallSIGPIPEHandler() at start of main)
+      - cmd/nl/main.go (reference implementation of a text-processing cmd/ utility)
+
+    files:
+      - path: cmd/pr/main.go
+        action: create
+        note: "pr utility -- paginate text files with headers, page numbers, and multi-column layout"
+
+    requirements:
+      - id: R1
+        text: "Implement srd110-pr requirement R1.1 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main to match GNU behavior when piped to consumers that close stdin early"
+      - id: D2
+        text: "Build target: go build -o bin/pr ./cmd/pr/"
+      - id: D3
+        text: "Import github.com/petar-djukic/go-unix-utils/pkg/sys for SIGPIPE handling"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/pr/main.go compiles without errors: go build -o bin/pr ./cmd/pr/"
+      - id: AC2
+        text: "go vet ./cmd/pr/... passes with no warnings"
+      - id: AC3
+        text: "All behaviors specified in srd110-pr R1.1 are implemented"
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/ptx implementation (srd111-ptx R1.1)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd111-ptx.yaml (full SRD for ptx -- read all requirements, implement only R1.1)
+      - pkg/sys/sigpipe.go (SIGPIPE handler pattern -- call sys.InstallSIGPIPEHandler() at start of main)
+      - cmd/fmt/main.go (reference implementation of a text-processing cmd/ utility)
+
+    files:
+      - path: cmd/ptx/main.go
+        action: create
+        note: "ptx utility -- produce a permuted keyword-in-context index"
+
+    requirements:
+      - id: R1
+        text: "Implement srd111-ptx requirement R1.1 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main to match GNU behavior when piped to consumers that close stdin early"
+      - id: D2
+        text: "Build target: go build -o bin/ptx ./cmd/ptx/"
+      - id: D3
+        text: "Import github.com/petar-djukic/go-unix-utils/pkg/sys for SIGPIPE handling"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ptx/main.go compiles without errors: go build -o bin/ptx ./cmd/ptx/"
+      - id: AC2
+        text: "go vet ./cmd/ptx/... passes with no warnings"
+      - id: AC3
+        text: "All behaviors specified in srd111-ptx R1.1 are implemented"
+  dependency: -1
+- index: 2
+  title: '[stitch] cmd/stty implementation (srd105-stty R1.1)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd105-stty.yaml (full SRD for stty -- read all requirements, implement only R1.1)
+      - pkg/sys/sigpipe.go (SIGPIPE handler pattern -- call sys.InstallSIGPIPEHandler() at start of main)
+      - pkg/sys/terminal.go (terminal query functions -- IsTerminal, TerminalWidth)
+      - cmd/tty/main.go (reference implementation of a terminal-related cmd/ utility)
+
+    files:
+      - path: cmd/stty/main.go
+        action: create
+        note: "stty utility -- print and change terminal line settings via termios"
+
+    requirements:
+      - id: R1
+        text: "Implement srd105-stty requirement R1.1 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main to match GNU behavior when piped to consumers that close stdin early"
+      - id: D2
+        text: "Build target: go build -o bin/stty ./cmd/stty/"
+      - id: D3
+        text: "Import github.com/petar-djukic/go-unix-utils/pkg/sys for SIGPIPE handling and terminal operations"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/stty/main.go compiles without errors: go build -o bin/stty ./cmd/stty/"
+      - id: AC2
+        text: "go vet ./cmd/stty/... passes with no warnings"
+      - id: AC3
+        text: "All behaviors specified in srd105-stty R1.1 are implemented"
+  dependency: -1
+- index: 3
+  title: '[stitch] cmd/ts implementation (srd004-ts R1.1, R1.2, R1.3, R1.4)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd004-ts.yaml (full SRD for ts -- read all requirements, implement only R1.1 through R1.4)
+      - pkg/sys/sigpipe.go (SIGPIPE handler pattern -- call sys.InstallSIGPIPEHandler() at start of main)
+      - cmd/chronic/main.go (reference implementation of a moreutils cmd/ utility)
+
+    files:
+      - path: cmd/ts/main.go
+        action: create
+        note: "ts utility -- timestamp stdin lines with multiple modes including relative-time conversion"
+
+    requirements:
+      - id: R1
+        text: "Implement srd004-ts requirement R1.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd004-ts requirement R1.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd004-ts requirement R1.3 as specified in the SRD"
+      - id: R4
+        text: "Implement srd004-ts requirement R1.4 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main to match GNU behavior when piped to consumers that close stdin early"
+      - id: D2
+        text: "Build target: go build -o bin/ts ./cmd/ts/"
+      - id: D3
+        text: "Import github.com/petar-djukic/go-unix-utils/pkg/sys for SIGPIPE handling"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "cmd/ts/main.go compiles without errors: go build -o bin/ts ./cmd/ts/"
+      - id: AC2
+        text: "go vet ./cmd/ts/... passes with no warnings"
+      - id: AC3
+        text: "All behaviors specified in srd004-ts R1.1, R1.2, R1.3, and R1.4 are implemented"
+  dependency: -1

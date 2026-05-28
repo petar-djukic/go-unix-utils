@@ -5812,7 +5812,7 @@ requirements:
             weight: 1
     srd110-pr:
         R1.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R2.1:
             status: ready
