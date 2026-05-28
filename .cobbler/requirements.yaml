@@ -5483,13 +5483,13 @@ requirements:
             issue: 5597
             weight: 1
         R1.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R1.3:
-            status: proposed
+            status: in_progress
             weight: 1
         R1.4:
-            status: proposed
+            status: in_progress
             weight: 1
         R2.1:
             status: complete
