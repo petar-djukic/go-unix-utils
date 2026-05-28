@@ -1,0 +1,27 @@
+task_id: "5628"
+task_title: '[stitch] cmd/tsort differential tests (srd102-tsort R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5628
+diff:
+    files: 3
+    insertions: 168
+    deletions: 1
+files:
+    - path: .cobbler/history/2026-05-28-12-34-34-stitch-orchestrator.log
+      status: M
+      insertions: 132
+      deletions: 0
+    - path: cmd/tsort/main.go
+      status: M
+      insertions: 2
+      deletions: 1
+    - path: cmd/tsort/tsort_test.go
+      status: M
+      insertions: 35
+      deletions: 0
+loc_before:
+    production: 30471
+    test: 24302
+loc_after:
+    production: 30472
+    test: 24337
