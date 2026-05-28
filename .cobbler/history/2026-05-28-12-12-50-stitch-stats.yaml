@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5625"
+task_title: '[stitch] cmd/tsort implementation (srd102-tsort R1.2, R1.3, R1.4)'
+status: success
+started_at: "2026-05-28T16:12:50Z"
+duration: 20m0s
+duration_s: 1199
+tokens:
+    input: 2139089
+    output: 63561
+    cache_creation: 296592
+    cache_read: 1842460
+cost_usd: 4.550915250000001
+num_turns: 85
+loc_before:
+    production: 30269
+    test: 24302
+loc_after:
+    production: 30471
+    test: 24302
+diff:
+    files: 2
+    insertions: 497
+    deletions: 0
