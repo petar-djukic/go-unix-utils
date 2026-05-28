@@ -224,16 +224,20 @@ requirements:
             weight: 1
     srd004-ts:
         R1.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5642
             weight: 1
         R1.2:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5642
             weight: 1
         R1.3:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5642
             weight: 1
         R1.4:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5642
             weight: 1
         R1.5:
             status: ready
