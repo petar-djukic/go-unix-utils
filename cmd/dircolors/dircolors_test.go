@@ -4,6 +4,7 @@
 package main_test
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -212,6 +213,38 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"--sh", "-"},
 			Stdin: []byte("DIR 01;34\n"),
 		},
+		{
+			Name:      "R3.4 exit 1 file not found",
+			Args:      []string{"--sh", "/nonexistent/path/to/colors.db"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "R3.4 exit 1 extension missing value",
+			Args:      []string{"--sh", "-"},
+			Stdin:     []byte(".tar\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "R3.4 exit 1 TERM missing value",
+			Args:      []string{"--sh", "-"},
+			Stdin:     []byte("TERM\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "R3.4 exit 1 extra operands",
+			Args:      []string{"file1", "file2"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "R3.4 exit 1 invalid option",
+			Args:      []string{"--invalid-flag"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
@@ -231,4 +264,35 @@ func TestDiff(t *testing.T) {
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, fileTests)
+}
+
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(goBin, "--print-database")
+	cmd.Stdout = pw
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		pr.Close()
+		pw.Close()
+		t.Fatal(err)
+	}
+	pw.Close()
+
+	buf := make([]byte, 1)
+	_, _ = pr.Read(buf)
+	pr.Close()
+
+	_ = cmd.Wait()
+
+	if stderr.Len() > 0 {
+		t.Errorf("R3.5 SIGPIPE produced stderr: %s", stderr.String())
+	}
 }
