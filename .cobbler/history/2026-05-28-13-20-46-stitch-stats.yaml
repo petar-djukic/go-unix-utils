@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5636"
+task_title: '[stitch] cmd/vidir implementation (srd114-vidir R1.1, R1.2, R1.3, R1.4)'
+status: success
+started_at: "2026-05-28T17:20:46Z"
+duration: 2m4s
+duration_s: 123
+tokens:
+    input: 465634
+    output: 4022
+    cache_creation: 230025
+    cache_read: 235596
+cost_usd: 1.84326825
+num_turns: 19
+loc_before:
+    production: 30664
+    test: 24520
+loc_after:
+    production: 30911
+    test: 24520
+diff:
+    files: 2
+    insertions: 350
+    deletions: 0
