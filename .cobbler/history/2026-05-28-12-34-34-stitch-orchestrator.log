@@ -163,3 +163,9 @@
 [2026-05-28T12:38:19-04:00] [generation-run44] [stitch +3m45s] doOneTask: closing task 5628
 [2026-05-28T12:38:19-04:00] [generation-run44] [stitch +3m45s] closeStitchTask: closing #5628 "[stitch] cmd/tsort differential tests (srd102-tsort R2.2, R2.3)"
 [2026-05-28T12:38:20-04:00] [generation-run44] [stitch +3m46s] commentCobblerIssue: posted comment on #5628
+[2026-05-28T12:38:23-04:00] [generation-run44] [stitch +3m49s] closeCobblerIssue: closed #5628
+[2026-05-28T12:38:25-04:00] [generation-run44] [stitch +3m51s] closeStitchTask: #5628 closed
+[2026-05-28T12:38:26-04:00] [generation-run44] [stitch +3m52s] doOneTask: task 5628 finished in 3m45s
+[2026-05-28T12:38:26-04:00] [generation-run44] [stitch +3m52s] task 5628 completed in 3m45s
+[2026-05-28T12:38:26-04:00] [generation-run44] [stitch +3m52s] reached per-cycle limit (1), pausing for measure
+[2026-05-28T12:38:26-04:00] [generation-run44] [stitch +3m52s] completed 1 task(s) in 3m52s
