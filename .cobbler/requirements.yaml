@@ -5908,10 +5908,10 @@ requirements:
             issue: 5633
             weight: 1
         R2.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R2.2:
-            status: proposed
+            status: in_progress
             weight: 1
     srd114-vidir:
         R1.1:
