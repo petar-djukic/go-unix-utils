@@ -694,11 +694,11 @@ code_status:
         - version: "14.0"
           name: Batch 14.0 — moreutils (chronic, pee, vidir)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel14.0-uc001-chronic
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel14.0-uc002-pee
