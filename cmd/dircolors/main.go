@@ -125,9 +125,11 @@ func main() {
 		filename = ""
 	}
 
-	lsColors, err := parseDatabase(reader, filename)
-	if err != nil {
-		fmt.Fprint(os.Stderr, err)
+	lsColors, errs := parseDatabase(reader, filename)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintln(os.Stderr, e)
+		}
 		os.Exit(1)
 	}
 
@@ -152,19 +154,17 @@ func detectShell() shellFormat {
 	return shellBourne
 }
 
-func parseDatabase(r io.Reader, filename string) (string, error) {
+func parseDatabase(r io.Reader, filename string) (string, []string) {
 	scanner := bufio.NewScanner(r)
 	var termEntries []string
 	var colortermEntries []string
 	var entries []string
+	var errs []string
 	lineNum := 0
 
 	displayName := filename
 	if displayName == "" {
 		displayName = "<internal>"
-	}
-	if displayName == "-" {
-		displayName = "-"
 	}
 
 	for scanner.Scan() {
@@ -185,7 +185,8 @@ func parseDatabase(r io.Reader, filename string) (string, error) {
 
 		if keyword == "TERM" {
 			if len(fields) < 2 {
-				return "", fmt.Errorf("dircolors: %s:%d: invalid line;  missing second token\n", displayName, lineNum)
+				errs = append(errs, fmt.Sprintf("dircolors: %s:%d: invalid line;  missing second token", displayName, lineNum))
+				continue
 			}
 			termEntries = append(termEntries, fields[1])
 			continue
@@ -193,7 +194,8 @@ func parseDatabase(r io.Reader, filename string) (string, error) {
 
 		if keyword == "COLORTERM" {
 			if len(fields) < 2 {
-				return "", fmt.Errorf("dircolors: %s:%d: invalid line;  missing second token\n", displayName, lineNum)
+				errs = append(errs, fmt.Sprintf("dircolors: %s:%d: invalid line;  missing second token", displayName, lineNum))
+				continue
 			}
 			colortermEntries = append(colortermEntries, fields[1])
 			continue
@@ -205,7 +207,8 @@ func parseDatabase(r io.Reader, filename string) (string, error) {
 
 		if code, ok := keywordToCode[keyword]; ok {
 			if len(fields) < 2 {
-				return "", fmt.Errorf("dircolors: %s:%d: invalid line;  missing second token\n", displayName, lineNum)
+				errs = append(errs, fmt.Sprintf("dircolors: %s:%d: invalid line;  missing second token", displayName, lineNum))
+				continue
 			}
 			entries = append(entries, code+"="+fields[1])
 			continue
@@ -213,7 +216,8 @@ func parseDatabase(r io.Reader, filename string) (string, error) {
 
 		if strings.HasPrefix(keyword, ".") || strings.HasPrefix(keyword, "*") {
 			if len(fields) < 2 {
-				return "", fmt.Errorf("dircolors: %s:%d: invalid line;  missing second token\n", displayName, lineNum)
+				errs = append(errs, fmt.Sprintf("dircolors: %s:%d: invalid line;  missing second token", displayName, lineNum))
+				continue
 			}
 			ext := keyword
 			if strings.HasPrefix(ext, ".") {
@@ -224,12 +228,17 @@ func parseDatabase(r io.Reader, filename string) (string, error) {
 		}
 
 		if len(fields) < 2 {
-			return "", fmt.Errorf("dircolors: %s:%d: invalid line;  missing second token\n", displayName, lineNum)
+			errs = append(errs, fmt.Sprintf("dircolors: %s:%d: invalid line;  missing second token", displayName, lineNum))
+			continue
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("dircolors: %s: %v\n", displayName, err)
+		errs = append(errs, fmt.Sprintf("dircolors: %s: %v", displayName, err))
+	}
+
+	if len(errs) > 0 {
+		return "", errs
 	}
 
 	if len(termEntries) > 0 || len(colortermEntries) > 0 {

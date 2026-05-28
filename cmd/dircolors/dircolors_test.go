@@ -234,6 +234,27 @@ func TestDiff(t *testing.T) {
 			Normalize: []testutils.NormalizeFunc{discardStderr},
 		},
 		{
+			Name:      "R3.4 exit 1 multiple errors reported",
+			Args:      []string{"--sh", "-"},
+			Stdin:     []byte("DIR\nLINK\nEXEC\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "R3.4 exit 1 mixed valid and invalid lines",
+			Args:      []string{"--sh", "-"},
+			Stdin:     []byte("DIR 01;34\nLINK\n.tar\nEXEC 01;32\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "R3.4 exit 1 COLORTERM missing value",
+			Args:      []string{"--sh", "-"},
+			Stdin:     []byte("COLORTERM\n"),
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
 			Name:      "R3.4 exit 1 extra operands",
 			Args:      []string{"file1", "file2"},
 			ExitCode:  1,
