@@ -5933,8 +5933,10 @@ requirements:
             issue: 5636
             weight: 1
         R2.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5637
             weight: 1
         R2.2:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5637
             weight: 1
