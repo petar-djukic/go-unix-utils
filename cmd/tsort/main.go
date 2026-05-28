@@ -33,7 +33,8 @@ func main() {
 func run() int {
 	args := os.Args[1:]
 	if len(args) > 1 {
-		fmt.Fprintf(os.Stderr, "tsort: extra operand %s\n", args[1])
+		fmt.Fprintf(os.Stderr, "tsort: extra operand '%s'\n", args[1])
+		fmt.Fprintln(os.Stderr, "Try 'tsort --help' for more information.")
 		return 1
 	}
 

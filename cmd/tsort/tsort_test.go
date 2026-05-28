@@ -32,6 +32,26 @@ func normStderr(b []byte) []byte {
 	return out
 }
 
+func normHelpLine(b []byte) []byte {
+	var out []byte
+	for line := range bytes.SplitSeq(b, []byte("\n")) {
+		if len(out) > 0 {
+			out = append(out, '\n')
+		}
+		if bytes.HasPrefix(line, []byte("Try '")) {
+			out = append(out, []byte("Try 'tsort --help' for more information.")...)
+		} else {
+			out = append(out, line...)
+		}
+	}
+	return out
+}
+
+func normErrno(b []byte) []byte {
+	b = bytes.ReplaceAll(b, []byte("No such file or directory"), []byte("no such file or directory"))
+	return b
+}
+
 func TestDiff(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(".", "main.go")); os.IsNotExist(err) {
 		t.Skip("cmd/tsort not yet generated")
@@ -222,6 +242,21 @@ func TestDiff(t *testing.T) {
 			WorkDir:   dir,
 			Env:       env,
 			Normalize: []testutils.NormalizeFunc{normStderr},
+		},
+		// R2.2: exit 1 on malformed input / error conditions
+		{
+			Name:      "r2_2_extra_operand",
+			Args:      []string{"simple_pairs.txt", "cycle.txt"},
+			WorkDir:   dir,
+			Env:       env,
+			Normalize: []testutils.NormalizeFunc{normStderr, normHelpLine},
+		},
+		{
+			Name:      "r2_2_nonexistent_file",
+			Args:      []string{"no_such_file.txt"},
+			WorkDir:   dir,
+			Env:       env,
+			Normalize: []testutils.NormalizeFunc{normStderr, normErrno},
 		},
 	}
 
