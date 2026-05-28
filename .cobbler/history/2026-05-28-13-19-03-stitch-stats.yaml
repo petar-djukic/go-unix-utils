@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5635"
+task_title: '[stitch] cmd/pee differential tests (srd113-pee R2.1, R2.2)'
+status: success
+started_at: "2026-05-28T17:19:03Z"
+duration: 1m25s
+duration_s: 85
+tokens:
+    input: 275778
+    output: 1074
+    cache_creation: 226942
+    cache_read: 48830
+cost_usd: 1.6776445
+num_turns: 10
+loc_before:
+    production: 30664
+    test: 24520
+loc_after:
+    production: 30664
+    test: 24520
+diff:
+    files: 1
+    insertions: 81
+    deletions: 0
