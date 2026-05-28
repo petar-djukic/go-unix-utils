@@ -5812,7 +5812,8 @@ requirements:
             weight: 1
     srd110-pr:
         R1.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5639
             weight: 1
         R2.1:
             status: ready
