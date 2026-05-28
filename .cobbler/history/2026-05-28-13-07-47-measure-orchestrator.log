@@ -125,3 +125,20 @@
 [2026-05-28T13:10:43-04:00] [generation-run44] [measure +2m56s] transitionRequirements: marked 2 R-items as proposed
 [2026-05-28T13:10:43-04:00] [generation-run44] [measure +2m56s] transitionRequirements: marked 4 R-items as proposed
 [2026-05-28T13:10:43-04:00] [generation-run44] [measure +2m56s] transitionRequirements: marked 2 R-items as proposed
+[2026-05-28T13:10:43-04:00] [generation-run44] [measure +2m56s] importIssues: creating task 0: [stitch] cmd/pee differential tests (srd113-pee R2.1, R2.2) (dep=-1)
+[2026-05-28T13:10:45-04:00] [generation-run44] [measure +2m58s] createCobblerIssue: created #5635 "[measure] cmd/pee differential tests (srd113-pee R2.1, R2.2)" gen=generation-run44 index=0 dep=-1
+[2026-05-28T13:10:45-04:00] [generation-run44] [measure +2m58s] importIssues: creating task 1: [stitch] cmd/vidir implementation (srd114-vidir R1.1, R1.2, R1.3, R1.4) (dep=-1)
+[2026-05-28T13:10:46-04:00] [generation-run44] [measure +2m59s] createCobblerIssue: created #5636 "[measure] cmd/vidir implementation (srd114-vidir R1.1, R1.2, R1.3, R1.4)" gen=generation-run44 index=1 dep=-1
+[2026-05-28T13:10:46-04:00] [generation-run44] [measure +2m59s] importIssues: creating task 2: [stitch] cmd/vidir differential tests (srd114-vidir R2.1, R2.2) (dep=1)
+[2026-05-28T13:10:48-04:00] [generation-run44] [measure +3m1s] createCobblerIssue: created #5637 "[measure] cmd/vidir differential tests (srd114-vidir R2.1, R2.2)" gen=generation-run44 index=2 dep=1
+[2026-05-28T13:10:48-04:00] [generation-run44] [measure +3m1s] waitForIssuesVisible: 0/3 visible, retrying...
+[2026-05-28T13:10:49-04:00] [generation-run44] [measure +3m2s] waitForIssuesVisible: 0/3 visible, retrying...
+[2026-05-28T13:10:55-04:00] [generation-run44] [measure +3m8s] importIssues: 3 of 3 issue(s) imported
+[2026-05-28T13:10:55-04:00] [generation-run44] [measure +3m8s] appendMeasureLog: 460 total issues in .cobbler/measure.yaml
+[2026-05-28T13:10:55-04:00] [generation-run44] [measure +3m8s] iteration 1 imported 3 issue(s)
+[2026-05-28T13:10:59-04:00] [generation-run44] [measure +3m12s] linkSubIssue: linked #5635 as sub-issue of #5634
+[2026-05-28T13:11:00-04:00] [generation-run44] [measure +3m13s] linkSubIssue: linked #5636 as sub-issue of #5634
+[2026-05-28T13:11:01-04:00] [generation-run44] [measure +3m14s] linkSubIssue: linked #5637 as sub-issue of #5634
+[2026-05-28T13:11:04-04:00] [generation-run44] [measure +3m17s] closeMeasuringPlaceholder: closed #5634
+[2026-05-28T13:11:04-04:00] [generation-run44] [measure +3m17s] finalizeMeasurePlaceholder: finalized #5634 with 3 child issue(s)
+[2026-05-28T13:11:04-04:00] [generation-run44] [measure +3m17s] completed 1 iteration(s), 3 issue(s) created in 3m17s
