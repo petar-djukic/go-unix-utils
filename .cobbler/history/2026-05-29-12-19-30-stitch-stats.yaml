@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5650"
+task_title: '[stitch] cmd/ts implementation (srd004-ts R4.3, R5.1, R5.2, R5.3)'
+status: success
+started_at: "2026-05-29T16:19:30Z"
+duration: 5m28s
+duration_s: 327
+tokens:
+    input: 575919
+    output: 12873
+    cache_creation: 247559
+    cache_read: 328347
+cost_usd: 2.2837828499999997
+num_turns: 24
+rate_limit_wait_s: 1
+loc_before:
+    production: 32303
+    test: 24794
+loc_after:
+    production: 32306
+    test: 24800
+diff:
+    files: 3
+    insertions: 132
+    deletions: 3
