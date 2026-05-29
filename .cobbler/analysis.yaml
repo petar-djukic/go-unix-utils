@@ -718,7 +718,7 @@ code_status:
           usecases:
             - id: rel15.0-uc001-ts
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel15.0-uc002-stty
