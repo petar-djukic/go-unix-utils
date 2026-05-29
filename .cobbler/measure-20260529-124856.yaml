@@ -1,0 +1,183 @@
+- index: 0
+  title: "[stitch] cmd/pr implementation (srd110-pr R2.1, R2.2, R2.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd110-pr.yaml (requirements R2.1, R2.2, R2.3)
+      - cmd/pr/main.go (existing implementation to extend)
+      - cmd/pr/pr_test.go (existing differential tests to extend)
+      - pkg/testutils/ (RunDiffTests differential testing framework)
+
+    files:
+      - path: cmd/pr/main.go
+        action: modify
+        note: Implement srd110-pr R2.1, R2.2, R2.3
+      - path: cmd/pr/pr_test.go
+        action: modify
+        note: Add differential test cases for R2.1, R2.2, R2.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd110-pr requirement R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd110-pr requirement R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd110-pr requirement R2.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow existing patterns in cmd/pr/main.go for new functionality"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for all differential test cases"
+      - id: D3
+        text: "Set LC_ALL=C in test environments per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "Requirements R2.1, R2.2, R2.3 implemented per SRD acceptance criteria"
+      - id: AC2
+        text: "go build ./cmd/pr/ succeeds with no errors"
+      - id: AC3
+        text: "go test ./cmd/pr/... -count=1 passes (or skips gracefully if reference binary not found)"
+      - id: AC4
+        text: "go vet ./cmd/pr/ reports no issues"
+
+- index: 1
+  title: "[stitch] cmd/ptx implementation (srd111-ptx R2.1, R2.2, R2.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd111-ptx.yaml (requirements R2.1, R2.2, R2.3)
+      - cmd/ptx/main.go (existing implementation to extend)
+      - cmd/ptx/ptx_test.go (existing differential tests to extend)
+      - pkg/testutils/ (RunDiffTests differential testing framework)
+
+    files:
+      - path: cmd/ptx/main.go
+        action: modify
+        note: Implement srd111-ptx R2.1, R2.2, R2.3
+      - path: cmd/ptx/ptx_test.go
+        action: modify
+        note: Add differential test cases for R2.1, R2.2, R2.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd111-ptx requirement R2.1 as specified in the SRD"
+      - id: R2
+        text: "Implement srd111-ptx requirement R2.2 as specified in the SRD"
+      - id: R3
+        text: "Implement srd111-ptx requirement R2.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow existing patterns in cmd/ptx/main.go for new functionality"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for all differential test cases"
+      - id: D3
+        text: "Set LC_ALL=C in test environments per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "Requirements R2.1, R2.2, R2.3 implemented per SRD acceptance criteria"
+      - id: AC2
+        text: "go build ./cmd/ptx/ succeeds with no errors"
+      - id: AC3
+        text: "go test ./cmd/ptx/... -count=1 passes (or skips gracefully if reference binary not found)"
+      - id: AC4
+        text: "go vet ./cmd/ptx/ reports no issues"
+
+- index: 2
+  title: "[stitch] cmd/stty implementation (srd105-stty R7.2, R7.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd105-stty.yaml (requirements R7.2, R7.3)
+      - cmd/stty/main.go (existing implementation to extend)
+      - cmd/stty/stty_test.go (existing differential tests to extend)
+      - pkg/testutils/ (RunDiffTests differential testing framework)
+
+    files:
+      - path: cmd/stty/main.go
+        action: modify
+        note: Implement srd105-stty R7.2, R7.3
+      - path: cmd/stty/stty_test.go
+        action: modify
+        note: Add differential test cases for R7.2, R7.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd105-stty requirement R7.2 as specified in the SRD"
+      - id: R2
+        text: "Implement srd105-stty requirement R7.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow existing patterns in cmd/stty/main.go for new functionality"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for all differential test cases"
+      - id: D3
+        text: "Set LC_ALL=C in test environments per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "Requirements R7.2 and R7.3 implemented per SRD acceptance criteria"
+      - id: AC2
+        text: "go build ./cmd/stty/ succeeds with no errors"
+      - id: AC3
+        text: "go test ./cmd/stty/... -count=1 passes (or skips gracefully if reference binary not found)"
+      - id: AC4
+        text: "go vet ./cmd/stty/ reports no issues"
+
+- index: 3
+  title: "[stitch] cmd/ts implementation (srd004-ts R9.2, R10.1, R10.2, R10.3)"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd004-ts.yaml (requirements R9.2, R10.1, R10.2, R10.3)
+      - cmd/ts/main.go (existing implementation to extend)
+      - cmd/ts/ts_test.go (existing differential tests to extend)
+      - pkg/testutils/ (RunDiffTests differential testing framework)
+
+    files:
+      - path: cmd/ts/main.go
+        action: modify
+        note: Implement srd004-ts R9.2, R10.1, R10.2, R10.3
+      - path: cmd/ts/ts_test.go
+        action: modify
+        note: Add differential test cases for R9.2, R10.1, R10.2, R10.3
+
+    requirements:
+      - id: R1
+        text: "Implement srd004-ts requirement R9.2 as specified in the SRD"
+      - id: R2
+        text: "Implement srd004-ts requirement R10.1 as specified in the SRD"
+      - id: R3
+        text: "Implement srd004-ts requirement R10.2 as specified in the SRD"
+      - id: R4
+        text: "Implement srd004-ts requirement R10.3 as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow existing patterns in cmd/ts/main.go for new functionality"
+      - id: D2
+        text: "Use pkg/testutils.RunDiffTests for all differential test cases"
+      - id: D3
+        text: "Set LC_ALL=C in test environments per project convention"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "All four requirements (R9.2, R10.1, R10.2, R10.3) implemented per SRD acceptance criteria"
+      - id: AC2
+        text: "go build ./cmd/ts/ succeeds with no errors"
+      - id: AC3
+        text: "go test ./cmd/ts/... -count=1 passes (or skips gracefully if reference binary not found)"
+      - id: AC4
+        text: "go vet ./cmd/ts/ reports no issues"
