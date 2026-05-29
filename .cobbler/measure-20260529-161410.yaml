@@ -1,0 +1,183 @@
+- index: 0
+  title: "cmd/pr: implement srd110 R3.1"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd110-pr.yaml (R3.1 requirements and acceptance criteria)
+      - cmd/pr/main.go (existing implementation from prior requirements R1-R2)
+      - pkg/sys/ (InstallSIGPIPEHandler and related utilities)
+
+    files:
+      - path: cmd/pr/main.go
+        action: modify
+        note: Add R3.1 feature to existing pr implementation
+
+    requirements:
+      - id: R1
+        text: "Implement srd110-pr requirement R3.1 exactly as specified in the SRD, including all sub-criteria and edge cases defined for this requirement"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code structure and patterns established by prior requirements (R1, R2) already implemented in cmd/pr/main.go"
+      - id: D2
+        text: "Ensure sys.InstallSIGPIPEHandler() is called at the start of main per the shared SIGPIPE protocol"
+      - id: D3
+        text: "Write errors to stderr using fmt.Fprintf(os.Stderr, ...) and set exit codes per the SRD exit-code contract"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/pr ./cmd/pr/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/pr/ passes with no warnings"
+      - id: AC3
+        text: "All acceptance criteria for R3.1 in srd110-pr.yaml are satisfied by the implementation"
+      - id: AC4
+        text: "Existing functionality from prior requirements (R1, R2) is preserved -- no regressions"
+      - id: AC5
+        text: "No test files are added or modified -- test coverage is handled in a separate task"
+
+- index: 1
+  title: "cmd/pr: implement srd110 R4.1, R4.2, R4.3, R5.1"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd110-pr.yaml (R4.1, R4.2, R4.3, R5.1 requirements and acceptance criteria)
+      - cmd/pr/main.go (existing implementation including R1-R2 and R3.1 from prior tasks)
+      - pkg/sys/ (InstallSIGPIPEHandler and related utilities)
+
+    files:
+      - path: cmd/pr/main.go
+        action: modify
+        note: Add R4.1, R4.2, R4.3, and R5.1 features to existing pr implementation
+
+    requirements:
+      - id: R1
+        text: "Implement srd110-pr requirement R4.1 exactly as specified in the SRD"
+      - id: R2
+        text: "Implement srd110-pr requirement R4.2 exactly as specified in the SRD"
+      - id: R3
+        text: "Implement srd110-pr requirement R4.3 exactly as specified in the SRD"
+      - id: R4
+        text: "Implement srd110-pr requirement R5.1 exactly as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code structure and patterns established by prior requirements already implemented in cmd/pr/main.go"
+      - id: D2
+        text: "Ensure sys.InstallSIGPIPEHandler() is called at the start of main per the shared SIGPIPE protocol"
+      - id: D3
+        text: "Write errors to stderr using fmt.Fprintf(os.Stderr, ...) and set exit codes per the SRD exit-code contract"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/pr ./cmd/pr/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/pr/ passes with no warnings"
+      - id: AC3
+        text: "All acceptance criteria for R4.1 in srd110-pr.yaml are satisfied by the implementation"
+      - id: AC4
+        text: "All acceptance criteria for R4.2 in srd110-pr.yaml are satisfied by the implementation"
+      - id: AC5
+        text: "All acceptance criteria for R4.3 in srd110-pr.yaml are satisfied by the implementation"
+      - id: AC6
+        text: "All acceptance criteria for R5.1 in srd110-pr.yaml are satisfied by the implementation"
+      - id: AC7
+        text: "Existing functionality from prior requirements is preserved -- no regressions"
+      - id: AC8
+        text: "No test files are added or modified -- test coverage is handled in a separate task"
+
+- index: 2
+  title: "cmd/ptx: implement srd111 R3.1"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd111-ptx.yaml (R3.1 requirements and acceptance criteria)
+      - cmd/ptx/main.go (existing implementation from prior requirements R1-R2)
+      - pkg/sys/ (InstallSIGPIPEHandler and related utilities)
+
+    files:
+      - path: cmd/ptx/main.go
+        action: modify
+        note: Add R3.1 feature to existing ptx implementation
+
+    requirements:
+      - id: R1
+        text: "Implement srd111-ptx requirement R3.1 exactly as specified in the SRD, including all sub-criteria and edge cases defined for this requirement"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code structure and patterns established by prior requirements (R1, R2) already implemented in cmd/ptx/main.go"
+      - id: D2
+        text: "Ensure sys.InstallSIGPIPEHandler() is called at the start of main per the shared SIGPIPE protocol"
+      - id: D3
+        text: "Write errors to stderr using fmt.Fprintf(os.Stderr, ...) and set exit codes per the SRD exit-code contract"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/ptx ./cmd/ptx/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/ptx/ passes with no warnings"
+      - id: AC3
+        text: "All acceptance criteria for R3.1 in srd111-ptx.yaml are satisfied by the implementation"
+      - id: AC4
+        text: "Existing functionality from prior requirements (R1, R2) is preserved -- no regressions"
+      - id: AC5
+        text: "No test files are added or modified -- test coverage is handled in a separate task"
+
+- index: 3
+  title: "cmd/ptx: implement srd111 R4.1, R4.2, R5.1, R5.2"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd111-ptx.yaml (R4.1, R4.2, R5.1, R5.2 requirements and acceptance criteria)
+      - cmd/ptx/main.go (existing implementation including R1-R2 and R3.1 from prior tasks)
+      - pkg/sys/ (InstallSIGPIPEHandler and related utilities)
+
+    files:
+      - path: cmd/ptx/main.go
+        action: modify
+        note: Add R4.1, R4.2, R5.1, and R5.2 features to existing ptx implementation
+
+    requirements:
+      - id: R1
+        text: "Implement srd111-ptx requirement R4.1 exactly as specified in the SRD"
+      - id: R2
+        text: "Implement srd111-ptx requirement R4.2 exactly as specified in the SRD"
+      - id: R3
+        text: "Implement srd111-ptx requirement R5.1 exactly as specified in the SRD"
+      - id: R4
+        text: "Implement srd111-ptx requirement R5.2 exactly as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Follow the existing code structure and patterns established by prior requirements already implemented in cmd/ptx/main.go"
+      - id: D2
+        text: "Ensure sys.InstallSIGPIPEHandler() is called at the start of main per the shared SIGPIPE protocol"
+      - id: D3
+        text: "Write errors to stderr using fmt.Fprintf(os.Stderr, ...) and set exit codes per the SRD exit-code contract"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/ptx ./cmd/ptx/ succeeds with no errors"
+      - id: AC2
+        text: "go vet ./cmd/ptx/ passes with no warnings"
+      - id: AC3
+        text: "All acceptance criteria for R4.1 in srd111-ptx.yaml are satisfied by the implementation"
+      - id: AC4
+        text: "All acceptance criteria for R4.2 in srd111-ptx.yaml are satisfied by the implementation"
+      - id: AC5
+        text: "All acceptance criteria for R5.1 in srd111-ptx.yaml are satisfied by the implementation"
+      - id: AC6
+        text: "All acceptance criteria for R5.2 in srd111-ptx.yaml are satisfied by the implementation"
+      - id: AC7
+        text: "Existing functionality from prior requirements is preserved -- no regressions"
+      - id: AC8
+        text: "No test files are added or modified -- test coverage is handled in a separate task"
