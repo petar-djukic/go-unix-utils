@@ -154,3 +154,13 @@
 [2026-05-29T12:24:52-04:00] [generation-run44] [stitch +5m39s] closeStitchTask: closing #5650 "[stitch] cmd/ts implementation (srd004-ts R4.3, R5.1, R5.2, R5.3)"
 [2026-05-29T12:24:54-04:00] [generation-run44] [stitch +5m41s] commentCobblerIssue: posted comment on #5650
 [2026-05-29T12:24:54-04:00] [generation-run44] [stitch +5m41s] updateRequirementsFile: marked 4 R-items as complete_with_failures for issue #5650
+[2026-05-29T12:24:58-04:00] [generation-run44] [stitch +5m45s] closeCobblerIssue: closed #5650
+[2026-05-29T12:25:00-04:00] [generation-run44] [stitch +5m47s] closeStitchTask: #5650 closed
+[2026-05-29T12:25:01-04:00] [generation-run44] [stitch +5m48s] sweepCompletedTasks: all R-items for #5650 already complete, closing
+[2026-05-29T12:25:02-04:00] [generation-run44] [stitch +5m49s] commentCobblerIssue: posted comment on #5650
+[2026-05-29T12:25:04-04:00] [generation-run44] [stitch +5m51s] closeCobblerIssue: closed #5650
+[2026-05-29T12:25:07-04:00] [generation-run44] [stitch +5m54s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-29T12:25:07-04:00] [generation-run44] [stitch +5m54s] doOneTask: task 5650 finished in 5m42s
+[2026-05-29T12:25:07-04:00] [generation-run44] [stitch +5m54s] task 5650 completed in 5m42s
+[2026-05-29T12:25:07-04:00] [generation-run44] [stitch +5m54s] reached per-cycle limit (1), pausing for measure
+[2026-05-29T12:25:07-04:00] [generation-run44] [stitch +5m54s] completed 1 task(s) in 5m54s
