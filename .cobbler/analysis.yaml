@@ -714,7 +714,7 @@ code_status:
         - version: "15.0"
           name: Batch 15.0 — complex utilities (ts, stty, pr, ptx)
           specstatus: spec_complete
-          codereadiness: none
+          codereadiness: partial
           usecases:
             - id: rel15.0-uc001-ts
               specstatus: spec_complete
@@ -723,7 +723,7 @@ code_status:
               testfiles: 0
             - id: rel15.0-uc002-stty
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel15.0-uc003-pr
