@@ -320,16 +320,20 @@ requirements:
             issue: 5651
             weight: 1
         R7.3:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5652
             weight: 1
         R8.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5652
             weight: 1
         R8.2:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5652
             weight: 1
         R9.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5652
             weight: 1
         R9.2:
             status: ready
