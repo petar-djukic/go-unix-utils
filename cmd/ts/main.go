@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2.
+// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3.
 package main
 
 import (
@@ -27,6 +27,7 @@ type config struct {
 	format      string
 	incremental bool
 	sinceStart  bool
+	monotonic   bool
 }
 
 func run() int {
@@ -78,14 +79,16 @@ func parseArgs(args []string) (config, error) {
 			cfg.incremental = true
 		} else if arg == "-s" {
 			cfg.sinceStart = true
+		} else if arg == "-m" {
+			cfg.monotonic = true
 		} else if strings.HasPrefix(arg, "-") {
-			return config{}, fmt.Errorf("usage: ts [-i | -s] [format]")
+			return config{}, fmt.Errorf("usage: ts [-i | -s] [-m] [format]")
 		} else {
 			customFormat = arg
 		}
 	}
 	if cfg.incremental && cfg.sinceStart {
-		return config{}, fmt.Errorf("usage: ts [-i | -s] [format]")
+		return config{}, fmt.Errorf("usage: ts [-i | -s] [-m] [format]")
 	}
 	if customFormat != "" {
 		cfg.format = customFormat
