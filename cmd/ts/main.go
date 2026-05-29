@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R7.1, R7.2.
+// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R7.1, R7.2, R7.3, R8.1, R8.2, R9.1.
 package main
 
 import (
@@ -313,6 +313,7 @@ var timestampRe = regexp.MustCompile(
 		`|(?:\w{3},\s+)?\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}\s+\d{2}:\d{2}:\d{2}\s+(?:[A-Z]{2,4}|[+-]\d{4})` +
 		`|\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?`)
 
+// R7.3: Go's time package is always compiled in, so the -r parsing dependency is always available (unlike Perl's Date::Parse).
 var fullLayouts = []string{
 	time.RFC3339Nano,
 	time.RFC3339,

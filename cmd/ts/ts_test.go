@@ -65,6 +65,11 @@ func TestDiff(t *testing.T) {
 		{Name: "monotonic_sincestart", Args: []string{"-m", "-s"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
 		{Name: "monotonic_custom_format", Args: []string{"-m", "%.S"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
 		{Name: "monotonic_sincestart_custom", Args: []string{"-m", "-s", "%.S"}, Stdin: []byte("x\ny\n"), Normalize: subsecNorm},
+		{Name: "tz_utc_default", Env: []string{"TZ=UTC"}, Stdin: []byte("hello\n"), Normalize: norm},
+		{Name: "tz_utc_custom_format", Args: []string{"%Y-%m-%d %H:%M:%S"}, Env: []string{"TZ=UTC"}, Stdin: []byte("test\n"), Normalize: norm},
+		{Name: "tz_utc_multiline", Env: []string{"TZ=UTC"}, Stdin: []byte("a\nb\nc\n"), Normalize: norm},
+		{Name: "tz_incremental_ignores_tz", Args: []string{"-i"}, Env: []string{"TZ=US/Pacific"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
+		{Name: "tz_sincestart_ignores_tz", Args: []string{"-s"}, Env: []string{"TZ=US/Pacific"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
