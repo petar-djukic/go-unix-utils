@@ -100,14 +100,26 @@ func TestDiffRelative(t *testing.T) {
 
 func TestMutualExclusive(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
-	cmd := exec.Command(goBin, "-i", "-s")
-	cmd.Stdin = strings.NewReader("x\n")
-	stderr, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatal("expected non-zero exit when -i and -s are both given")
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"i_and_s", []string{"-i", "-s"}},
+		{"r_and_i", []string{"-r", "-i"}},
+		{"r_and_s", []string{"-r", "-s"}},
 	}
-	if !strings.Contains(string(stderr), "usage") {
-		t.Fatalf("expected usage message on stderr, got: %s", stderr)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(goBin, tc.args...)
+			cmd.Stdin = strings.NewReader("x\n")
+			stderr, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("expected non-zero exit for %v", tc.args)
+			}
+			if !strings.Contains(string(stderr), "usage") {
+				t.Fatalf("expected usage message, got: %s", stderr)
+			}
+		})
 	}
 }
 
@@ -163,6 +175,36 @@ func TestRelativeISO8601(t *testing.T) {
 	}
 	if !strings.Contains(output, "ago") && !strings.Contains(output, "from now") {
 		t.Fatal("expected relative age in output")
+	}
+}
+
+func TestRelativeFormatOverride(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-r", "%Y-%m-%d %H:%M:%S")
+	cmd.Stdin = strings.NewReader("Jan 15 14:30:00 event\n")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(out)
+	if strings.Contains(output, "ago") || strings.Contains(output, "from now") {
+		t.Fatal("expected strftime-formatted output, not relative age")
+	}
+	if !strings.Contains(output, "14:30:00 event") {
+		t.Fatalf("expected reformatted timestamp, got: %s", output)
+	}
+}
+
+func TestRelativeFormatPassthrough(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-r", "%Y-%m-%d")
+	cmd.Stdin = strings.NewReader("no timestamp here\n")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != "no timestamp here\n" {
+		t.Fatalf("expected unchanged line, got: %s", out)
 	}
 }
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R7.1, R7.2, R7.3, R8.1, R8.2, R9.1.
+// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R7.1, R7.2, R7.3, R8.1, R8.2, R9.1, R9.2, R10.1, R10.2, R10.3.
 package main
 
 import (
@@ -25,11 +25,12 @@ func main() {
 }
 
 type config struct {
-	format       string
-	incremental  bool
-	sinceStart   bool
-	monotonic    bool
-	relativeTime bool
+	format          string
+	hasCustomFormat bool
+	incremental     bool
+	sinceStart      bool
+	monotonic       bool
+	relativeTime    bool
 }
 
 func run() int {
@@ -81,8 +82,12 @@ func parseArgs(args []string) (config, error) {
 	if cfg.incremental && cfg.sinceStart {
 		return config{}, fmt.Errorf("usage: ts [-r | -i | -s] [-m] [format]")
 	}
+	if cfg.relativeTime && (cfg.incremental || cfg.sinceStart) {
+		return config{}, fmt.Errorf("usage: ts [-r | -i | -s] [-m] [format]")
+	}
 	if customFormat != "" {
 		cfg.format = customFormat
+		cfg.hasCustomFormat = true
 	} else if cfg.incremental || cfg.sinceStart {
 		cfg.format = defaultIncrementalFormat
 	} else {
@@ -344,7 +349,11 @@ var yearlessLayouts = []string{
 
 func writeLine(cfg config, line string, now time.Time, prevTime *time.Time, startTime time.Time, gmt *time.Location) {
 	if cfg.relativeTime {
-		fmt.Fprint(os.Stdout, processRelativeLine(line, now))
+		if cfg.hasCustomFormat {
+			fmt.Fprint(os.Stdout, reformatTimestamps(line, now, cfg.format))
+		} else {
+			fmt.Fprint(os.Stdout, processRelativeLine(line, now))
+		}
 		return
 	}
 	var ts string
@@ -370,6 +379,16 @@ func processRelativeLine(line string, now time.Time) string {
 			return match
 		}
 		return relativeAge(now.Sub(t))
+	})
+}
+
+func reformatTimestamps(line string, now time.Time, format string) string {
+	return timestampRe.ReplaceAllStringFunc(line, func(match string) string {
+		t, ok := parseMatchedTimestamp(match, now)
+		if !ok {
+			return match
+		}
+		return formatTime(t, format)
 	})
 }
 
