@@ -5634,10 +5634,10 @@ requirements:
             issue: 5645
             weight: 1
         R7.2:
-            status: proposed
+            status: in_progress
             weight: 1
         R7.3:
-            status: proposed
+            status: in_progress
             weight: 1
     srd106-df:
         R1.1:
