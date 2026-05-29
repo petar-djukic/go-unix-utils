@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2.
+// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2.
 package main
 
 import (
@@ -26,6 +26,7 @@ func main() {
 type config struct {
 	format      string
 	incremental bool
+	sinceStart  bool
 }
 
 func run() int {
@@ -36,7 +37,7 @@ func run() int {
 	}
 
 	var gmt *time.Location
-	if cfg.incremental {
+	if cfg.incremental || cfg.sinceStart {
 		gmt = time.FixedZone("GMT", 0)
 	}
 
@@ -51,6 +52,10 @@ func run() int {
 			if cfg.incremental {
 				delta := now.Sub(prevTime)
 				prevTime = now
+				epoch := time.Unix(0, 0).In(gmt).Add(delta)
+				ts = formatTime(epoch, cfg.format)
+			} else if cfg.sinceStart {
+				delta := now.Sub(startTime)
 				epoch := time.Unix(0, 0).In(gmt).Add(delta)
 				ts = formatTime(epoch, cfg.format)
 			} else {
@@ -71,15 +76,20 @@ func parseArgs(args []string) (config, error) {
 	for _, arg := range args {
 		if arg == "-i" {
 			cfg.incremental = true
+		} else if arg == "-s" {
+			cfg.sinceStart = true
 		} else if strings.HasPrefix(arg, "-") {
-			return config{}, fmt.Errorf("usage: ts [-i] [format]")
+			return config{}, fmt.Errorf("usage: ts [-i | -s] [format]")
 		} else {
 			customFormat = arg
 		}
 	}
+	if cfg.incremental && cfg.sinceStart {
+		return config{}, fmt.Errorf("usage: ts [-i | -s] [format]")
+	}
 	if customFormat != "" {
 		cfg.format = customFormat
-	} else if cfg.incremental {
+	} else if cfg.incremental || cfg.sinceStart {
 		cfg.format = defaultIncrementalFormat
 	} else {
 		cfg.format = defaultFormat

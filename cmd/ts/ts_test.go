@@ -9,6 +9,7 @@ import (
 	"io"
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,8 +50,24 @@ func TestDiff(t *testing.T) {
 		{Name: "subsecond_T", Args: []string{"%.T"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
 		{Name: "incremental_default", Args: []string{"-i"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
 		{Name: "incremental_custom_format", Args: []string{"-i", "%.S"}, Stdin: []byte("x\ny\n"), Normalize: subsecNorm},
+		{Name: "sincestart_default", Args: []string{"-s"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
+		{Name: "sincestart_custom_format", Args: []string{"-s", "%.S"}, Stdin: []byte("x\ny\n"), Normalize: subsecNorm},
+		{Name: "sincestart_empty_stdin", Args: []string{"-s"}, Stdin: []byte{}},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestMutualExclusive(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-i", "-s")
+	cmd.Stdin = strings.NewReader("x\n")
+	stderr, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected non-zero exit when -i and -s are both given")
+	}
+	if !strings.Contains(string(stderr), "usage") {
+		t.Fatalf("expected usage message on stderr, got: %s", stderr)
+	}
 }
 
 func TestSIGPIPE(t *testing.T) {
