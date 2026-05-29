@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3.
+// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, R6.2, R7.1, R7.2.
 package main
 
 import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -24,10 +25,11 @@ func main() {
 }
 
 type config struct {
-	format      string
-	incremental bool
-	sinceStart  bool
-	monotonic   bool
+	format       string
+	incremental  bool
+	sinceStart   bool
+	monotonic    bool
+	relativeTime bool
 }
 
 func run() int {
@@ -49,20 +51,7 @@ func run() int {
 		line, readErr := reader.ReadString('\n')
 		if len(line) > 0 {
 			now := time.Now()
-			var ts string
-			if cfg.incremental {
-				delta := now.Sub(prevTime)
-				prevTime = now
-				epoch := time.Unix(0, 0).In(gmt).Add(delta)
-				ts = formatTime(epoch, cfg.format)
-			} else if cfg.sinceStart {
-				delta := now.Sub(startTime)
-				epoch := time.Unix(0, 0).In(gmt).Add(delta)
-				ts = formatTime(epoch, cfg.format)
-			} else {
-				ts = formatTime(now, cfg.format)
-			}
-			fmt.Fprintf(os.Stdout, "%s %s", ts, line)
+			writeLine(cfg, line, now, &prevTime, startTime, gmt)
 		}
 		if readErr != nil {
 			break
@@ -81,14 +70,16 @@ func parseArgs(args []string) (config, error) {
 			cfg.sinceStart = true
 		} else if arg == "-m" {
 			cfg.monotonic = true
+		} else if arg == "-r" {
+			cfg.relativeTime = true
 		} else if strings.HasPrefix(arg, "-") {
-			return config{}, fmt.Errorf("usage: ts [-i | -s] [-m] [format]")
+			return config{}, fmt.Errorf("usage: ts [-r | -i | -s] [-m] [format]")
 		} else {
 			customFormat = arg
 		}
 	}
 	if cfg.incremental && cfg.sinceStart {
-		return config{}, fmt.Errorf("usage: ts [-i | -s] [-m] [format]")
+		return config{}, fmt.Errorf("usage: ts [-r | -i | -s] [-m] [format]")
 	}
 	if customFormat != "" {
 		cfg.format = customFormat
@@ -314,4 +305,123 @@ func hour12(t time.Time) int {
 		h = 12
 	}
 	return h
+}
+
+var timestampRe = regexp.MustCompile(
+	`(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{1,2}:\d{2}` +
+		`|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}` +
+		`|(?:\w{3},\s+)?\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}\s+\d{2}:\d{2}:\d{2}\s+(?:[A-Z]{2,4}|[+-]\d{4})` +
+		`|\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?`)
+
+var fullLayouts = []string{
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02T15:04:05.999999999-0700",
+	"2006-01-02T15:04:05-0700",
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05.999999999Z07:00",
+	"2006-01-02 15:04:05Z07:00",
+	"2006-01-02 15:04:05.999999999-0700",
+	"2006-01-02 15:04:05-0700",
+	"2006-01-02 15:04:05",
+	"Mon, 2 Jan 2006 15:04:05 MST",
+	"Mon, 2 Jan 2006 15:04:05 -0700",
+	"Mon, 2 Jan 06 15:04:05 MST",
+	"Mon, 2 Jan 06 15:04:05 -0700",
+	"2 Jan 2006 15:04:05 MST",
+	"2 Jan 2006 15:04:05 -0700",
+	"2 Jan 06 15:04:05 MST",
+	"2 Jan 06 15:04:05 -0700",
+}
+
+var yearlessLayouts = []string{
+	"Jan _2 15:04:05",
+	"Jan 2 15:04:05",
+	"Mon Jan _2 15:04",
+	"Mon Jan 2 15:04",
+}
+
+func writeLine(cfg config, line string, now time.Time, prevTime *time.Time, startTime time.Time, gmt *time.Location) {
+	if cfg.relativeTime {
+		fmt.Fprint(os.Stdout, processRelativeLine(line, now))
+		return
+	}
+	var ts string
+	if cfg.incremental {
+		delta := now.Sub(*prevTime)
+		*prevTime = now
+		epoch := time.Unix(0, 0).In(gmt).Add(delta)
+		ts = formatTime(epoch, cfg.format)
+	} else if cfg.sinceStart {
+		delta := now.Sub(startTime)
+		epoch := time.Unix(0, 0).In(gmt).Add(delta)
+		ts = formatTime(epoch, cfg.format)
+	} else {
+		ts = formatTime(now, cfg.format)
+	}
+	fmt.Fprintf(os.Stdout, "%s %s", ts, line)
+}
+
+func processRelativeLine(line string, now time.Time) string {
+	return timestampRe.ReplaceAllStringFunc(line, func(match string) string {
+		t, ok := parseMatchedTimestamp(match, now)
+		if !ok {
+			return match
+		}
+		return relativeAge(now.Sub(t))
+	})
+}
+
+func parseMatchedTimestamp(s string, now time.Time) (time.Time, bool) {
+	for _, layout := range fullLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	for _, layout := range yearlessLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			t = time.Date(now.Year(), t.Month(), t.Day(),
+				t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.Local)
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+var durationUnits = []struct {
+	div  int64
+	name byte
+}{
+	{365 * 24 * 3600, 'y'},
+	{24 * 3600, 'd'},
+	{3600, 'h'},
+	{60, 'm'},
+	{1, 's'},
+}
+
+func relativeAge(d time.Duration) string {
+	secs := int64(d.Seconds())
+	if secs == 0 {
+		return "right now"
+	}
+	suffix := " ago"
+	if secs < 0 {
+		secs = -secs
+		suffix = " from now"
+	}
+	var b strings.Builder
+	count := 0
+	for _, u := range durationUnits {
+		if count >= 2 {
+			break
+		}
+		v := secs / u.div
+		if v > 0 {
+			fmt.Fprintf(&b, "%d%c", v, u.name)
+			secs %= u.div
+			count++
+		}
+	}
+	b.WriteString(suffix)
+	return b.String()
 }

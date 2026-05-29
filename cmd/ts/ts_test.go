@@ -16,6 +16,12 @@ import (
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
 
+var relativeRe = regexp.MustCompile(`right now|(?:\d+[ydhms])+ (?:ago|from now)`)
+
+var relativeNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return relativeRe.ReplaceAll(b, []byte("<RELTIME>"))
+}
+
 var subsecRe = regexp.MustCompile(`\d+\.\d{6}`)
 
 var subsecondNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
@@ -59,6 +65,30 @@ func TestDiff(t *testing.T) {
 		{Name: "monotonic_sincestart", Args: []string{"-m", "-s"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
 		{Name: "monotonic_custom_format", Args: []string{"-m", "%.S"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
 		{Name: "monotonic_sincestart_custom", Args: []string{"-m", "-s", "%.S"}, Stdin: []byte("x\ny\n"), Normalize: subsecNorm},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffRelative(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("ts")
+	if err != nil {
+		t.Skip("reference binary ts not found")
+	}
+	cmd := exec.Command(refBin, "-r")
+	cmd.Stdin = strings.NewReader("test\n")
+	if err := cmd.Run(); err != nil {
+		t.Skip("reference binary does not support -r flag")
+	}
+	relNorm := []testutils.NormalizeFunc{relativeNormalizer}
+	tests := []testutils.DiffTest{
+		{Name: "relative_no_timestamp", Args: []string{"-r"}, Stdin: []byte("no timestamp here\n")},
+		{Name: "relative_syslog", Args: []string{"-r"}, Stdin: []byte("Jan 15 14:30:00 server message\n"), Normalize: relNorm},
+		{Name: "relative_rfc2822", Args: []string{"-r"}, Stdin: []byte("16 Jun 2024 07:29:35 +0000 event\n"), Normalize: relNorm},
+		{Name: "relative_rfc2822_named_tz", Args: []string{"-r"}, Stdin: []byte("16 Jun 2024 07:29:35 GMT event\n"), Normalize: relNorm},
+		{Name: "relative_lastlog", Args: []string{"-r"}, Stdin: []byte("Mon Jan 15 14:30 login\n"), Normalize: relNorm},
+		{Name: "relative_empty", Args: []string{"-r"}, Stdin: []byte{}},
+		{Name: "relative_multiline", Args: []string{"-r"}, Stdin: []byte("Jan 15 14:30:00 first\nno ts here\n"), Normalize: relNorm},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
@@ -111,5 +141,44 @@ func TestSIGPIPE(t *testing.T) {
 	}
 	if err != nil {
 		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
+}
+
+func TestRelativeISO8601(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-r")
+	cmd.Stdin = strings.NewReader("event at 2024-01-05T14:30:00Z happened\n")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(out)
+	if strings.Contains(output, "2024-01-05") {
+		t.Fatal("ISO 8601 timestamp was not replaced")
+	}
+	if !strings.Contains(output, "ago") && !strings.Contains(output, "from now") {
+		t.Fatal("expected relative age in output")
+	}
+}
+
+func TestExitZeroEOF(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin)
+	cmd.Stdin = strings.NewReader("")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("expected exit 0 on EOF, got: %v", err)
+	}
+}
+
+func TestUnrecognizedFlag(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-z")
+	cmd.Stdin = strings.NewReader("x\n")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected non-zero exit for unrecognized flag")
+	}
+	if !strings.Contains(string(output), "usage") {
+		t.Fatalf("expected usage message, got: %s", output)
 	}
 }
