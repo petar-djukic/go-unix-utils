@@ -39,6 +39,9 @@ func TestDiff(t *testing.T) {
 		{Name: "speed-9600", Args: []string{"9600"}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardOut}},
 		{Name: "speed-ispeed", Args: []string{"ispeed", "9600"}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardOut}},
 		{Name: "speed-ospeed", Args: []string{"ospeed", "9600"}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardOut}},
+		{Name: "invalid-device", Args: []string{"-F", "/dev/nonexistent_stty_test"}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardOut}},
+		{Name: "invalid-arg", Args: []string{"xyznotavalidarg"}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardOut}},
+		{Name: "invalid-speed", Args: []string{"12345"}, ExitCode: 1, Normalize: []testutils.NormalizeFunc{discardOut}},
 		{Name: "help", Args: []string{"--help"}, ExitCode: 0, Normalize: []testutils.NormalizeFunc{discardOut}},
 		{Name: "version", Args: []string{"--version"}, ExitCode: 0, Normalize: []testutils.NormalizeFunc{discardOut}},
 	}
