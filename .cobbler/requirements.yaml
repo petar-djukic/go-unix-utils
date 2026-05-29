@@ -272,16 +272,20 @@ requirements:
             issue: 5647
             weight: 1
         R3.3:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5649
             weight: 1
         R3.4:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5649
             weight: 1
         R4.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5649
             weight: 1
         R4.2:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5649
             weight: 1
         R4.3:
             status: proposed
