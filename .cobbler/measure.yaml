@@ -21516,3 +21516,195 @@
       - id: AC4
         text: Each of the four requirements has at least one differential test case in ts_test.go
   dependency: 2
+- index: 0
+  title: '[stitch] cmd/ts implementation (srd004-ts R3.3, R3.4, R4.1, R4.2)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd004-ts.yaml (SRD with full requirement definitions for R3.3, R3.4, R4.1, R4.2)
+      - cmd/ts/main.go (existing ts implementation to extend -- R1.5 through R3.2 already implemented)
+      - cmd/ts/ts_test.go (existing differential tests to extend)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for differential testing pattern)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler -- already called in main)
+
+    files:
+      - path: cmd/ts/main.go
+        action: modify
+        note: Add functionality for srd004-ts R3.3, R3.4, R4.1, R4.2
+      - path: cmd/ts/ts_test.go
+        action: modify
+        note: Add differential test cases covering R3.3, R3.4, R4.1, R4.2
+
+    requirements:
+      - id: R1
+        text: Implement srd004-ts R3.3 as specified in the SRD
+      - id: R2
+        text: Implement srd004-ts R3.4 as specified in the SRD
+      - id: R3
+        text: Implement srd004-ts R4.1 as specified in the SRD
+      - id: R4
+        text: Implement srd004-ts R4.2 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Follow the existing code structure in cmd/ts/main.go -- extend the current flag parsing and timestamp logic rather than restructuring
+      - id: D2
+        text: Use the differential testing pattern from pkg/testutils with RunDiffTests comparing against the reference binary (ts from Homebrew moreutils)
+      - id: D3
+        text: Call exec.LookPath("ts") for the reference binary and t.Skip if not found, per project conventions
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles without errors (go build ./cmd/ts/)
+      - id: AC2
+        text: go vet ./cmd/ts/ reports no issues
+      - id: AC3
+        text: All new differential test cases pass when the reference binary is available (go test ./cmd/ts/ -count=1)
+      - id: AC4
+        text: Existing tests for R1.5 through R3.2 continue to pass (no regressions)
+  dependency: -1
+- index: 1
+  title: '[stitch] cmd/ts implementation (srd004-ts R4.3, R5.1, R5.2, R5.3)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd004-ts.yaml (SRD with full requirement definitions for R4.3, R5.1, R5.2, R5.3)
+      - cmd/ts/main.go (existing ts implementation to extend -- R1.5 through R4.2 already implemented)
+      - cmd/ts/ts_test.go (existing differential tests to extend)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for differential testing pattern)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler -- already called in main)
+
+    files:
+      - path: cmd/ts/main.go
+        action: modify
+        note: Add functionality for srd004-ts R4.3, R5.1, R5.2, R5.3
+      - path: cmd/ts/ts_test.go
+        action: modify
+        note: Add differential test cases covering R4.3, R5.1, R5.2, R5.3
+
+    requirements:
+      - id: R1
+        text: Implement srd004-ts R4.3 as specified in the SRD
+      - id: R2
+        text: Implement srd004-ts R5.1 as specified in the SRD
+      - id: R3
+        text: Implement srd004-ts R5.2 as specified in the SRD
+      - id: R4
+        text: Implement srd004-ts R5.3 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Follow the existing code structure in cmd/ts/main.go -- extend the current flag parsing and timestamp logic rather than restructuring
+      - id: D2
+        text: Use the differential testing pattern from pkg/testutils with RunDiffTests comparing against the reference binary (ts from Homebrew moreutils)
+      - id: D3
+        text: Call exec.LookPath("ts") for the reference binary and t.Skip if not found, per project conventions
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles without errors (go build ./cmd/ts/)
+      - id: AC2
+        text: go vet ./cmd/ts/ reports no issues
+      - id: AC3
+        text: All new differential test cases pass when the reference binary is available (go test ./cmd/ts/ -count=1)
+      - id: AC4
+        text: Existing tests for R1.5 through R4.2 continue to pass (no regressions)
+  dependency: 0
+- index: 2
+  title: '[stitch] cmd/ts implementation (srd004-ts R6.1, R6.2, R7.1, R7.2)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd004-ts.yaml (SRD with full requirement definitions for R6.1, R6.2, R7.1, R7.2)
+      - cmd/ts/main.go (existing ts implementation to extend -- R1.5 through R5.3 already implemented)
+      - cmd/ts/ts_test.go (existing differential tests to extend)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for differential testing pattern)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler -- already called in main)
+
+    files:
+      - path: cmd/ts/main.go
+        action: modify
+        note: Add functionality for srd004-ts R6.1, R6.2, R7.1, R7.2
+      - path: cmd/ts/ts_test.go
+        action: modify
+        note: Add differential test cases covering R6.1, R6.2, R7.1, R7.2
+
+    requirements:
+      - id: R1
+        text: Implement srd004-ts R6.1 as specified in the SRD
+      - id: R2
+        text: Implement srd004-ts R6.2 as specified in the SRD
+      - id: R3
+        text: Implement srd004-ts R7.1 as specified in the SRD
+      - id: R4
+        text: Implement srd004-ts R7.2 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Follow the existing code structure in cmd/ts/main.go -- extend the current flag parsing and timestamp logic rather than restructuring
+      - id: D2
+        text: Use the differential testing pattern from pkg/testutils with RunDiffTests comparing against the reference binary (ts from Homebrew moreutils)
+      - id: D3
+        text: Call exec.LookPath("ts") for the reference binary and t.Skip if not found, per project conventions
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles without errors (go build ./cmd/ts/)
+      - id: AC2
+        text: go vet ./cmd/ts/ reports no issues
+      - id: AC3
+        text: All new differential test cases pass when the reference binary is available (go test ./cmd/ts/ -count=1)
+      - id: AC4
+        text: Existing tests for R1.5 through R5.3 continue to pass (no regressions)
+  dependency: 1
+- index: 3
+  title: '[stitch] cmd/ts implementation (srd004-ts R7.3, R8.1, R8.2, R9.1)'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd004-ts.yaml (SRD with full requirement definitions for R7.3, R8.1, R8.2, R9.1)
+      - cmd/ts/main.go (existing ts implementation to extend -- R1.5 through R7.2 already implemented)
+      - cmd/ts/ts_test.go (existing differential tests to extend)
+      - pkg/testutils/difftest.go (DiffTest struct and RunDiffTests for differential testing pattern)
+      - pkg/sys/sigpipe.go (InstallSIGPIPEHandler -- already called in main)
+
+    files:
+      - path: cmd/ts/main.go
+        action: modify
+        note: Add functionality for srd004-ts R7.3, R8.1, R8.2, R9.1
+      - path: cmd/ts/ts_test.go
+        action: modify
+        note: Add differential test cases covering R7.3, R8.1, R8.2, R9.1
+
+    requirements:
+      - id: R1
+        text: Implement srd004-ts R7.3 as specified in the SRD
+      - id: R2
+        text: Implement srd004-ts R8.1 as specified in the SRD
+      - id: R3
+        text: Implement srd004-ts R8.2 as specified in the SRD
+      - id: R4
+        text: Implement srd004-ts R9.1 as specified in the SRD
+
+    design_decisions:
+      - id: D1
+        text: Follow the existing code structure in cmd/ts/main.go -- extend the current flag parsing and timestamp logic rather than restructuring
+      - id: D2
+        text: Use the differential testing pattern from pkg/testutils with RunDiffTests comparing against the reference binary (ts from Homebrew moreutils)
+      - id: D3
+        text: Call exec.LookPath("ts") for the reference binary and t.Skip if not found, per project conventions
+
+    acceptance_criteria:
+      - id: AC1
+        text: cmd/ts/main.go compiles without errors (go build ./cmd/ts/)
+      - id: AC2
+        text: go vet ./cmd/ts/ reports no issues
+      - id: AC3
+        text: All new differential test cases pass when the reference binary is available (go test ./cmd/ts/ -count=1)
+      - id: AC4
+        text: Existing tests for R1.5 through R7.2 continue to pass (no regressions)
+  dependency: 2
