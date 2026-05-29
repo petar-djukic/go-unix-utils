@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2.
+// Implements srd004-ts R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R3.1, R3.2.
 package main
 
 import (
@@ -16,35 +16,75 @@ import (
 )
 
 const defaultFormat = "%b %d %H:%M:%S"
+const defaultIncrementalFormat = "%H:%M:%S"
 
 func main() {
 	sys.InstallSIGPIPEHandler()
 	os.Exit(run())
 }
 
+type config struct {
+	format      string
+	incremental bool
+}
+
 func run() int {
-	format := parseFormat(os.Args[1:])
+	cfg, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	var gmt *time.Location
+	if cfg.incremental {
+		gmt = time.FixedZone("GMT", 0)
+	}
+
+	startTime := time.Now()
+	prevTime := startTime
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		line, err := reader.ReadString('\n')
+		line, readErr := reader.ReadString('\n')
 		if len(line) > 0 {
-			ts := formatTime(time.Now(), format)
+			now := time.Now()
+			var ts string
+			if cfg.incremental {
+				delta := now.Sub(prevTime)
+				prevTime = now
+				epoch := time.Unix(0, 0).In(gmt).Add(delta)
+				ts = formatTime(epoch, cfg.format)
+			} else {
+				ts = formatTime(now, cfg.format)
+			}
 			fmt.Fprintf(os.Stdout, "%s %s", ts, line)
 		}
-		if err != nil {
+		if readErr != nil {
 			break
 		}
 	}
 	return 0
 }
 
-func parseFormat(args []string) string {
+func parseArgs(args []string) (config, error) {
+	cfg := config{}
+	var customFormat string
 	for _, arg := range args {
-		if !strings.HasPrefix(arg, "-") {
-			return arg
+		if arg == "-i" {
+			cfg.incremental = true
+		} else if strings.HasPrefix(arg, "-") {
+			return config{}, fmt.Errorf("usage: ts [-i] [format]")
+		} else {
+			customFormat = arg
 		}
 	}
-	return defaultFormat
+	if customFormat != "" {
+		cfg.format = customFormat
+	} else if cfg.incremental {
+		cfg.format = defaultIncrementalFormat
+	} else {
+		cfg.format = defaultFormat
+	}
+	return cfg, nil
 }
 
 func formatTime(t time.Time, format string) string {
@@ -62,6 +102,17 @@ func formatTime(t time.Time, format string) string {
 			b.WriteByte('%')
 			break
 		}
+		if format[i] == '.' {
+			i++
+			if i >= len(format) {
+				b.WriteByte('%')
+				b.WriteByte('.')
+				break
+			}
+			b.WriteString(subsecondSpec(t, format[i]))
+			i++
+			continue
+		}
 		var mod byte
 		if format[i] == '-' || format[i] == '_' || format[i] == '0' {
 			mod = format[i]
@@ -76,6 +127,21 @@ func formatTime(t time.Time, format string) string {
 		i++
 	}
 	return b.String()
+}
+
+func subsecondSpec(t time.Time, spec byte) string {
+	usec := t.Nanosecond() / 1000
+	frac := fmt.Sprintf(".%06d", usec)
+	switch spec {
+	case 'S':
+		return fmt.Sprintf("%02d", t.Second()) + frac
+	case 's':
+		return strconv.FormatInt(t.Unix(), 10) + frac
+	case 'T':
+		return fmt.Sprintf("%02d:%02d:%02d", t.Hour(), t.Minute(), t.Second()) + frac
+	default:
+		return "%." + string(spec)
+	}
 }
 
 func formatSpec(t time.Time, spec, mod byte) string {

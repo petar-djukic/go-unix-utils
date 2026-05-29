@@ -8,11 +8,24 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 	"testing"
 	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+var subsecRe = regexp.MustCompile(`\d+\.\d{6}`)
+
+var subsecondNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return subsecRe.ReplaceAll(b, []byte("<SUBSEC>"))
+}
+
+var elapsedRe = regexp.MustCompile(`\d{2}:\d{2}:\d{2}`)
+
+var elapsedNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return elapsedRe.ReplaceAll(b, []byte("<ELAPSED>"))
+}
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -21,6 +34,8 @@ func TestDiff(t *testing.T) {
 		t.Skip("reference binary ts not found")
 	}
 	norm := []testutils.NormalizeFunc{testutils.TimestampNormalizer}
+	subsecNorm := []testutils.NormalizeFunc{subsecondNormalizer}
+	elapsedNorm := []testutils.NormalizeFunc{elapsedNormalizer}
 	tests := []testutils.DiffTest{
 		{Name: "default_multiline", Stdin: []byte("alpha\nbeta\ngamma\n"), Normalize: norm},
 		{Name: "single_line", Stdin: []byte("hello\n"), Normalize: norm},
@@ -29,6 +44,11 @@ func TestDiff(t *testing.T) {
 		{Name: "custom_format_iso", Args: []string{"%Y-%m-%d %H:%M:%S"}, Stdin: []byte("test\n"), Normalize: norm},
 		{Name: "custom_format_time", Args: []string{"%H:%M:%S"}, Stdin: []byte("test\n"), Normalize: norm},
 		{Name: "custom_format_T", Args: []string{"%T"}, Stdin: []byte("test\n"), Normalize: norm},
+		{Name: "subsecond_S", Args: []string{"%.S"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
+		{Name: "subsecond_s", Args: []string{"%.s"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
+		{Name: "subsecond_T", Args: []string{"%.T"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
+		{Name: "incremental_default", Args: []string{"-i"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
+		{Name: "incremental_custom_format", Args: []string{"-i", "%.S"}, Stdin: []byte("x\ny\n"), Normalize: subsecNorm},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
