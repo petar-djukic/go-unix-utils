@@ -1,0 +1,19 @@
+[2026-05-29T20:45:44-04:00] [generation-run44] [stitch +0s] starting (limit=1)
+[2026-05-29T20:45:44-04:00] [generation-run44] [stitch +0s] stitch config: silence=true stitchTotal=0 stitchPerCycle=1 measure=4 generationBranch=""
+[2026-05-29T20:45:44-04:00] [generation-run44] [stitch +0s] resolved branch=generation-run44
+[2026-05-29T20:45:44-04:00] [generation-run44] [stitch +0s] repoRoot=/Users/pdiddy/COBBLER/generation-run44
+[2026-05-29T20:45:45-04:00] [generation-run44] [stitch +0s] using GitHub repo petar-djukic/go-unix-utils generation generation-run44 for issues
+[2026-05-29T20:45:45-04:00] [generation-run44] [stitch +1s] worktreeBase=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees
+[2026-05-29T20:45:45-04:00] [generation-run44] [stitch +1s] baseBranch=generation-run44
+[2026-05-29T20:45:45-04:00] [generation-run44] [stitch +1s] recovering stale tasks
+[2026-05-29T20:45:45-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for stale branches with pattern task/generation-run44-*
+[2026-05-29T20:45:45-04:00] [generation-run44] [stitch +1s] recoverStaleBranches: no stale branches found
+[2026-05-29T20:45:45-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for orphaned in_progress issues
+[2026-05-29T20:45:46-04:00] [generation-run44] [stitch +1s] resetOrphanedIssues: orphaned issue #5664 (no branch task/generation-run44-5664), removing in-progress label
+[2026-05-29T20:45:47-04:00] [generation-run44] [stitch +3s] recoverStaleTasks: pruning worktrees
+[2026-05-29T20:45:47-04:00] [generation-run44] [stitch +3s] recoverStaleTasks: recovered stale state (branches=false orphans=true)
+[2026-05-29T20:45:47-04:00] [generation-run44] [stitch +3s] looking for next ready task (completed 0 so far)
+[2026-05-29T20:45:47-04:00] [generation-run44] [stitch +3s] pickTask: calling pickReadyIssue repo=petar-djukic/go-unix-utils generation=generation-run44
+[2026-05-29T21:01:16-04:00] [generation-run44] [stitch +4s] pickTask: no tasks available: pickReadyIssue promote: promoteReadyIssues: gh api repos issues: exit status 1
+[2026-05-29T21:01:16-04:00] [generation-run44] [stitch +4s] no more tasks: no tasks available
+[2026-05-29T21:01:16-04:00] [generation-run44] [stitch +4s] completed 0 task(s) in 4s
