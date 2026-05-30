@@ -22479,3 +22479,199 @@
       - id: AC5
         text: Differential tests for R5.2 confirm output parity with gptx on exit code, stdout, and stderr
   dependency: -1
+- index: 0
+  title: '[stitch] pkg/testutils -- srd001-testutils (contract)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (full SRD for differential testing harness)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- DiffTest pattern and BuildBinary usage)
+      - CLAUDE.md (differential testing pattern showing BuildBinary and RunDiffTests usage)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: create
+        note: All exported types and function signatures as Go stubs with panic("not implemented") bodies
+
+    requirements:
+      - id: R1
+        text: Define DiffTest struct with fields Name string, Args []string, Stdin []byte, Env []string, WorkDir string, ExitCode int, Normalize []NormalizeFunc, ExpectedFiles map[string][]byte
+      - id: R2
+        text: Define NormalizeFunc type alias as func([]byte) []byte and declare ComposeNormalizers and TimestampNormalizer exports
+      - id: R3
+        text: Define RunDiffTests function signature accepting *testing.T, goBinary string, refBinary string, tests []DiffTest
+
+    design_decisions:
+      - id: D1
+        text: "Primary file is difftest.go (named after the primary exported type DiffTest, not testutils.go)"
+      - id: D2
+        text: "Package is github.com/petar-djukic/go-unix-utils/pkg/testutils"
+      - id: D3
+        text: "Import constraints: must not import any cmd/ package or any other pkg/ package"
+      - id: D4
+        text: "All function bodies are panic(\"not implemented\") stubs -- this is a contract task, not an implementation task"
+
+    acceptance_criteria:
+      - id: AC1
+        text: pkg/testutils/difftest.go compiles without errors (go build ./pkg/testutils/...)
+      - id: AC2
+        text: DiffTest struct is exported with all fields matching the contract signature
+      - id: AC3
+        text: RunDiffTests, ComposeNormalizers, and TimestampNormalizer are exported with correct signatures
+      - id: AC4
+        text: No imports of cmd/ or other pkg/ packages
+  dependency: -1
+- index: 1
+  title: '[stitch] pkg/format -- srd003-format (contract)'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd003-format.yaml (full SRD for output formatting)
+      - docs/ARCHITECTURE.yaml (pkg/format component -- column alignment, ANSI colors, human-readable sizes)
+
+    files:
+      - path: pkg/format/humansize.go
+        action: create
+        note: HumanSizeOpts struct and HumanSize function stub
+      - path: pkg/format/color.go
+        action: create
+        note: FileTypeColor, Reset, ColorEnabled, SetColorEnabled, ResetColorEnabled stubs
+      - path: pkg/format/columns.go
+        action: create
+        note: PadRight, PadLeft, Columns function stubs
+
+    requirements:
+      - id: R1
+        text: Define HumanSizeOpts struct with Binary bool field, and HumanSize function signature accepting int64 and HumanSizeOpts returning string
+      - id: R2
+        text: Define color functions -- FileTypeColor(os.FileMode) string, Reset() string, ColorEnabled(io.Writer) bool, SetColorEnabled(bool), ResetColorEnabled()
+      - id: R3
+        text: Define alignment functions -- PadRight(string, int) string, PadLeft(string, int) string, Columns([]string, int) [][]string
+
+    design_decisions:
+      - id: D1
+        text: "Split into three files by logical group: humansize.go, color.go, columns.go"
+      - id: D2
+        text: "Package is github.com/petar-djukic/go-unix-utils/pkg/format"
+      - id: D3
+        text: "May import github.com/petar-djukic/go-unix-utils/pkg/sys (for IsTerminal in ColorEnabled). Must not import any cmd/ package."
+      - id: D4
+        text: "All function bodies are panic(\"not implemented\") stubs -- this is a contract task, not an implementation task"
+
+    acceptance_criteria:
+      - id: AC1
+        text: All three files compile without errors (go build ./pkg/format/...)
+      - id: AC2
+        text: HumanSizeOpts and HumanSize are exported from humansize.go with correct signatures
+      - id: AC3
+        text: All five color functions are exported from color.go with correct signatures
+      - id: AC4
+        text: PadRight, PadLeft, and Columns are exported from columns.go with correct signatures
+  dependency: -1
+- index: 2
+  title: '[stitch] pkg/testutils -- srd001-testutils R1, R2, R3, R4'
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd001-testutils.yaml (full SRD -- all requirements for the differential testing harness)
+      - pkg/testutils/difftest.go (contract stubs from prior task -- replace panic bodies with implementations)
+      - CLAUDE.md (differential testing pattern showing BuildBinary and RunDiffTests usage in cmd/ packages)
+      - docs/ARCHITECTURE.yaml (shared_protocols section -- DiffTest execution pattern)
+
+    files:
+      - path: pkg/testutils/difftest.go
+        action: modify
+        note: Replace stub bodies with full implementations of RunDiffTests, ComposeNormalizers, TimestampNormalizer
+
+    requirements:
+      - id: R1
+        text: Implement RunDiffTests -- execute goBinary and refBinary with identical args, stdin, env, and workdir from each DiffTest; compare stdout, stderr, and exit code; report divergence with input, expected, and actual
+      - id: R2
+        text: Implement ComposeNormalizers -- chain multiple NormalizeFunc into one, applying in order
+      - id: R3
+        text: Implement TimestampNormalizer -- strip or replace timestamps in output bytes so time-varying outputs can be compared
+      - id: R4
+        text: Implement BuildBinary -- compile the cmd/ package at the given path using go build, returning the path to the built binary; use t.TempDir for output location
+
+    design_decisions:
+      - id: D1
+        text: "RunDiffTests calls t.Run for each DiffTest.Name to produce named subtests"
+      - id: D2
+        text: "Binary execution uses os/exec.Command with Stdin, Env, and Dir set from DiffTest fields"
+      - id: D3
+        text: "Exit code comparison extracts the code from exec.ExitError; a missing ExitError means exit 0"
+      - id: D4
+        text: "BuildBinary uses exec.Command(\"go\", \"build\", \"-o\", tmpPath, pkgPath) and calls t.Fatal on failure"
+      - id: D5
+        text: "Import constraints: must not import any cmd/ package or any other pkg/ package"
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./pkg/testutils/... succeeds with no errors
+      - id: AC2
+        text: go vet ./pkg/testutils/... reports no issues
+      - id: AC3
+        text: RunDiffTests executes both binaries and compares stdout, stderr, and exit code
+      - id: AC4
+        text: ComposeNormalizers chains normalizers and TimestampNormalizer replaces time-varying content
+      - id: AC5
+        text: BuildBinary compiles a Go cmd/ package and returns the binary path
+  dependency: 0
+- index: 3
+  title: '[stitch] pkg/format -- srd003-format R1, R2, R3'
+  description: |-
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd003-format.yaml (full SRD -- all requirements for output formatting)
+      - pkg/format/humansize.go (contract stub from prior task)
+      - pkg/format/color.go (contract stub from prior task)
+      - pkg/format/columns.go (contract stub from prior task)
+      - pkg/sys/ (IsTerminal function used by ColorEnabled)
+
+    files:
+      - path: pkg/format/humansize.go
+        action: modify
+        note: Implement HumanSize with binary (1024) and SI (1000) unit conversion
+      - path: pkg/format/color.go
+        action: modify
+        note: Implement ANSI color output for file types with terminal detection
+      - path: pkg/format/columns.go
+        action: modify
+        note: Implement PadRight, PadLeft, and Columns for tabular alignment
+
+    requirements:
+      - id: R1
+        text: Implement HumanSize -- convert int64 bytes to human-readable string with K/M/G/T suffixes; when HumanSizeOpts.Binary is true use 1024-based units (Ki/Mi/Gi), otherwise use 1000-based (K/M/G)
+      - id: R2
+        text: Implement color functions -- FileTypeColor returns ANSI escape for file mode (directory, symlink, executable, etc.); Reset returns reset escape; ColorEnabled checks IsTerminal on writer; SetColorEnabled/ResetColorEnabled override auto-detection
+      - id: R3
+        text: Implement alignment functions -- PadRight pads string with trailing spaces to width; PadLeft pads with leading spaces; Columns arranges entries into rows filling terminal width
+      - id: R4
+        text: Columns must calculate column widths from the longest entry in each column and distribute entries top-to-bottom then left-to-right (matching GNU ls -C behavior)
+
+    design_decisions:
+      - id: D1
+        text: "ColorEnabled uses pkg/sys.IsTerminal to detect whether the writer is a terminal"
+      - id: D2
+        text: "SetColorEnabled stores override in a package-level variable; ResetColorEnabled clears it back to auto-detect"
+      - id: D3
+        text: "HumanSize rounds to one decimal place and omits the decimal for whole numbers"
+      - id: D4
+        text: "Import constraints: may import pkg/sys. Must not import any cmd/ package."
+
+    acceptance_criteria:
+      - id: AC1
+        text: go build ./pkg/format/... succeeds with no errors
+      - id: AC2
+        text: go vet ./pkg/format/... reports no issues
+      - id: AC3
+        text: HumanSize(1024, HumanSizeOpts{Binary:true}) returns "1.0Ki" or equivalent per SRD
+      - id: AC4
+        text: FileTypeColor returns distinct ANSI codes for directories, symlinks, and executables
+      - id: AC5
+        text: Columns distributes entries into balanced columns that fit within the given terminal width
+  dependency: 1
