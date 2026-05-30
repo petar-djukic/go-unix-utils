@@ -5924,10 +5924,10 @@ requirements:
             issue: 5672
             weight: 1
         R5.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R5.2:
-            status: proposed
+            status: in_progress
             weight: 1
     srd112-chronic:
         R1.1:

@@ -207,3 +207,9 @@
 [2026-05-30T12:39:21-04:00] [generation-run44] [stitch +3m11s] closeStitchTask: closing #5674 "[stitch] cmd/pr -- srd110-pr R5.1, R5.2"
 [2026-05-30T12:39:22-04:00] [generation-run44] [stitch +3m12s] commentCobblerIssue: posted comment on #5674
 [2026-05-30T12:39:22-04:00] [generation-run44] [stitch +3m12s] updateRequirementsFile: marked 2 R-items as complete_with_failures for issue #5674
+[2026-05-30T12:39:24-04:00] [generation-run44] [stitch +3m14s] closeCobblerIssue: closed #5674
+[2026-05-30T12:39:26-04:00] [generation-run44] [stitch +3m16s] closeStitchTask: #5674 closed
+[2026-05-30T12:39:26-04:00] [generation-run44] [stitch +3m16s] doOneTask: task 5674 finished in 3m11s
+[2026-05-30T12:39:26-04:00] [generation-run44] [stitch +3m16s] task 5674 completed in 3m11s
+[2026-05-30T12:39:26-04:00] [generation-run44] [stitch +3m16s] reached per-cycle limit (1), pausing for measure
+[2026-05-30T12:39:26-04:00] [generation-run44] [stitch +3m16s] completed 1 task(s) in 3m16s

@@ -728,7 +728,7 @@ code_status:
               testfiles: 0
             - id: rel15.0-uc003-pr
               specstatus: spec_complete
-              codestatus: not started
+              codestatus: implemented
               testdir: ""
               testfiles: 0
             - id: rel15.0-uc004-ptx
