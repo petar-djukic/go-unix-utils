@@ -30,6 +30,8 @@ type options struct {
 	width      int
 	gapSize    int
 	ignoreCase bool
+	autoRef    bool
+	references bool
 	wordRegexp *regexp.Regexp
 	files      []string
 }
@@ -38,10 +40,17 @@ type entry struct {
 	before  string
 	kwAfter string
 	sortKey string
+	ref     string
 }
 
 type wordSpan struct {
 	start, end int
+}
+
+type inputLine struct {
+	text    string
+	file    string
+	lineNum int
 }
 
 func main() {
@@ -59,7 +68,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	entries := buildIndex(lines, opts.ignoreCase, opts.wordRegexp)
+	entries := buildIndex(lines, &opts)
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].sortKey < entries[j].sortKey
 	})
@@ -115,6 +124,14 @@ func parseLongFlag(flag string, rest []string, opts *options) (int, error) {
 		opts.ignoreCase = true
 		return 0, nil
 	}
+	if flag == "--auto-reference" {
+		opts.autoRef = true
+		return 0, nil
+	}
+	if flag == "--references" {
+		opts.references = true
+		return 0, nil
+	}
 	if strings.HasPrefix(flag, "--width=") {
 		return 0, parseIntVal(flag[len("--width="):], &opts.width, "width")
 	}
@@ -150,6 +167,10 @@ func parseShortFlags(flags string, rest []string, opts *options) (int, error) {
 		switch flags[i] {
 		case 'f':
 			opts.ignoreCase = true
+		case 'A':
+			opts.autoRef = true
+		case 'r':
+			opts.references = true
 		case 'w':
 			return extractAndSetInt(flags[i+1:], rest, &opts.width, 'w')
 		case 'g':
@@ -213,14 +234,16 @@ func parseIntVal(s string, dst *int, name string) error {
 	return nil
 }
 
-func readAllLines(names []string) ([]string, error) {
-	var all []string
+func readAllLines(names []string) ([]inputLine, error) {
+	var all []inputLine
 	for _, name := range names {
 		lines, err := readFile(name)
 		if err != nil {
 			return nil, err
 		}
-		all = append(all, lines...)
+		for i, text := range lines {
+			all = append(all, inputLine{text: text, file: name, lineNum: i + 1})
+		}
 	}
 	return all, nil
 }
@@ -245,18 +268,27 @@ func readFile(name string) ([]string, error) {
 	return lines, sc.Err()
 }
 
-func buildIndex(lines []string, foldCase bool, wordRe *regexp.Regexp) []entry {
+func buildIndex(lines []inputLine, opts *options) []entry {
 	var entries []entry
-	for _, line := range lines {
-		for _, w := range findWords(line, wordRe) {
-			sk := line[w.start:w.end]
-			if foldCase {
+	for _, il := range lines {
+		text := il.text
+		var ref string
+		if opts.references {
+			ref, text = splitReference(text)
+		}
+		if opts.autoRef {
+			ref = formatAutoRef(il.file, il.lineNum)
+		}
+		for _, w := range findWords(text, opts.wordRegexp) {
+			sk := text[w.start:w.end]
+			if opts.ignoreCase {
 				sk = strings.ToUpper(sk)
 			}
 			entries = append(entries, entry{
-				before:  line[:w.start],
-				kwAfter: line[w.start:],
+				before:  text[:w.start],
+				kwAfter: text[w.start:],
 				sortKey: sk,
+				ref:     ref,
 			})
 		}
 	}
@@ -303,10 +335,15 @@ func isWordChar(r rune) bool {
 
 func writeOutput(entries []entry, width, gapSize int) error {
 	w := bufio.NewWriter(os.Stdout)
-	half := width / 2
-	rightMax := width - half - gapSize
+	refMax := maxRefWidth(entries)
+	kwicWidth := width
+	if refMax > 0 {
+		kwicWidth = width - refMax - gapSize
+	}
+	half := kwicWidth / 2
+	rightMax := kwicWidth - half - gapSize
 	for _, e := range entries {
-		line := formatEntry(e, half, gapSize, rightMax)
+		line := formatEntry(e, half, gapSize, rightMax, refMax)
 		if _, err := w.WriteString(line); err != nil {
 			return err
 		}
@@ -317,7 +354,7 @@ func writeOutput(entries []entry, width, gapSize int) error {
 	return w.Flush()
 }
 
-func formatEntry(e entry, half, gapSize, rightMax int) string {
+func formatEntry(e entry, half, gapSize, rightMax, refMax int) string {
 	left := strings.TrimRight(e.before, " ")
 	leftMax := max(half-gapSize, 0)
 	if len(left) > leftMax {
@@ -328,6 +365,10 @@ func formatEntry(e entry, half, gapSize, rightMax int) string {
 		right = right[:rightMax]
 	}
 	var buf strings.Builder
+	if refMax > 0 {
+		buf.WriteString(e.ref)
+		writeSpaces(&buf, refMax-len(e.ref)+gapSize)
+	}
 	writeSpaces(&buf, half-len(left))
 	buf.WriteString(left)
 	writeSpaces(&buf, gapSize)
@@ -339,6 +380,37 @@ func writeSpaces(b *strings.Builder, n int) {
 	for range n {
 		b.WriteByte(' ')
 	}
+}
+
+func splitReference(line string) (string, string) {
+	i := strings.IndexAny(line, " \t")
+	if i < 0 {
+		return line, ""
+	}
+	ref := line[:i]
+	rest := line[i:]
+	j := 0
+	for j < len(rest) && (rest[j] == ' ' || rest[j] == '\t') {
+		j++
+	}
+	return ref, rest[j:]
+}
+
+func formatAutoRef(file string, lineNum int) string {
+	if file == "-" {
+		file = ""
+	}
+	return file + ":" + strconv.Itoa(lineNum)
+}
+
+func maxRefWidth(entries []entry) int {
+	m := 0
+	for _, e := range entries {
+		if len(e.ref) > m {
+			m = len(e.ref)
+		}
+	}
+	return m
 }
 
 func formatErr(err error) string {
