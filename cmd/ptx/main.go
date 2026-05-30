@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ type options struct {
 	width      int
 	gapSize    int
 	ignoreCase bool
+	wordRegexp *regexp.Regexp
 	files      []string
 }
 
@@ -57,7 +59,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	entries := buildIndex(lines, opts.ignoreCase)
+	entries := buildIndex(lines, opts.ignoreCase, opts.wordRegexp)
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].sortKey < entries[j].sortKey
 	})
@@ -131,6 +133,15 @@ func parseLongFlag(flag string, rest []string, opts *options) (int, error) {
 		}
 		return 1, parseIntVal(rest[0], &opts.gapSize, "gap-size")
 	}
+	if strings.HasPrefix(flag, "--word-regexp=") {
+		return 0, parseRegexpVal(flag[len("--word-regexp="):], &opts.wordRegexp)
+	}
+	if flag == "--word-regexp" {
+		if len(rest) == 0 {
+			return 0, fmt.Errorf("option '%s' requires an argument", flag)
+		}
+		return 1, parseRegexpVal(rest[0], &opts.wordRegexp)
+	}
 	return 0, fmt.Errorf("unrecognized option '%s'", flag)
 }
 
@@ -143,6 +154,8 @@ func parseShortFlags(flags string, rest []string, opts *options) (int, error) {
 			return extractAndSetInt(flags[i+1:], rest, &opts.width, 'w')
 		case 'g':
 			return extractAndSetInt(flags[i+1:], rest, &opts.gapSize, 'g')
+		case 'W':
+			return extractAndSetRegexp(flags[i+1:], rest, &opts.wordRegexp)
 		default:
 			return 0, fmt.Errorf("invalid option -- '%c'", flags[i])
 		}
@@ -169,6 +182,26 @@ func extractFlagValue(tail string, rest []string, flag byte) (string, int, error
 		return rest[0], 1, nil
 	}
 	return "", 0, fmt.Errorf("option requires an argument -- '%c'", flag)
+}
+
+func extractAndSetRegexp(tail string, rest []string, dst **regexp.Regexp) (int, error) {
+	val, consumed, err := extractFlagValue(tail, rest, 'W')
+	if err != nil {
+		return 0, err
+	}
+	if err := parseRegexpVal(val, dst); err != nil {
+		return 0, err
+	}
+	return consumed, nil
+}
+
+func parseRegexpVal(s string, dst **regexp.Regexp) error {
+	re, err := regexp.Compile(s)
+	if err != nil {
+		return fmt.Errorf("invalid word regexp '%s': %s", s, err)
+	}
+	*dst = re
+	return nil
 }
 
 func parseIntVal(s string, dst *int, name string) error {
@@ -212,10 +245,10 @@ func readFile(name string) ([]string, error) {
 	return lines, sc.Err()
 }
 
-func buildIndex(lines []string, foldCase bool) []entry {
+func buildIndex(lines []string, foldCase bool, wordRe *regexp.Regexp) []entry {
 	var entries []entry
 	for _, line := range lines {
-		for _, w := range findWords(line) {
+		for _, w := range findWords(line, wordRe) {
 			sk := line[w.start:w.end]
 			if foldCase {
 				sk = strings.ToUpper(sk)
@@ -230,7 +263,10 @@ func buildIndex(lines []string, foldCase bool) []entry {
 	return entries
 }
 
-func findWords(line string) []wordSpan {
+func findWords(line string, wordRe *regexp.Regexp) []wordSpan {
+	if wordRe != nil {
+		return findWordsRegexp(line, wordRe)
+	}
 	var spans []wordSpan
 	i := 0
 	for i < len(line) {
@@ -248,6 +284,15 @@ func findWords(line string) []wordSpan {
 			i += size
 		}
 		spans = append(spans, wordSpan{start, i})
+	}
+	return spans
+}
+
+func findWordsRegexp(line string, re *regexp.Regexp) []wordSpan {
+	locs := re.FindAllStringIndex(line, -1)
+	spans := make([]wordSpan, len(locs))
+	for i, loc := range locs {
+		spans[i] = wordSpan{loc[0], loc[1]}
 	}
 	return spans
 }
