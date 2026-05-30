@@ -122,3 +122,20 @@
 [2026-05-30T12:32:29-04:00] [generation-run44] [measure +2m34s] validateMeasureOutput: [1] "[stitch] cmd/ptx -- srd111-ptx R5.1, R5.2": file cmd/ptx/ptx_test.go matches package name (P7 violation)
 [2026-05-30T12:32:33-04:00] [generation-run44] [measure +2m38s] transitionRequirements: marked 2 R-items as proposed
 [2026-05-30T12:32:33-04:00] [generation-run44] [measure +2m38s] transitionRequirements: marked 2 R-items as proposed
+[2026-05-30T12:32:33-04:00] [generation-run44] [measure +2m38s] importIssues: creating task 0: [stitch] cmd/pr -- srd110-pr R5.1, R5.2 (dep=-1)
+[2026-05-30T12:32:34-04:00] [generation-run44] [measure +2m39s] createCobblerIssue: created #5674 "[measure] cmd/pr -- srd110-pr R5.1, R5.2" gen=generation-run44 index=0 dep=-1
+[2026-05-30T12:32:34-04:00] [generation-run44] [measure +2m39s] importIssues: creating task 1: [stitch] cmd/ptx -- srd111-ptx R5.1, R5.2 (dep=-1)
+[2026-05-30T12:32:35-04:00] [generation-run44] [measure +2m40s] createCobblerIssue: created #5675 "[measure] cmd/ptx -- srd111-ptx R5.1, R5.2" gen=generation-run44 index=1 dep=-1
+[2026-05-30T12:32:36-04:00] [generation-run44] [measure +2m41s] waitForIssuesVisible: 0/2 visible, retrying...
+[2026-05-30T12:32:37-04:00] [generation-run44] [measure +2m42s] waitForIssuesVisible: 1/2 visible, retrying...
+[2026-05-30T12:32:39-04:00] [generation-run44] [measure +2m44s] waitForIssuesVisible: 1/2 visible, retrying...
+[2026-05-30T12:32:40-04:00] [generation-run44] [measure +2m45s] waitForIssuesVisible: 1/2 visible, retrying...
+[2026-05-30T12:32:42-04:00] [generation-run44] [measure +2m47s] waitForIssuesVisible: 1/2 visible, retrying...
+[2026-05-30T12:32:46-04:00] [generation-run44] [measure +2m51s] importIssues: 2 of 2 issue(s) imported
+[2026-05-30T12:32:46-04:00] [generation-run44] [measure +2m51s] appendMeasureLog: 490 total issues in .cobbler/measure.yaml
+[2026-05-30T12:32:46-04:00] [generation-run44] [measure +2m51s] iteration 1 imported 2 issue(s)
+[2026-05-30T12:32:49-04:00] [generation-run44] [measure +2m54s] linkSubIssue: linked #5674 as sub-issue of #5673
+[2026-05-30T12:32:50-04:00] [generation-run44] [measure +2m55s] linkSubIssue: linked #5675 as sub-issue of #5673
+[2026-05-30T12:32:53-04:00] [generation-run44] [measure +2m57s] closeMeasuringPlaceholder: closed #5673
+[2026-05-30T12:32:53-04:00] [generation-run44] [measure +2m57s] finalizeMeasurePlaceholder: finalized #5673 with 2 child issue(s)
+[2026-05-30T12:32:53-04:00] [generation-run44] [measure +2m57s] completed 1 iteration(s), 2 issue(s) created in 2m57s
