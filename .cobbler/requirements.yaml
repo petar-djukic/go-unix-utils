@@ -5875,13 +5875,16 @@ requirements:
             issue: 5669
             weight: 1
         R4.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5670
             weight: 1
         R4.2:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5670
             weight: 1
         R4.3:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5670
             weight: 1
         R5.1:
             status: ready
