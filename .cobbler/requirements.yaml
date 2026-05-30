@@ -5910,7 +5910,8 @@ requirements:
             issue: 5655
             weight: 1
         R3.1:
-            status: in_progress
+            status: complete_with_failures
+            issue: 5671
             weight: 1
         R4.1:
             status: proposed
