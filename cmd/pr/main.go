@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd110-pr R1.1, R2.1, R2.2, R2.3.
+// Implements srd110-pr R1.1, R2.1, R2.2, R2.3, R3.1.
 package main
 
 import (
@@ -31,6 +31,8 @@ type options struct {
 	headerSet      bool
 	omitHeader     bool
 	omitPagination bool
+	columns        int
+	across         bool
 }
 
 func main() {
@@ -91,6 +93,12 @@ func parseArgs(args []string) (options, []string, error) {
 			err = parseLenFlag(args, &i, &opts)
 		case strings.HasPrefix(a, "-h"):
 			err = parseHdrFlag(args, &i, &opts)
+		case a == "--across" || a == "-a":
+			opts.across = true
+		case strings.HasPrefix(a, "--columns="):
+			err = setColumns(&opts, a[len("--columns="):])
+		case isColumnsFlag(a):
+			err = setColumns(&opts, a[1:])
 		case strings.HasPrefix(a, "-") && a != "-":
 			err = fmt.Errorf("unrecognized option '%s'", a)
 		default:
@@ -144,6 +152,27 @@ func setPageLen(opts *options, s string) error {
 	return nil
 }
 
+func setColumns(opts *options, s string) error {
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 {
+		return fmt.Errorf("invalid number of columns: %q", s)
+	}
+	opts.columns = n
+	return nil
+}
+
+func isColumnsFlag(s string) bool {
+	if len(s) < 2 || s[0] != '-' {
+		return false
+	}
+	for _, c := range s[1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func processFile(path string, opts options, w *bufio.Writer) error {
 	var r io.Reader
 	var filename string
@@ -174,25 +203,38 @@ func processFile(path string, opts options, w *bufio.Writer) error {
 
 func paginate(r io.Reader, filename string, modTime time.Time, opts options, w *bufio.Writer) error {
 	scanner := bufio.NewScanner(r)
-	if opts.omitHeader || opts.omitPagination {
+	cols := max(opts.columns, 1)
+	noHdr := opts.omitHeader || opts.omitPagination
+	if noHdr && cols <= 1 {
 		return paginateNoHeader(scanner, w)
 	}
-	date := modTime.Format("2006-01-02 15:04")
 	body := max(opts.pageLength-headerSize-footerSize, 1)
+	if noHdr {
+		body = opts.pageLength
+	}
+	date := modTime.Format("2006-01-02 15:04")
 	pageNum := 1
 	for {
-		lines, eof := readBody(scanner, body)
+		lines, eof := readBody(scanner, body*cols)
 		if len(lines) == 0 && eof {
 			break
 		}
-		if err := writeHeader(w, date, filename, pageNum); err != nil {
+		if !noHdr {
+			if err := writeHeader(w, date, filename, pageNum); err != nil {
+				return err
+			}
+		}
+		if cols > 1 {
+			if err := writeColumns(w, lines, body, cols, opts.across, !noHdr); err != nil {
+				return err
+			}
+		} else if err := writeBody(w, lines, body); err != nil {
 			return err
 		}
-		if err := writeBody(w, lines, body); err != nil {
-			return err
-		}
-		if err := writeFooter(w); err != nil {
-			return err
+		if !noHdr {
+			if err := writeFooter(w); err != nil {
+				return err
+			}
 		}
 		pageNum++
 		if eof {
@@ -263,4 +305,80 @@ func writeFooter(w *bufio.Writer) error {
 		}
 	}
 	return nil
+}
+
+func writeColumns(w *bufio.Writer, lines []string, bodySize, cols int, across, pad bool) error {
+	colWidth := defaultWidth / cols
+	n := len(lines)
+	rows := (n + cols - 1) / cols
+	fullCols := n - (rows-1)*cols
+	for r := range rows {
+		last := lastDataCol(r, cols, rows, fullCols, n, across)
+		for c := 0; c <= last; c++ {
+			text := ""
+			if across {
+				text = lines[r*cols+c]
+			} else {
+				text = lines[colDownIdx(r, c, rows, fullCols)]
+			}
+			if c < last {
+				text = padToCol(text, c*colWidth, (c+1)*colWidth)
+			}
+			if _, err := fmt.Fprint(w, text); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprint(w, "\n"); err != nil {
+			return err
+		}
+	}
+	if pad {
+		for range bodySize - rows {
+			if _, err := fmt.Fprint(w, "\n"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func lastDataCol(r, cols, rows, fullCols, n int, across bool) int {
+	if across {
+		if remaining := n - r*cols; remaining >= cols {
+			return cols - 1
+		} else {
+			return remaining - 1
+		}
+	}
+	if r < rows-1 || fullCols >= cols {
+		return cols - 1
+	}
+	return fullCols - 1
+}
+
+func colDownIdx(r, c, rows, fullCols int) int {
+	if c < fullCols {
+		return c*rows + r
+	}
+	return fullCols*rows + (c-fullCols)*(rows-1) + r
+}
+
+func padToCol(s string, absStart, absTarget int) string {
+	if absStart+len(s) >= absTarget {
+		return s[:absTarget-absStart]
+	}
+	var buf strings.Builder
+	buf.WriteString(s)
+	pos := absStart + len(s)
+	for pos < absTarget {
+		nextTab := (pos/8 + 1) * 8
+		if nextTab <= absTarget {
+			buf.WriteByte('\t')
+			pos = nextTab
+		} else {
+			buf.WriteString(strings.Repeat(" ", absTarget-pos))
+			pos = absTarget
+		}
+	}
+	return buf.String()
 }
