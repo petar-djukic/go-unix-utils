@@ -5887,10 +5887,10 @@ requirements:
             issue: 5670
             weight: 1
         R5.1:
-            status: proposed
+            status: in_progress
             weight: 1
         R5.2:
-            status: proposed
+            status: in_progress
             weight: 1
     srd111-ptx:
         R1.1:
