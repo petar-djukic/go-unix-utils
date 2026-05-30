@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Petar Djukic. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// Implements srd110-pr R1.1, R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R4.3.
+// Implements srd110-pr R1.1, R2.1, R2.2, R2.3, R3.1, R4.1, R4.2, R4.3, R5.1, R5.2.
 package main
 
 import (

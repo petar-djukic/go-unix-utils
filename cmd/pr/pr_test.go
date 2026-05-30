@@ -4,14 +4,19 @@
 package main
 
 import (
+	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
+
+var discardStderr = testutils.NormalizeFunc(func([]byte) []byte { return nil })
 
 func TestDiff(t *testing.T) {
 	goBin := testutils.BuildBinary(t, ".")
@@ -115,8 +120,56 @@ func TestDiff(t *testing.T) {
 			Args:    []string{"-t", "three.txt"},
 			WorkDir: dir,
 		},
+		{
+			Name:      "r5_1_nonexistent_file",
+			Args:      []string{"nonexistent.txt"},
+			WorkDir:   dir,
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "r5_1_success_exit_code",
+			Args:      []string{"-t", "three.txt"},
+			WorkDir:   dir,
+			ExitCode:  0,
+		},
 	}
 	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	dir := t.TempDir()
+	largePath := filepath.Join(dir, "large.dat")
+	data := make([]byte, 0, 500000*2)
+	for range 500000 {
+		data = append(data, 'x', '\n')
+	}
+	if err := os.WriteFile(largePath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, goBin, "-t", largePath)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(stdout, buf); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Close()
+	err = cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatal("pr timed out; SIGPIPE handler may not be installed")
+	}
+	if err != nil {
+		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
 }
 
 func writeFile(t *testing.T, dir, name, content string) {
