@@ -161,3 +161,13 @@
 [2026-05-30T12:29:46-04:00] [generation-run44] [stitch +6m10s] closeStitchTask: closing #5672 "[stitch] cmd/ptx -- srd111-ptx R4.1, R4.2"
 [2026-05-30T12:29:46-04:00] [generation-run44] [stitch +6m11s] commentCobblerIssue: posted comment on #5672
 [2026-05-30T12:29:46-04:00] [generation-run44] [stitch +6m11s] updateRequirementsFile: marked 2 R-items as complete_with_failures for issue #5672
+[2026-05-30T12:29:49-04:00] [generation-run44] [stitch +6m13s] closeCobblerIssue: closed #5672
+[2026-05-30T12:29:50-04:00] [generation-run44] [stitch +6m15s] closeStitchTask: #5672 closed
+[2026-05-30T12:29:51-04:00] [generation-run44] [stitch +6m16s] sweepCompletedTasks: all R-items for #5672 already complete, closing
+[2026-05-30T12:29:52-04:00] [generation-run44] [stitch +6m17s] commentCobblerIssue: posted comment on #5672
+[2026-05-30T12:29:53-04:00] [generation-run44] [stitch +6m18s] closeCobblerIssue: closed #5672
+[2026-05-30T12:29:53-04:00] [generation-run44] [stitch +6m18s] sweepCompletedTasks: closed 1 already-complete task(s)
+[2026-05-30T12:29:53-04:00] [generation-run44] [stitch +6m18s] doOneTask: task 5672 finished in 6m11s
+[2026-05-30T12:29:53-04:00] [generation-run44] [stitch +6m18s] task 5672 completed in 6m11s
+[2026-05-30T12:29:53-04:00] [generation-run44] [stitch +6m18s] reached per-cycle limit (1), pausing for measure
+[2026-05-30T12:29:53-04:00] [generation-run44] [stitch +6m18s] completed 1 task(s) in 6m18s
