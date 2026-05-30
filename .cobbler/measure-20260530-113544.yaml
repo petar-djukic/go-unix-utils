@@ -1,0 +1,143 @@
+- index: 0
+  title: "cmd/pr -- srd110-pr R3.1"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd110-pr.yaml (requirement R3.1 -- the requirement to implement)
+      - cmd/pr/main.go (existing implementation to extend)
+      - pkg/sys/sigpipe.go (SIGPIPE handler pattern)
+      - CLAUDE.md (project conventions and build instructions)
+
+    files:
+      - path: cmd/pr/main.go
+        action: modify
+        note: "Extend pr implementation with R3.1 functionality"
+
+    requirements:
+      - id: R1
+        text: "Implement srd110-pr requirement R3.1 exactly as specified in the SRD. Read the SRD first to understand the requirement, then extend the existing cmd/pr/main.go implementation to satisfy it."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project shared protocol"
+      - id: D2
+        text: "Extend the existing implementation -- do not rewrite code that already satisfies completed requirements (R1.x, R2.x)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/pr ./cmd/pr/ succeeds without errors"
+      - id: AC2
+        text: "go vet ./cmd/pr/ passes with no warnings"
+      - id: AC3
+        text: "Requirement R3.1 from srd110-pr is fully implemented as specified"
+
+- index: 1
+  title: "cmd/pr -- srd110-pr R4.1, R4.2, R4.3"
+  dependency: 0
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd110-pr.yaml (requirements R4.1, R4.2, R4.3 -- the requirements to implement)
+      - cmd/pr/main.go (existing implementation to extend, including R3.1 from the previous task)
+      - CLAUDE.md (project conventions and build instructions)
+
+    files:
+      - path: cmd/pr/main.go
+        action: modify
+        note: "Extend pr implementation with R4.1, R4.2, R4.3 functionality"
+
+    requirements:
+      - id: R1
+        text: "Implement srd110-pr requirement R4.1 exactly as specified in the SRD"
+      - id: R2
+        text: "Implement srd110-pr requirement R4.2 exactly as specified in the SRD"
+      - id: R3
+        text: "Implement srd110-pr requirement R4.3 exactly as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing implementation -- do not rewrite code that already satisfies completed requirements"
+      - id: D2
+        text: "Follow the patterns established in the existing cmd/pr/main.go for flag parsing, output formatting, and error handling"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/pr ./cmd/pr/ succeeds without errors"
+      - id: AC2
+        text: "go vet ./cmd/pr/ passes with no warnings"
+      - id: AC3
+        text: "Requirements R4.1, R4.2, and R4.3 from srd110-pr are fully implemented as specified"
+
+- index: 2
+  title: "cmd/ptx -- srd111-ptx R3.1"
+  dependency: -1
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd111-ptx.yaml (requirement R3.1 -- the requirement to implement)
+      - cmd/ptx/main.go (existing implementation to extend)
+      - pkg/sys/sigpipe.go (SIGPIPE handler pattern)
+      - CLAUDE.md (project conventions and build instructions)
+
+    files:
+      - path: cmd/ptx/main.go
+        action: modify
+        note: "Extend ptx implementation with R3.1 functionality"
+
+    requirements:
+      - id: R1
+        text: "Implement srd111-ptx requirement R3.1 exactly as specified in the SRD. Read the SRD first to understand the requirement, then extend the existing cmd/ptx/main.go implementation to satisfy it."
+
+    design_decisions:
+      - id: D1
+        text: "Call sys.InstallSIGPIPEHandler() at the start of main per project shared protocol"
+      - id: D2
+        text: "Extend the existing implementation -- do not rewrite code that already satisfies completed requirements (R1.x, R2.x)"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/ptx ./cmd/ptx/ succeeds without errors"
+      - id: AC2
+        text: "go vet ./cmd/ptx/ passes with no warnings"
+      - id: AC3
+        text: "Requirement R3.1 from srd111-ptx is fully implemented as specified"
+
+- index: 3
+  title: "cmd/ptx -- srd111-ptx R4.1, R4.2"
+  dependency: 2
+  description: |
+    deliverable_type: code
+
+    required_reading:
+      - docs/specs/software-requirements/srd111-ptx.yaml (requirements R4.1, R4.2 -- the requirements to implement)
+      - cmd/ptx/main.go (existing implementation to extend, including R3.1 from the previous task)
+      - CLAUDE.md (project conventions and build instructions)
+
+    files:
+      - path: cmd/ptx/main.go
+        action: modify
+        note: "Extend ptx implementation with R4.1, R4.2 functionality"
+
+    requirements:
+      - id: R1
+        text: "Implement srd111-ptx requirement R4.1 exactly as specified in the SRD"
+      - id: R2
+        text: "Implement srd111-ptx requirement R4.2 exactly as specified in the SRD"
+
+    design_decisions:
+      - id: D1
+        text: "Extend the existing implementation -- do not rewrite code that already satisfies completed requirements"
+      - id: D2
+        text: "Follow the patterns established in the existing cmd/ptx/main.go for flag parsing, output formatting, and error handling"
+
+    acceptance_criteria:
+      - id: AC1
+        text: "go build -o bin/ptx ./cmd/ptx/ succeeds without errors"
+      - id: AC2
+        text: "go vet ./cmd/ptx/ passes with no warnings"
+      - id: AC3
+        text: "Requirements R4.1 and R4.2 from srd111-ptx are fully implemented as specified"
