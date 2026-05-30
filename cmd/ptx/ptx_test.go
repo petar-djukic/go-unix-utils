@@ -4,8 +4,12 @@
 package main
 
 import (
+	"context"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
 )
@@ -114,7 +118,53 @@ func TestDiff(t *testing.T) {
 			Args:  []string{"-"},
 			Stdin: []byte("hello world\n"),
 		},
+
+		// R5.1: exit codes
+		{
+			Name:  "r5_1 exit 0 on success",
+			Args:  []string{},
+			Stdin: []byte("hello world\n"),
+		},
+		{
+			Name:      "r5_1 exit 1 nonexistent file",
+			Args:      []string{filepath.Join(t.TempDir(), "nonexistent.txt")},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
+		{
+			Name:      "r5_1 exit 1 invalid option",
+			Args:      []string{"--bogus-flag"},
+			ExitCode:  1,
+			Normalize: []testutils.NormalizeFunc{discardStderr},
+		},
 	}
 
 	testutils.RunDiffTests(t, goBin, refBin, tests)
 }
+
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, goBin)
+	cmd.Stdin = strings.NewReader("hello world\n")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1)
+	stdout.Read(buf)
+	stdout.Close()
+	err = cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatal("ptx timed out; SIGPIPE handler may not be installed")
+	}
+	if err != nil {
+		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
+}
+
+var discardStderr = testutils.NormalizeFunc(func([]byte) []byte { return nil })
