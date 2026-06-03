@@ -1,0 +1,27 @@
+task_id: "5549"
+task_title: '[stitch] Implement cmd/chmod root protection and reference mode (srd089 R3.1, R3.2)'
+status: success
+branch: task/generation-run44-5549
+diff:
+    files: 3
+    insertions: 381
+    deletions: 168
+files:
+    - path: .cobbler/history/2026-05-23-13-13-31-stitch-orchestrator.log
+      status: M
+      insertions: 159
+      deletions: 0
+    - path: cmd/chmod/main.go
+      status: M
+      insertions: 52
+      deletions: 168
+    - path: cmd/chmod/mode.go
+      status: A
+      insertions: 171
+      deletions: 0
+loc_before:
+    production: 23845
+    test: 20671
+loc_after:
+    production: 23900
+    test: 20671

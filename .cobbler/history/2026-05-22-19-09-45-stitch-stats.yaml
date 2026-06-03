@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5475"
+task_title: '[stitch] cmd/od: srd072 R1.1-R1.4'
+status: success
+started_at: "2026-05-22T23:09:45Z"
+duration: 21m45s
+duration_s: 1304
+tokens:
+    input: 4527913
+    output: 63927
+    cache_creation: 296718
+    cache_read: 4231133
+cost_usd: 6.1326309499999985
+num_turns: 124
+rate_limit_wait_s: 1
+loc_before:
+    production: 19276
+    test: 17733
+loc_after:
+    production: 19933
+    test: 17841
+diff:
+    files: 4
+    insertions: 1180
+    deletions: 0

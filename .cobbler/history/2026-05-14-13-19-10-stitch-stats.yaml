@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5192"
+task_title: '[stitch] cmd/hostid: differential tests (srd048-hostid R3.1-R3.3)'
+status: success
+started_at: "2026-05-14T17:19:10Z"
+duration: 2m39s
+duration_s: 158
+tokens:
+    input: 348956
+    output: 2268
+    cache_creation: 174818
+    cache_read: 174127
+cost_usd: 1.6113976999999995
+num_turns: 25
+rate_limit_wait_s: 3
+loc_before:
+    production: 4156
+    test: 3418
+loc_after:
+    production: 4156
+    test: 3452
+diff:
+    files: 2
+    insertions: 167
+    deletions: 0

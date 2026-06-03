@@ -1,0 +1,35 @@
+task_id: "5066"
+task_title: '[stitch] srd002-sys R1.1-R1.4 -- FileInfo struct and Stat/Lstat implementation'
+status: success
+branch: task/generation-run44-5066
+diff:
+    files: 5
+    insertions: 161
+    deletions: 4
+files:
+    - path: .cobbler/history/2026-05-13-17-42-38-stitch-orchestrator.log
+      status: M
+      insertions: 103
+      deletions: 0
+    - path: go.mod
+      status: M
+      insertions: 2
+      deletions: 0
+    - path: go.sum
+      status: A
+      insertions: 2
+      deletions: 0
+    - path: pkg/sys/fileinfo.go
+      status: M
+      insertions: 12
+      deletions: 4
+    - path: pkg/sys/stat_darwin.go
+      status: A
+      insertions: 43
+      deletions: 0
+loc_before:
+    production: 141
+    test: 0
+loc_after:
+    production: 192
+    test: 0

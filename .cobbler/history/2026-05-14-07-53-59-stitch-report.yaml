@@ -1,0 +1,23 @@
+task_id: "5153"
+task_title: '[stitch] cmd/du: apparent size, human-readable output, and null termination (srd009-du R2.8, R3.1-R3.3)'
+status: success
+branch: task/generation-run44-5153
+diff:
+    files: 2
+    insertions: 129
+    deletions: 9
+files:
+    - path: .cobbler/history/2026-05-14-07-53-51-stitch-orchestrator.log
+      status: M
+      insertions: 88
+      deletions: 0
+    - path: cmd/du/main.go
+      status: M
+      insertions: 42
+      deletions: 9
+loc_before:
+    production: 2490
+    test: 1544
+loc_after:
+    production: 2523
+    test: 1544

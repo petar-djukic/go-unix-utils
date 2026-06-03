@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5307"
+task_title: '[stitch] cmd/sha1sum -- srd031 R2.1-R2.3, R3.1'
+status: success
+started_at: "2026-05-19T22:35:31Z"
+duration: 1m29s
+duration_s: 88
+tokens:
+    input: 237113
+    output: 1059
+    cache_creation: 185297
+    cache_read: 51810
+cost_usd: 1.5823562500000001
+num_turns: 10
+loc_before:
+    production: 8947
+    test: 8159
+loc_after:
+    production: 8947
+    test: 8159
+diff:
+    files: 1
+    insertions: 79
+    deletions: 0

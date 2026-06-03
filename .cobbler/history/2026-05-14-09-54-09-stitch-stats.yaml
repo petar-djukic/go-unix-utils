@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5176"
+task_title: '[stitch] cmd/wc: core counting and standard input (srd005-wc R1.1-R1.4)'
+status: failed
+error: 'claude failure: exit status 1'
+started_at: "2026-05-14T13:54:09Z"
+duration: 17s
+duration_s: 17
+tokens:
+    input: 166146
+    output: 326
+    cache_creation: 154303
+    cache_read: 11841
+cost_usd: 1.12481925
+rate_limit_wait_s: 3
+loc_before:
+    production: 3416
+    test: 2665
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

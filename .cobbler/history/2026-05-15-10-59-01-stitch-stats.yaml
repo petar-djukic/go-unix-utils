@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5280"
+task_title: '[stitch] cmd/paste (contract)'
+status: success
+started_at: "2026-05-15T14:59:01Z"
+duration: 2m10s
+duration_s: 130
+tokens:
+    input: 419444
+    output: 2933
+    cache_creation: 182986
+    cache_read: 236445
+cost_usd: 1.6868849999999997
+num_turns: 17
+rate_limit_wait_s: 3
+loc_before:
+    production: 7703
+    test: 6383
+loc_after:
+    production: 7798
+    test: 6383
+diff:
+    files: 2
+    insertions: 194
+    deletions: 0

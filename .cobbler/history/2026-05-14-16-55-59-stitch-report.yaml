@@ -1,0 +1,27 @@
+task_id: "5203"
+task_title: '[stitch] cmd/ls: listing flags and filtering (srd008-ls R1.5-R1.8)'
+status: success
+branch: task/generation-run44-5203
+diff:
+    files: 3
+    insertions: 465
+    deletions: 46
+files:
+    - path: .cobbler/history/2026-05-14-16-55-50-stitch-orchestrator.log
+      status: M
+      insertions: 155
+      deletions: 0
+    - path: cmd/ls/ls_test.go
+      status: M
+      insertions: 31
+      deletions: 1
+    - path: cmd/ls/main.go
+      status: M
+      insertions: 280
+      deletions: 45
+loc_before:
+    production: 4527
+    test: 3787
+loc_after:
+    production: 4762
+    test: 3817

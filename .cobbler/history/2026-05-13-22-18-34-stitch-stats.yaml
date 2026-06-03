@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5122"
+task_title: '[stitch] pkg/format: implement HumanSize, color, and column alignment (srd003-format)'
+status: success
+started_at: "2026-05-14T02:18:34Z"
+duration: 4m41s
+duration_s: 280
+tokens:
+    input: 247743
+    output: 14273
+    cache_creation: 172575
+    cache_read: 75161
+cost_usd: 1.862838
+num_turns: 15
+rate_limit_wait_s: 177
+loc_before:
+    production: 1551
+    test: 383
+loc_after:
+    production: 1573
+    test: 383
+diff:
+    files: 5
+    insertions: 210
+    deletions: 95

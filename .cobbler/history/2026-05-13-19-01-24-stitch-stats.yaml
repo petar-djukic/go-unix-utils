@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5086"
+task_title: '[stitch] srd001-testutils R5.1, R5.2'
+status: success
+started_at: "2026-05-13T23:01:24Z"
+duration: 1m32s
+duration_s: 91
+tokens:
+    input: 219112
+    output: 764
+    cache_creation: 166905
+    cache_read: 52201
+cost_usd: 1.42500775
+num_turns: 8
+rate_limit_wait_s: 4
+loc_before:
+    production: 728
+    test: 0
+loc_after:
+    production: 728
+    test: 0
+diff:
+    files: 1
+    insertions: 75
+    deletions: 0

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5505"
+task_title: '[stitch] cmd/sum implementation -- srd078 R1.1, R1.2, R1.3, R1.4'
+status: success
+started_at: "2026-05-23T02:24:09Z"
+duration: 5m12s
+duration_s: 312
+tokens:
+    input: 493493
+    output: 12805
+    cache_creation: 239462
+    cache_read: 254019
+cost_usd: 2.1732538999999997
+num_turns: 23
+rate_limit_wait_s: 11
+loc_before:
+    production: 21166
+    test: 19368
+loc_after:
+    production: 21233
+    test: 19502
+diff:
+    files: 3
+    insertions: 323
+    deletions: 0

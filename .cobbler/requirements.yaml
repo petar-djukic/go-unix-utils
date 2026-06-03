@@ -1,0 +1,6004 @@
+requirements:
+    srd001-testutils:
+        R1.1:
+            status: complete
+            issue: 5067
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5067
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5067
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5067
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5070
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5070
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5070
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5070
+            weight: 1
+        R2.5:
+            status: uncertain
+            issue: 5072
+            weight: 1
+        R2.6:
+            status: uncertain
+            issue: 5072
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5072
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5072
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5076
+            weight: 1
+        R3.4:
+            status: uncertain
+            issue: 5076
+            weight: 1
+        R3.5:
+            status: uncertain
+            issue: 5076
+            weight: 1
+        R3.6:
+            status: uncertain
+            issue: 5076
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5077
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5077
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5077
+            weight: 1
+        R4.4:
+            status: uncertain
+            issue: 5077
+            weight: 1
+        R5.1:
+            status: uncertain
+            issue: 5086
+            weight: 1
+        R5.2:
+            status: uncertain
+            issue: 5086
+            weight: 1
+    srd002-sys:
+        R1.1:
+            status: complete
+            issue: 5066
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5066
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5066
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5066
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5069
+            weight: 1
+        R1.6:
+            status: complete
+            issue: 5069
+            weight: 1
+        R1.7:
+            status: complete
+            issue: 5069
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5069
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5071
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5071
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5071
+            weight: 1
+        R2.5:
+            status: complete
+            issue: 5071
+            weight: 1
+        R2.6:
+            status: complete
+            issue: 5075
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5075
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5075
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5075
+            weight: 1
+    srd003-format:
+        R1.1:
+            status: complete
+            issue: 5087
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5087
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5087
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5087
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5089
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5089
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5089
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5089
+            weight: 1
+        R2.5:
+            status: complete
+            issue: 5090
+            weight: 1
+        R2.6:
+            status: complete
+            issue: 5090
+            weight: 1
+        R2.7:
+            status: complete
+            issue: 5090
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5091
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5091
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5091
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5091
+            weight: 1
+        R3.5:
+            status: uncertain
+            issue: 5092
+            weight: 1
+        R3.6:
+            status: uncertain
+            issue: 5092
+            weight: 1
+    srd004-ts:
+        R1.1:
+            status: complete_with_failures
+            issue: 5642
+            weight: 1
+        R1.2:
+            status: complete_with_failures
+            issue: 5642
+            weight: 1
+        R1.3:
+            status: complete_with_failures
+            issue: 5642
+            weight: 1
+        R1.4:
+            status: complete_with_failures
+            issue: 5642
+            weight: 1
+        R1.5:
+            status: complete_with_failures
+            issue: 5646
+            weight: 1
+        R1.6:
+            status: complete_with_failures
+            issue: 5646
+            weight: 1
+        R2.1:
+            status: complete_with_failures
+            issue: 5646
+            weight: 1
+        R2.2:
+            status: complete_with_failures
+            issue: 5646
+            weight: 1
+        R2.3:
+            status: complete_with_failures
+            issue: 5647
+            weight: 1
+        R2.4:
+            status: complete_with_failures
+            issue: 5647
+            weight: 1
+        R3.1:
+            status: complete_with_failures
+            issue: 5647
+            weight: 1
+        R3.2:
+            status: complete_with_failures
+            issue: 5647
+            weight: 1
+        R3.3:
+            status: complete_with_failures
+            issue: 5649
+            weight: 1
+        R3.4:
+            status: complete_with_failures
+            issue: 5649
+            weight: 1
+        R4.1:
+            status: complete_with_failures
+            issue: 5649
+            weight: 1
+        R4.2:
+            status: complete_with_failures
+            issue: 5649
+            weight: 1
+        R4.3:
+            status: complete_with_failures
+            issue: 5650
+            weight: 1
+        R5.1:
+            status: complete_with_failures
+            issue: 5650
+            weight: 1
+        R5.2:
+            status: complete_with_failures
+            issue: 5650
+            weight: 1
+        R5.3:
+            status: complete_with_failures
+            issue: 5650
+            weight: 1
+        R6.1:
+            status: complete_with_failures
+            issue: 5651
+            weight: 1
+        R6.2:
+            status: complete_with_failures
+            issue: 5651
+            weight: 1
+        R7.1:
+            status: complete_with_failures
+            issue: 5651
+            weight: 1
+        R7.2:
+            status: complete_with_failures
+            issue: 5651
+            weight: 1
+        R7.3:
+            status: complete_with_failures
+            issue: 5652
+            weight: 1
+        R8.1:
+            status: complete_with_failures
+            issue: 5652
+            weight: 1
+        R8.2:
+            status: complete_with_failures
+            issue: 5652
+            weight: 1
+        R9.1:
+            status: complete_with_failures
+            issue: 5652
+            weight: 1
+        R9.2:
+            status: complete_with_failures
+            issue: 5657
+            weight: 1
+        R10.1:
+            status: complete_with_failures
+            issue: 5657
+            weight: 1
+        R10.2:
+            status: complete_with_failures
+            issue: 5657
+            weight: 1
+        R10.3:
+            status: complete_with_failures
+            issue: 5657
+            weight: 1
+    srd005-wc:
+        R1.1:
+            status: complete
+            issue: 5180
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5180
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5180
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5180
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5177
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5177
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5177
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5177
+            weight: 1
+        R2.5:
+            status: complete
+            issue: 5178
+            weight: 1
+        R2.6:
+            status: complete
+            issue: 5178
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5178
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5178
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5181
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5181
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5181
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5181
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5182
+            weight: 1
+        R5.1:
+            status: complete
+            issue: 5182
+            weight: 1
+        R5.2:
+            status: complete
+            issue: 5182
+            weight: 1
+        R6.1:
+            status: complete
+            issue: 5182
+            weight: 1
+        R6.2:
+            status: complete
+            issue: 5183
+            weight: 1
+        R6.3:
+            status: complete
+            issue: 5183
+            weight: 1
+    srd006-cat:
+        R1.1:
+            status: complete
+            issue: 5100
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5100
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5100
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5100
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5101
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5101
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5101
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5101
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5102
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5102
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5102
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5102
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5110
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5110
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5110
+            weight: 1
+        R4.4:
+            status: uncertain
+            issue: 5110
+            weight: 1
+        R4.5:
+            status: uncertain
+            issue: 5111
+            weight: 1
+        R4.6:
+            status: uncertain
+            issue: 5111
+            weight: 1
+        R4.7:
+            status: uncertain
+            issue: 5111
+            weight: 1
+        R4.8:
+            status: uncertain
+            issue: 5111
+            weight: 1
+        R4.9:
+            status: complete
+            issue: 5112
+            weight: 1
+        R5.1:
+            status: complete
+            issue: 5112
+            weight: 1
+        R5.2:
+            status: complete
+            issue: 5112
+            weight: 1
+        R5.3:
+            status: complete
+            issue: 5112
+            weight: 1
+        R5.4:
+            status: complete
+            issue: 5114
+            weight: 1
+    srd007-sponge:
+        R1.1:
+            status: complete
+            issue: 5116
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5116
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5116
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5116
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5130
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5130
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5130
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5130
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5131
+            weight: 1
+        R2.5:
+            status: complete
+            issue: 5131
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5131
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5131
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5132
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5132
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5132
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5132
+            weight: 1
+        R5.1:
+            status: complete
+            issue: 5133
+            weight: 1
+        R5.2:
+            status: complete
+            issue: 5133
+            weight: 1
+        R5.3:
+            status: complete
+            issue: 5133
+            weight: 1
+        R5.4:
+            status: complete
+            issue: 5133
+            weight: 1
+        R6.1:
+            status: complete
+            issue: 5135
+            weight: 1
+        R6.2:
+            status: complete
+            issue: 5135
+            weight: 1
+    srd008-ls:
+        R1.1:
+            status: complete
+            issue: 5202
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5202
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5202
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5202
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5203
+            weight: 1
+        R1.6:
+            status: complete
+            issue: 5203
+            weight: 1
+        R1.7:
+            status: complete
+            issue: 5203
+            weight: 1
+        R1.8:
+            status: complete
+            issue: 5203
+            weight: 1
+        R1.9:
+            status: complete
+            issue: 5205
+            weight: 1
+        R1.10:
+            status: complete
+            issue: 5205
+            weight: 1
+        R1.11:
+            status: complete
+            issue: 5205
+            weight: 1
+        R1.12:
+            status: complete
+            issue: 5205
+            weight: 1
+        R1.13:
+            status: complete
+            issue: 5207
+            weight: 1
+        R1.14:
+            status: complete
+            issue: 5207
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5207
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5207
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5210
+            weight: 1
+        R2.4:
+            status: uncertain
+            issue: 5210
+            weight: 1
+        R2.5:
+            status: uncertain
+            issue: 5210
+            weight: 1
+        R2.6:
+            status: uncertain
+            issue: 5210
+            weight: 1
+        R2.7:
+            status: complete
+            issue: 5212
+            weight: 1
+        R2.8:
+            status: complete
+            issue: 5212
+            weight: 1
+        R2.9:
+            status: complete
+            issue: 5212
+            weight: 1
+        R2.10:
+            status: complete
+            issue: 5212
+            weight: 1
+        R2.11:
+            status: complete
+            issue: 5215
+            weight: 1
+        R2.12:
+            status: complete
+            issue: 5215
+            weight: 1
+        R2.13:
+            status: complete
+            issue: 5215
+            weight: 1
+        R2.14:
+            status: complete
+            issue: 5215
+            weight: 1
+        R2.15:
+            status: complete
+            issue: 5217
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5217
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5217
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5217
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5220
+            weight: 1
+        R3.5:
+            status: complete
+            issue: 5220
+            weight: 1
+        R3.6:
+            status: complete
+            issue: 5220
+            weight: 1
+        R3.7:
+            status: complete
+            issue: 5220
+            weight: 1
+        R3.8:
+            status: complete
+            issue: 5221
+            weight: 1
+        R3.9:
+            status: complete
+            issue: 5221
+            weight: 1
+        R3.10:
+            status: complete
+            issue: 5221
+            weight: 1
+        R3.11:
+            status: complete
+            issue: 5221
+            weight: 1
+        R3.12:
+            status: complete
+            issue: 5222
+            weight: 1
+        R3.13:
+            status: complete
+            issue: 5222
+            weight: 1
+        R3.14:
+            status: complete
+            issue: 5222
+            weight: 1
+        R3.15:
+            status: complete
+            issue: 5222
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5223
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5223
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5223
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5223
+            weight: 1
+        R4.5:
+            status: complete
+            issue: 5225
+            weight: 1
+        R4.6:
+            status: complete
+            issue: 5225
+            weight: 1
+        R4.7:
+            status: complete
+            issue: 5225
+            weight: 1
+        R4.8:
+            status: complete
+            issue: 5225
+            weight: 1
+        R4.9:
+            status: complete
+            issue: 5226
+            weight: 1
+    srd009-du:
+        R1.1:
+            status: complete
+            issue: 5150
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5150
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5150
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5150
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5151
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5151
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5151
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5151
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5152
+            weight: 1
+        R2.5:
+            status: complete
+            issue: 5152
+            weight: 1
+        R2.6:
+            status: complete
+            issue: 5152
+            weight: 1
+        R2.7:
+            status: complete
+            issue: 5152
+            weight: 1
+        R2.8:
+            status: complete
+            issue: 5153
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5153
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5153
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5153
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5155
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5155
+            weight: 1
+        R5.1:
+            status: complete
+            issue: 5155
+            weight: 1
+    srd011-magefiles:
+        R1.1:
+            status: complete
+            issue: 5107
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5107
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5107
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5107
+            weight: 1
+        R5.1:
+            status: complete
+            issue: 5109
+            weight: 1
+    srd012-yes:
+        R1.1:
+            status: complete
+            issue: 5141
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5141
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5141
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5141
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5142
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5142
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5142
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5142
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5143
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5143
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5143
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5143
+            weight: 1
+    srd013-true:
+        R1.1:
+            status: complete
+            issue: 5125
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5125
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5125
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5125
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5125
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5125
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5126
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5126
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5126
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5126
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5126
+            weight: 1
+    srd014-false:
+        R1.1:
+            status: complete
+            issue: 5127
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5127
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5127
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5127
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5127
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5127
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5128
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5128
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5128
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5128
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5128
+            weight: 1
+    srd015-basename:
+        R1.1:
+            status: complete
+            issue: 5136
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5136
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5136
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5136
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5137
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5137
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5137
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5137
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5138
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5138
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5138
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5138
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5140
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5140
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5140
+            weight: 1
+    srd016-dirname:
+        R1.1:
+            status: complete
+            issue: 5145
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5145
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5145
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5146
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5146
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5146
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5146
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5148
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5148
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5148
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5148
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5148
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5148
+            weight: 1
+    srd017-tee:
+        R1.1:
+            status: complete
+            issue: 5156
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5156
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5156
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5156
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5157
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5157
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5157
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5157
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5158
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5158
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5158
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5158
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5160
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5160
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5160
+            weight: 1
+    srd018-head:
+        R1.1:
+            status: complete
+            issue: 5162
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5162
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5162
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5162
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5165
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5165
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5165
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5165
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5166
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5166
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5166
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5166
+            weight: 1
+        R3.5:
+            status: complete
+            issue: 5167
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5167
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5167
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5167
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5168
+            weight: 1
+    srd019-seq:
+        R1.1:
+            status: complete
+            issue: 5170
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5170
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5170
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5170
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5171
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5171
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5171
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5171
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5172
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5172
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5172
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5172
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5173
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5173
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5173
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5173
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5175
+            weight: 1
+    srd020-echo:
+        R1.1:
+            status: complete
+            issue: 5246
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5246
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5246
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5246
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5247
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5247
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5247
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5247
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5248
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5248
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5248
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5248
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5250
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5250
+            weight: 1
+    srd021-tac:
+        R1.1:
+            status: uncertain
+            issue: 5251
+            weight: 1
+        R1.2:
+            status: uncertain
+            issue: 5251
+            weight: 1
+        R1.3:
+            status: uncertain
+            issue: 5251
+            weight: 1
+        R1.4:
+            status: uncertain
+            issue: 5251
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5252
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5252
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5252
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5252
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5253
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5253
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5253
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5253
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5256
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5256
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5256
+            weight: 1
+    srd022-nl:
+        R1.1:
+            status: complete
+            issue: 5257
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5257
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5257
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5257
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5258
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5258
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5258
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5258
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5262
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5262
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5262
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5262
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5263
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5263
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5263
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5263
+            weight: 1
+    srd023-fold:
+        R1.1:
+            status: complete
+            issue: 5260
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5260
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5260
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5260
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5261
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5261
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5261
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5265
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5265
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5265
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5265
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5266
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5266
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5266
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5266
+            weight: 1
+    srd024-expand:
+        R1.1:
+            status: complete
+            issue: 5267
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5267
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5267
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5267
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5268
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5268
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5268
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5268
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5270
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5270
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5270
+            weight: 1
+        R3.4:
+            status: uncertain
+            issue: 5270
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5271
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5271
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5271
+            weight: 1
+    srd025-unexpand:
+        R1.1:
+            status: complete
+            issue: 5273
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5273
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5273
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5273
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5275
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5275
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5275
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5276
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5276
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5276
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5277
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5277
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5277
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5277
+            weight: 1
+    srd026-cut:
+        R1.1:
+            status: complete
+            issue: 5281
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5281
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5281
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5281
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5282
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5282
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5282
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5282
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5283
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5283
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5283
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5285
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5285
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5285
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5285
+            weight: 1
+    srd027-paste:
+        R1.1:
+            status: complete
+            issue: 5286
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5286
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5286
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5286
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5287
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5287
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5287
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5288
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5288
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5288
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5290
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5290
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5290
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5290
+            weight: 1
+    srd028-uniq:
+        R1.1:
+            status: complete
+            issue: 5291
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5291
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5291
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5291
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5292
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5292
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5292
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5292
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5293
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5293
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5293
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5293
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5295
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5295
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5295
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5295
+            weight: 1
+    srd029-comm:
+        R1.1:
+            status: complete
+            issue: 5296
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5296
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5296
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5296
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5297
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5297
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5297
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5297
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5298
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5298
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5298
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5298
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5300
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5300
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5300
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5300
+            weight: 1
+    srd030-md5sum:
+        R1.1:
+            status: complete
+            issue: 5301
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5301
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5301
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5301
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5302
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5302
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5302
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5302
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5303
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5303
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5303
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5305
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5305
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5305
+            weight: 1
+    srd031-sha1sum:
+        R1.1:
+            status: complete
+            issue: 5306
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5306
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5306
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5306
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5307
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5307
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5307
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5307
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5308
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5308
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5308
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5308
+            weight: 1
+    srd032-sha256sum:
+        R1.1:
+            status: complete
+            issue: 5310
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5310
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5310
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5310
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5311
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5311
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5311
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5311
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5312
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5312
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5312
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5312
+            weight: 1
+    srd033-sha512sum:
+        R1.1:
+            status: uncertain
+            issue: 5320
+            weight: 1
+        R1.2:
+            status: uncertain
+            issue: 5320
+            weight: 1
+        R1.3:
+            status: uncertain
+            issue: 5320
+            weight: 1
+        R1.4:
+            status: uncertain
+            issue: 5320
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5321
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5321
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5321
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5321
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5322
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5322
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5322
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5322
+            weight: 1
+    srd034-mkdir:
+        R1.1:
+            status: complete
+            issue: 5323
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5323
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5323
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5323
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5325
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5325
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5325
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5326
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5326
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5326
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5326
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5330
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5330
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5330
+            weight: 1
+    srd035-rmdir:
+        R1.1:
+            status: complete
+            issue: 5328
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5328
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5328
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5328
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5331
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5331
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5331
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5332
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5332
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5332
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5332
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5333
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5333
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5333
+            weight: 1
+    srd036-mktemp:
+        R1.1:
+            status: uncertain
+            issue: 5346
+            weight: 1
+        R1.2:
+            status: uncertain
+            issue: 5346
+            weight: 1
+        R1.3:
+            status: uncertain
+            issue: 5346
+            weight: 1
+        R1.4:
+            status: uncertain
+            issue: 5346
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5347
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5347
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5347
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5347
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5348
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5348
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5348
+            weight: 1
+        R3.4:
+            status: uncertain
+            issue: 5348
+            weight: 1
+        R3.5:
+            status: complete
+            issue: 5350
+            weight: 1
+        R3.6:
+            status: complete
+            issue: 5350
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5350
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5350
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5351
+            weight: 1
+        R4.4:
+            status: uncertain
+            issue: 5351
+            weight: 1
+    srd037-ln:
+        R1.1:
+            status: complete
+            issue: 5340
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5340
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5340
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5340
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5341
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5341
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5341
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5341
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5342
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5342
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5342
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5342
+            weight: 1
+        R3.5:
+            status: complete
+            issue: 5343
+            weight: 1
+        R3.6:
+            status: complete
+            issue: 5343
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5343
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5343
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5345
+            weight: 1
+    srd038-unlink:
+        R1.1:
+            status: complete
+            issue: 5335
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5335
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5335
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5335
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5336
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5336
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5336
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5336
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5337
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5337
+            weight: 1
+    srd039-env:
+        R1.1:
+            status: complete
+            issue: 5360
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5360
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5360
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5360
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5361
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5361
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5361
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5361
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5362
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5362
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5362
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5362
+            weight: 1
+    srd040-printenv:
+        R1.1:
+            status: complete
+            issue: 5365
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5365
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5365
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5365
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5366
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5366
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5366
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5366
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5367
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5367
+            weight: 1
+    srd041-id:
+        R1.1:
+            status: complete
+            issue: 5368
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5368
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5368
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5368
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5370
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5370
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5370
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5371
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5371
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5371
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5372
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5372
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5372
+            weight: 1
+    srd042-whoami:
+        R1.1:
+            status: complete
+            issue: 5355
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5355
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5355
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5355
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5356
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5356
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5356
+            weight: 1
+    srd043-groups:
+        R1.1:
+            status: complete
+            issue: 5357
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5357
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5357
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5357
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5358
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5358
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5363
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5363
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5363
+            weight: 1
+    srd044-uname:
+        R1.1:
+            status: complete
+            issue: 5196
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5196
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5196
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5196
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5197
+            weight: 1
+        R1.6:
+            status: complete
+            issue: 5197
+            weight: 1
+        R1.7:
+            status: complete
+            issue: 5197
+            weight: 1
+        R1.8:
+            status: complete
+            issue: 5197
+            weight: 1
+        R1.9:
+            status: complete
+            issue: 5198
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5198
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5198
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5200
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5200
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5201
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5201
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5201
+            weight: 1
+    srd045-arch:
+        R1.1:
+            status: complete
+            issue: 5185
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5185
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5185
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5185
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5191
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5191
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5191
+            weight: 1
+    srd046-nproc:
+        R1.1:
+            status: complete
+            issue: 5188
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5188
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5188
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5188
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5190
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5190
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5190
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5193
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5193
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5193
+            weight: 1
+    srd047-hostname:
+        R1.1:
+            status: complete
+            issue: 5187
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5187
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5187
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5187
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5195
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5195
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5195
+            weight: 1
+    srd048-hostid:
+        R1.1:
+            status: complete
+            issue: 5186
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5186
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5186
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5186
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5192
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5192
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5192
+            weight: 1
+    srd049-realpath:
+        R1.1:
+            status: complete
+            issue: 5241
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5241
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5241
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5241
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5242
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5242
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5242
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5242
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5243
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5243
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5243
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5243
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5245
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5245
+            weight: 1
+    srd050-readlink:
+        R1.1:
+            status: complete
+            issue: 5236
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5236
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5236
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5236
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5237
+            weight: 1
+        R1.6:
+            status: complete
+            issue: 5237
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5237
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5237
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5238
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5238
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5238
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5238
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5240
+            weight: 1
+    srd051-pwd:
+        R1.1:
+            status: complete
+            issue: 5230
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5230
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5230
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5230
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5231
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5231
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5231
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5231
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5235
+            weight: 1
+    srd052-tty:
+        R1.1:
+            status: complete
+            issue: 5232
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5232
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5232
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5232
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5233
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5233
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5233
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5233
+            weight: 1
+    srd053-logname:
+        R1.1:
+            status: complete
+            issue: 5227
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5227
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5227
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5227
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5228
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5228
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5228
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5228
+            weight: 1
+    srd053-sort:
+        R1.1:
+            status: complete
+            issue: 5374
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5374
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5374
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5374
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5375
+            weight: 1
+        R1.6:
+            status: complete
+            issue: 5375
+            weight: 1
+        R1.7:
+            status: complete
+            issue: 5375
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5375
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5376
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5376
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5376
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5376
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5377
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5377
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5377
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5377
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5384
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5384
+            weight: 1
+        R4.4:
+            status: uncertain
+            issue: 5384
+            weight: 1
+    srd054-tr:
+        R1.1:
+            status: complete
+            issue: 5381
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5381
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5381
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5381
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5382
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5382
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5382
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5382
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5386
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5386
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5386
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5387
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5387
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5387
+            weight: 1
+    srd055-tail:
+        R1.1:
+            status: complete
+            issue: 5380
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5380
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5380
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5380
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5385
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5385
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5385
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5389
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5389
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5389
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5389
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5390
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5390
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5390
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5390
+            weight: 1
+    srd056-cp:
+        R1.1:
+            status: complete
+            issue: 5391
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5391
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5391
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5391
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5392
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5392
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5392
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5392
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5394
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5394
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5394
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5394
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5395
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5395
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5395
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5395
+            weight: 1
+    srd057-mv:
+        R1.1:
+            status: complete
+            issue: 5396
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5396
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5396
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5396
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5397
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5397
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5397
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5397
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5399
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5399
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5399
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5400
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5400
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5400
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5400
+            weight: 1
+    srd058-rm:
+        R1.1:
+            status: complete
+            issue: 5402
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5402
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5402
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5402
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5404
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5404
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5404
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5404
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5405
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5405
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5405
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5405
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5406
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5406
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5406
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5406
+            weight: 1
+    srd059-version:
+        R1.1:
+            status: complete
+            issue: 5099
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5099
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5099
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5099
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5109
+            weight: 1
+    srd060-date:
+        R1.1:
+            status: complete
+            issue: 5408
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5408
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5408
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5408
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5409
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5409
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5409
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5409
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5410
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5410
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5410
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5410
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5411
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5411
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5411
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5411
+            weight: 1
+    srd061-sleep:
+        R1.1:
+            status: complete
+            issue: 5413
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5413
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5413
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5413
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5414
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5414
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5414
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5414
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5415
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5415
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5415
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5415
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5416
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5416
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5416
+            weight: 1
+        R4.4:
+            status: uncertain
+            issue: 5416
+            weight: 1
+    srd062-touch:
+        R1.1:
+            status: complete
+            issue: 5423
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5423
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5423
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5423
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5431
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5431
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5431
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5431
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5438
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5438
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5438
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5438
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5439
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5439
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5439
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5439
+            weight: 1
+    srd063-timeout:
+        R1.1:
+            status: complete
+            issue: 5421
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5421
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5421
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5421
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5424
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5424
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5424
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5424
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5430
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5430
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5430
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5430
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5436
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5436
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5436
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5436
+            weight: 1
+    srd064-shuf:
+        R1.1:
+            status: complete
+            issue: 5420
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5420
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5420
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5420
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5425
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5425
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5425
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5425
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5429
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5429
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5429
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5429
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5435
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5435
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5435
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5435
+            weight: 1
+    srd065-factor:
+        R1.1:
+            status: complete
+            issue: 5419
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5419
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5419
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5419
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5426
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5426
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5426
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5426
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5434
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5434
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5434
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5434
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5440
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5440
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5440
+            weight: 1
+        R4.4:
+            status: uncertain
+            issue: 5440
+            weight: 1
+    srd066-expr:
+        R1.1:
+            status: complete
+            issue: 5418
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5418
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5418
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5418
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5433
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5433
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5433
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5433
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5441
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5441
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5441
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5441
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5443
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5443
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5443
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5443
+            weight: 1
+    srd067-split:
+        R1.1:
+            status: complete
+            issue: 5444
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5444
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5444
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5444
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5445
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5445
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5445
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5445
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5446
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5446
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5446
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5446
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5448
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5448
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5448
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5448
+            weight: 1
+    srd068-csplit:
+        R1.1:
+            status: complete
+            issue: 5449
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5449
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5449
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5449
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5450
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5450
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5450
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5450
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5451
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5451
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5451
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5451
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5453
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5453
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5453
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5453
+            weight: 1
+    srd069-join:
+        R1.1:
+            status: complete
+            issue: 5455
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5455
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5455
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5455
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5459
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5459
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5459
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5459
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5460
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5460
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5460
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5460
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5461
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5461
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5461
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5461
+            weight: 1
+    srd070-fmt:
+        R1.1:
+            status: complete
+            issue: 5458
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5463
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5463
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5463
+            weight: 1
+        R5.1:
+            status: complete
+            issue: 5463
+            weight: 1
+        R6.1:
+            status: complete
+            issue: 5464
+            weight: 1
+        R7.1:
+            status: complete
+            issue: 5464
+            weight: 1
+        R8.1:
+            status: complete
+            issue: 5464
+            weight: 1
+        R9.1:
+            status: complete
+            issue: 5464
+            weight: 1
+        R10.1:
+            status: complete
+            issue: 5468
+            weight: 1
+        R11.1:
+            status: complete
+            issue: 5468
+            weight: 1
+        R12.1:
+            status: complete
+            issue: 5468
+            weight: 1
+        R13.1:
+            status: complete
+            issue: 5469
+            weight: 1
+        R13.2:
+            status: complete
+            issue: 5469
+            weight: 1
+        R13.3:
+            status: complete
+            issue: 5469
+            weight: 1
+        R13.4:
+            status: complete
+            issue: 5469
+            weight: 1
+    srd071-numfmt:
+        R1.1:
+            status: complete
+            issue: 5470
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5470
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5470
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5470
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5471
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5471
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5471
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5471
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5473
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5473
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5473
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5473
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5474
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5474
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5474
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5474
+            weight: 1
+    srd072-od:
+        R1.1:
+            status: complete
+            issue: 5475
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5475
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5475
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5475
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5476
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5476
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5476
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5476
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5478
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5478
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5478
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5478
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5479
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5479
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5479
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5479
+            weight: 1
+    srd073-printf:
+        R1.1:
+            status: complete
+            issue: 5480
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5480
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5480
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5480
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5481
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5481
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5481
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5481
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5483
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5483
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5483
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5483
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5484
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5484
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5484
+            weight: 1
+        R4.4:
+            status: complete
+            issue: 5484
+            weight: 1
+    srd074-sha224sum:
+        R1.1:
+            status: complete
+            issue: 5485
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5485
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5485
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5485
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5486
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5486
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5486
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5488
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5488
+            weight: 1
+        R4.1:
+            status: uncertain
+            issue: 5488
+            weight: 1
+        R4.2:
+            status: uncertain
+            issue: 5488
+            weight: 1
+        R4.3:
+            status: uncertain
+            issue: 5489
+            weight: 1
+    srd075-sha384sum:
+        R1.1:
+            status: complete
+            issue: 5490
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5490
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5490
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5490
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5491
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5491
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5491
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5491
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5501
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5501
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5501
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5501
+            weight: 1
+    srd076-b2sum:
+        R1.1:
+            status: complete
+            issue: 5493
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5493
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5493
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5493
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5495
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5495
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5495
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5495
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5498
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5498
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5498
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5498
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5499
+            weight: 1
+    srd077-cksum:
+        R1.1:
+            status: complete
+            issue: 5500
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5500
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5500
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5500
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5503
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5503
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5503
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5503
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5504
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5504
+            weight: 1
+    srd078-sum:
+        R1.1:
+            status: complete
+            issue: 5505
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5505
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5505
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5505
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5506
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5506
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5506
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5506
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5508
+            weight: 1
+    srd079-base32:
+        R1.1:
+            status: uncertain
+            issue: 5513
+            weight: 1
+        R1.2:
+            status: uncertain
+            issue: 5513
+            weight: 1
+        R1.3:
+            status: uncertain
+            issue: 5513
+            weight: 1
+        R1.4:
+            status: uncertain
+            issue: 5513
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5514
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5514
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5514
+            weight: 1
+        R2.4:
+            status: uncertain
+            issue: 5514
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5515
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5515
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5515
+            weight: 1
+    srd080-base64:
+        R1.1:
+            status: complete
+            issue: 5518
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5518
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5518
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5518
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5519
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5519
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5519
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5519
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5520
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5520
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5520
+            weight: 1
+    srd081-basenc:
+        R1.1:
+            status: complete
+            issue: 5521
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5521
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5521
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5521
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5523
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5523
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5523
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5523
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5524
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5524
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5524
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5524
+            weight: 1
+    srd082-stat:
+        R1.1:
+            status: uncertain
+            issue: 5534
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5534
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5534
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5534
+            weight: 1
+        R3.1:
+            status: code_complete
+            weight: 1
+        R4.1:
+            status: code_complete
+            weight: 1
+        R4.2:
+            status: code_complete
+            weight: 1
+        R5.1:
+            status: code_complete
+            weight: 1
+        R6.1:
+            status: code_complete
+            weight: 1
+        R7.1:
+            status: code_complete
+            weight: 1
+        R7.2:
+            status: code_complete
+            weight: 1
+        R7.3:
+            status: code_complete
+            weight: 1
+    srd083-truncate:
+        R1.1:
+            status: uncertain
+            issue: 5543
+            weight: 1
+        R1.2:
+            status: uncertain
+            issue: 5543
+            weight: 1
+        R1.3:
+            status: uncertain
+            issue: 5543
+            weight: 1
+        R1.4:
+            status: uncertain
+            issue: 5543
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5544
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5544
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5545
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5545
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5545
+            weight: 1
+    srd084-link:
+        R1.1:
+            status: complete
+            issue: 5525
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5525
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5525
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5525
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5528
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5528
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5528
+            weight: 1
+    srd085-sync:
+        R1.1:
+            status: complete
+            issue: 5530
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5530
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5530
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5530
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5531
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5531
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5531
+            weight: 1
+    srd086-hashutil:
+        R1.1:
+            status: complete
+            issue: 5104
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5104
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5104
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5104
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5105
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5105
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5105
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5106
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5106
+            weight: 1
+    srd087-sizeparse:
+        R1.1:
+            status: complete
+            issue: 5081
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5081
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5081
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5081
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5082
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5082
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5082
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5082
+            weight: 1
+    srd088-encutil:
+        R1.1:
+            status: complete
+            issue: 5096
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5096
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5096
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5096
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5097
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5097
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5097
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5097
+            weight: 1
+    srd089-chmod:
+        R1.1:
+            status: complete
+            issue: 5547
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5547
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5547
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5547
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5548
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5548
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5548
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5548
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5549
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5549
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5550
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5550
+            weight: 1
+        R4.3:
+            status: complete
+            issue: 5550
+            weight: 1
+    srd090-chgrp:
+        R1.1:
+            status: complete
+            issue: 5552
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5552
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5552
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5552
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5553
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5553
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5553
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5554
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5554
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5554
+            weight: 1
+    srd091-chown:
+        R1.1:
+            status: complete
+            issue: 5555
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5555
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5555
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5555
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5557
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5557
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5557
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5558
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5558
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5558
+            weight: 1
+    srd092-mkfifo:
+        R1.1:
+            status: complete
+            issue: 5559
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5559
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5559
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5559
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5560
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5560
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5560
+            weight: 1
+    srd093-mknod:
+        R1.1:
+            status: uncertain
+            issue: 5562
+            weight: 1
+        R1.2:
+            status: uncertain
+            issue: 5562
+            weight: 1
+        R1.3:
+            status: uncertain
+            issue: 5562
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5563
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5563
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5563
+            weight: 1
+    srd094-nice:
+        R1.1:
+            status: uncertain
+            issue: 5564
+            weight: 1
+        R1.2:
+            status: uncertain
+            issue: 5564
+            weight: 1
+        R1.3:
+            status: uncertain
+            issue: 5564
+            weight: 1
+        R1.4:
+            status: uncertain
+            issue: 5564
+            weight: 1
+        R2.1:
+            status: done
+            weight: 1
+        R2.2:
+            status: done
+            weight: 1
+        R2.3:
+            status: done
+            weight: 1
+    srd095-nohup:
+        R1.1:
+            status: complete
+            issue: 5567
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5567
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5567
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5567
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5568
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5568
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5568
+            weight: 1
+    srd096-users:
+        R1.1:
+            status: complete
+            issue: 5569
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5569
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5569
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5570
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5570
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5570
+            weight: 1
+    srd097-who:
+        R1.1:
+            status: complete
+            issue: 5575
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5575
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5575
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5575
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5582
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5582
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5582
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5582
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5583
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5583
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5583
+            weight: 1
+    srd098-pinky:
+        R1.1:
+            status: complete
+            issue: 5572
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5572
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5572
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5573
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5573
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5573
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5574
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5574
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5574
+            weight: 1
+    srd099-shred:
+        R1.1:
+            status: uncertain
+            issue: 5589
+            weight: 1
+        R1.2:
+            status: uncertain
+            issue: 5589
+            weight: 1
+        R1.3:
+            status: uncertain
+            issue: 5589
+            weight: 1
+        R1.4:
+            status: uncertain
+            issue: 5589
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5590
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5590
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5590
+            weight: 1
+        R2.4:
+            status: uncertain
+            issue: 5590
+            weight: 1
+        R3.1:
+            status: uncertain
+            issue: 5595
+            weight: 1
+        R3.2:
+            status: uncertain
+            issue: 5595
+            weight: 1
+        R3.3:
+            status: uncertain
+            issue: 5595
+            weight: 1
+    srd100-chroot:
+        R1.1:
+            status: complete
+            issue: 5585
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5585
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5585
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5588
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5588
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5588
+            weight: 1
+    srd101-install:
+        R1.1:
+            status: complete
+            issue: 5592
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5592
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5592
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5592
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5593
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5593
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5593
+            weight: 1
+        R2.4:
+            status: complete
+            issue: 5593
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5594
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5594
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5594
+            weight: 1
+    srd102-tsort:
+        R1.1:
+            status: complete
+            issue: 5597
+            weight: 1
+        R1.2:
+            status: complete_with_failures
+            issue: 5625
+            weight: 1
+        R1.3:
+            status: complete_with_failures
+            issue: 5625
+            weight: 1
+        R1.4:
+            status: complete_with_failures
+            issue: 5625
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5597
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5626
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5626
+            weight: 1
+    srd103-pathchk:
+        R1.1:
+            status: uncertain
+            issue: 5598
+            weight: 1
+        R1.2:
+            status: uncertain
+            issue: 5598
+            weight: 1
+        R1.3:
+            status: uncertain
+            issue: 5598
+            weight: 1
+        R1.4:
+            status: uncertain
+            issue: 5598
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5600
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5600
+            weight: 1
+        R2.3:
+            status: uncertain
+            issue: 5600
+            weight: 1
+    srd104-test:
+        R1.1:
+            status: complete
+            issue: 5602
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5602
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5602
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5602
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5603
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5603
+            weight: 1
+        R4.1:
+            status: complete
+            issue: 5603
+            weight: 1
+        R4.2:
+            status: complete
+            issue: 5603
+            weight: 1
+    srd105-stty:
+        R1.1:
+            status: complete_with_failures
+            issue: 5641
+            weight: 1
+        R2.1:
+            status: complete_with_failures
+            issue: 5644
+            weight: 1
+        R3.1:
+            status: complete_with_failures
+            issue: 5644
+            weight: 1
+        R3.2:
+            status: complete_with_failures
+            issue: 5644
+            weight: 1
+        R4.1:
+            status: complete_with_failures
+            issue: 5644
+            weight: 1
+        R5.1:
+            status: complete_with_failures
+            issue: 5645
+            weight: 1
+        R6.1:
+            status: complete_with_failures
+            issue: 5645
+            weight: 1
+        R6.2:
+            status: complete_with_failures
+            issue: 5645
+            weight: 1
+        R7.1:
+            status: complete_with_failures
+            issue: 5645
+            weight: 1
+        R7.2:
+            status: complete_with_failures
+            issue: 5656
+            weight: 1
+        R7.3:
+            status: complete_with_failures
+            issue: 5656
+            weight: 1
+    srd106-df:
+        R1.1:
+            status: complete
+            issue: 5605
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5605
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5605
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5605
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5607
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5607
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5607
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5607
+            weight: 1
+        R3.1:
+            status: complete
+            issue: 5615
+            weight: 1
+        R3.2:
+            status: complete
+            issue: 5615
+            weight: 1
+        R3.3:
+            status: complete
+            issue: 5615
+            weight: 1
+        R3.4:
+            status: complete
+            issue: 5615
+            weight: 1
+        R3.5:
+            status: complete_with_failures
+            issue: 5616
+            weight: 1
+        R3.6:
+            status: complete_with_failures
+            issue: 5616
+            weight: 1
+        R3.7:
+            status: complete_with_failures
+            issue: 5616
+            weight: 1
+        R4.1:
+            status: complete_with_failures
+            issue: 5617
+            weight: 1
+        R4.2:
+            status: complete_with_failures
+            issue: 5617
+            weight: 1
+        R4.3:
+            status: complete_with_failures
+            issue: 5617
+            weight: 1
+    srd107-dir:
+        R1.1:
+            status: complete
+            issue: 5606
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5606
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5606
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5606
+            weight: 1
+        R1.5:
+            status: complete
+            issue: 5608
+            weight: 1
+        R2.1:
+            status: complete
+            issue: 5608
+            weight: 1
+        R2.2:
+            status: complete
+            issue: 5608
+            weight: 1
+        R2.3:
+            status: complete
+            issue: 5608
+            weight: 1
+        R2.4:
+            status: uncertain
+            issue: 5610
+            weight: 1
+    srd108-vdir:
+        R1.1:
+            status: complete
+            issue: 5612
+            weight: 1
+        R1.2:
+            status: complete
+            issue: 5612
+            weight: 1
+        R1.3:
+            status: complete
+            issue: 5612
+            weight: 1
+        R1.4:
+            status: complete
+            issue: 5612
+            weight: 1
+        R1.5:
+            status: uncertain
+            issue: 5613
+            weight: 1
+        R1.6:
+            status: uncertain
+            issue: 5613
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5613
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5613
+            weight: 1
+        R2.3:
+            status: complete_with_failures
+            issue: 5618
+            weight: 1
+        R2.4:
+            status: complete_with_failures
+            issue: 5618
+            weight: 1
+    srd109-dircolors:
+        R1.1:
+            status: complete_with_failures
+            issue: 5620
+            weight: 1
+        R1.2:
+            status: complete_with_failures
+            issue: 5620
+            weight: 1
+        R1.3:
+            status: complete_with_failures
+            issue: 5620
+            weight: 1
+        R1.4:
+            status: complete_with_failures
+            issue: 5620
+            weight: 1
+        R2.1:
+            status: complete_with_failures
+            issue: 5621
+            weight: 1
+        R2.2:
+            status: complete_with_failures
+            issue: 5621
+            weight: 1
+        R2.3:
+            status: complete_with_failures
+            issue: 5621
+            weight: 1
+        R2.4:
+            status: complete_with_failures
+            issue: 5621
+            weight: 1
+        R2.5:
+            status: complete_with_failures
+            issue: 5622
+            weight: 1
+        R3.1:
+            status: complete_with_failures
+            issue: 5622
+            weight: 1
+        R3.2:
+            status: complete_with_failures
+            issue: 5622
+            weight: 1
+        R3.3:
+            status: complete_with_failures
+            issue: 5622
+            weight: 1
+        R3.4:
+            status: complete_with_failures
+            issue: 5630
+            weight: 1
+        R3.5:
+            status: complete_with_failures
+            issue: 5630
+            weight: 1
+    srd110-pr:
+        R1.1:
+            status: complete_with_failures
+            issue: 5639
+            weight: 1
+        R2.1:
+            status: complete_with_failures
+            issue: 5654
+            weight: 1
+        R2.2:
+            status: complete_with_failures
+            issue: 5654
+            weight: 1
+        R2.3:
+            status: complete_with_failures
+            issue: 5654
+            weight: 1
+        R3.1:
+            status: complete_with_failures
+            issue: 5669
+            weight: 1
+        R4.1:
+            status: complete_with_failures
+            issue: 5670
+            weight: 1
+        R4.2:
+            status: complete_with_failures
+            issue: 5670
+            weight: 1
+        R4.3:
+            status: complete_with_failures
+            issue: 5670
+            weight: 1
+        R5.1:
+            status: complete_with_failures
+            issue: 5674
+            weight: 1
+        R5.2:
+            status: complete_with_failures
+            issue: 5674
+            weight: 1
+    srd111-ptx:
+        R1.1:
+            status: complete_with_failures
+            issue: 5640
+            weight: 1
+        R2.1:
+            status: complete_with_failures
+            issue: 5655
+            weight: 1
+        R2.2:
+            status: complete_with_failures
+            issue: 5655
+            weight: 1
+        R2.3:
+            status: complete_with_failures
+            issue: 5655
+            weight: 1
+        R3.1:
+            status: complete_with_failures
+            issue: 5671
+            weight: 1
+        R4.1:
+            status: complete_with_failures
+            issue: 5672
+            weight: 1
+        R4.2:
+            status: complete_with_failures
+            issue: 5672
+            weight: 1
+        R5.1:
+            status: complete_with_failures
+            issue: 5675
+            weight: 1
+        R5.2:
+            status: complete_with_failures
+            issue: 5675
+            weight: 1
+    srd112-chronic:
+        R1.1:
+            status: complete_with_failures
+            issue: 5631
+            weight: 1
+        R1.2:
+            status: complete_with_failures
+            issue: 5631
+            weight: 1
+        R1.3:
+            status: complete_with_failures
+            issue: 5631
+            weight: 1
+        R2.1:
+            status: complete_with_failures
+            issue: 5632
+            weight: 1
+        R2.2:
+            status: complete_with_failures
+            issue: 5632
+            weight: 1
+        R2.3:
+            status: complete_with_failures
+            issue: 5632
+            weight: 1
+    srd113-pee:
+        R1.1:
+            status: complete_with_failures
+            issue: 5633
+            weight: 1
+        R1.2:
+            status: complete_with_failures
+            issue: 5633
+            weight: 1
+        R1.3:
+            status: complete_with_failures
+            issue: 5633
+            weight: 1
+        R2.1:
+            status: uncertain
+            issue: 5635
+            weight: 1
+        R2.2:
+            status: uncertain
+            issue: 5635
+            weight: 1
+    srd114-vidir:
+        R1.1:
+            status: complete_with_failures
+            issue: 5636
+            weight: 1
+        R1.2:
+            status: complete_with_failures
+            issue: 5636
+            weight: 1
+        R1.3:
+            status: complete_with_failures
+            issue: 5636
+            weight: 1
+        R1.4:
+            status: complete_with_failures
+            issue: 5636
+            weight: 1
+        R2.1:
+            status: complete_with_failures
+            issue: 5637
+            weight: 1
+        R2.2:
+            status: complete_with_failures
+            issue: 5637
+            weight: 1

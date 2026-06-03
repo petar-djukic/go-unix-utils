@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5461"
+task_title: '[stitch] cmd/join: srd069 R4.1-R4.4'
+status: success
+started_at: "2026-05-22T14:54:04Z"
+duration: 16m59s
+duration_s: 1018
+tokens:
+    input: 1771260
+    output: 55335
+    cache_creation: 270786
+    cache_read: 1500448
+cost_usd: 4.3452493
+num_turns: 74
+rate_limit_wait_s: 2
+loc_before:
+    production: 18344
+    test: 16984
+loc_after:
+    production: 18431
+    test: 17013
+diff:
+    files: 3
+    insertions: 391
+    deletions: 8

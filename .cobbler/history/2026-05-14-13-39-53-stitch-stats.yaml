@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5198"
+task_title: '[stitch] cmd/uname: all-fields flag and version output (srd044-uname R1.9, R2.1-R2.2)'
+status: success
+started_at: "2026-05-14T17:39:53Z"
+duration: 4m58s
+duration_s: 298
+tokens:
+    input: 630523
+    output: 12203
+    cache_creation: 184070
+    cache_read: 446436
+cost_usd: 2.02506
+num_turns: 24
+rate_limit_wait_s: 7
+loc_before:
+    production: 4297
+    test: 3560
+loc_after:
+    production: 4318
+    test: 3560
+diff:
+    files: 2
+    insertions: 144
+    deletions: 9

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5531"
+task_title: '[stitch] Implement cmd/sync error handling and flags (srd085 R2.1, R2.2, R2.3)'
+status: success
+started_at: "2026-05-23T12:47:52Z"
+duration: 2m33s
+duration_s: 153
+tokens:
+    input: 422886
+    output: 2694
+    cache_creation: 214488
+    cache_read: 208386
+cost_usd: 1.9761797000000005
+num_turns: 36
+rate_limit_wait_s: 1
+loc_before:
+    production: 22134
+    test: 20217
+loc_after:
+    production: 22155
+    test: 20217
+diff:
+    files: 2
+    insertions: 186
+    deletions: 0

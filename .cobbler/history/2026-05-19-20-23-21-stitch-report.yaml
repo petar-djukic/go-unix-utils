@@ -1,0 +1,27 @@
+task_id: "5326"
+task_title: '[stitch] cmd/mkdir mode and permissions (srd034 R3.1, R3.2, R3.3, R3.4)'
+status: success
+branch: task/generation-run44-5326
+diff:
+    files: 3
+    insertions: 602
+    deletions: 32
+files:
+    - path: .cobbler/history/2026-05-19-20-23-13-stitch-orchestrator.log
+      status: M
+      insertions: 212
+      deletions: 0
+    - path: cmd/mkdir/main.go
+      status: M
+      insertions: 247
+      deletions: 31
+    - path: cmd/mkdir/mkdir_test.go
+      status: M
+      insertions: 144
+      deletions: 1
+loc_before:
+    production: 9763
+    test: 9151
+loc_after:
+    production: 9979
+    test: 9294

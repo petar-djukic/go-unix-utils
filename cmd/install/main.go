@@ -1,0 +1,476 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+// cmd/install implements srd101-install R1.1-R1.4, R2.1-R2.4, R3.1-R3.3.
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/sys"
+)
+
+const helpText = `Usage: install [OPTION]... [-T] SOURCE DEST
+  or:  install [OPTION]... SOURCE... DIRECTORY
+  or:  install [OPTION]... -d DIRECTORY...
+
+Copy files and set attributes.
+
+  -b                  make a backup of each existing destination file
+  -C, --compare       compare source and destination files, and if the
+                        destination has the same content and any specified
+                        owner, group, and permissions, do not modify it
+  -c                  (ignored)
+  -d, --directory     treat all arguments as directory names; create all
+                        components of the specified directories
+  -D                  create all leading components of DEST except the last,
+                        or all components of --target-directory, then copy SOURCE to DEST
+  -g GROUP            set group ownership
+  -m MODE             set permission mode (as in chmod), instead of rwxr-xr-x
+  -o OWNER            set ownership
+      --backup        make a backup of each existing destination file
+      --suffix=SUFFIX override the usual backup suffix
+  -v, --verbose       print the name of each directory as it is created
+      --help          display this help and exit
+      --version       output version information and exit
+`
+
+const versionText = `install (go-unix-utils) dev
+`
+
+type options struct {
+	mode      string
+	owner     string
+	group     string
+	directory bool
+	createDir bool
+	compare   bool
+	backup    bool
+	suffix    string
+	verbose   bool
+}
+
+func main() {
+	sys.InstallSIGPIPEHandler()
+
+	opts, args := parseArgs(os.Args[1:])
+	if opts.suffix == "" {
+		opts.suffix = "~"
+	}
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "install: missing file operand")
+		os.Exit(1)
+	}
+	if opts.directory {
+		os.Exit(createDirectories(opts, args))
+	}
+	if len(args) == 1 {
+		fmt.Fprintf(os.Stderr,
+			"install: missing destination file operand after '%s'\n", args[0])
+		os.Exit(1)
+	}
+
+	dest := args[len(args)-1]
+	sources := args[:len(args)-1]
+
+	exitCode := 0
+	if len(sources) > 1 {
+		exitCode = installMultiple(opts, sources, dest)
+	} else {
+		if err := installSingle(opts, sources[0], dest); err != nil {
+			fmt.Fprintf(os.Stderr, "install: %s\n", err)
+			exitCode = 1
+		}
+	}
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
+}
+
+func createDirectories(opts options, dirs []string) int {
+	exitCode := 0
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "install: cannot create directory '%s': %s\n",
+				dir, unwrapErr(err))
+			exitCode = 1
+			continue
+		}
+		if err := setMode(opts, dir); err != nil {
+			fmt.Fprintf(os.Stderr, "install: %s\n", err)
+			exitCode = 1
+			continue
+		}
+		if err := setOwnership(opts, dir); err != nil {
+			fmt.Fprintf(os.Stderr, "install: %s\n", err)
+			exitCode = 1
+			continue
+		}
+		if opts.verbose {
+			fmt.Fprintf(os.Stdout,
+				"install: creating directory '%s'\n", dir)
+		}
+	}
+	return exitCode
+}
+
+func installMultiple(opts options, sources []string, dest string) int {
+	fi, err := os.Stat(dest)
+	if err != nil || !fi.IsDir() {
+		fmt.Fprintf(os.Stderr,
+			"install: target '%s' is not a directory\n", dest)
+		return 1
+	}
+	exitCode := 0
+	for _, src := range sources {
+		target := filepath.Join(dest, filepath.Base(src))
+		if err := installSingle(opts, src, target); err != nil {
+			fmt.Fprintf(os.Stderr, "install: %s\n", err)
+			exitCode = 1
+		}
+	}
+	return exitCode
+}
+
+func installSingle(opts options, src, dest string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("cannot stat '%s': %s", src, unwrapErr(err))
+	}
+	if srcInfo.IsDir() {
+		return fmt.Errorf("omitting directory '%s'", src)
+	}
+	if fi, err := os.Stat(dest); err == nil && fi.IsDir() {
+		dest = filepath.Join(dest, filepath.Base(src))
+	}
+	if opts.createDir {
+		dir := filepath.Dir(dest)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("cannot create directory '%s': %s",
+				dir, unwrapErr(err))
+		}
+	}
+	if opts.compare && filesIdentical(src, dest, opts) {
+		return nil
+	}
+	if opts.backup {
+		if err := backupFile(dest, opts.suffix); err != nil {
+			return err
+		}
+	}
+	if err := copyFile(src, dest); err != nil {
+		return err
+	}
+	if err := setMode(opts, dest); err != nil {
+		return err
+	}
+	if err := setOwnership(opts, dest); err != nil {
+		return err
+	}
+	if opts.verbose {
+		fmt.Fprintf(os.Stdout, "'%s' -> '%s'\n", src, dest)
+	}
+	return nil
+}
+
+func backupFile(dest, suffix string) error {
+	if _, err := os.Stat(dest); err != nil {
+		return nil
+	}
+	backup := dest + suffix
+	if err := os.Rename(dest, backup); err != nil {
+		return fmt.Errorf("cannot backup '%s': %s", dest, unwrapErr(err))
+	}
+	return nil
+}
+
+func filesIdentical(src, dest string, opts options) bool {
+	dfi, err := os.Stat(dest)
+	if err != nil {
+		return false
+	}
+	sfi, err := os.Stat(src)
+	if err != nil {
+		return false
+	}
+	if sfi.Size() != dfi.Size() {
+		return false
+	}
+	if dfi.Mode().Perm() != targetMode(opts) {
+		return false
+	}
+	return contentsEqual(src, dest)
+}
+
+func targetMode(opts options) os.FileMode {
+	if opts.mode == "" {
+		return 0755
+	}
+	perm, err := resolveMode(opts.mode)
+	if err != nil {
+		return 0755
+	}
+	return perm.Perm()
+}
+
+func contentsEqual(a, b string) bool {
+	af, err := os.Open(a)
+	if err != nil {
+		return false
+	}
+	defer af.Close()
+	bf, err := os.Open(b)
+	if err != nil {
+		return false
+	}
+	defer bf.Close()
+	const bufSize = 32 * 1024
+	abuf := make([]byte, bufSize)
+	bbuf := make([]byte, bufSize)
+	for {
+		an, aerr := io.ReadFull(af, abuf)
+		bn, berr := io.ReadFull(bf, bbuf)
+		if !bytes.Equal(abuf[:an], bbuf[:bn]) {
+			return false
+		}
+		if aerr == io.EOF && berr == io.EOF {
+			return true
+		}
+		if aerr != nil && aerr != io.ErrUnexpectedEOF {
+			return false
+		}
+		if berr != nil && berr != io.ErrUnexpectedEOF {
+			return false
+		}
+		if an != bn {
+			return false
+		}
+	}
+}
+
+func copyFile(src, dest string) error {
+	sf, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("cannot open '%s': %s", src, unwrapErr(err))
+	}
+	defer sf.Close()
+
+	df, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("cannot create regular file '%s': %s",
+			dest, unwrapErr(err))
+	}
+	defer df.Close()
+
+	if _, err := io.Copy(df, sf); err != nil {
+		return fmt.Errorf("writing '%s': %s", dest, unwrapErr(err))
+	}
+	return df.Close()
+}
+
+func setMode(opts options, path string) error {
+	if opts.mode == "" {
+		return os.Chmod(path, 0755)
+	}
+	perm, err := resolveMode(opts.mode)
+	if err != nil {
+		return fmt.Errorf("invalid mode '%s'", opts.mode)
+	}
+	return os.Chmod(path, perm)
+}
+
+func resolveMode(mode string) (os.FileMode, error) {
+	if isOctalMode(mode) {
+		val, err := strconv.ParseUint(mode, 8, 32)
+		if err != nil {
+			return 0, err
+		}
+		return os.FileMode(val), nil
+	}
+	return evalSymbolic(mode, 0, getUmask())
+}
+
+func getUmask() os.FileMode {
+	old := syscall.Umask(0)
+	syscall.Umask(old)
+	return os.FileMode(old)
+}
+
+func setOwnership(opts options, path string) error {
+	uid, gid := -1, -1
+	if opts.owner != "" {
+		var err error
+		uid, err = lookupUser(opts.owner)
+		if err != nil {
+			return err
+		}
+	}
+	if opts.group != "" {
+		var err error
+		gid, err = lookupGroup(opts.group)
+		if err != nil {
+			return err
+		}
+	}
+	if uid == -1 && gid == -1 {
+		return nil
+	}
+	if err := os.Chown(path, uid, gid); err != nil {
+		return fmt.Errorf("cannot change ownership of '%s': %s",
+			path, unwrapErr(err))
+	}
+	return nil
+}
+
+func lookupUser(name string) (int, error) {
+	if uid, err := strconv.Atoi(name); err == nil {
+		return uid, nil
+	}
+	u, err := user.Lookup(name)
+	if err != nil {
+		return 0, fmt.Errorf("invalid user: '%s'", name)
+	}
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return 0, fmt.Errorf("invalid user: '%s'", name)
+	}
+	return uid, nil
+}
+
+func lookupGroup(name string) (int, error) {
+	if gid, err := strconv.Atoi(name); err == nil {
+		return gid, nil
+	}
+	g, err := user.LookupGroup(name)
+	if err != nil {
+		return 0, fmt.Errorf("invalid group: '%s'", name)
+	}
+	gid, err := strconv.Atoi(g.Gid)
+	if err != nil {
+		return 0, fmt.Errorf("invalid group: '%s'", name)
+	}
+	return gid, nil
+}
+
+func unwrapErr(err error) string {
+	if pe, ok := err.(*os.PathError); ok {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+func parseArgs(args []string) (options, []string) {
+	var opts options
+	var operands []string
+	endOfFlags := false
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if endOfFlags {
+			operands = append(operands, arg)
+			i++
+			continue
+		}
+		if arg == "--" {
+			endOfFlags = true
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, "--") {
+			i = parseLongFlag(args, i, &opts)
+			continue
+		}
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			i = parseShortFlags(args, i, &opts)
+			continue
+		}
+		operands = append(operands, arg)
+		i++
+	}
+	return opts, operands
+}
+
+func parseLongFlag(args []string, i int, opts *options) int {
+	arg := args[i]
+	switch {
+	case arg == "--help":
+		fmt.Fprint(os.Stdout, helpText)
+		os.Exit(0)
+	case arg == "--version":
+		fmt.Fprint(os.Stdout, versionText)
+		os.Exit(0)
+	case arg == "--directory":
+		opts.directory = true
+	case arg == "--compare":
+		opts.compare = true
+	case arg == "--backup":
+		opts.backup = true
+	case arg == "--verbose":
+		opts.verbose = true
+	case strings.HasPrefix(arg, "--mode="):
+		opts.mode = arg[len("--mode="):]
+	case strings.HasPrefix(arg, "--owner="):
+		opts.owner = arg[len("--owner="):]
+	case strings.HasPrefix(arg, "--group="):
+		opts.group = arg[len("--group="):]
+	case strings.HasPrefix(arg, "--suffix="):
+		opts.suffix = arg[len("--suffix="):]
+	}
+	return i + 1
+}
+
+func parseShortFlags(args []string, i int, opts *options) int {
+	flags := args[i][1:]
+	j := 0
+	for j < len(flags) {
+		switch flags[j] {
+		case 'm':
+			opts.mode = consumeValue(flags, j+1, args, &i)
+			return i + 1
+		case 'o':
+			opts.owner = consumeValue(flags, j+1, args, &i)
+			return i + 1
+		case 'g':
+			opts.group = consumeValue(flags, j+1, args, &i)
+			return i + 1
+		case 'd':
+			opts.directory = true
+		case 'C':
+			opts.compare = true
+		case 'D':
+			opts.createDir = true
+		case 'b':
+			opts.backup = true
+		case 'v':
+			opts.verbose = true
+		case 'c':
+			j++
+			continue
+		default:
+			fmt.Fprintf(os.Stderr,
+				"install: invalid option -- '%c'\n", flags[j])
+			os.Exit(1)
+		}
+		j++
+	}
+	return i + 1
+}
+
+func consumeValue(flags string, pos int, args []string, i *int) string {
+	if pos < len(flags) {
+		return flags[pos:]
+	}
+	if *i+1 < len(args) {
+		*i++
+		return args[*i]
+	}
+	return ""
+}

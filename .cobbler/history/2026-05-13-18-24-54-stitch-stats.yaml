@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5076"
+task_title: '[stitch] pkg/testutils srd001-testutils R3.3, R3.4, R3.5, R3.6'
+status: success
+started_at: "2026-05-13T22:24:54Z"
+duration: 1m57s
+duration_s: 116
+tokens:
+    input: 351368
+    output: 3036
+    cache_creation: 170001
+    cache_read: 181361
+cost_usd: 1.52514125
+num_turns: 8
+rate_limit_wait_s: 3
+loc_before:
+    production: 529
+    test: 0
+loc_after:
+    production: 529
+    test: 0
+diff:
+    files: 1
+    insertions: 76
+    deletions: 0

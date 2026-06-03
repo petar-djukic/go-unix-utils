@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5136"
+task_title: '[stitch] cmd/basename: core path stripping (srd015-basename R1.1-R1.4)'
+status: success
+started_at: "2026-05-14T03:28:11Z"
+duration: 1m57s
+duration_s: 117
+tokens:
+    input: 311014
+    output: 1872
+    cache_creation: 170333
+    cache_read: 140671
+cost_usd: 1.5111742499999998
+num_turns: 13
+rate_limit_wait_s: 10
+loc_before:
+    production: 1905
+    test: 1165
+loc_after:
+    production: 1954
+    test: 1165
+diff:
+    files: 2
+    insertions: 136
+    deletions: 0

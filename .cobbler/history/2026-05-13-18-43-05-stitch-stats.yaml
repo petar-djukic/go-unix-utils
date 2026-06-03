@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5081"
+task_title: '[stitch] srd087-sizeparse R1.1-R1.4: core size string parsing'
+status: success
+started_at: "2026-05-13T22:43:05Z"
+duration: 4m53s
+duration_s: 292
+tokens:
+    input: 580971
+    output: 12252
+    cache_creation: 169249
+    cache_read: 411712
+cost_usd: 1.8881107499999998
+num_turns: 15
+rate_limit_wait_s: 3
+loc_before:
+    production: 552
+    test: 0
+loc_after:
+    production: 646
+    test: 0
+diff:
+    files: 2
+    insertions: 194
+    deletions: 5

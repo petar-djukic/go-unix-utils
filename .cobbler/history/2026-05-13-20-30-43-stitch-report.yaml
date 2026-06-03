@@ -1,0 +1,23 @@
+task_id: "5105"
+task_title: '[stitch] pkg/hashutil formatting and digest computation (srd086-hashutil R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5105
+diff:
+    files: 2
+    insertions: 98
+    deletions: 3
+files:
+    - path: .cobbler/history/2026-05-13-20-30-34-stitch-orchestrator.log
+      status: M
+      insertions: 87
+      deletions: 0
+    - path: pkg/hashutil/hashconfig.go
+      status: M
+      insertions: 12
+      deletions: 3
+loc_before:
+    production: 1267
+    test: 0
+loc_after:
+    production: 1276
+    test: 0

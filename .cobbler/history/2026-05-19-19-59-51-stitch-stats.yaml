@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5322"
+task_title: '[stitch] cmd/sha512sum completion (srd033 R3.2, R4.1, R4.2, R4.3)'
+status: success
+started_at: "2026-05-19T23:59:51Z"
+duration: 7m1s
+duration_s: 421
+tokens:
+    input: 786333
+    output: 17775
+    cache_creation: 210352
+    cache_read: 575964
+cost_usd: 2.4703709999999997
+num_turns: 26
+rate_limit_wait_s: 3
+loc_before:
+    production: 9475
+    test: 8791
+loc_after:
+    production: 9553
+    test: 8850
+diff:
+    files: 3
+    insertions: 259
+    deletions: 2

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5375"
+task_title: '[stitch] cmd/sort: sorting options and field separator -- srd053 R1.5-R1.7, R2.1'
+status: success
+started_at: "2026-05-20T15:01:01Z"
+duration: 5m45s
+duration_s: 345
+tokens:
+    input: 391291
+    output: 19597
+    cache_creation: 209820
+    cache_read: 181462
+cost_usd: 2.270143
+num_turns: 22
+rate_limit_wait_s: 2
+loc_before:
+    production: 11741
+    test: 11568
+loc_after:
+    production: 11884
+    test: 11568
+diff:
+    files: 2
+    insertions: 270
+    deletions: 15

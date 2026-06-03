@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5337"
+task_title: '[stitch] cmd/unlink finalize (srd038 R3.2, R3.3)'
+status: success
+started_at: "2026-05-20T11:14:24Z"
+duration: 2m15s
+duration_s: 135
+tokens:
+    input: 295386
+    output: 2565
+    cache_creation: 190815
+    cache_read: 104563
+cost_usd: 1.6597229999999996
+num_turns: 12
+rate_limit_wait_s: 3
+loc_before:
+    production: 10230
+    test: 9854
+loc_after:
+    production: 10230
+    test: 9854
+diff:
+    files: 1
+    insertions: 85
+    deletions: 0

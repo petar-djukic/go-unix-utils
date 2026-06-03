@@ -1,0 +1,31 @@
+task_id: "5680"
+task_title: '[stitch] pkg/format -- srd003-format R1, R2, R3'
+status: success
+branch: task/generation-run44-5680
+diff:
+    files: 4
+    insertions: 297
+    deletions: 9
+files:
+    - path: .cobbler/history/2026-05-30-13-02-40-stitch-orchestrator.log
+      status: M
+      insertions: 150
+      deletions: 0
+    - path: pkg/format/color.go
+      status: M
+      insertions: 41
+      deletions: 5
+    - path: pkg/format/columns.go
+      status: M
+      insertions: 71
+      deletions: 3
+    - path: pkg/format/humansize.go
+      status: M
+      insertions: 36
+      deletions: 1
+loc_before:
+    production: 32836
+    test: 25278
+loc_after:
+    production: 32975
+    test: 25278

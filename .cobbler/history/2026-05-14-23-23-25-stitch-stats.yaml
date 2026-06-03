@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5255"
+task_title: '[stitch] cmd/nl: srd022-nl (contract)'
+status: success
+started_at: "2026-05-15T03:23:25Z"
+duration: 2m34s
+duration_s: 153
+tokens:
+    input: 423519
+    output: 4733
+    cache_creation: 184455
+    cache_read: 239052
+cost_usd: 1.7480667500000002
+num_turns: 19
+rate_limit_wait_s: 1
+loc_before:
+    production: 6483
+    test: 5114
+loc_after:
+    production: 6691
+    test: 5173
+diff:
+    files: 3
+    insertions: 370
+    deletions: 0

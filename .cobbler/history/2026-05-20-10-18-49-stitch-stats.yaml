@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5365"
+task_title: '[stitch] srd040-printenv R1.1, R1.2, R1.3, R2.1'
+status: success
+started_at: "2026-05-20T14:18:49Z"
+duration: 1m53s
+duration_s: 112
+tokens:
+    input: 398947
+    output: 2774
+    cache_creation: 206490
+    cache_read: 192445
+cost_usd: 1.82180675
+num_turns: 15
+rate_limit_wait_s: 2
+loc_before:
+    production: 11182
+    test: 11405
+loc_after:
+    production: 11259
+    test: 11469
+diff:
+    files: 3
+    insertions: 236
+    deletions: 0

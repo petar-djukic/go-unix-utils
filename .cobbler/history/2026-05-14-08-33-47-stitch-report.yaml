@@ -1,0 +1,23 @@
+task_id: "5160"
+task_title: '[stitch] cmd/tee: version/help and output-error handling (srd017-tee R4.1-R4.3)'
+status: success
+branch: task/generation-run44-5160
+diff:
+    files: 2
+    insertions: 241
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-14-08-33-38-stitch-orchestrator.log
+      status: M
+      insertions: 156
+      deletions: 0
+    - path: cmd/tee/tee_test.go
+      status: M
+      insertions: 86
+      deletions: 0
+loc_before:
+    production: 2676
+    test: 2120
+loc_after:
+    production: 2676
+    test: 2206

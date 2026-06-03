@@ -1,0 +1,23 @@
+task_id: "5155"
+task_title: '[stitch] cmd/du: summarize total and exit status (srd009-du R4.1, R4.2, R5.1)'
+status: success
+branch: task/generation-run44-5155
+diff:
+    files: 2
+    insertions: 309
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-14-08-04-04-stitch-orchestrator.log
+      status: M
+      insertions: 177
+      deletions: 0
+    - path: cmd/du/du_test.go
+      status: A
+      insertions: 133
+      deletions: 0
+loc_before:
+    production: 2523
+    test: 1544
+loc_after:
+    production: 2523
+    test: 1677

@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5209"
+task_title: '[stitch] generation-run44 #5209'
+status: success
+started_at: "2026-05-14T21:34:30Z"
+duration: 7m44s
+duration_s: 464
+tokens:
+    input: 1868774
+    output: 21986
+    cache_creation: 222883
+    cache_read: 1645702
+cost_usd: 3.1173433
+num_turns: 91
+loc_before:
+    production: 4884
+    test: 3817
+loc_after:
+    production: 4938
+    test: 3817
+diff:
+    files: 2
+    insertions: 330
+    deletions: 7

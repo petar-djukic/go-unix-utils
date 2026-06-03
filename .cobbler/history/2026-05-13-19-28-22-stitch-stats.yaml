@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5091"
+task_title: '[stitch] srd003-format R3.1-R3.4: string padding and column layout'
+status: success
+started_at: "2026-05-13T23:28:22Z"
+duration: 2m23s
+duration_s: 143
+tokens:
+    input: 462472
+    output: 3301
+    cache_creation: 169986
+    cache_read: 292476
+cost_usd: 1.628252
+num_turns: 16
+rate_limit_wait_s: 1
+loc_before:
+    production: 827
+    test: 0
+loc_after:
+    production: 898
+    test: 0
+diff:
+    files: 3
+    insertions: 184
+    deletions: 19

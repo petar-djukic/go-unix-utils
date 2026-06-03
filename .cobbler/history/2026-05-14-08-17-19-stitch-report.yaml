@@ -1,0 +1,27 @@
+task_id: "5158"
+task_title: '[stitch] cmd/tee: error reporting, write failure handling, and exit status (srd017-tee R3.1-R3.4)'
+status: success
+branch: task/generation-run44-5158
+diff:
+    files: 3
+    insertions: 336
+    deletions: 19
+files:
+    - path: .cobbler/history/2026-05-14-08-17-02-stitch-orchestrator.log
+      status: M
+      insertions: 160
+      deletions: 0
+    - path: cmd/tee/main.go
+      status: M
+      insertions: 46
+      deletions: 19
+    - path: cmd/tee/tee_test.go
+      status: M
+      insertions: 131
+      deletions: 0
+loc_before:
+    production: 2649
+    test: 1989
+loc_after:
+    production: 2676
+    test: 2120

@@ -1,0 +1,24 @@
+caller: measure
+task_id: "5118"
+status: failed
+error: 'claude failure (iteration 1/1): exit status 1'
+started_at: "2026-05-14T01:58:24Z"
+duration: 58s
+duration_s: 57
+tokens:
+    input: 72224
+    output: 936
+    cache_creation: 60381
+    cache_read: 11841
+cost_usd: 0.5248417999999999
+num_turns: 17
+loc_before:
+    production: 1527
+    test: 190
+loc_after:
+    production: 1527
+    test: 190
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

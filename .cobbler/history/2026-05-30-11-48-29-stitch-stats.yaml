@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5669"
+task_title: '[stitch] cmd/pr -- srd110-pr R3.1'
+status: success
+started_at: "2026-05-30T15:48:29Z"
+duration: 17m15s
+duration_s: 1035
+tokens:
+    input: 2244194
+    output: 55589
+    cache_creation: 291804
+    cache_read: 1952356
+cost_usd: 4.389625250000002
+num_turns: 80
+loc_before:
+    production: 32666
+    test: 25175
+loc_after:
+    production: 32784
+    test: 25175
+diff:
+    files: 2
+    insertions: 375
+    deletions: 9

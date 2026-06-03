@@ -1,0 +1,23 @@
+task_id: "5205"
+task_title: '[stitch] cmd/ls: core display features (srd008-ls R1.9-R1.12)'
+status: success
+branch: task/generation-run44-5205
+diff:
+    files: 2
+    insertions: 183
+    deletions: 12
+files:
+    - path: .cobbler/history/2026-05-14-17-18-10-stitch-orchestrator.log
+      status: M
+      insertions: 151
+      deletions: 0
+    - path: cmd/ls/main.go
+      status: M
+      insertions: 33
+      deletions: 12
+loc_before:
+    production: 4762
+    test: 3817
+loc_after:
+    production: 4783
+    test: 3817

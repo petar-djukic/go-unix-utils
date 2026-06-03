@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5191"
+task_title: '[stitch] cmd/arch: differential tests (srd045-arch R3.1-R3.3)'
+status: success
+started_at: "2026-05-14T17:17:44Z"
+duration: 1m8s
+duration_s: 67
+tokens:
+    input: 240648
+    output: 1029
+    cache_creation: 170958
+    cache_read: 69683
+cost_usd: 1.4342065000000002
+num_turns: 8
+loc_before:
+    production: 4156
+    test: 3389
+loc_after:
+    production: 4156
+    test: 3418
+diff:
+    files: 2
+    insertions: 107
+    deletions: 0

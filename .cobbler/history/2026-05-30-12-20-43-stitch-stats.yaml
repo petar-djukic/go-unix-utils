@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5671"
+task_title: '[stitch] cmd/ptx -- srd111-ptx R3.1'
+status: success
+started_at: "2026-05-30T16:20:43Z"
+duration: 2m46s
+duration_s: 165
+tokens:
+    input: 748110
+    output: 5392
+    cache_creation: 239766
+    cache_read: 508322
+cost_usd: 2.08599525
+num_turns: 42
+loc_before:
+    production: 32961
+    test: 25175
+loc_after:
+    production: 33006
+    test: 25175
+diff:
+    files: 2
+    insertions: 197
+    deletions: 4

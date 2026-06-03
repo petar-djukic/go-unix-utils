@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5391"
+task_title: '[stitch] cmd/cp: srd056 R1.1-R1.4'
+status: success
+started_at: "2026-05-20T23:52:24Z"
+duration: 23m6s
+duration_s: 1386
+tokens:
+    input: 1645857
+    output: 70654
+    cache_creation: 299912
+    cache_read: 1345505
+cost_usd: 4.895026899999999
+num_turns: 70
+rate_limit_wait_s: 2
+loc_before:
+    production: 13332
+    test: 12355
+loc_after:
+    production: 13529
+    test: 12656
+diff:
+    files: 3
+    insertions: 762
+    deletions: 0

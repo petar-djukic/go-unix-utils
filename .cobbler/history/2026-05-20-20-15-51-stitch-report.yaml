@@ -1,0 +1,27 @@
+task_id: "5392"
+task_title: '[stitch] cmd/cp: srd056 R2.1-R2.4'
+status: success
+branch: task/generation-run44-5392
+diff:
+    files: 3
+    insertions: 301
+    deletions: 9
+files:
+    - path: .cobbler/history/2026-05-20-20-15-42-stitch-orchestrator.log
+      status: M
+      insertions: 95
+      deletions: 0
+    - path: cmd/cp/cp_test.go
+      status: M
+      insertions: 110
+      deletions: 1
+    - path: cmd/cp/main.go
+      status: M
+      insertions: 97
+      deletions: 8
+loc_before:
+    production: 13529
+    test: 12656
+loc_after:
+    production: 13618
+    test: 12765

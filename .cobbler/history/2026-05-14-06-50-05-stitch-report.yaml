@@ -1,0 +1,27 @@
+task_id: "5142"
+task_title: '[stitch] cmd/yes: argument handling and output format (srd012-yes R2.1-R2.2, R3.1-R3.2)'
+status: success
+branch: task/generation-run44-5142
+diff:
+    files: 3
+    insertions: 176
+    deletions: 3
+files:
+    - path: .cobbler/history/2026-05-14-06-49-56-stitch-orchestrator.log
+      status: M
+      insertions: 110
+      deletions: 0
+    - path: cmd/yes/main.go
+      status: M
+      insertions: 25
+      deletions: 3
+    - path: cmd/yes/yes_test.go
+      status: M
+      insertions: 42
+      deletions: 0
+loc_before:
+    production: 2135
+    test: 1370
+loc_after:
+    production: 2157
+    test: 1412

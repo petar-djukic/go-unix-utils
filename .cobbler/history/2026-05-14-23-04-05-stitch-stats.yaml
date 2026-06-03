@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5252"
+task_title: '[stitch] cmd/tac: implement srd021-tac R2.1-R2.4'
+status: success
+started_at: "2026-05-15T03:04:05Z"
+duration: 7m44s
+duration_s: 464
+tokens:
+    input: 482403
+    output: 23264
+    cache_creation: 216882
+    cache_read: 265510
+cost_usd: 2.4520617500000004
+num_turns: 20
+rate_limit_wait_s: 3
+loc_before:
+    production: 6481
+    test: 5043
+loc_after:
+    production: 6481
+    test: 5078
+diff:
+    files: 3
+    insertions: 141
+    deletions: 1

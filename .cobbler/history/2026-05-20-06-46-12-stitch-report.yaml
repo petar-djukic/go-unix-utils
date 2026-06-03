@@ -1,0 +1,27 @@
+task_id: "5331"
+task_title: '[stitch] cmd/rmdir ancestor removal and verbose (srd035 R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5331
+diff:
+    files: 3
+    insertions: 176
+    deletions: 3
+files:
+    - path: .cobbler/history/2026-05-20-06-46-02-stitch-orchestrator.log
+      status: M
+      insertions: 112
+      deletions: 0
+    - path: cmd/rmdir/main.go
+      status: M
+      insertions: 14
+      deletions: 2
+    - path: cmd/rmdir/rmdir_test.go
+      status: M
+      insertions: 51
+      deletions: 1
+loc_before:
+    production: 10132
+    test: 9534
+loc_after:
+    production: 10144
+    test: 9584

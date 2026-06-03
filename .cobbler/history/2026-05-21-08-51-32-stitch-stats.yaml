@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5401"
+task_title: '[stitch] cmd/rm: srd058 (contract)'
+status: success
+started_at: "2026-05-21T12:51:32Z"
+duration: 2m18s
+duration_s: 137
+tokens:
+    input: 396024
+    output: 3015
+    cache_creation: 201927
+    cache_read: 194086
+cost_usd: 1.8621842500000003
+num_turns: 15
+rate_limit_wait_s: 9
+loc_before:
+    production: 14106
+    test: 13473
+loc_after:
+    production: 14253
+    test: 13495
+diff:
+    files: 3
+    insertions: 264
+    deletions: 0

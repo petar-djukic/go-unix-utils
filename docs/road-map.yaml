@@ -12,19 +12,19 @@ releases:
         binary is the first compiled artifact and the smoke test for the build pipeline.
       use_cases:
         - id: rel00.0-uc001-magefiles
-          status: spec_complete
+          status: implemented
         - id: rel00.0-uc002-format
           status: spec_complete
         - id: rel00.0-uc003-sys
-          status: spec_complete
+          status: implemented
         - id: rel00.0-uc004-testutils
           status: spec_complete
         - id: rel00.0-uc005-hashutil
-          status: spec_complete
+          status: implemented
         - id: rel00.0-uc006-sizeparse
-          status: spec_complete
+          status: implemented
         - id: rel00.0-uc007-encutil
-          status: spec_complete
+          status: implemented
     - version: "01.1"
       name: "Batch 1.1 — cat specification and differential test"
       status: spec_complete

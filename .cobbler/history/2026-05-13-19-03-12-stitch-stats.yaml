@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5087"
+task_title: '[stitch] srd003-format R1.1-R1.4: human-readable size formatting'
+status: success
+started_at: "2026-05-13T23:03:12Z"
+duration: 2m3s
+duration_s: 122
+tokens:
+    input: 1607435
+    output: 4287
+    cache_creation: 151590
+    cache_read: 1455834
+cost_usd: 1.9183405
+num_turns: 19
+loc_before:
+    production: 728
+    test: 0
+loc_after:
+    production: 766
+    test: 0
+diff:
+    files: 2
+    insertions: 147
+    deletions: 3

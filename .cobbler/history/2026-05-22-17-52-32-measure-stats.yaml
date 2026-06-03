@@ -1,0 +1,23 @@
+caller: measure
+task_id: "5467"
+status: success
+started_at: "2026-05-22T21:52:32Z"
+duration: 4m15s
+duration_s: 255
+tokens:
+    input: 60660
+    output: 15388
+    cache_creation: 48817
+    cache_read: 11841
+cost_usd: 0.73425775
+num_turns: 2
+loc_before:
+    production: 18600
+    test: 17300
+loc_after:
+    production: 18600
+    test: 17300
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

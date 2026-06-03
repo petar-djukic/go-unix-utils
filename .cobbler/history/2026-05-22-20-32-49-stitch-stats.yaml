@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5489"
+task_title: '[stitch] cmd/sha224sum: differential tests srd074 R4.3'
+status: success
+started_at: "2026-05-23T00:32:49Z"
+duration: 1m59s
+duration_s: 118
+tokens:
+    input: 272727
+    output: 990
+    cache_creation: 206390
+    cache_read: 66330
+cost_usd: 1.7747298
+num_turns: 16
+rate_limit_wait_s: 2
+loc_before:
+    production: 20514
+    test: 18460
+loc_after:
+    production: 20514
+    test: 18460
+diff:
+    files: 1
+    insertions: 108
+    deletions: 0

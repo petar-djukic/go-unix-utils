@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5137"
+task_title: '[stitch] cmd/basename: suffix removal and flags (srd015-basename R1.5, R2.1-R2.3)'
+status: success
+started_at: "2026-05-14T03:30:27Z"
+duration: 4m16s
+duration_s: 255
+tokens:
+    input: 430119
+    output: 10370
+    cache_creation: 167074
+    cache_read: 263036
+cost_usd: 1.80872975
+num_turns: 14
+rate_limit_wait_s: 5
+loc_before:
+    production: 1954
+    test: 1165
+loc_after:
+    production: 2064
+    test: 1165
+diff:
+    files: 2
+    insertions: 208
+    deletions: 10

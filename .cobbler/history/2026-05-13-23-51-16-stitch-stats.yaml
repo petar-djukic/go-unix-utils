@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5141"
+task_title: '[stitch] cmd/yes: core repeated output and SIGPIPE (srd012-yes R1.1-R1.4)'
+status: success
+started_at: "2026-05-14T03:51:16Z"
+duration: 9m0s
+duration_s: 540
+tokens:
+    input: 473691
+    output: 23192
+    cache_creation: 173440
+    cache_read: 300241
+cost_usd: 2.2913240000000004
+num_turns: 19
+loc_before:
+    production: 2095
+    test: 1296
+loc_after:
+    production: 2135
+    test: 1370
+diff:
+    files: 3
+    insertions: 214
+    deletions: 0

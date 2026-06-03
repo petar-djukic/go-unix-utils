@@ -1,0 +1,27 @@
+task_id: "5568"
+task_title: '[stitch] Implement cmd/nohup error handling and differential tests (srd095 R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5568
+diff:
+    files: 3
+    insertions: 283
+    deletions: 2
+files:
+    - path: .cobbler/history/2026-05-23-23-12-23-stitch-orchestrator.log
+      status: M
+      insertions: 136
+      deletions: 0
+    - path: cmd/nohup/main.go
+      status: M
+      insertions: 17
+      deletions: 2
+    - path: cmd/nohup/nohup_test.go
+      status: A
+      insertions: 131
+      deletions: 0
+loc_before:
+    production: 25745
+    test: 22806
+loc_after:
+    production: 25760
+    test: 22937

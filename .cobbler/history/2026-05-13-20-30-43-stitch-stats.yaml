@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5105"
+task_title: '[stitch] pkg/hashutil formatting and digest computation (srd086-hashutil R2.1, R2.2, R2.3)'
+status: success
+started_at: "2026-05-14T00:30:43Z"
+duration: 1m34s
+duration_s: 93
+tokens:
+    input: 1139146
+    output: 4015
+    cache_creation: 153732
+    cache_read: 985406
+cost_usd: 1.6913160000000003
+num_turns: 14
+rate_limit_wait_s: 20
+loc_before:
+    production: 1267
+    test: 0
+loc_after:
+    production: 1276
+    test: 0
+diff:
+    files: 2
+    insertions: 98
+    deletions: 3

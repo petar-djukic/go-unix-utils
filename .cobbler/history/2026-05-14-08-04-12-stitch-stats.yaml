@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5155"
+task_title: '[stitch] cmd/du: summarize total and exit status (srd009-du R4.1, R4.2, R5.1)'
+status: success
+started_at: "2026-05-14T12:04:12Z"
+duration: 5m12s
+duration_s: 311
+tokens:
+    input: 600645
+    output: 12878
+    cache_creation: 188746
+    cache_read: 411884
+cost_usd: 2.1378176
+num_turns: 42
+rate_limit_wait_s: 5
+loc_before:
+    production: 2523
+    test: 1544
+loc_after:
+    production: 2523
+    test: 1677
+diff:
+    files: 2
+    insertions: 309
+    deletions: 0

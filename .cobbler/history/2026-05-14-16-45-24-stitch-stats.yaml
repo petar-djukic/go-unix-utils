@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5202"
+task_title: '[stitch] cmd/ls: basic listing and default output (srd008-ls R1.1-R1.4)'
+status: success
+started_at: "2026-05-14T20:45:24Z"
+duration: 10m19s
+duration_s: 619
+tokens:
+    input: 737280
+    output: 29227
+    cache_creation: 208803
+    cache_read: 528458
+cost_usd: 2.6764629
+num_turns: 43
+rate_limit_wait_s: 12
+loc_before:
+    production: 4330
+    test: 3714
+loc_after:
+    production: 4527
+    test: 3787
+diff:
+    files: 3
+    insertions: 434
+    deletions: 0

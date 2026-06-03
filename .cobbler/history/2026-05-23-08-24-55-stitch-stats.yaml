@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5526"
+task_title: '[stitch] Implement cmd/link error handling (srd084-link R2.1-R2.3)'
+status: success
+started_at: "2026-05-23T12:24:55Z"
+duration: 1m51s
+duration_s: 110
+tokens:
+    input: 301986
+    output: 937
+    cache_creation: 227323
+    cache_read: 74656
+cost_usd: 1.6977702500000003
+num_turns: 11
+loc_before:
+    production: 22004
+    test: 20107
+loc_after:
+    production: 22004
+    test: 20107
+diff:
+    files: 1
+    insertions: 83
+    deletions: 0

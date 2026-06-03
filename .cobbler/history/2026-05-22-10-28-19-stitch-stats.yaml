@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5455"
+task_title: '[stitch] cmd/join (contract)'
+status: success
+started_at: "2026-05-22T14:28:19Z"
+duration: 3m11s
+duration_s: 191
+tokens:
+    input: 505254
+    output: 4594
+    cache_creation: 224180
+    cache_read: 281060
+cost_usd: 2.1508373499999998
+num_turns: 41
+rate_limit_wait_s: 7
+loc_before:
+    production: 17555
+    test: 16812
+loc_after:
+    production: 17798
+    test: 16835
+diff:
+    files: 3
+    insertions: 455
+    deletions: 0

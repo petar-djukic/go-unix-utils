@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5640"
+task_title: '[stitch] cmd/ptx implementation (srd111-ptx R1.1)'
+status: failed
+error: 'claude failure: claude max time exceeded (25m0s)'
+started_at: "2026-05-28T18:39:12Z"
+duration: 25m4s
+duration_s: 1503
+tokens:
+    input: 0
+    output: 0
+    cache_creation: 0
+    cache_read: 0
+cost_usd: 0
+loc_before:
+    production: 31067
+    test: 24639
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

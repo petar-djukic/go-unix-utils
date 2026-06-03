@@ -1,0 +1,27 @@
+task_id: "5276"
+task_title: '[stitch] cmd/unexpand: implement srd025-unexpand R3.1-R3.3'
+status: success
+branch: task/generation-run44-5276
+diff:
+    files: 3
+    insertions: 189
+    deletions: 7
+files:
+    - path: .cobbler/history/2026-05-15-10-42-44-stitch-orchestrator.log
+      status: M
+      insertions: 91
+      deletions: 0
+    - path: cmd/unexpand/main.go
+      status: M
+      insertions: 16
+      deletions: 7
+    - path: cmd/unexpand/unexpand_test.go
+      status: M
+      insertions: 83
+      deletions: 0
+loc_before:
+    production: 7494
+    test: 6188
+loc_after:
+    production: 7503
+    test: 6271

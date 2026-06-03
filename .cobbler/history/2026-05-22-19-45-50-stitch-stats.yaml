@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5480"
+task_title: '[stitch] cmd/printf: srd073 R1.1-R1.4'
+status: success
+started_at: "2026-05-22T23:45:50Z"
+duration: 15m1s
+duration_s: 900
+tokens:
+    input: 1230983
+    output: 45240
+    cache_creation: 262350
+    cache_read: 968613
+cost_usd: 3.6849323000000003
+num_turns: 39
+rate_limit_wait_s: 261
+loc_before:
+    production: 19929
+    test: 17948
+loc_after:
+    production: 20330
+    test: 18041
+diff:
+    files: 3
+    insertions: 655
+    deletions: 0

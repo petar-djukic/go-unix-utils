@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5296"
+task_title: '[stitch] cmd/comm -- srd029 R1.1-R1.4'
+status: success
+started_at: "2026-05-19T21:37:01Z"
+duration: 3m25s
+duration_s: 204
+tokens:
+    input: 483589
+    output: 5427
+    cache_creation: 198199
+    cache_read: 285377
+cost_usd: 1.9035250999999997
+num_turns: 27
+loc_before:
+    production: 8443
+    test: 7126
+loc_after:
+    production: 8575
+    test: 7330
+diff:
+    files: 3
+    insertions: 465
+    deletions: 0

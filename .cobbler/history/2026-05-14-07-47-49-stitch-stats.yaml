@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5152"
+task_title: '[stitch] cmd/du: depth limit, filesystem boundary, symlinks, and exclusion (srd009-du R2.4-R2.7)'
+status: success
+started_at: "2026-05-14T11:47:49Z"
+duration: 5m50s
+duration_s: 350
+tokens:
+    input: 315540
+    output: 15224
+    cache_creation: 181474
+    cache_read: 134058
+cost_usd: 1.96284975
+num_turns: 13
+rate_limit_wait_s: 2
+loc_before:
+    production: 2466
+    test: 1544
+loc_after:
+    production: 2490
+    test: 1544
+diff:
+    files: 2
+    insertions: 130
+    deletions: 19

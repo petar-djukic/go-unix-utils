@@ -1,0 +1,27 @@
+task_id: "5608"
+task_title: '[stitch] cmd/dir: implement srd107 R1.5, R2.1, R2.2, R2.3'
+status: success
+branch: task/generation-run44-5608
+diff:
+    files: 3
+    insertions: 525
+    deletions: 23
+files:
+    - path: .cobbler/history/2026-05-27-16-11-18-stitch-orchestrator.log
+      status: M
+      insertions: 243
+      deletions: 0
+    - path: cmd/dir/dir_test.go
+      status: M
+      insertions: 47
+      deletions: 3
+    - path: cmd/dir/main.go
+      status: M
+      insertions: 236
+      deletions: 20
+loc_before:
+    production: 28755
+    test: 23776
+loc_after:
+    production: 28971
+    test: 23820

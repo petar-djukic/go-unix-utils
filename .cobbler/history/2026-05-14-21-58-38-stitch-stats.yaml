@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5240"
+task_title: '[stitch] cmd/readlink: features implementation (srd050-readlink R4.3)'
+status: success
+started_at: "2026-05-15T01:58:38Z"
+duration: 1m30s
+duration_s: 90
+tokens:
+    input: 226404
+    output: 817
+    cache_creation: 176010
+    cache_read: 50388
+cost_usd: 1.48966375
+num_turns: 9
+rate_limit_wait_s: 3
+loc_before:
+    production: 5833
+    test: 4549
+loc_after:
+    production: 5833
+    test: 4549
+diff:
+    files: 1
+    insertions: 78
+    deletions: 0

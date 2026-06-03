@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5104"
+task_title: '[stitch] pkg/hashutil types and contracts (srd086-hashutil R1.1, R1.2, R1.3, R1.4)'
+status: success
+started_at: "2026-05-14T00:29:21Z"
+duration: 1m7s
+duration_s: 66
+tokens:
+    input: 800813
+    output: 1797
+    cache_creation: 149905
+    cache_read: 650902
+cost_usd: 1.4447972499999997
+num_turns: 9
+rate_limit_wait_s: 3
+loc_before:
+    production: 1263
+    test: 0
+loc_after:
+    production: 1267
+    test: 0
+diff:
+    files: 2
+    insertions: 90
+    deletions: 13

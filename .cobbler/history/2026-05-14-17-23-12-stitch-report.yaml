@@ -1,0 +1,23 @@
+task_id: "5207"
+task_title: '[stitch] cmd/ls: remaining core and extended column layout (srd008-ls R1.13-R1.14, R2.1-R2.2)'
+status: success
+branch: task/generation-run44-5207
+diff:
+    files: 2
+    insertions: 328
+    deletions: 9
+files:
+    - path: .cobbler/history/2026-05-14-17-23-03-stitch-orchestrator.log
+      status: M
+      insertions: 219
+      deletions: 0
+    - path: cmd/ls/main.go
+      status: M
+      insertions: 110
+      deletions: 9
+loc_before:
+    production: 4783
+    test: 3817
+loc_after:
+    production: 4884
+    test: 3817

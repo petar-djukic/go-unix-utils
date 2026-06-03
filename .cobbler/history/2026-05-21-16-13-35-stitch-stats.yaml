@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5451"
+task_title: '[stitch] cmd/csplit: srd068 R3.1-R3.4'
+status: success
+started_at: "2026-05-21T20:13:35Z"
+duration: 5m30s
+duration_s: 330
+tokens:
+    input: 845856
+    output: 15396
+    cache_creation: 222011
+    cache_read: 623826
+cost_usd: 2.4728367499999995
+num_turns: 28
+rate_limit_wait_s: 9
+loc_before:
+    production: 17474
+    test: 16718
+loc_after:
+    production: 17555
+    test: 16792
+diff:
+    files: 4
+    insertions: 305
+    deletions: 22

@@ -1,0 +1,27 @@
+task_id: "5553"
+task_title: '[stitch] Implement cmd/chgrp recursive traversal and symlink options (srd090 R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5553
+diff:
+    files: 3
+    insertions: 454
+    deletions: 6
+files:
+    - path: .cobbler/history/2026-05-23-13-36-51-stitch-orchestrator.log
+      status: M
+      insertions: 228
+      deletions: 0
+    - path: cmd/chgrp/chgrp_test.go
+      status: M
+      insertions: 119
+      deletions: 0
+    - path: cmd/chgrp/main.go
+      status: M
+      insertions: 108
+      deletions: 6
+loc_before:
+    production: 24135
+    test: 20994
+loc_after:
+    production: 24237
+    test: 21113

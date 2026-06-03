@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5382"
+task_title: '[stitch] cmd/tr: character classes and SET extensions -- srd054 R2.1-R2.4'
+status: success
+started_at: "2026-05-20T23:07:13Z"
+duration: 12m11s
+duration_s: 730
+tokens:
+    input: 562955
+    output: 41797
+    cache_creation: 236492
+    cache_read: 326453
+cost_usd: 3.06383125
+num_turns: 17
+rate_limit_wait_s: 5
+loc_before:
+    production: 13079
+    test: 12074
+loc_after:
+    production: 13203
+    test: 12089
+diff:
+    files: 3
+    insertions: 253
+    deletions: 19

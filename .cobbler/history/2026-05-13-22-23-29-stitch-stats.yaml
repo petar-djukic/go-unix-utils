@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5123"
+task_title: '[stitch] pkg/format: formatting tests (srd003-format)'
+status: success
+started_at: "2026-05-14T02:23:29Z"
+duration: 4m25s
+duration_s: 264
+tokens:
+    input: 330048
+    output: 12214
+    cache_creation: 181104
+    cache_read: 148935
+cost_usd: 1.85034625
+num_turns: 18
+rate_limit_wait_s: 26
+loc_before:
+    production: 1573
+    test: 383
+loc_after:
+    production: 1573
+    test: 639
+diff:
+    files: 4
+    insertions: 354
+    deletions: 0

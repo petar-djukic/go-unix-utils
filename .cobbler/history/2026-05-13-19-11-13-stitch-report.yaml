@@ -1,0 +1,23 @@
+task_id: "5089"
+task_title: '[stitch] srd003-format R2.1-R2.4: ANSI color file type mapping'
+status: success
+branch: task/generation-run44-5089
+diff:
+    files: 2
+    insertions: 139
+    deletions: 12
+files:
+    - path: .cobbler/history/2026-05-13-19-11-05-stitch-orchestrator.log
+      status: M
+      insertions: 84
+      deletions: 0
+    - path: pkg/format/color.go
+      status: M
+      insertions: 56
+      deletions: 12
+loc_before:
+    production: 766
+    test: 0
+loc_after:
+    production: 810
+    test: 0

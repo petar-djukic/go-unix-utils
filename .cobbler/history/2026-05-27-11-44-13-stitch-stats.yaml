@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5602"
+task_title: '[stitch] cmd/test: implement srd104 R1.1, R1.2, R2.1, R2.2'
+status: success
+started_at: "2026-05-27T15:44:13Z"
+duration: 9m45s
+duration_s: 585
+tokens:
+    input: 1183491
+    output: 30659
+    cache_creation: 261141
+    cache_read: 922327
+cost_usd: 3.2503522500000006
+num_turns: 43
+rate_limit_wait_s: 4
+loc_before:
+    production: 27855
+    test: 23509
+loc_after:
+    production: 28124
+    test: 23628
+diff:
+    files: 3
+    insertions: 543
+    deletions: 0

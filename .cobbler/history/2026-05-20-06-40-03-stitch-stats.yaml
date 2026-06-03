@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5330"
+task_title: '[stitch] cmd/mkdir error diagnostics and version/help (srd034 R4.1, R4.2, R4.3)'
+status: success
+started_at: "2026-05-20T10:40:03Z"
+duration: 5m49s
+duration_s: 348
+tokens:
+    input: 495965
+    output: 13195
+    cache_creation: 211403
+    cache_read: 284551
+cost_usd: 2.2031692499999997
+num_turns: 20
+rate_limit_wait_s: 1
+loc_before:
+    production: 10132
+    test: 9495
+loc_after:
+    production: 10132
+    test: 9534
+diff:
+    files: 3
+    insertions: 142
+    deletions: 1

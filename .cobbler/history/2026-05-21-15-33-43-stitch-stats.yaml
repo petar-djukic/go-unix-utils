@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5446"
+task_title: '[stitch] cmd/split: srd067 R3.1-R3.4'
+status: success
+started_at: "2026-05-21T19:33:43Z"
+duration: 4m58s
+duration_s: 298
+tokens:
+    input: 1558856
+    output: 12837
+    cache_creation: 234081
+    cache_read: 1324738
+cost_usd: 2.8804443500000003
+num_turns: 65
+rate_limit_wait_s: 2
+loc_before:
+    production: 16957
+    test: 16313
+loc_after:
+    production: 17110
+    test: 16422
+diff:
+    files: 3
+    insertions: 525
+    deletions: 47

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5332"
+task_title: '[stitch] cmd/rmdir non-empty tolerance and error handling (srd035 R3.1, R3.2, R3.3, R3.4)'
+status: success
+started_at: "2026-05-20T10:51:42Z"
+duration: 3m9s
+duration_s: 189
+tokens:
+    input: 512926
+    output: 5873
+    cache_creation: 196971
+    cache_read: 315941
+cost_usd: 1.9174617500000002
+num_turns: 21
+rate_limit_wait_s: 3
+loc_before:
+    production: 10144
+    test: 9584
+loc_after:
+    production: 10164
+    test: 9665
+diff:
+    files: 3
+    insertions: 208
+    deletions: 2

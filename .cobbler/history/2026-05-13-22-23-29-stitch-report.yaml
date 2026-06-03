@@ -1,0 +1,31 @@
+task_id: "5123"
+task_title: '[stitch] pkg/format: formatting tests (srd003-format)'
+status: success
+branch: task/generation-run44-5123
+diff:
+    files: 4
+    insertions: 354
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-13-22-23-21-stitch-orchestrator.log
+      status: M
+      insertions: 99
+      deletions: 0
+    - path: pkg/format/color_test.go
+      status: A
+      insertions: 105
+      deletions: 0
+    - path: pkg/format/humansize_test.go
+      status: A
+      insertions: 58
+      deletions: 0
+    - path: pkg/format/pad_test.go
+      status: A
+      insertions: 93
+      deletions: 0
+loc_before:
+    production: 1573
+    test: 383
+loc_after:
+    production: 1573
+    test: 639

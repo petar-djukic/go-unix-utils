@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5295"
+task_title: '[stitch] cmd/uniq -- srd028 R4.1-R4.4'
+status: success
+started_at: "2026-05-19T21:33:18Z"
+duration: 3m25s
+duration_s: 205
+tokens:
+    input: 1027500
+    output: 6867
+    cache_creation: 206205
+    cache_read: 821270
+cost_usd: 2.2528344999999996
+num_turns: 46
+rate_limit_wait_s: 2
+loc_before:
+    production: 8431
+    test: 7079
+loc_after:
+    production: 8443
+    test: 7126
+diff:
+    files: 3
+    insertions: 218
+    deletions: 3

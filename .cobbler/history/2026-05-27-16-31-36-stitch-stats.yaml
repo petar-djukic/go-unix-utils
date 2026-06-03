@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5610"
+task_title: '[stitch] cmd/dir: implement srd107 R2.4'
+status: success
+started_at: "2026-05-27T20:31:36Z"
+duration: 1m13s
+duration_s: 72
+tokens:
+    input: 272038
+    output: 706
+    cache_creation: 221318
+    cache_read: 50714
+cost_usd: 1.8196714999999999
+num_turns: 9
+rate_limit_wait_s: 12
+loc_before:
+    production: 28971
+    test: 23820
+loc_after:
+    production: 28971
+    test: 23820
+diff:
+    files: 1
+    insertions: 76
+    deletions: 0

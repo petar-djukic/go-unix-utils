@@ -1,0 +1,44 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"os/exec"
+	"testing"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+func TestDiff(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("gtrue")
+	if err != nil {
+		t.Skip("reference binary not found")
+	}
+	discardStdout := testutils.NormalizeFunc(func([]byte) []byte { return nil })
+	tests := []testutils.DiffTest{
+		{
+			Name:     "no-args",
+			ExitCode: 0,
+		},
+		{
+			Name:     "arbitrary-args",
+			Args:     []string{"foo", "bar", "--baz"},
+			ExitCode: 0,
+		},
+		{
+			Name:     "help",
+			Args:     []string{"--help"},
+			ExitCode: 0,
+			Normalize: []testutils.NormalizeFunc{discardStdout},
+		},
+		{
+			Name:     "version",
+			Args:     []string{"--version"},
+			ExitCode: 0,
+			Normalize: []testutils.NormalizeFunc{discardStdout},
+		},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}

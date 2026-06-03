@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5175"
+task_title: '[stitch] cmd/seq: remaining edge case (srd019-seq R4.4)'
+status: success
+started_at: "2026-05-14T13:46:10Z"
+duration: 7m40s
+duration_s: 459
+tokens:
+    input: 1558319
+    output: 21691
+    cache_creation: 199169
+    cache_read: 1359114
+cost_usd: 2.82018775
+num_turns: 74
+rate_limit_wait_s: 3
+loc_before:
+    production: 3410
+    test: 2641
+loc_after:
+    production: 3416
+    test: 2665
+diff:
+    files: 3
+    insertions: 263
+    deletions: 2

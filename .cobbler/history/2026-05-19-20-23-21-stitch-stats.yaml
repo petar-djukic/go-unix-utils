@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5326"
+task_title: '[stitch] cmd/mkdir mode and permissions (srd034 R3.1, R3.2, R3.3, R3.4)'
+status: success
+started_at: "2026-05-20T00:23:21Z"
+duration: 10m54s
+duration_s: 653
+tokens:
+    input: 1545501
+    output: 38694
+    cache_creation: 230948
+    cache_read: 1314520
+cost_usd: 3.44731775
+num_turns: 63
+rate_limit_wait_s: 60
+loc_before:
+    production: 9763
+    test: 9151
+loc_after:
+    production: 9979
+    test: 9294
+diff:
+    files: 3
+    insertions: 602
+    deletions: 32

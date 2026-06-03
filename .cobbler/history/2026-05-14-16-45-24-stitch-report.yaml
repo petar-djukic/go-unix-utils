@@ -1,0 +1,27 @@
+task_id: "5202"
+task_title: '[stitch] cmd/ls: basic listing and default output (srd008-ls R1.1-R1.4)'
+status: success
+branch: task/generation-run44-5202
+diff:
+    files: 3
+    insertions: 434
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-14-16-45-15-stitch-orchestrator.log
+      status: M
+      insertions: 165
+      deletions: 0
+    - path: cmd/ls/ls_test.go
+      status: A
+      insertions: 73
+      deletions: 0
+    - path: cmd/ls/main.go
+      status: A
+      insertions: 197
+      deletions: 0
+loc_before:
+    production: 4330
+    test: 3714
+loc_after:
+    production: 4527
+    test: 3787

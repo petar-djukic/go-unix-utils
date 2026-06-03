@@ -1,0 +1,23 @@
+task_id: "5570"
+task_title: '[stitch] Implement cmd/users error handling and differential tests (srd096 R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5570
+diff:
+    files: 2
+    insertions: 161
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-23-23-29-03-stitch-orchestrator.log
+      status: M
+      insertions: 125
+      deletions: 0
+    - path: cmd/users/users_test.go
+      status: A
+      insertions: 37
+      deletions: 0
+loc_before:
+    production: 25868
+    test: 22937
+loc_after:
+    production: 25868
+    test: 22974

@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5664"
+task_title: '[stitch] cmd/pr: implement srd110 R3.1'
+status: failed
+error: 'claude failure: exit status 1'
+started_at: "2026-05-29T20:50:33Z"
+duration: 10m34s
+duration_s: 634
+tokens:
+    input: 1137884
+    output: 22068
+    cache_creation: 248498
+    cache_read: 889358
+cost_usd: 2.807602000000001
+loc_before:
+    production: 32666
+    test: 25175
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

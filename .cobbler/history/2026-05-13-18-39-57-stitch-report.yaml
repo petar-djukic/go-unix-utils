@@ -1,0 +1,31 @@
+task_id: "5079"
+task_title: '[stitch] srd003-format: pkg/format (contract)'
+status: success
+branch: task/generation-run44-5079
+diff:
+    files: 4
+    insertions: 102
+    deletions: 9
+files:
+    - path: .cobbler/history/2026-05-13-18-39-49-stitch-orchestrator.log
+      status: M
+      insertions: 96
+      deletions: 0
+    - path: pkg/format/color.go
+      status: M
+      insertions: 3
+      deletions: 5
+    - path: pkg/format/columns.go
+      status: R
+      insertions: 0
+      deletions: 0
+    - path: pkg/format/humansize.go
+      status: M
+      insertions: 1
+      deletions: 1
+loc_before:
+    production: 529
+    test: 0
+loc_after:
+    production: 527
+    test: 0

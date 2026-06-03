@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5092"
+task_title: '[stitch] srd003-format R3.5-R3.6: column alignment edge cases'
+status: success
+started_at: "2026-05-13T23:31:04Z"
+duration: 35s
+duration_s: 35
+tokens:
+    input: 638688
+    output: 997
+    cache_creation: 149323
+    cache_read: 489360
+cost_usd: 1.3397567500000003
+num_turns: 9
+rate_limit_wait_s: 3
+loc_before:
+    production: 898
+    test: 0
+loc_after:
+    production: 898
+    test: 0
+diff:
+    files: 1
+    insertions: 72
+    deletions: 0

@@ -1,0 +1,27 @@
+task_id: "5328"
+task_title: '[stitch] cmd/rmdir basic directory removal (srd035 R1.1, R1.2, R1.3, R1.4)'
+status: success
+branch: task/generation-run44-5328
+diff:
+    files: 3
+    insertions: 474
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-20-06-26-37-stitch-orchestrator.log
+      status: M
+      insertions: 121
+      deletions: 0
+    - path: cmd/rmdir/main.go
+      status: A
+      insertions: 153
+      deletions: 0
+    - path: cmd/rmdir/rmdir_test.go
+      status: A
+      insertions: 201
+      deletions: 0
+loc_before:
+    production: 9979
+    test: 9294
+loc_after:
+    production: 10132
+    test: 9495

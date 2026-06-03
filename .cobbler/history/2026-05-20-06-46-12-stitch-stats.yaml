@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5331"
+task_title: '[stitch] cmd/rmdir ancestor removal and verbose (srd035 R2.1, R2.2, R2.3)'
+status: success
+started_at: "2026-05-20T10:46:12Z"
+duration: 5m7s
+duration_s: 306
+tokens:
+    input: 662046
+    output: 14811
+    cache_creation: 205768
+    cache_read: 456262
+cost_usd: 2.2503399999999996
+num_turns: 23
+rate_limit_wait_s: 3
+loc_before:
+    production: 10132
+    test: 9534
+loc_after:
+    production: 10144
+    test: 9584
+diff:
+    files: 3
+    insertions: 176
+    deletions: 3

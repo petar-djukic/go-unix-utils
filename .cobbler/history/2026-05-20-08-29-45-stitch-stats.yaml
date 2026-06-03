@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5348"
+task_title: '[stitch] cmd/mktemp implementation -- tmpdir and quiet mode (srd036-mktemp R3.1, R3.2, R3.3, R3.4)'
+status: success
+started_at: "2026-05-20T12:29:45Z"
+duration: 2m25s
+duration_s: 144
+tokens:
+    input: 281764
+    output: 1893
+    cache_creation: 195610
+    cache_read: 86147
+cost_usd: 1.7203670000000002
+num_turns: 11
+rate_limit_wait_s: 1
+loc_before:
+    production: 10761
+    test: 10882
+loc_after:
+    production: 10761
+    test: 10882
+diff:
+    files: 1
+    insertions: 82
+    deletions: 0

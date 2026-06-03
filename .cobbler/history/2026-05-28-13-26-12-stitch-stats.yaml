@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5637"
+task_title: '[stitch] cmd/vidir differential tests (srd114-vidir R2.1, R2.2)'
+status: success
+started_at: "2026-05-28T17:26:12Z"
+duration: 10m51s
+duration_s: 651
+tokens:
+    input: 683529
+    output: 32077
+    cache_creation: 270093
+    cache_read: 413422
+cost_usd: 2.913780499999999
+num_turns: 29
+loc_before:
+    production: 30911
+    test: 24520
+loc_after:
+    production: 30911
+    test: 24639
+diff:
+    files: 2
+    insertions: 236
+    deletions: 0

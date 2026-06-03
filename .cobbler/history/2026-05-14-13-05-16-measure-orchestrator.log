@@ -1,0 +1,158 @@
+[2026-05-14T13:05:16-04:00] [generation-run44] [measure +0s] starting (iterative, 4 issue(s) requested)
+[2026-05-14T13:05:16-04:00] [generation-run44] [measure +0s] measure config: silence=true stitchTotal=0 stitchPerCycle=1 measure=4 generationBranch=""
+[2026-05-14T13:05:17-04:00] [generation-run44] [measure +0s] resolved branch=generation-run44
+[2026-05-14T13:05:17-04:00] [generation-run44] [measure +0s] using GitHub repo petar-djukic/go-unix-utils for issues
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] precycle: running pre-cycle analysis
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: starting cross-artifact consistency checks
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: found 114 SRDs
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: found 114 use cases
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: found 34 test suites
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: found 33 releases, 114 use cases in roadmap
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: broken citations found 0
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: SRDs spanning multiple releases found 0
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: depends_on violations found 0
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: dependency rule violations found 0
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: broken struct_refs found 0
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: component_dep violations found 0
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: loaded 2 interface spec files from docs/interfaces/
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: broken interface refs found 0
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: missing spec files found 0
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: uncovered R-items found 0
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: uncovered ACs found 638 (warning)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: untraced success criteria found 127 (warning)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: unreachable UCs found 0 (warning)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: failed requirements found 0 (warning)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] resolveStandardFiles: 9 pattern(s) -> 268 file(s)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: schema validation found 0 error(s)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: constitution drift found 0 file(s)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] analyze: semantic model validation found 0 error(s), 0 standalone file(s)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] precycle: wrote .cobbler/analysis.yaml (total_issues=0)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd001-testutils R2 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd001-testutils R3 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd002-sys R1 has 7 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd002-sys R2 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd003-format R2 has 7 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd003-format R3 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd004-ts R1 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd005-wc R2 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd006-cat R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd006-cat R4 has 9 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd007-sponge R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd007-sponge R2 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd008-ls R1 has 14 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd008-ls R2 has 15 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd008-ls R3 has 15 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd008-ls R4 has 9 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd009-du R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd009-du R2 has 8 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd015-basename R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd016-dirname R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd017-tee R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd018-head R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd018-head R3 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd019-seq R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd036-mktemp R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd036-mktemp R3 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd037-ln R3 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd044-uname R1 has 9 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd049-realpath R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd050-readlink R1 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd053-sort R1 has 7 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd059-version R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd106-df R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd106-df R3 has 7 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd107-dir R1 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd108-vdir R1 has 6 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd109-dircolors R2 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +1s] warning: srd109-dircolors R3 has 5 sub-items (max_requirements_per_task=4); consider splitting this requirement group
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +2s] existing issues context len=0, maxMeasureIssues=4, commit=536b792a085690bd55eec1141a2ed31e5bae37af
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +2s] resolveStandardFiles: 9 pattern(s) -> 268 file(s)
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +2s] locBefore prod=4156 test=3389
+[2026-05-14T13:05:18-04:00] [generation-run44] [measure +2s] measure: maxIssues=4 tasksPerCall=4 totalCalls=1
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] createMeasuringPlaceholder: created #5189 for iteration 0
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] --- iteration 1/1 (limit=4, created so far=0) ---
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildMeasurePrompt: no phase context file, using config defaults
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildMeasurePrompt: measure_exclude_tests=true, _test.go files will be excluded
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildMeasurePrompt: measure_source_mode="headers" from config
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] selectNextPendingUseCase: next pending UC=rel00.0-uc002-format status=spec_complete
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildMeasurePrompt: road-map source: UC=rel00.0-uc002-format packages=[pkg/format pkg/sys]
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] resolveFileSet: 5 pattern(s) -> 95 file(s)
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildProjectContext: exclude set has 95 file(s)
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] resolveContextSources: 2 pattern(s) -> 2 file(s)
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] ensureTypedDocs: added missing typed doc docs/SPECIFICATIONS.yaml
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] ensureTypedDocs: added missing typed doc docs/road-map.yaml
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildProjectContext: using context_include (4 file(s))
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildProjectContext: loaded 94 SRDs from requirements.yaml (1170 ready items)
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] loadSourceFiles: 21 file(s) from 1 dir(s)
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] resolveFileSet: 2 pattern(s) -> 0 file(s)
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildProjectContext: source_patterns allow set has 0 file(s)
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildProjectContext: excluded 0 _test.go file(s) from source context
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildProjectContext: applied source_mode="headers" to 0 file(s)
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildProjectContext: vision=true arch=true roadmap=true specs=false eng=0 analysis=true issues=0 extra=0 src=0 files=3
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildMeasurePrompt: injecting 6 package_contracts (source_mode=headers)
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildMeasurePrompt: max_weight_per_task=4 CoT step injected
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] buildMeasurePrompt: 197207 bytes limit=4 userInput=false
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] iteration 1 prompt built, length=197207 bytes
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] saveHistoryPrompt: saved .cobbler/history/2026-05-14-13-05-19-measure-prompt.yaml
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] runClaude: promptLen=197207 dir="" silence=true
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] credentials: extracting to .secrets/claude.json
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] credentials: written to .secrets/claude.json
+[2026-05-14T13:05:19-04:00] [generation-run44] [measure +3s] runClaude: exec claude [--model claude-opus-4-6 --dangerously-skip-permissions -p --verbose --output-format stream-json --max-turns 1] (mode=cli timeout=2026-05-14 13:30:19.621411 -0400 EDT m=+5501.128577710)
+[2026-05-14T13:05:20-04:00] [generation-run44] [measure +3s] claude: [1s] first output
+[2026-05-14T13:05:20-04:00] [generation-run44] [measure +3s] claude: [1s] ready
+[2026-05-14T13:05:23-04:00] [generation-run44] [measure +7s] claude: [4s] rate_limit
+[2026-05-14T13:13:52-04:00] [generation-run44] [measure +8m35s] claude: [8m33s +8m29s] turn 1
+[2026-05-14T13:14:26-04:00] [generation-run44] [measure +9m10s] claude: [9m7s +34s] turn 2: ## Project State Summary  **Problem**: go-unix-utils stress-tests the mage-claude-orchestrator code generation system by...
+[2026-05-14T13:14:26-04:00] [generation-run44] [measure +9m10s] claude: [9m7s] done: 2 turn(s), in=69818 (base=2 cache_create=57975 cache_read=11841) out=31210 cost=$1.1963
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] parseClaudeTokens: in=69818 (base=2 cache_create=57975 cache_read=11841) out=31210 cost=$1.1963
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] runClaude: finished in 9m7s in=69818 (cache_create=57975 cache_read=11841) out=31210 cost=$1.1963 (err=<nil>)
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] iteration 1 Claude completed in 9m7s
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] saveHistoryLog: saved .cobbler/history/2026-05-14-13-05-19-measure-log.log
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] resolveStandardFiles: 9 pattern(s) -> 268 file(s)
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] saveHistoryStats: saved .cobbler/history/2026-05-14-13-05-19-measure-stats.yaml
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] iteration 1 extracted YAML, size=6779 bytes
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] importIssues: reading .cobbler/measure-20260514-130519.yaml
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] importIssues: read 6779 bytes
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] importIssues: parsed 4 proposed issue(s)
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] importIssues: [0] title="cmd/nproc: error handling and edge cases (srd046-nproc R2.1-R2.3)" dep=-1
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] importIssues: [1] title="cmd/arch: differential tests (srd045-arch R3.1-R3.3)" dep=-1
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] importIssues: [2] title="cmd/hostid: differential tests (srd048-hostid R3.1-R3.3)" dep=-1
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] importIssues: [3] title="cmd/nproc: differential tests (srd046-nproc R3.1-R3.3)" dep=0
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [0] "cmd/nproc: error handling and edge cases (srd046-nproc R2.1-R2.3)": requirement count 3 outside P9 range 5-8
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [0] "cmd/nproc: error handling and edge cases (srd046-nproc R2.1-R2.3)": design decision count 2 outside P9 range 3-5
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [1] "cmd/arch: differential tests (srd045-arch R3.1-R3.3)": requirement count 3 outside P9 range 5-8
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [1] "cmd/arch: differential tests (srd045-arch R3.1-R3.3)": acceptance criteria count 4 outside P9 range 5-8
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [1] "cmd/arch: differential tests (srd045-arch R3.1-R3.3)": file cmd/arch/arch_test.go matches package name (P7 violation)
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [2] "cmd/hostid: differential tests (srd048-hostid R3.1-R3.3)": requirement count 3 outside P9 range 5-8
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [2] "cmd/hostid: differential tests (srd048-hostid R3.1-R3.3)": acceptance criteria count 4 outside P9 range 5-8
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [2] "cmd/hostid: differential tests (srd048-hostid R3.1-R3.3)": file cmd/hostid/hostid_test.go matches package name (P7 violation)
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [3] "cmd/nproc: differential tests (srd046-nproc R3.1-R3.3)": requirement count 3 outside P9 range 5-8
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [3] "cmd/nproc: differential tests (srd046-nproc R3.1-R3.3)": acceptance criteria count 4 outside P9 range 5-8
+[2026-05-14T13:14:27-04:00] [generation-run44] [measure +9m10s] validateMeasureOutput: [3] "cmd/nproc: differential tests (srd046-nproc R3.1-R3.3)": file cmd/nproc/nproc_test.go matches package name (P7 violation)
+[2026-05-14T13:14:28-04:00] [generation-run44] [measure +9m12s] transitionRequirements: marked 3 R-items as proposed
+[2026-05-14T13:14:28-04:00] [generation-run44] [measure +9m12s] transitionRequirements: marked 3 R-items as proposed
+[2026-05-14T13:14:28-04:00] [generation-run44] [measure +9m12s] transitionRequirements: marked 3 R-items as proposed
+[2026-05-14T13:14:28-04:00] [generation-run44] [measure +9m12s] transitionRequirements: marked 3 R-items as proposed
+[2026-05-14T13:14:28-04:00] [generation-run44] [measure +9m12s] importIssues: creating task 0: cmd/nproc: error handling and edge cases (srd046-nproc R2.1-R2.3) (dep=-1)
+[2026-05-14T13:14:30-04:00] [generation-run44] [measure +9m13s] createCobblerIssue: created #5190 "[measure] cmd/nproc: error handling and edge cases (srd046-nproc R2.1-R2.3)" gen=generation-run44 index=0 dep=-1
+[2026-05-14T13:14:30-04:00] [generation-run44] [measure +9m13s] importIssues: creating task 1: cmd/arch: differential tests (srd045-arch R3.1-R3.3) (dep=-1)
+[2026-05-14T13:14:31-04:00] [generation-run44] [measure +9m15s] createCobblerIssue: created #5191 "[measure] cmd/arch: differential tests (srd045-arch R3.1-R3.3)" gen=generation-run44 index=1 dep=-1
+[2026-05-14T13:14:31-04:00] [generation-run44] [measure +9m15s] importIssues: creating task 2: cmd/hostid: differential tests (srd048-hostid R3.1-R3.3) (dep=-1)
+[2026-05-14T13:14:33-04:00] [generation-run44] [measure +9m16s] createCobblerIssue: created #5192 "[measure] cmd/hostid: differential tests (srd048-hostid R3.1-R3.3)" gen=generation-run44 index=2 dep=-1
+[2026-05-14T13:14:33-04:00] [generation-run44] [measure +9m16s] importIssues: creating task 3: cmd/nproc: differential tests (srd046-nproc R3.1-R3.3) (dep=0)
+[2026-05-14T13:14:34-04:00] [generation-run44] [measure +9m18s] createCobblerIssue: created #5193 "[measure] cmd/nproc: differential tests (srd046-nproc R3.1-R3.3)" gen=generation-run44 index=3 dep=0
+[2026-05-14T13:14:35-04:00] [generation-run44] [measure +9m18s] waitForIssuesVisible: 1/4 visible, retrying...
+[2026-05-14T13:14:36-04:00] [generation-run44] [measure +9m20s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-14T13:14:38-04:00] [generation-run44] [measure +9m21s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-14T13:14:39-04:00] [generation-run44] [measure +9m23s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-14T13:14:41-04:00] [generation-run44] [measure +9m24s] waitForIssuesVisible: 3/4 visible, retrying...
+[2026-05-14T13:14:49-04:00] [generation-run44] [measure +9m32s] importIssues: 4 of 4 issue(s) imported
+[2026-05-14T13:14:49-04:00] [generation-run44] [measure +9m32s] appendMeasureLog: 104 total issues in .cobbler/measure.yaml
+[2026-05-14T13:14:49-04:00] [generation-run44] [measure +9m32s] iteration 1 imported 4 issue(s)
+[2026-05-14T13:14:53-04:00] [generation-run44] [measure +9m37s] linkSubIssue: linked #5190 as sub-issue of #5189
+[2026-05-14T13:14:54-04:00] [generation-run44] [measure +9m38s] linkSubIssue: linked #5191 as sub-issue of #5189
+[2026-05-14T13:14:56-04:00] [generation-run44] [measure +9m39s] linkSubIssue: linked #5192 as sub-issue of #5189
+[2026-05-14T13:14:57-04:00] [generation-run44] [measure +9m40s] linkSubIssue: linked #5193 as sub-issue of #5189
+[2026-05-14T13:15:00-04:00] [generation-run44] [measure +9m43s] closeMeasuringPlaceholder: closed #5189
+[2026-05-14T13:15:00-04:00] [generation-run44] [measure +9m43s] finalizeMeasurePlaceholder: finalized #5189 with 4 child issue(s)
+[2026-05-14T13:15:00-04:00] [generation-run44] [measure +9m43s] completed 1 iteration(s), 4 issue(s) created in 9m43s

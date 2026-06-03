@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5082"
+task_title: '[stitch] srd087-sizeparse R2.1-R2.2, R3.1-R3.2: options and error handling'
+status: success
+started_at: "2026-05-13T22:48:20Z"
+duration: 1m50s
+duration_s: 109
+tokens:
+    input: 1137477
+    output: 5451
+    cache_creation: 154448
+    cache_read: 983021
+cost_usd: 1.7297955
+num_turns: 15
+loc_before:
+    production: 646
+    test: 0
+loc_after:
+    production: 652
+    test: 0
+diff:
+    files: 2
+    insertions: 91
+    deletions: 0

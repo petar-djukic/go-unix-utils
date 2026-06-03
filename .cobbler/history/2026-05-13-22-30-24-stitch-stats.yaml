@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5125"
+task_title: '[stitch] cmd/true: implement true utility (srd013-true R1.1-R1.3, R2.1-R2.3)'
+status: success
+started_at: "2026-05-14T02:30:24Z"
+duration: 55s
+duration_s: 54
+tokens:
+    input: 1470520
+    output: 2169
+    cache_creation: 153328
+    cache_read: 1317182
+cost_usd: 1.8120829999999999
+num_turns: 21
+rate_limit_wait_s: 3
+loc_before:
+    production: 1573
+    test: 639
+loc_after:
+    production: 1616
+    test: 639
+diff:
+    files: 2
+    insertions: 148
+    deletions: 0

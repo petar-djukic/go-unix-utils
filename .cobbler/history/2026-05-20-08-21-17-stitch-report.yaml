@@ -1,0 +1,23 @@
+task_id: "5345"
+task_title: '[stitch] cmd/ln implementation -- version and help output (srd037-ln R4.3)'
+status: success
+branch: task/generation-run44-5345
+diff:
+    files: 2
+    insertions: 105
+    deletions: 2
+files:
+    - path: .cobbler/history/2026-05-20-08-21-06-stitch-orchestrator.log
+      status: M
+      insertions: 94
+      deletions: 0
+    - path: cmd/ln/ln_test.go
+      status: M
+      insertions: 12
+      deletions: 2
+loc_before:
+    production: 10761
+    test: 10835
+loc_after:
+    production: 10761
+    test: 10845

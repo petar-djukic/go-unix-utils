@@ -1,0 +1,27 @@
+task_id: "5106"
+task_title: '[stitch] pkg/hashutil checksum parsing, verification, and file digesting (srd086-hashutil R3.1, R3.2)'
+status: success
+branch: task/generation-run44-5106
+diff:
+    files: 3
+    insertions: 219
+    deletions: 17
+files:
+    - path: .cobbler/history/2026-05-13-20-32-24-stitch-orchestrator.log
+      status: M
+      insertions: 90
+      deletions: 0
+    - path: pkg/hashutil/hashconfig.go
+      status: M
+      insertions: 0
+      deletions: 17
+    - path: pkg/hashutil/hashutil.go
+      status: A
+      insertions: 130
+      deletions: 0
+loc_before:
+    production: 1276
+    test: 0
+loc_after:
+    production: 1389
+    test: 0

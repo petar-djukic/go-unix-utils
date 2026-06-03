@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5156"
+task_title: '[stitch] cmd/tee: core stdin copy, file output, and creation mode (srd017-tee R1.1-R1.4)'
+status: success
+started_at: "2026-05-14T12:09:42Z"
+duration: 3m56s
+duration_s: 236
+tokens:
+    input: 551965
+    output: 7839
+    cache_creation: 187986
+    cache_read: 363964
+cost_usd: 1.9758171999999998
+num_turns: 39
+rate_limit_wait_s: 23
+loc_before:
+    production: 2523
+    test: 1677
+loc_after:
+    production: 2636
+    test: 1873
+diff:
+    files: 3
+    insertions: 472
+    deletions: 0

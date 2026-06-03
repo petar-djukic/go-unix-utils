@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5064"
+task_title: '[stitch] srd002-sys -- pkg/sys (contract)'
+status: success
+started_at: "2026-05-13T21:29:17Z"
+duration: 1m43s
+duration_s: 103
+tokens:
+    input: 1883732
+    output: 2467
+    cache_creation: 146951
+    cache_read: 1736768
+cost_usd: 1.9813727500000002
+num_turns: 19
+loc_before:
+    production: 0
+    test: 0
+loc_after:
+    production: 78
+    test: 0
+diff:
+    files: 4
+    insertions: 175
+    deletions: 0

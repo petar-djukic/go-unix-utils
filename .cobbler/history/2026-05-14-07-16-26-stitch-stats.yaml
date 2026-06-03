@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5145"
+task_title: '[stitch] cmd/dirname: core path extraction and setup (srd016-dirname R1.1-R1.3)'
+status: success
+started_at: "2026-05-14T11:16:26Z"
+duration: 4m15s
+duration_s: 255
+tokens:
+    input: 827234
+    output: 6129
+    cache_creation: 187833
+    cache_read: 639379
+cost_usd: 2.1692231499999997
+num_turns: 60
+rate_limit_wait_s: 6
+loc_before:
+    production: 2194
+    test: 1430
+loc_after:
+    production: 2283
+    test: 1498
+diff:
+    files: 3
+    insertions: 396
+    deletions: 0

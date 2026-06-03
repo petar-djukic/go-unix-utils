@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5426"
+task_title: '[stitch] cmd/factor: srd065 R2.1-R2.4'
+status: success
+started_at: "2026-05-21T15:49:18Z"
+duration: 3m11s
+duration_s: 190
+tokens:
+    input: 769860
+    output: 5445
+    cache_creation: 208029
+    cache_read: 561809
+cost_usd: 2.1031524999999998
+num_turns: 41
+rate_limit_wait_s: 17
+loc_before:
+    production: 16051
+    test: 15087
+loc_after:
+    production: 16051
+    test: 15127
+diff:
+    files: 3
+    insertions: 192
+    deletions: 1

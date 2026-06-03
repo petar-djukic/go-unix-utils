@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5345"
+task_title: '[stitch] cmd/ln implementation -- version and help output (srd037-ln R4.3)'
+status: success
+started_at: "2026-05-20T12:21:17Z"
+duration: 2m8s
+duration_s: 127
+tokens:
+    input: 446369
+    output: 2224
+    cache_creation: 204963
+    cache_read: 241395
+cost_usd: 1.8770644999999997
+num_turns: 15
+rate_limit_wait_s: 3
+loc_before:
+    production: 10761
+    test: 10835
+loc_after:
+    production: 10761
+    test: 10845
+diff:
+    files: 2
+    insertions: 105
+    deletions: 2

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5085"
+task_title: '[stitch] srd086-hashutil (contract)'
+status: success
+started_at: "2026-05-13T23:00:03Z"
+duration: 1m6s
+duration_s: 65
+tokens:
+    input: 979531
+    output: 1548
+    cache_creation: 152491
+    cache_read: 827033
+cost_usd: 1.5461772500000002
+num_turns: 9
+rate_limit_wait_s: 7
+loc_before:
+    production: 656
+    test: 0
+loc_after:
+    production: 728
+    test: 0
+diff:
+    files: 2
+    insertions: 147
+    deletions: 0

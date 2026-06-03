@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5350"
+task_title: '[stitch] srd036-mktemp R3.5, R3.6, R4.1, R4.2 (implementation)'
+status: success
+started_at: "2026-05-20T12:39:17Z"
+duration: 6m46s
+duration_s: 406
+tokens:
+    input: 1172902
+    output: 18342
+    cache_creation: 225014
+    cache_read: 947861
+cost_usd: 2.6957759999999995
+num_turns: 51
+rate_limit_wait_s: 12
+loc_before:
+    production: 10761
+    test: 10882
+loc_after:
+    production: 10795
+    test: 10973
+diff:
+    files: 3
+    insertions: 292
+    deletions: 2

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5272"
+task_title: '[stitch] cmd/unexpand (contract)'
+status: success
+started_at: "2026-05-15T14:23:42Z"
+duration: 1m46s
+duration_s: 106
+tokens:
+    input: 332395
+    output: 2943
+    cache_creation: 180234
+    cache_read: 152151
+cost_usd: 1.6103154999999998
+num_turns: 10
+rate_limit_wait_s: 3
+loc_before:
+    production: 7274
+    test: 6037
+loc_after:
+    production: 7489
+    test: 6037
+diff:
+    files: 2
+    insertions: 299
+    deletions: 0

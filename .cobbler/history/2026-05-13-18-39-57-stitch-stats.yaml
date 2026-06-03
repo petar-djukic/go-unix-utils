@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5079"
+task_title: '[stitch] srd003-format: pkg/format (contract)'
+status: success
+started_at: "2026-05-13T22:39:57Z"
+duration: 1m58s
+duration_s: 117
+tokens:
+    input: 815487
+    output: 5863
+    cache_creation: 153670
+    cache_read: 661811
+cost_usd: 1.576217
+num_turns: 17
+rate_limit_wait_s: 64
+loc_before:
+    production: 529
+    test: 0
+loc_after:
+    production: 527
+    test: 0
+diff:
+    files: 4
+    insertions: 102
+    deletions: 9

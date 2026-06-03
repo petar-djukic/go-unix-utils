@@ -1,0 +1,27 @@
+task_id: "5461"
+task_title: '[stitch] cmd/join: srd069 R4.1-R4.4'
+status: success
+branch: task/generation-run44-5461
+diff:
+    files: 3
+    insertions: 391
+    deletions: 8
+files:
+    - path: .cobbler/history/2026-05-22-10-53-54-stitch-orchestrator.log
+      status: M
+      insertions: 268
+      deletions: 0
+    - path: cmd/join/join_test.go
+      status: M
+      insertions: 29
+      deletions: 0
+    - path: cmd/join/main.go
+      status: M
+      insertions: 95
+      deletions: 8
+loc_before:
+    production: 18344
+    test: 16984
+loc_after:
+    production: 18431
+    test: 17013

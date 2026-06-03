@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5574"
+task_title: '[stitch] Implement cmd/pinky error handling and differential tests (srd098 R3.1, R3.2, R3.3)'
+status: success
+started_at: "2026-05-24T04:16:19Z"
+duration: 5m33s
+duration_s: 332
+tokens:
+    input: 717658
+    output: 10180
+    cache_creation: 237731
+    cache_read: 479909
+cost_usd: 2.5046877000000003
+num_turns: 48
+rate_limit_wait_s: 4
+loc_before:
+    production: 26167
+    test: 22974
+loc_after:
+    production: 26167
+    test: 23023
+diff:
+    files: 3
+    insertions: 254
+    deletions: 4

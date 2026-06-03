@@ -1,0 +1,231 @@
+// Copyright (c) 2026 Petar Djukic. All rights reserved.
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os/exec"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/petar-djukic/go-unix-utils/pkg/testutils"
+)
+
+var relativeRe = regexp.MustCompile(`right now|(?:\d+[ydhms])+ (?:ago|from now)`)
+
+var relativeNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return relativeRe.ReplaceAll(b, []byte("<RELTIME>"))
+}
+
+var subsecRe = regexp.MustCompile(`\d+\.\d{6}`)
+
+var subsecondNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return subsecRe.ReplaceAll(b, []byte("<SUBSEC>"))
+}
+
+var elapsedRe = regexp.MustCompile(`\d{2}:\d{2}:\d{2}`)
+
+var elapsedNormalizer testutils.NormalizeFunc = func(b []byte) []byte {
+	return elapsedRe.ReplaceAll(b, []byte("<ELAPSED>"))
+}
+
+func TestDiff(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("ts")
+	if err != nil {
+		t.Skip("reference binary ts not found")
+	}
+	norm := []testutils.NormalizeFunc{testutils.TimestampNormalizer}
+	subsecNorm := []testutils.NormalizeFunc{subsecondNormalizer}
+	elapsedNorm := []testutils.NormalizeFunc{elapsedNormalizer}
+	tests := []testutils.DiffTest{
+		{Name: "default_multiline", Stdin: []byte("alpha\nbeta\ngamma\n"), Normalize: norm},
+		{Name: "single_line", Stdin: []byte("hello\n"), Normalize: norm},
+		{Name: "partial_last_line", Stdin: []byte("complete\npartial"), Normalize: norm},
+		{Name: "empty_stdin", Stdin: []byte{}},
+		{Name: "custom_format_iso", Args: []string{"%Y-%m-%d %H:%M:%S"}, Stdin: []byte("test\n"), Normalize: norm},
+		{Name: "custom_format_time", Args: []string{"%H:%M:%S"}, Stdin: []byte("test\n"), Normalize: norm},
+		{Name: "custom_format_T", Args: []string{"%T"}, Stdin: []byte("test\n"), Normalize: norm},
+		{Name: "subsecond_S", Args: []string{"%.S"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
+		{Name: "subsecond_s", Args: []string{"%.s"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
+		{Name: "subsecond_T", Args: []string{"%.T"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
+		{Name: "incremental_default", Args: []string{"-i"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
+		{Name: "incremental_custom_format", Args: []string{"-i", "%.S"}, Stdin: []byte("x\ny\n"), Normalize: subsecNorm},
+		{Name: "sincestart_default", Args: []string{"-s"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
+		{Name: "sincestart_custom_format", Args: []string{"-s", "%.S"}, Stdin: []byte("x\ny\n"), Normalize: subsecNorm},
+		{Name: "sincestart_empty_stdin", Args: []string{"-s"}, Stdin: []byte{}},
+		{Name: "sincestart_custom_T", Args: []string{"-s", "%T"}, Stdin: []byte("a\nb\n"), Normalize: elapsedNorm},
+		{Name: "monotonic_default", Args: []string{"-m"}, Stdin: []byte("a\nb\n"), Normalize: norm},
+		{Name: "monotonic_incremental", Args: []string{"-m", "-i"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
+		{Name: "monotonic_sincestart", Args: []string{"-m", "-s"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
+		{Name: "monotonic_custom_format", Args: []string{"-m", "%.S"}, Stdin: []byte("test\n"), Normalize: subsecNorm},
+		{Name: "monotonic_sincestart_custom", Args: []string{"-m", "-s", "%.S"}, Stdin: []byte("x\ny\n"), Normalize: subsecNorm},
+		{Name: "tz_utc_default", Env: []string{"TZ=UTC"}, Stdin: []byte("hello\n"), Normalize: norm},
+		{Name: "tz_utc_custom_format", Args: []string{"%Y-%m-%d %H:%M:%S"}, Env: []string{"TZ=UTC"}, Stdin: []byte("test\n"), Normalize: norm},
+		{Name: "tz_utc_multiline", Env: []string{"TZ=UTC"}, Stdin: []byte("a\nb\nc\n"), Normalize: norm},
+		{Name: "tz_incremental_ignores_tz", Args: []string{"-i"}, Env: []string{"TZ=US/Pacific"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
+		{Name: "tz_sincestart_ignores_tz", Args: []string{"-s"}, Env: []string{"TZ=US/Pacific"}, Stdin: []byte("a\nb\nc\n"), Normalize: elapsedNorm},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestDiffRelative(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	refBin, err := exec.LookPath("ts")
+	if err != nil {
+		t.Skip("reference binary ts not found")
+	}
+	cmd := exec.Command(refBin, "-r")
+	cmd.Stdin = strings.NewReader("test\n")
+	if err := cmd.Run(); err != nil {
+		t.Skip("reference binary does not support -r flag")
+	}
+	relNorm := []testutils.NormalizeFunc{relativeNormalizer}
+	tests := []testutils.DiffTest{
+		{Name: "relative_no_timestamp", Args: []string{"-r"}, Stdin: []byte("no timestamp here\n")},
+		{Name: "relative_syslog", Args: []string{"-r"}, Stdin: []byte("Jan 15 14:30:00 server message\n"), Normalize: relNorm},
+		{Name: "relative_rfc2822", Args: []string{"-r"}, Stdin: []byte("16 Jun 2024 07:29:35 +0000 event\n"), Normalize: relNorm},
+		{Name: "relative_rfc2822_named_tz", Args: []string{"-r"}, Stdin: []byte("16 Jun 2024 07:29:35 GMT event\n"), Normalize: relNorm},
+		{Name: "relative_lastlog", Args: []string{"-r"}, Stdin: []byte("Mon Jan 15 14:30 login\n"), Normalize: relNorm},
+		{Name: "relative_empty", Args: []string{"-r"}, Stdin: []byte{}},
+		{Name: "relative_multiline", Args: []string{"-r"}, Stdin: []byte("Jan 15 14:30:00 first\nno ts here\n"), Normalize: relNorm},
+	}
+	testutils.RunDiffTests(t, goBin, refBin, tests)
+}
+
+func TestMutualExclusive(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"i_and_s", []string{"-i", "-s"}},
+		{"r_and_i", []string{"-r", "-i"}},
+		{"r_and_s", []string{"-r", "-s"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(goBin, tc.args...)
+			cmd.Stdin = strings.NewReader("x\n")
+			stderr, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("expected non-zero exit for %v", tc.args)
+			}
+			if !strings.Contains(string(stderr), "usage") {
+				t.Fatalf("expected usage message, got: %s", stderr)
+			}
+		})
+	}
+}
+
+func TestSIGPIPE(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, goBin)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		defer stdin.Close()
+		for i := range 500000 {
+			if _, err := fmt.Fprintf(stdin, "line %d\n", i); err != nil {
+				return
+			}
+		}
+	}()
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(stdout, buf); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Close()
+	err = cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatal("ts timed out; SIGPIPE handler may not be installed")
+	}
+	if err != nil {
+		t.Fatalf("expected exit 0 on SIGPIPE, got: %v", err)
+	}
+}
+
+func TestRelativeISO8601(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-r")
+	cmd.Stdin = strings.NewReader("event at 2024-01-05T14:30:00Z happened\n")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(out)
+	if strings.Contains(output, "2024-01-05") {
+		t.Fatal("ISO 8601 timestamp was not replaced")
+	}
+	if !strings.Contains(output, "ago") && !strings.Contains(output, "from now") {
+		t.Fatal("expected relative age in output")
+	}
+}
+
+func TestRelativeFormatOverride(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-r", "%Y-%m-%d %H:%M:%S")
+	cmd.Stdin = strings.NewReader("Jan 15 14:30:00 event\n")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(out)
+	if strings.Contains(output, "ago") || strings.Contains(output, "from now") {
+		t.Fatal("expected strftime-formatted output, not relative age")
+	}
+	if !strings.Contains(output, "14:30:00 event") {
+		t.Fatalf("expected reformatted timestamp, got: %s", output)
+	}
+}
+
+func TestRelativeFormatPassthrough(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-r", "%Y-%m-%d")
+	cmd.Stdin = strings.NewReader("no timestamp here\n")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != "no timestamp here\n" {
+		t.Fatalf("expected unchanged line, got: %s", out)
+	}
+}
+
+func TestExitZeroEOF(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin)
+	cmd.Stdin = strings.NewReader("")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("expected exit 0 on EOF, got: %v", err)
+	}
+}
+
+func TestUnrecognizedFlag(t *testing.T) {
+	goBin := testutils.BuildBinary(t, ".")
+	cmd := exec.Command(goBin, "-z")
+	cmd.Stdin = strings.NewReader("x\n")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected non-zero exit for unrecognized flag")
+	}
+	if !strings.Contains(string(output), "usage") {
+		t.Fatalf("expected usage message, got: %s", output)
+	}
+}

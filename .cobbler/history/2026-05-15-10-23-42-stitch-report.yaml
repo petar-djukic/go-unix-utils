@@ -1,0 +1,23 @@
+task_id: "5272"
+task_title: '[stitch] cmd/unexpand (contract)'
+status: success
+branch: task/generation-run44-5272
+diff:
+    files: 2
+    insertions: 299
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-15-10-23-32-stitch-orchestrator.log
+      status: M
+      insertions: 85
+      deletions: 0
+    - path: cmd/unexpand/main.go
+      status: A
+      insertions: 215
+      deletions: 0
+loc_before:
+    production: 7274
+    test: 6037
+loc_after:
+    production: 7489
+    test: 6037

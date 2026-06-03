@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5106"
+task_title: '[stitch] pkg/hashutil checksum parsing, verification, and file digesting (srd086-hashutil R3.1, R3.2)'
+status: success
+started_at: "2026-05-14T00:32:33Z"
+duration: 4m40s
+duration_s: 279
+tokens:
+    input: 451096
+    output: 12067
+    cache_creation: 164562
+    cache_read: 286524
+cost_usd: 1.8539392499999996
+num_turns: 14
+rate_limit_wait_s: 3
+loc_before:
+    production: 1276
+    test: 0
+loc_after:
+    production: 1389
+    test: 0
+diff:
+    files: 3
+    insertions: 219
+    deletions: 17

@@ -1,0 +1,23 @@
+task_id: "5087"
+task_title: '[stitch] srd003-format R1.1-R1.4: human-readable size formatting'
+status: success
+branch: task/generation-run44-5087
+diff:
+    files: 2
+    insertions: 147
+    deletions: 3
+files:
+    - path: .cobbler/history/2026-05-13-19-03-04-stitch-orchestrator.log
+      status: M
+      insertions: 107
+      deletions: 0
+    - path: pkg/format/humansize.go
+      status: M
+      insertions: 41
+      deletions: 3
+loc_before:
+    production: 728
+    test: 0
+loc_after:
+    production: 766
+    test: 0

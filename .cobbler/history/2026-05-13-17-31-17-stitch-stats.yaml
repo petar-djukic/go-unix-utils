@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5065"
+task_title: '[stitch] srd001-testutils -- pkg/testutils (contract)'
+status: success
+started_at: "2026-05-13T21:31:17Z"
+duration: 1m23s
+duration_s: 83
+tokens:
+    input: 951554
+    output: 2072
+    cache_creation: 148465
+    cache_read: 803082
+cost_usd: 1.5153142499999996
+num_turns: 11
+rate_limit_wait_s: 2
+loc_before:
+    production: 78
+    test: 0
+loc_after:
+    production: 141
+    test: 0
+diff:
+    files: 2
+    insertions: 142
+    deletions: 0

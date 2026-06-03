@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5323"
+task_title: '[stitch] cmd/mkdir basic directory creation (srd034 R1.1, R1.2, R1.3, R1.4)'
+status: success
+started_at: "2026-05-20T00:07:11Z"
+duration: 6m7s
+duration_s: 367
+tokens:
+    input: 1185872
+    output: 10479
+    cache_creation: 225348
+    cache_read: 960495
+cost_usd: 2.6424357
+num_turns: 76
+rate_limit_wait_s: 2
+loc_before:
+    production: 9553
+    test: 8850
+loc_after:
+    production: 9709
+    test: 9080
+diff:
+    files: 3
+    insertions: 657
+    deletions: 0

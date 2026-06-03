@@ -1,0 +1,23 @@
+task_id: "5318"
+task_title: '[stitch] cmd/ln basic hard and symbolic links (srd037 R1.1, R1.2, R1.3, R1.4)'
+status: success
+branch: task/generation-run44-5318
+diff:
+    files: 2
+    insertions: 311
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-19-19-39-34-stitch-orchestrator.log
+      status: M
+      insertions: 126
+      deletions: 0
+    - path: cmd/ln/main.go
+      status: A
+      insertions: 186
+      deletions: 0
+loc_before:
+    production: 9289
+    test: 8791
+loc_after:
+    production: 9475
+    test: 8791

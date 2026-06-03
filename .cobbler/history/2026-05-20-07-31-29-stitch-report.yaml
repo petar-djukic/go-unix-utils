@@ -1,0 +1,23 @@
+task_id: "5341"
+task_title: '[stitch] cmd/ln implementation -- symbolic links and overwrite flags (srd037-ln R2.1, R2.2, R2.3, R2.4)'
+status: success
+branch: task/generation-run44-5341
+diff:
+    files: 2
+    insertions: 134
+    deletions: 2
+files:
+    - path: .cobbler/history/2026-05-20-07-31-20-stitch-orchestrator.log
+      status: M
+      insertions: 101
+      deletions: 0
+    - path: cmd/ln/main.go
+      status: M
+      insertions: 34
+      deletions: 2
+loc_before:
+    production: 10268
+    test: 9854
+loc_after:
+    production: 10300
+    test: 9854

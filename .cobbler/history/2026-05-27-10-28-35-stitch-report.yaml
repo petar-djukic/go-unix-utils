@@ -1,0 +1,23 @@
+task_id: "5583"
+task_title: '[stitch] cmd/who implementation -- srd097-who R3.1, R3.2, R3.3'
+status: success
+branch: task/generation-run44-5583
+diff:
+    files: 2
+    insertions: 79
+    deletions: 1
+files:
+    - path: .cobbler/history/2026-05-27-10-28-21-stitch-orchestrator.log
+      status: M
+      insertions: 79
+      deletions: 0
+    - path: cmd/who/main.go
+      status: M
+      insertions: 1
+      deletions: 1
+loc_before:
+    production: 26478
+    test: 23023
+loc_after:
+    production: 26478
+    test: 23023

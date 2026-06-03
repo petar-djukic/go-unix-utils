@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5067"
+task_title: '[stitch] srd001-testutils R1.1-R1.4 -- DiffTest struct and test configuration'
+status: success
+started_at: "2026-05-13T21:45:30Z"
+duration: 1m25s
+duration_s: 85
+tokens:
+    input: 1267266
+    output: 2940
+    cache_creation: 149379
+    cache_read: 1117878
+cost_usd: 1.70032375
+num_turns: 13
+rate_limit_wait_s: 3
+loc_before:
+    production: 192
+    test: 0
+loc_after:
+    production: 206
+    test: 0
+diff:
+    files: 2
+    insertions: 100
+    deletions: 1

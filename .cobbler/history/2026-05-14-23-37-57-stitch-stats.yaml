@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5258"
+task_title: '[stitch] cmd/nl: implement srd022-nl R2.1-R2.4'
+status: success
+started_at: "2026-05-15T03:37:57Z"
+duration: 6m59s
+duration_s: 418
+tokens:
+    input: 1065651
+    output: 13155
+    cache_creation: 196891
+    cache_read: 868733
+cost_usd: 2.353803
+num_turns: 64
+rate_limit_wait_s: 7
+loc_before:
+    production: 6809
+    test: 5240
+loc_after:
+    production: 6815
+    test: 5316
+diff:
+    files: 4
+    insertions: 300
+    deletions: 4

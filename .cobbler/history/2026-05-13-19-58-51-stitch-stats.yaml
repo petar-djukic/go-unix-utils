@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5099"
+task_title: '[stitch] cmd/version core implementation (srd059-version R1.1, R1.2, R1.3, R1.4)'
+status: success
+started_at: "2026-05-13T23:58:51Z"
+duration: 1m6s
+duration_s: 65
+tokens:
+    input: 794555
+    output: 2577
+    cache_creation: 148569
+    cache_read: 645980
+cost_usd: 1.4529262500000002
+num_turns: 14
+rate_limit_wait_s: 4
+loc_before:
+    production: 1019
+    test: 0
+loc_after:
+    production: 1052
+    test: 0
+diff:
+    files: 2
+    insertions: 119
+    deletions: 0

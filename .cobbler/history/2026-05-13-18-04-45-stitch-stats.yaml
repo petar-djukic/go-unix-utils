@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5071"
+task_title: '[stitch] srd002-sys R2.2-R2.5 -- IsTerminal, InstallSIGPIPEHandler, and signal handling'
+status: success
+started_at: "2026-05-13T22:04:45Z"
+duration: 2m43s
+duration_s: 163
+tokens:
+    input: 452783
+    output: 6443
+    cache_creation: 165675
+    cache_read: 287098
+cost_usd: 1.6741792500000001
+num_turns: 14
+rate_limit_wait_s: 2
+loc_before:
+    production: 397
+    test: 0
+loc_after:
+    production: 406
+    test: 0
+diff:
+    files: 3
+    insertions: 113
+    deletions: 15

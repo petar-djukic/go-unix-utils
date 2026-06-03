@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5148"
+task_title: '[stitch] cmd/dirname: version, help, and unknown options (srd016-dirname R4.1-R4.3)'
+status: success
+started_at: "2026-05-14T11:26:59Z"
+duration: 3m20s
+duration_s: 199
+tokens:
+    input: 650413
+    output: 4279
+    cache_creation: 177565
+    cache_read: 472831
+cost_usd: 1.8680852000000001
+num_turns: 33
+loc_before:
+    production: 2283
+    test: 1526
+loc_after:
+    production: 2306
+    test: 1544
+diff:
+    files: 4
+    insertions: 204
+    deletions: 9

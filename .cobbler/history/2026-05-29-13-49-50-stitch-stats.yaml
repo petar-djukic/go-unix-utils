@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5659"
+task_title: '[stitch] cmd/pr implementation (srd110-pr R3.1, R4.1, R4.2, R4.3)'
+status: failed
+error: 'claude failure: signal: killed'
+started_at: "2026-05-29T17:49:50Z"
+duration: 16m31s
+duration_s: 990
+tokens:
+    input: 0
+    output: 0
+    cache_creation: 0
+    cache_read: 0
+cost_usd: 0
+loc_before:
+    production: 32666
+    test: 25175
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

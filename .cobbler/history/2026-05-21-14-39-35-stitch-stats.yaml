@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5436"
+task_title: '[stitch] cmd/timeout: srd063 R4.1-R4.4'
+status: success
+started_at: "2026-05-21T18:39:35Z"
+duration: 2m10s
+duration_s: 130
+tokens:
+    input: 444305
+    output: 2260
+    cache_creation: 208013
+    cache_read: 236280
+cost_usd: 1.9010257
+num_turns: 23
+rate_limit_wait_s: 2
+loc_before:
+    production: 16295
+    test: 15834
+loc_after:
+    production: 16295
+    test: 15858
+diff:
+    files: 2
+    insertions: 141
+    deletions: 0

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5165"
+task_title: '[stitch] cmd/head: byte-count mode and remaining core behavior (srd018-head R1.5, R2.1-R2.3)'
+status: success
+started_at: "2026-05-14T12:53:03Z"
+duration: 3m50s
+duration_s: 229
+tokens:
+    input: 832823
+    output: 7759
+    cache_creation: 196738
+    cache_read: 636063
+cost_usd: 2.1372249500000002
+num_turns: 44
+rate_limit_wait_s: 3
+loc_before:
+    production: 2924
+    test: 2206
+loc_after:
+    production: 3005
+    test: 2333
+diff:
+    files: 3
+    insertions: 376
+    deletions: 1

@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5172"
+task_title: '[stitch] cmd/seq: equal-width padding and number precision (srd019-seq R2.4, R3.1-R3.3)'
+status: success
+started_at: "2026-05-14T13:25:09Z"
+duration: 2m6s
+duration_s: 126
+tokens:
+    input: 495099
+    output: 3240
+    cache_creation: 173553
+    cache_read: 321531
+cost_usd: 1.66286575
+num_turns: 25
+rate_limit_wait_s: 2
+loc_before:
+    production: 3386
+    test: 2501
+loc_after:
+    production: 3403
+    test: 2501
+diff:
+    files: 2
+    insertions: 128
+    deletions: 0

@@ -1,0 +1,19 @@
+task_id: "5147"
+task_title: '[stitch] cmd/dirname: error handling and exit codes (srd016-dirname R3.1-R3.3)'
+status: success
+branch: task/generation-run44-5147
+diff:
+    files: 1
+    insertions: 92
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-14-07-23-41-stitch-orchestrator.log
+      status: M
+      insertions: 93
+      deletions: 0
+loc_before:
+    production: 2283
+    test: 1526
+loc_after:
+    production: 2283
+    test: 1526

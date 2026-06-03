@@ -1,0 +1,739 @@
+consistency_errors: 0
+code_status:
+    releases:
+        - version: "00.0"
+          name: Batch 0 — foundational infrastructure
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel00.0-uc001-magefiles
+              specstatus: implemented
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel00.0-uc002-format
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel00.0-uc003-sys
+              specstatus: implemented
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel00.0-uc004-testutils
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel00.0-uc005-hashutil
+              specstatus: implemented
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel00.0-uc006-sizeparse
+              specstatus: implemented
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel00.0-uc007-encutil
+              specstatus: implemented
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "01.1"
+          name: Batch 1.1 — cat specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel01.1-uc001-cat
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "01.2"
+          name: Batch 1.2 — sponge specification and differential test
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel01.2-uc001-sponge
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "01.3"
+          name: Batch 1.3 — du specification and differential test
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel01.3-uc001-du
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "02.0"
+          name: Batch 2 — trivial utilities (true, false, yes, basename, dirname)
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel02.0-uc001-true
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel02.0-uc002-false
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel02.0-uc003-yes
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel02.0-uc004-basename
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel02.0-uc005-dirname
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "02.1"
+          name: Batch 2.1 — tee specification and differential test
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel02.1-uc001-tee
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "02.2"
+          name: Batch 2.2 — head and seq specification and differential test
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel02.2-uc001-head
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel02.2-uc002-seq
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "03.0"
+          name: Batch 3 — wc specification and differential test
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel03.0-uc001-wc
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "03.1"
+          name: Batch 3.1 — system information (uname, arch, nproc, hostname, hostid)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel03.1-uc001-uname
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel03.1-uc002-arch
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel03.1-uc003-nproc
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel03.1-uc004-hostname
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel03.1-uc005-hostid
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "04.0"
+          name: Batch 4 — ls specification and differential test
+          specstatus: spec_complete
+          codereadiness: none
+          usecases:
+            - id: rel04.0-uc001-ls
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel04.0-uc002-ls-extended
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "04.1"
+          name: Batch 4.1 — path and terminal utilities (realpath, readlink, pwd, tty, logname)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel04.1-uc001-realpath
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel04.1-uc002-readlink
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel04.1-uc003-pwd
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel04.1-uc004-tty
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel04.1-uc005-logname
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "05.0"
+          name: Batch 5 — text stream transforms (echo, tac, nl, fold)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel05.0-uc001-echo
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.0-uc002-tac
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.0-uc003-nl
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel05.0-uc004-fold
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "05.1"
+          name: Batch 5.1 — tab conversion pair (expand, unexpand)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel05.1-uc001-expand
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.1-uc002-unexpand
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "05.2"
+          name: Batch 5.2 — columnar operations pair (cut, paste)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel05.2-uc001-cut
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.2-uc002-paste
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "05.3"
+          name: Batch 5.3 — sorted-stream comparison pair (uniq, comm)
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel05.3-uc001-uniq
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel05.3-uc002-comm
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "05.4"
+          name: Batch 5.4 — checksum quartet (md5sum, sha1sum, sha256sum, sha512sum)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel05.4-uc001-md5sum
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel05.4-uc002-sha1sum
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel05.4-uc003-sha256sum
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel05.4-uc004-sha512sum
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "06.0"
+          name: Batch 6.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel06.0-uc001-mkdir
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel06.0-uc002-rmdir
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel06.0-uc003-mktemp
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel06.0-uc004-ln
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel06.0-uc005-unlink
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "06.1"
+          name: Batch 6.1 — environment and identity (env, printenv, id, whoami, groups)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel06.1-uc001-env
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel06.1-uc002-printenv
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel06.1-uc003-id
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel06.1-uc004-whoami
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel06.1-uc005-groups
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "07.0"
+          name: Batch 7.0 — text processing pipeline (sort, tr, tail)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel07.0-uc001-sort
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel07.0-uc002-tr
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel07.0-uc003-tail
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "07.1"
+          name: Batch 7.1 — file operations (cp, mv, rm)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel07.1-uc001-cp
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel07.1-uc002-mv
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel07.1-uc003-rm
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "08.0"
+          name: Batch 8.0 — time, randomness, and expression utilities (date, sleep, touch, timeout, shuf, factor, expr)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel08.0-uc001-date
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.0-uc002-sleep
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel08.0-uc003-touch
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.0-uc004-timeout
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.0-uc005-shuf
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.0-uc006-factor
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel08.0-uc007-expr
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "08.1"
+          name: Batch 8.1 — file splitting, joining, formatting, and data display (split, csplit, join, fmt, numfmt, od, printf)
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel08.1-uc001-split
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.1-uc002-csplit
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.1-uc003-join
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.1-uc004-fmt
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.1-uc005-numfmt
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.1-uc006-od
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel08.1-uc007-printf
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "09.0"
+          name: Batch 9.0 — hash and checksum utilities (sha224sum, sha384sum, b2sum, cksum, sum)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel09.0-uc001-sha224sum
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel09.0-uc002-sha384sum
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel09.0-uc003-b2sum
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel09.0-uc004-cksum
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel09.0-uc005-sum
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+        - version: "09.1"
+          name: Batch 9.1 — encoding utilities (base32, base64, basenc)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel09.1-uc001-base32
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel09.1-uc002-base64
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel09.1-uc003-basenc
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "10.0"
+          name: Batch 10.0 — file metadata and operations (stat, truncate, link, sync)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel10.0-uc001-stat
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel10.0-uc002-truncate
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel10.0-uc003-link
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel10.0-uc004-sync
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "10.1"
+          name: Batch 10.1 — permission and ownership (chmod, chgrp, chown)
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel10.1-uc001-chmod
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel10.1-uc002-chgrp
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel10.1-uc003-chown
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "11.0"
+          name: Batch 11.0 — special files and process control (mkfifo, mknod, nice, nohup)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel11.0-uc001-mkfifo
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel11.0-uc002-mknod
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel11.0-uc003-nice
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel11.0-uc004-nohup
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "11.1"
+          name: Batch 11.1 — user and session information (users, who, pinky)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel11.1-uc001-users
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel11.1-uc002-who
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel11.1-uc003-pinky
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "12.0"
+          name: Batch 12.0 — file security and installation (shred, chroot, install)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel12.0-uc001-shred
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel12.0-uc002-chroot
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel12.0-uc003-install
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "12.1"
+          name: Batch 12.1 — miscellaneous utilities (tsort, pathchk, test)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel12.1-uc001-tsort
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel12.1-uc002-pathchk
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel12.1-uc003-test
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "13.0"
+          name: Batch 13.0 — directory listing and filesystem (df, dir, vdir, dircolors)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel13.0-uc001-df
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel13.0-uc002-dir
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel13.0-uc003-vdir
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel13.0-uc004-dircolors
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "14.0"
+          name: Batch 14.0 — moreutils (chronic, pee, vidir)
+          specstatus: spec_complete
+          codereadiness: partial
+          usecases:
+            - id: rel14.0-uc001-chronic
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel14.0-uc002-pee
+              specstatus: spec_complete
+              codestatus: not started
+              testdir: ""
+              testfiles: 0
+            - id: rel14.0-uc003-vidir
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+        - version: "15.0"
+          name: Batch 15.0 — complex utilities (ts, stty, pr, ptx)
+          specstatus: spec_complete
+          codereadiness: all implemented
+          usecases:
+            - id: rel15.0-uc001-ts
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel15.0-uc002-stty
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel15.0-uc003-pr
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+            - id: rel15.0-uc004-ptx
+              specstatus: spec_complete
+              codestatus: implemented
+              testdir: ""
+              testfiles: 0
+    gaps: []

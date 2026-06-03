@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5173"
+task_title: '[stitch] cmd/seq: edge cases and error handling (srd019-seq R3.4, R4.1-R4.3)'
+status: success
+started_at: "2026-05-14T13:27:35Z"
+duration: 8m8s
+duration_s: 487
+tokens:
+    input: 1215671
+    output: 12564
+    cache_creation: 186864
+    cache_read: 1028774
+cost_usd: 2.3323299999999993
+num_turns: 55
+rate_limit_wait_s: 2
+loc_before:
+    production: 3403
+    test: 2501
+loc_after:
+    production: 3409
+    test: 2594
+diff:
+    files: 3
+    insertions: 289
+    deletions: 1

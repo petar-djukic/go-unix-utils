@@ -1,0 +1,84 @@
+[2026-05-21T12:00:05-04:00] [generation-run44] [stitch +0s] starting (limit=1)
+[2026-05-21T12:00:05-04:00] [generation-run44] [stitch +0s] stitch config: silence=true stitchTotal=0 stitchPerCycle=1 measure=4 generationBranch=""
+[2026-05-21T12:00:05-04:00] [generation-run44] [stitch +0s] resolved branch=generation-run44
+[2026-05-21T12:00:05-04:00] [generation-run44] [stitch +0s] repoRoot=/Users/pdiddy/COBBLER/generation-run44
+[2026-05-21T12:00:05-04:00] [generation-run44] [stitch +0s] using GitHub repo petar-djukic/go-unix-utils generation generation-run44 for issues
+[2026-05-21T12:00:06-04:00] [generation-run44] [stitch +1s] worktreeBase=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees
+[2026-05-21T12:00:06-04:00] [generation-run44] [stitch +1s] baseBranch=generation-run44
+[2026-05-21T12:00:06-04:00] [generation-run44] [stitch +1s] recovering stale tasks
+[2026-05-21T12:00:06-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for stale branches with pattern task/generation-run44-*
+[2026-05-21T12:00:06-04:00] [generation-run44] [stitch +1s] recoverStaleBranches: no stale branches found
+[2026-05-21T12:00:06-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for orphaned in_progress issues
+[2026-05-21T12:00:06-04:00] [generation-run44] [stitch +2s] resetOrphanedIssues: orphaned issue #5428 (no branch task/generation-run44-5428), removing in-progress label
+[2026-05-21T12:00:08-04:00] [generation-run44] [stitch +3s] recoverStaleTasks: pruning worktrees
+[2026-05-21T12:00:08-04:00] [generation-run44] [stitch +3s] recoverStaleTasks: recovered stale state (branches=false orphans=true)
+[2026-05-21T12:00:08-04:00] [generation-run44] [stitch +3s] looking for next ready task (completed 0 so far)
+[2026-05-21T12:00:08-04:00] [generation-run44] [stitch +3s] pickTask: calling pickReadyIssue repo=petar-djukic/go-unix-utils generation=generation-run44
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] pickReadyIssue: picked #5428 "[stitch] cmd/factor: srd065 R3.1-R3.4" gen=generation-run44
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] pickTask: picked #5428 id=5428 branch=task/generation-run44-5428 worktree=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5428
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] pickTask: title="[stitch] cmd/factor: srd065 R3.1-R3.4"
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] pickTask: descriptionLen=1905
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] executing task 1: id=5428 title="[stitch] cmd/factor: srd065 R3.1-R3.4"
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] doOneTask: starting task 5428 ([stitch] cmd/factor: srd065 R3.1-R3.4)
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] doOneTask: task #5428 claimed via pickReadyIssue label
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] doOneTask: creating worktree for 5428
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] createWorktree: dir=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5428 branch=task/generation-run44-5428
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] createWorktree: branch task/generation-run44-5428 does not exist, creating
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] createWorktree: branch task/generation-run44-5428 created
+[2026-05-21T12:00:16-04:00] [generation-run44] [stitch +11s] createWorktree: adding worktree
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] createWorktree: worktree ready at /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5428 on branch task/generation-run44-5428
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] doOneTask: worktree created in 1s
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] resolveStandardFiles: 9 pattern(s) -> 268 file(s)
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] doOneTask: locBefore prod=16051 test=15127
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildStitchPrompt: no phase context file, using config defaults
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildStitchPrompt: stitch_exclude_tests=true, _test.go files will be excluded
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] resolveFileSet: 1 pattern(s) -> 114 file(s)
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildProjectContext: exclude set has 114 file(s)
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] resolveContextSources: 2 pattern(s) -> 2 file(s)
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] ensureTypedDocs: added missing typed doc docs/SPECIFICATIONS.yaml
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] ensureTypedDocs: added missing typed doc docs/road-map.yaml
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildProjectContext: using context_include (4 file(s))
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildProjectContext: loaded 51 SRDs from requirements.yaml (535 ready items)
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] loadSourceFiles: 21 file(s) from 1 dir(s)
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildProjectContext: excluded 4 _test.go file(s) from source context
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildProjectContext: vision=true arch=true roadmap=true specs=false eng=0 analysis=true issues=0 extra=0 src=17 files=4
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildStitchPrompt: projectCtx=true
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildStitchPrompt: filtered source files 17 -> 0 (required_reading has 2 source paths)
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] applyContextBudget: context size 144329 <= budget 200000, no truncation needed
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildStitchPrompt: injecting 3 shared_protocols
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildStitchPrompt: injecting 6 package_contracts
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] buildStitchPrompt: 497367 bytes
+[2026-05-21T12:00:17-04:00] [generation-run44] [stitch +12s] doOneTask: prompt built, length=497367 bytes
+[2026-05-21T12:00:18-04:00] [generation-run44] [stitch +14s] commentCobblerIssue: posted comment on #5428
+[2026-05-21T12:00:18-04:00] [generation-run44] [stitch +14s] saveHistoryPrompt: saved .cobbler/history/2026-05-21-12-00-18-stitch-prompt.yaml
+[2026-05-21T12:00:18-04:00] [generation-run44] [stitch +14s] doOneTask: invoking Claude for task 5428
+[2026-05-21T12:00:18-04:00] [generation-run44] [stitch +14s] runClaude: promptLen=497367 dir="/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5428" silence=true
+[2026-05-21T12:00:18-04:00] [generation-run44] [stitch +14s] credentials: extracting to .secrets/claude.json
+[2026-05-21T12:00:18-04:00] [generation-run44] [stitch +14s] credentials: written to .secrets/claude.json
+[2026-05-21T12:00:18-04:00] [generation-run44] [stitch +14s] runClaude: exec claude [--model claude-opus-4-6 --dangerously-skip-permissions -p --verbose --output-format stream-json] (mode=cli timeout=2026-05-21 12:25:18.987883 -0400 EDT m=+2414.309675668)
+[2026-05-21T12:00:19-04:00] [generation-run44] [stitch +14s] claude: [1s] first output
+[2026-05-21T12:00:19-04:00] [generation-run44] [stitch +14s] claude: [1s] ready
+[2026-05-21T12:00:20-04:00] [generation-run44] [stitch +15s] claude: [2s] rate_limit
+[2026-05-21T12:00:20-04:00] [generation-run44] [stitch +16s] claude: [2s +0s] turn 1: You've hit your org's monthly usage limit
+[2026-05-21T12:00:20-04:00] [generation-run44] [stitch +16s] claude: [2s] done: 1 turn(s), in=0 (base=0 cache_create=0 cache_read=0) out=0 cost=$0.0000
+[2026-05-21T12:00:21-04:00] [generation-run44] [stitch +16s] parseClaudeTokens: in=0 (base=0 cache_create=0 cache_read=0) out=0 cost=$0.0000
+[2026-05-21T12:00:21-04:00] [generation-run44] [stitch +16s] runClaude: finished in 2s in=0 (cache_create=0 cache_read=0) out=0 cost=$0.0000 (err=exit status 1)
+[2026-05-21T12:00:21-04:00] [generation-run44] [stitch +16s] saveHistoryLog: saved .cobbler/history/2026-05-21-12-00-18-stitch-log.log
+[2026-05-21T12:00:21-04:00] [generation-run44] [stitch +16s] doOneTask: Claude failed for 5428 after 2s (rate_limit_wait=0s): exit status 1
+[2026-05-21T12:00:21-04:00] [generation-run44] [stitch +16s] saveHistoryStats: saved .cobbler/history/2026-05-21-12-00-18-stitch-stats.yaml
+[2026-05-21T12:00:22-04:00] [generation-run44] [stitch +17s] commentCobblerIssue: posted comment on #5428
+[2026-05-21T12:00:22-04:00] [generation-run44] [stitch +17s] resetTask: resetting #5428 to ready (Claude failure)
+[2026-05-21T12:00:24-04:00] [generation-run44] [stitch +19s] cleanupWorktree: removing worktree /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5428
+[2026-05-21T12:00:24-04:00] [generation-run44] [stitch +19s] cleanupWorktree: deleting branch task/generation-run44-5428
+[2026-05-21T12:00:24-04:00] [generation-run44] [stitch +19s] cleanupWorktree: done for task 5428
+[2026-05-21T12:00:24-04:00] [generation-run44] [stitch +19s] resetTask: WARNING force branch delete failed for task/generation-run44-5428: exit status 1
+[2026-05-21T12:00:24-04:00] [generation-run44] [stitch +19s] task 5428 was reset after 8s (failure 1/3)
+[2026-05-21T12:00:24-04:00] [generation-run44] [stitch +19s] task 5428: backing off 2s before next task
+[2026-05-21T12:00:26-04:00] [generation-run44] [stitch +21s] looking for next ready task (completed 0 so far)
+[2026-05-21T12:00:26-04:00] [generation-run44] [stitch +21s] pickTask: calling pickReadyIssue repo=petar-djukic/go-unix-utils generation=generation-run44
+[2026-05-21T12:00:33-04:00] [generation-run44] [stitch +28s] pickReadyIssue: picked #5428 "[stitch] cmd/factor: srd065 R3.1-R3.4" gen=generation-run44
+[2026-05-21T12:00:33-04:00] [generation-run44] [stitch +28s] pickTask: picked #5428 id=5428 branch=task/generation-run44-5428 worktree=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5428
+[2026-05-21T12:00:33-04:00] [generation-run44] [stitch +28s] pickTask: title="[stitch] cmd/factor: srd065 R3.1-R3.4"
+[2026-05-21T12:00:33-04:00] [generation-run44] [stitch +28s] pickTask: descriptionLen=1905
+[2026-05-21T12:00:33-04:00] [generation-run44] [stitch +28s] task 5428 already failed 1 time(s) this cycle, stopping stitch
+[2026-05-21T12:00:33-04:00] [generation-run44] [stitch +28s] completed 0 task(s) in 28s

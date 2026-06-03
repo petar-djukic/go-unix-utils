@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5568"
+task_title: '[stitch] Implement cmd/nohup error handling and differential tests (srd095 R2.1, R2.2, R2.3)'
+status: success
+started_at: "2026-05-24T03:12:33Z"
+duration: 10m35s
+duration_s: 635
+tokens:
+    input: 707808
+    output: 27441
+    cache_creation: 250370
+    cache_read: 457423
+cost_usd: 2.941878199999999
+num_turns: 31
+rate_limit_wait_s: 32
+loc_before:
+    production: 25745
+    test: 22806
+loc_after:
+    production: 25760
+    test: 22937
+diff:
+    files: 3
+    insertions: 283
+    deletions: 2

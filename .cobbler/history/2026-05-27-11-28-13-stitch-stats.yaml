@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5597"
+task_title: '[stitch] cmd/tsort: differential tests (srd102 R1.1-R2.3)'
+status: success
+started_at: "2026-05-27T15:28:13Z"
+duration: 3m47s
+duration_s: 226
+tokens:
+    input: 488424
+    output: 9740
+    cache_creation: 236269
+    cache_read: 252143
+cost_usd: 2.2911314999999997
+num_turns: 28
+rate_limit_wait_s: 3
+loc_before:
+    production: 27855
+    test: 23208
+loc_after:
+    production: 27855
+    test: 23480
+diff:
+    files: 2
+    insertions: 412
+    deletions: 0

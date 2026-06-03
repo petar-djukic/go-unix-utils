@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5611"
+task_title: '[stitch] cmd/dir: test srd107 R2.4'
+status: success
+started_at: "2026-05-27T20:33:07Z"
+duration: 3m38s
+duration_s: 218
+tokens:
+    input: 527572
+    output: 4199
+    cache_creation: 235200
+    cache_read: 292359
+cost_usd: 2.0844880999999997
+num_turns: 43
+loc_before:
+    production: 28971
+    test: 23820
+loc_after:
+    production: 28971
+    test: 23836
+diff:
+    files: 2
+    insertions: 210
+    deletions: 0

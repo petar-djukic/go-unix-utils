@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5072"
+task_title: '[stitch] srd001-testutils R2.5-R2.6, R3.1-R3.2 -- Output normalization and ComposeNormalizers'
+status: success
+started_at: "2026-05-13T22:07:44Z"
+duration: 1m47s
+duration_s: 106
+tokens:
+    input: 348893
+    output: 3219
+    cache_creation: 165609
+    cache_read: 183278
+cost_usd: 1.5095235
+num_turns: 7
+rate_limit_wait_s: 5
+loc_before:
+    production: 406
+    test: 0
+loc_after:
+    production: 406
+    test: 0
+diff:
+    files: 1
+    insertions: 72
+    deletions: 0

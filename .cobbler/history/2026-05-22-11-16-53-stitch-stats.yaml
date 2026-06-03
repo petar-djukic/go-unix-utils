@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5463"
+task_title: '[stitch] cmd/fmt: srd070 R2.1-R5.1'
+status: failed
+error: 'claude failure: signal: killed'
+started_at: "2026-05-22T15:16:53Z"
+duration: 16m41s
+duration_s: 1001
+tokens:
+    input: 0
+    output: 0
+    cache_creation: 0
+    cache_read: 0
+cost_usd: 0
+rate_limit_wait_s: 2
+loc_before:
+    production: 18431
+    test: 17013
+loc_after:
+    production: 0
+    test: 0
+diff:
+    files: 0
+    insertions: 0
+    deletions: 0

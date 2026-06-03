@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5416"
+task_title: '[stitch] cmd/sleep: srd061 R4.1-R4.4'
+status: success
+started_at: "2026-05-21T14:06:11Z"
+duration: 2m0s
+duration_s: 120
+tokens:
+    input: 333334
+    output: 2706
+    cache_creation: 198616
+    cache_read: 134709
+cost_usd: 1.7777215000000002
+num_turns: 15
+loc_before:
+    production: 14745
+    test: 14105
+loc_after:
+    production: 14745
+    test: 14105
+diff:
+    files: 3
+    insertions: 106
+    deletions: 14

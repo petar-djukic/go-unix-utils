@@ -1,0 +1,31 @@
+task_id: "5148"
+task_title: '[stitch] cmd/dirname: version, help, and unknown options (srd016-dirname R4.1-R4.3)'
+status: success
+branch: task/generation-run44-5148
+diff:
+    files: 4
+    insertions: 204
+    deletions: 9
+files:
+    - path: .cobbler/history/2026-05-14-07-26-49-stitch-orchestrator.log
+      status: M
+      insertions: 152
+      deletions: 0
+    - path: .cobbler/requirements.yaml
+      status: M
+      insertions: 12
+      deletions: 9
+    - path: cmd/dirname/dirname_test.go
+      status: M
+      insertions: 18
+      deletions: 0
+    - path: cmd/dirname/main.go
+      status: M
+      insertions: 23
+      deletions: 0
+loc_before:
+    production: 2283
+    test: 1526
+loc_after:
+    production: 2306
+    test: 1544

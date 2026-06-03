@@ -1,0 +1,23 @@
+task_id: "5080"
+task_title: '[stitch] srd087-sizeparse: pkg/sizeparse (contract)'
+status: success
+branch: task/generation-run44-5080
+diff:
+    files: 2
+    insertions: 94
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-13-18-42-01-stitch-orchestrator.log
+      status: M
+      insertions: 70
+      deletions: 0
+    - path: pkg/sizeparse/parse.go
+      status: A
+      insertions: 25
+      deletions: 0
+loc_before:
+    production: 527
+    test: 0
+loc_after:
+    production: 552
+    test: 0

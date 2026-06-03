@@ -1,0 +1,23 @@
+task_id: "5081"
+task_title: '[stitch] srd087-sizeparse R1.1-R1.4: core size string parsing'
+status: success
+branch: task/generation-run44-5081
+diff:
+    files: 2
+    insertions: 194
+    deletions: 5
+files:
+    - path: .cobbler/history/2026-05-13-18-42-57-stitch-orchestrator.log
+      status: M
+      insertions: 96
+      deletions: 0
+    - path: pkg/sizeparse/parse.go
+      status: M
+      insertions: 99
+      deletions: 5
+loc_before:
+    production: 552
+    test: 0
+loc_after:
+    production: 646
+    test: 0

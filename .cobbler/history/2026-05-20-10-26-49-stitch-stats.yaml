@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5368"
+task_title: '[stitch] srd041-id R1.1, R1.2, R1.3, R2.1'
+status: success
+started_at: "2026-05-20T14:26:49Z"
+duration: 5m4s
+duration_s: 304
+tokens:
+    input: 480943
+    output: 13678
+    cache_creation: 221868
+    cache_read: 259063
+cost_usd: 2.3022717
+num_turns: 39
+rate_limit_wait_s: 4
+loc_before:
+    production: 11258
+    test: 11478
+loc_after:
+    production: 11408
+    test: 11506
+diff:
+    files: 3
+    insertions: 348
+    deletions: 0

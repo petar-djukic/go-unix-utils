@@ -1,0 +1,27 @@
+task_id: "5398"
+task_title: '[stitch] generation-run44 #5398'
+status: success
+branch: task/generation-run44-5398
+diff:
+    files: 3
+    insertions: 471
+    deletions: 26
+files:
+    - path: .cobbler/history/2026-05-20-21-15-07-stitch-orchestrator.log
+      status: M
+      insertions: 208
+      deletions: 0
+    - path: cmd/mv/main.go
+      status: M
+      insertions: 121
+      deletions: 25
+    - path: cmd/mv/mv_test.go
+      status: M
+      insertions: 143
+      deletions: 1
+loc_before:
+    production: 14010
+    test: 13309
+loc_after:
+    production: 14106
+    test: 13451

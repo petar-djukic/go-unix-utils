@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5195"
+task_title: '[stitch] cmd/hostname: differential tests (srd047-hostname R3.1-R3.3)'
+status: success
+started_at: "2026-05-14T17:29:52Z"
+duration: 1m55s
+duration_s: 115
+tokens:
+    input: 269929
+    output: 1467
+    cache_creation: 173271
+    cache_read: 96650
+cost_usd: 1.5257549
+num_turns: 13
+rate_limit_wait_s: 5
+loc_before:
+    production: 4156
+    test: 3515
+loc_after:
+    production: 4156
+    test: 3560
+diff:
+    files: 2
+    insertions: 138
+    deletions: 0

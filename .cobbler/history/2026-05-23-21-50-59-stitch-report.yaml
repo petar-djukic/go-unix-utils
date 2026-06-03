@@ -1,0 +1,31 @@
+task_id: "5557"
+task_title: '[stitch] Implement cmd/chown recursive traversal and symlink handling (srd091 R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5557
+diff:
+    files: 4
+    insertions: 325
+    deletions: 11
+files:
+    - path: .cobbler/history/2026-05-23-21-50-49-stitch-orchestrator.log
+      status: M
+      insertions: 139
+      deletions: 0
+    - path: .cobbler/requirements.yaml
+      status: M
+      insertions: 6
+      deletions: 3
+    - path: cmd/chown/chown_test.go
+      status: M
+      insertions: 66
+      deletions: 0
+    - path: cmd/chown/main.go
+      status: M
+      insertions: 115
+      deletions: 8
+loc_before:
+    production: 24552
+    test: 21608
+loc_after:
+    production: 24659
+    test: 21674

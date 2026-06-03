@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5491"
+task_title: '[stitch] cmd/sha384sum: implement srd075 R2.1, R2.2, R2.3, R3.1'
+status: success
+started_at: "2026-05-23T01:06:26Z"
+duration: 2m36s
+duration_s: 156
+tokens:
+    input: 475573
+    output: 2313
+    cache_creation: 208647
+    cache_read: 266912
+cost_usd: 1.8997492499999997
+num_turns: 24
+rate_limit_wait_s: 1
+loc_before:
+    production: 20631
+    test: 18460
+loc_after:
+    production: 20631
+    test: 18460
+diff:
+    files: 1
+    insertions: 123
+    deletions: 0

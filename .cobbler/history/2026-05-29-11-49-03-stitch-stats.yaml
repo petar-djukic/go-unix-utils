@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5645"
+task_title: '[stitch] cmd/stty implementation (srd105-stty R5.1, R6.1, R6.2, R7.1)'
+status: success
+started_at: "2026-05-29T15:49:03Z"
+duration: 9m4s
+duration_s: 544
+tokens:
+    input: 841463
+    output: 27063
+    cache_creation: 258139
+    cache_read: 583308
+cost_usd: 2.79987975
+num_turns: 28
+loc_before:
+    production: 31856
+    test: 24673
+loc_after:
+    production: 32018
+    test: 24685
+diff:
+    files: 5
+    insertions: 302
+    deletions: 8

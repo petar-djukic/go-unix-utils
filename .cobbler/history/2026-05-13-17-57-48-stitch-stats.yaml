@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5070"
+task_title: '[stitch] srd001-testutils R2.1-R2.4 -- RunDiffTests binary execution and output comparison'
+status: success
+started_at: "2026-05-13T21:57:48Z"
+duration: 6m37s
+duration_s: 396
+tokens:
+    input: 565277
+    output: 19592
+    cache_creation: 172457
+    cache_read: 392807
+cost_usd: 2.1768747499999996
+num_turns: 20
+rate_limit_wait_s: 3
+loc_before:
+    production: 220
+    test: 0
+loc_after:
+    production: 397
+    test: 0
+diff:
+    files: 2
+    insertions: 283
+    deletions: 4

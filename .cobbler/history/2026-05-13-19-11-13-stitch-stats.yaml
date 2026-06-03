@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5089"
+task_title: '[stitch] srd003-format R2.1-R2.4: ANSI color file type mapping'
+status: success
+started_at: "2026-05-13T23:11:13Z"
+duration: 2m34s
+duration_s: 154
+tokens:
+    input: 418222
+    output: 5130
+    cache_creation: 165121
+    cache_read: 253092
+cost_usd: 1.58982475
+num_turns: 11
+rate_limit_wait_s: 53
+loc_before:
+    production: 766
+    test: 0
+loc_after:
+    production: 810
+    test: 0
+diff:
+    files: 2
+    insertions: 139
+    deletions: 12

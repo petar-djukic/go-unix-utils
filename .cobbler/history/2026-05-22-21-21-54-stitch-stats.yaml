@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5493"
+task_title: '[stitch] cmd/b2sum implementation -- srd076 R1.1, R1.2, R1.3, R1.4'
+status: success
+started_at: "2026-05-23T01:21:54Z"
+duration: 3m46s
+duration_s: 226
+tokens:
+    input: 549826
+    output: 3332
+    cache_creation: 207382
+    cache_read: 342426
+cost_usd: 1.9922068
+num_turns: 27
+rate_limit_wait_s: 1
+loc_before:
+    production: 20631
+    test: 18460
+loc_after:
+    production: 20755
+    test: 18460
+diff:
+    files: 4
+    insertions: 270
+    deletions: 3

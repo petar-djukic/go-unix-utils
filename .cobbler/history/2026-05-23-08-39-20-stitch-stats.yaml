@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5530"
+task_title: '[stitch] Implement cmd/sync core (srd085 R1.1, R1.2, R1.3, R1.4)'
+status: success
+started_at: "2026-05-23T12:39:20Z"
+duration: 8m14s
+duration_s: 494
+tokens:
+    input: 1729926
+    output: 18510
+    cache_creation: 240226
+    cache_read: 1489657
+cost_usd: 3.1930611499999992
+num_turns: 88
+rate_limit_wait_s: 1
+loc_before:
+    production: 22004
+    test: 20107
+loc_after:
+    production: 22134
+    test: 20217
+diff:
+    files: 3
+    insertions: 521
+    deletions: 0

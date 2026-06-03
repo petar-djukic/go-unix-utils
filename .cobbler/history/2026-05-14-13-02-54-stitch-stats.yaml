@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5188"
+task_title: '[stitch] cmd/nproc: core implementation (srd046-nproc R1.1-R1.4)'
+status: success
+started_at: "2026-05-14T17:02:54Z"
+duration: 2m13s
+duration_s: 133
+tokens:
+    input: 378758
+    output: 3273
+    cache_creation: 181251
+    cache_read: 197495
+cost_usd: 1.63230975
+num_turns: 21
+rate_limit_wait_s: 6
+loc_before:
+    production: 4065
+    test: 3389
+loc_after:
+    production: 4156
+    test: 3389
+diff:
+    files: 2
+    insertions: 194
+    deletions: 0

@@ -1,0 +1,23 @@
+task_id: "5531"
+task_title: '[stitch] Implement cmd/sync error handling and flags (srd085 R2.1, R2.2, R2.3)'
+status: success
+branch: task/generation-run44-5531
+diff:
+    files: 2
+    insertions: 186
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-23-08-47-43-stitch-orchestrator.log
+      status: M
+      insertions: 166
+      deletions: 0
+    - path: cmd/sync/main.go
+      status: M
+      insertions: 21
+      deletions: 0
+loc_before:
+    production: 22134
+    test: 20217
+loc_after:
+    production: 22155
+    test: 20217

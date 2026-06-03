@@ -1,0 +1,171 @@
+[2026-05-28T12:34:34-04:00] [generation-run44] [stitch +0s] starting (limit=1)
+[2026-05-28T12:34:34-04:00] [generation-run44] [stitch +0s] stitch config: silence=true stitchTotal=0 stitchPerCycle=1 measure=4 generationBranch=""
+[2026-05-28T12:34:34-04:00] [generation-run44] [stitch +0s] resolved branch=generation-run44
+[2026-05-28T12:34:34-04:00] [generation-run44] [stitch +0s] repoRoot=/Users/pdiddy/COBBLER/generation-run44
+[2026-05-28T12:34:34-04:00] [generation-run44] [stitch +0s] using GitHub repo petar-djukic/go-unix-utils generation generation-run44 for issues
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] worktreeBase=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] baseBranch=generation-run44
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] recovering stale tasks
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for stale branches with pattern task/generation-run44-*
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] recoverStaleBranches: no stale branches found
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for orphaned in_progress issues
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: pruning worktrees
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: no stale state found
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] looking for next ready task (completed 0 so far)
+[2026-05-28T12:34:35-04:00] [generation-run44] [stitch +1s] pickTask: calling pickReadyIssue repo=petar-djukic/go-unix-utils generation=generation-run44
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] pickReadyIssue: picked #5628 "[stitch] cmd/tsort differential tests (srd102-tsort R2.2, R2.3)" gen=generation-run44
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] pickTask: picked #5628 id=5628 branch=task/generation-run44-5628 worktree=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] pickTask: title="[stitch] cmd/tsort differential tests (srd102-tsort R2.2, R2.3)"
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] pickTask: descriptionLen=1434
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] executing task 1: id=5628 title="[stitch] cmd/tsort differential tests (srd102-tsort R2.2, R2.3)"
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] doOneTask: starting task 5628 ([stitch] cmd/tsort differential tests (srd102-tsort R2.2, R2.3))
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] doOneTask: task #5628 claimed via pickReadyIssue label
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] doOneTask: creating worktree for 5628
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] createWorktree: dir=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628 branch=task/generation-run44-5628
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] createWorktree: branch task/generation-run44-5628 does not exist, creating
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] createWorktree: branch task/generation-run44-5628 created
+[2026-05-28T12:34:41-04:00] [generation-run44] [stitch +7s] createWorktree: adding worktree
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] createWorktree: worktree ready at /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628 on branch task/generation-run44-5628
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] doOneTask: worktree created in 2s
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] resolveStandardFiles: 9 pattern(s) -> 268 file(s)
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] doOneTask: locBefore prod=30471 test=24302
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: no phase context file, using config defaults
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: stitch_exclude_tests=true, _test.go files will be excluded
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] resolveFileSet: 1 pattern(s) -> 114 file(s)
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildProjectContext: exclude set has 114 file(s)
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] resolveContextSources: 2 pattern(s) -> 2 file(s)
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] ensureTypedDocs: added missing typed doc docs/SPECIFICATIONS.yaml
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] ensureTypedDocs: added missing typed doc docs/road-map.yaml
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildProjectContext: using context_include (4 file(s))
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildProjectContext: loaded 8 SRDs from requirements.yaml (81 ready items)
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] loadSourceFiles: 21 file(s) from 1 dir(s)
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildProjectContext: excluded 4 _test.go file(s) from source context
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildProjectContext: vision=true arch=true roadmap=true specs=false eng=0 analysis=true issues=0 extra=0 src=17 files=4
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: projectCtx=true
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: filtered source files 17 -> 0 (required_reading has 2 source paths)
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] applyContextBudget: context size 125431 <= budget 200000, no truncation needed
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: injecting 3 shared_protocols
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: injecting 6 package_contracts
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: 544410 bytes
+[2026-05-28T12:34:42-04:00] [generation-run44] [stitch +8s] doOneTask: prompt built, length=544410 bytes
+[2026-05-28T12:34:43-04:00] [generation-run44] [stitch +9s] commentCobblerIssue: posted comment on #5628
+[2026-05-28T12:34:43-04:00] [generation-run44] [stitch +9s] saveHistoryPrompt: saved .cobbler/history/2026-05-28-12-34-43-stitch-prompt.yaml
+[2026-05-28T12:34:43-04:00] [generation-run44] [stitch +9s] doOneTask: invoking Claude for task 5628
+[2026-05-28T12:34:43-04:00] [generation-run44] [stitch +9s] runClaude: promptLen=544410 dir="/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628" silence=true
+[2026-05-28T12:34:43-04:00] [generation-run44] [stitch +9s] credentials: extracting to .secrets/claude.json
+[2026-05-28T12:34:43-04:00] [generation-run44] [stitch +9s] credentials: written to .secrets/claude.json
+[2026-05-28T12:34:43-04:00] [generation-run44] [stitch +9s] runClaude: exec claude [--model claude-opus-4-6 --dangerously-skip-permissions -p --verbose --output-format stream-json] (mode=cli timeout=2026-05-28 12:59:43.925187 -0400 EDT m=+3577.551847668)
+[2026-05-28T12:34:44-04:00] [generation-run44] [stitch +10s] claude: [1s] first output
+[2026-05-28T12:34:44-04:00] [generation-run44] [stitch +10s] claude: [1s] ready
+[2026-05-28T12:34:53-04:00] [generation-run44] [stitch +19s] claude: [9s +9s] turn 1: I'll start by reading the SRD for tsort and the existing test file to understand what R2.2 and R2.3 require and what's a...
+[2026-05-28T12:34:55-04:00] [generation-run44] [stitch +21s] claude: [12s +2s] turn 2
+[2026-05-28T12:34:55-04:00] [generation-run44] [stitch +21s] claude: [12s] turn 2: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628/docs/specs/software-requirements/srd102-tsort.yaml
+[2026-05-28T12:34:56-04:00] [generation-run44] [stitch +22s] claude: [12s +1s] tools done, waiting for LLM
+[2026-05-28T12:34:56-04:00] [generation-run44] [stitch +22s] claude: [12s +0s] turn 3
+[2026-05-28T12:34:56-04:00] [generation-run44] [stitch +22s] claude: [12s] turn 3: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628/cmd/tsort/tsort_test.go
+[2026-05-28T12:34:56-04:00] [generation-run44] [stitch +22s] claude: [13s +1s] tools done, waiting for LLM
+[2026-05-28T12:34:56-04:00] [generation-run44] [stitch +23s] claude: [13s +0s] turn 4
+[2026-05-28T12:34:56-04:00] [generation-run44] [stitch +23s] claude: [13s] turn 4: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628/cmd/tsort/main.go
+[2026-05-28T12:34:57-04:00] [generation-run44] [stitch +23s] claude: [13s +0s] tools done, waiting for LLM
+[2026-05-28T12:34:57-04:00] [generation-run44] [stitch +23s] claude: [13s] rate_limit
+[2026-05-28T12:34:57-04:00] [generation-run44] [stitch +23s] claude: [13s] ready
+[2026-05-28T12:36:00-04:00] [generation-run44] [stitch +1m26s] claude: [1m17s] ready
+[2026-05-28T12:36:00-04:00] [generation-run44] [stitch +1m26s] claude: [1m17s] ready
+[2026-05-28T12:36:00-04:00] [generation-run44] [stitch +1m26s] claude: [1m17s +0s] tools done, waiting for LLM
+[2026-05-28T12:36:20-04:00] [generation-run44] [stitch +1m46s] claude: [1m37s +20s] turn 5
+[2026-05-28T12:36:20-04:00] [generation-run44] [stitch +1m46s] claude: [1m37s +0s] turn 6: Adding R2.2 differential test cases to `cmd/tsort/tsort_test.go`.
+[2026-05-28T12:36:22-04:00] [generation-run44] [stitch +1m48s] claude: [1m39s +2s] turn 7
+[2026-05-28T12:36:22-04:00] [generation-run44] [stitch +1m48s] claude: [1m39s] turn 7: tool Edit /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628/cmd/tsort/tsort_test.go
+[2026-05-28T12:36:22-04:00] [generation-run44] [stitch +1m48s] claude: [1m39s +0s] tools done, waiting for LLM
+[2026-05-28T12:36:24-04:00] [generation-run44] [stitch +1m50s] claude: [1m41s +2s] turn 8: Now let me run the tests to verify.
+[2026-05-28T12:36:25-04:00] [generation-run44] [stitch +1m51s] claude: [1m42s +1s] turn 9
+[2026-05-28T12:36:25-04:00] [generation-run44] [stitch +1m51s] claude: [1m42s] turn 9: tool Bash go test ./cmd/tsort/ -count=1 -v 2>&1 | tail -60
+[2026-05-28T12:36:27-04:00] [generation-run44] [stitch +1m53s] claude: [1m44s +2s] tools done, waiting for LLM
+[2026-05-28T12:36:52-04:00] [generation-run44] [stitch +2m18s] claude: [2m8s +24s] turn 10
+[2026-05-28T12:36:52-04:00] [generation-run44] [stitch +2m18s] claude: [2m8s +0s] turn 11: Two divergences to fix: the extra operand message format and the file error capitalization. Let me check how other utili...
+[2026-05-28T12:36:52-04:00] [generation-run44] [stitch +2m18s] claude: [2m9s +0s] turn 12
+[2026-05-28T12:36:52-04:00] [generation-run44] [stitch +2m18s] claude: [2m9s] turn 12: tool Grep extra operand
+[2026-05-28T12:36:52-04:00] [generation-run44] [stitch +2m18s] claude: [2m9s +0s] tools done, waiting for LLM
+[2026-05-28T12:36:52-04:00] [generation-run44] [stitch +2m18s] claude: [2m9s +0s] turn 13
+[2026-05-28T12:36:52-04:00] [generation-run44] [stitch +2m18s] claude: [2m9s] turn 13: tool Grep Try.*--help
+[2026-05-28T12:36:53-04:00] [generation-run44] [stitch +2m19s] claude: [2m9s +0s] tools done, waiting for LLM
+[2026-05-28T12:36:56-04:00] [generation-run44] [stitch +2m22s] claude: [2m13s +4s] turn 14
+[2026-05-28T12:36:57-04:00] [generation-run44] [stitch +2m24s] claude: [2m14s +1s] turn 15: The codebase consistently uses single-quoted operands and a "Try" help line. Let me also check how other tests normalize...
+[2026-05-28T12:36:59-04:00] [generation-run44] [stitch +2m25s] claude: [2m15s +1s] turn 16
+[2026-05-28T12:36:59-04:00] [generation-run44] [stitch +2m25s] claude: [2m15s] turn 16: tool Grep Try.*--help
+[2026-05-28T12:36:59-04:00] [generation-run44] [stitch +2m25s] claude: [2m16s +1s] tools done, waiting for LLM
+[2026-05-28T12:37:00-04:00] [generation-run44] [stitch +2m26s] claude: [2m16s +0s] turn 17
+[2026-05-28T12:37:00-04:00] [generation-run44] [stitch +2m26s] claude: [2m16s] turn 17: tool Grep normStderr|NormalizeFunc
+[2026-05-28T12:37:00-04:00] [generation-run44] [stitch +2m26s] claude: [2m16s +0s] tools done, waiting for LLM
+[2026-05-28T12:37:04-04:00] [generation-run44] [stitch +2m30s] claude: [2m20s +4s] turn 18
+[2026-05-28T12:37:04-04:00] [generation-run44] [stitch +2m30s] claude: [2m20s] turn 18: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628/cmd/users/users_test.go
+[2026-05-28T12:37:04-04:00] [generation-run44] [stitch +2m30s] claude: [2m21s +0s] tools done, waiting for LLM
+[2026-05-28T12:37:04-04:00] [generation-run44] [stitch +2m30s] claude: [2m21s +0s] turn 19
+[2026-05-28T12:37:04-04:00] [generation-run44] [stitch +2m30s] claude: [2m21s] turn 19: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628/cmd/df/df_test.go
+[2026-05-28T12:37:04-04:00] [generation-run44] [stitch +2m30s] claude: [2m21s +0s] tools done, waiting for LLM
+[2026-05-28T12:37:18-04:00] [generation-run44] [stitch +2m44s] claude: [2m34s +13s] turn 20
+[2026-05-28T12:37:18-04:00] [generation-run44] [stitch +2m44s] claude: [2m34s +0s] turn 21: Now I understand the patterns. I need to fix two things in `main.go` (quote the operand and add the "Try" line) and upda...
+[2026-05-28T12:37:19-04:00] [generation-run44] [stitch +2m45s] claude: [2m35s +1s] turn 22
+[2026-05-28T12:37:19-04:00] [generation-run44] [stitch +2m45s] claude: [2m35s] turn 22: tool Grep No such file or directory|no such file or directory
+[2026-05-28T12:37:19-04:00] [generation-run44] [stitch +2m45s] claude: [2m36s +0s] tools done, waiting for LLM
+[2026-05-28T12:37:20-04:00] [generation-run44] [stitch +2m46s] claude: [2m36s +1s] turn 23
+[2026-05-28T12:37:20-04:00] [generation-run44] [stitch +2m46s] claude: [2m36s] turn 23: tool Grep unwrapPathErr|PathError
+[2026-05-28T12:37:20-04:00] [generation-run44] [stitch +2m46s] claude: [2m36s +0s] tools done, waiting for LLM
+[2026-05-28T12:37:39-04:00] [generation-run44] [stitch +3m6s] claude: [2m56s +20s] turn 24
+[2026-05-28T12:37:39-04:00] [generation-run44] [stitch +3m6s] claude: [2m56s +0s] turn 25: Now I have the full picture. I need to fix `main.go` (add quotes and "Try" line) and add normalizers to the test for the...
+[2026-05-28T12:37:42-04:00] [generation-run44] [stitch +3m9s] claude: [2m59s +3s] turn 26
+[2026-05-28T12:37:42-04:00] [generation-run44] [stitch +3m9s] claude: [2m59s] turn 26: tool Edit /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628/cmd/tsort/main.go
+[2026-05-28T12:37:42-04:00] [generation-run44] [stitch +3m9s] claude: [2m59s +0s] tools done, waiting for LLM
+[2026-05-28T12:37:46-04:00] [generation-run44] [stitch +3m12s] claude: [3m2s +3s] turn 27: Now add the normalizers to the test file and update the R2.2 test cases to use them.
+[2026-05-28T12:37:51-04:00] [generation-run44] [stitch +3m17s] claude: [3m7s +5s] turn 28
+[2026-05-28T12:37:51-04:00] [generation-run44] [stitch +3m17s] claude: [3m7s] turn 28: tool Edit /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628/cmd/tsort/tsort_test.go
+[2026-05-28T12:37:51-04:00] [generation-run44] [stitch +3m17s] claude: [3m7s +0s] tools done, waiting for LLM
+[2026-05-28T12:37:52-04:00] [generation-run44] [stitch +3m18s] claude: [3m9s +2s] turn 29: Now update the R2.2 test cases to use the new normalizers.
+[2026-05-28T12:37:57-04:00] [generation-run44] [stitch +3m23s] claude: [3m14s +5s] turn 30
+[2026-05-28T12:37:57-04:00] [generation-run44] [stitch +3m23s] claude: [3m14s] turn 30: tool Edit /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628/cmd/tsort/tsort_test.go
+[2026-05-28T12:37:57-04:00] [generation-run44] [stitch +3m23s] claude: [3m14s +0s] tools done, waiting for LLM
+[2026-05-28T12:37:59-04:00] [generation-run44] [stitch +3m25s] claude: [3m16s +2s] turn 31: Now run the tests again.
+[2026-05-28T12:38:00-04:00] [generation-run44] [stitch +3m27s] claude: [3m17s +1s] turn 32
+[2026-05-28T12:38:00-04:00] [generation-run44] [stitch +3m27s] claude: [3m17s] turn 32: tool Bash go test ./cmd/tsort/ -count=1 -v 2>&1 | tail -50
+[2026-05-28T12:38:02-04:00] [generation-run44] [stitch +3m28s] claude: [3m19s +2s] tools done, waiting for LLM
+[2026-05-28T12:38:05-04:00] [generation-run44] [stitch +3m31s] claude: [3m22s +3s] turn 33: All 31 tests pass including the 2 new R2.2 tests. Let me also verify compilation is clean.
+[2026-05-28T12:38:06-04:00] [generation-run44] [stitch +3m32s] claude: [3m22s +1s] turn 34
+[2026-05-28T12:38:06-04:00] [generation-run44] [stitch +3m32s] claude: [3m22s] turn 34: tool Bash go vet ./cmd/tsort/
+[2026-05-28T12:38:06-04:00] [generation-run44] [stitch +3m32s] claude: [3m22s +0s] tools done, waiting for LLM
+[2026-05-28T12:38:15-04:00] [generation-run44] [stitch +3m41s] claude: [3m32s +9s] turn 35: All clean. Here's a summary of the changes:  **`cmd/tsort/main.go`**: Fixed the extra operand error message to match GNU...
+[2026-05-28T12:38:15-04:00] [generation-run44] [stitch +3m41s] claude: [3m32s] done: 35 turn(s), in=629177 (base=16 cache_create=235800 cache_read=393361) out=6416 cost=$2.0490
+[2026-05-28T12:38:15-04:00] [generation-run44] [stitch +3m41s] parseClaudeTokens: in=629177 (base=16 cache_create=235800 cache_read=393361) out=6416 cost=$2.0490
+[2026-05-28T12:38:15-04:00] [generation-run44] [stitch +3m41s] runClaude: finished in 3m32s in=629177 (cache_create=235800 cache_read=393361) out=6416 cost=$2.0490 (err=<nil>)
+[2026-05-28T12:38:15-04:00] [generation-run44] [stitch +3m41s] saveHistoryLog: saved .cobbler/history/2026-05-28-12-34-43-stitch-log.log
+[2026-05-28T12:38:15-04:00] [generation-run44] [stitch +3m41s] doOneTask: Claude completed for 5628 in 3m32s
+[2026-05-28T12:38:15-04:00] [generation-run44] [stitch +3m41s] commitWorktreeChanges: staging changes in /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628
+[2026-05-28T12:38:15-04:00] [generation-run44] [stitch +3m41s] cleanGoBinaries: removed 0 binary file(s)
+[2026-05-28T12:38:16-04:00] [generation-run44] [stitch +3m43s] commitWorktreeChanges: committing "Task 5628: [stitch] cmd/tsort differential tests (srd102-tsort R2.2, R2.3)"
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] commitWorktreeChanges: committed in worktree for 5628
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] resolveStandardFiles: 9 pattern(s) -> 268 file(s)
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] doOneTask: locAfter prod=30472 test=24337
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] doOneTask: merging task/generation-run44-5628 into generation-run44
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] mergeBranch: task/generation-run44-5628 into generation-run44 (repoRoot=/Users/pdiddy/COBBLER/generation-run44)
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] mergeBranch: checking out generation-run44
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] mergeBranch: checked out generation-run44
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] mergeBranch: merging task/generation-run44-5628
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] mergeBranch: merge successful
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] doOneTask: merge completed in 0s
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] doOneTask: diff files=3 ins=168 del=1
+[2026-05-28T12:38:17-04:00] [generation-run44] [stitch +3m43s] doOneTask: fileChanges=3 entries
+[2026-05-28T12:38:18-04:00] [generation-run44] [stitch +3m45s] doOneTask: post-merge tests failed for 5628, R-items will be marked complete_with_failures
+[2026-05-28T12:38:18-04:00] [generation-run44] [stitch +3m45s] doOneTask: cleaning up worktree for 5628
+[2026-05-28T12:38:18-04:00] [generation-run44] [stitch +3m45s] cleanupWorktree: removing worktree /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5628
+[2026-05-28T12:38:19-04:00] [generation-run44] [stitch +3m45s] cleanupWorktree: deleting branch task/generation-run44-5628
+[2026-05-28T12:38:19-04:00] [generation-run44] [stitch +3m45s] cleanupWorktree: done for task 5628
+[2026-05-28T12:38:19-04:00] [generation-run44] [stitch +3m45s] saveHistoryStats: saved .cobbler/history/2026-05-28-12-34-43-stitch-stats.yaml
+[2026-05-28T12:38:19-04:00] [generation-run44] [stitch +3m45s] saveHistoryReport: saved .cobbler/history/2026-05-28-12-34-43-stitch-report.yaml
+[2026-05-28T12:38:19-04:00] [generation-run44] [stitch +3m45s] doOneTask: closing task 5628
+[2026-05-28T12:38:19-04:00] [generation-run44] [stitch +3m45s] closeStitchTask: closing #5628 "[stitch] cmd/tsort differential tests (srd102-tsort R2.2, R2.3)"
+[2026-05-28T12:38:20-04:00] [generation-run44] [stitch +3m46s] commentCobblerIssue: posted comment on #5628
+[2026-05-28T12:38:23-04:00] [generation-run44] [stitch +3m49s] closeCobblerIssue: closed #5628
+[2026-05-28T12:38:25-04:00] [generation-run44] [stitch +3m51s] closeStitchTask: #5628 closed
+[2026-05-28T12:38:26-04:00] [generation-run44] [stitch +3m52s] doOneTask: task 5628 finished in 3m45s
+[2026-05-28T12:38:26-04:00] [generation-run44] [stitch +3m52s] task 5628 completed in 3m45s
+[2026-05-28T12:38:26-04:00] [generation-run44] [stitch +3m52s] reached per-cycle limit (1), pausing for measure
+[2026-05-28T12:38:26-04:00] [generation-run44] [stitch +3m52s] completed 1 task(s) in 3m52s

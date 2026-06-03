@@ -1,0 +1,23 @@
+task_id: "5193"
+task_title: '[stitch] cmd/nproc: differential tests (srd046-nproc R3.1-R3.3)'
+status: success
+branch: task/generation-run44-5193
+diff:
+    files: 2
+    insertions: 170
+    deletions: 0
+files:
+    - path: .cobbler/history/2026-05-14-13-21-56-stitch-orchestrator.log
+      status: M
+      insertions: 108
+      deletions: 0
+    - path: cmd/nproc/nproc_test.go
+      status: A
+      insertions: 63
+      deletions: 0
+loc_before:
+    production: 4156
+    test: 3452
+loc_after:
+    production: 4156
+    test: 3515

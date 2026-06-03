@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5080"
+task_title: '[stitch] srd087-sizeparse: pkg/sizeparse (contract)'
+status: success
+started_at: "2026-05-13T22:42:09Z"
+duration: 42s
+duration_s: 41
+tokens:
+    input: 476180
+    output: 1317
+    cache_creation: 147379
+    cache_read: 328797
+cost_usd: 1.25660325
+num_turns: 7
+rate_limit_wait_s: 18
+loc_before:
+    production: 527
+    test: 0
+loc_after:
+    production: 552
+    test: 0
+diff:
+    files: 2
+    insertions: 94
+    deletions: 0

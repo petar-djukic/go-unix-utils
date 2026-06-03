@@ -66,9 +66,6 @@ go.work.sum
 # Secrets and credentials
 .secrets/
 
-# Cobbler runtime files (generated during generation runs)
-.cobbler/
-
 bootstrap-prompt.md
 .claude/
 AGENTS.md

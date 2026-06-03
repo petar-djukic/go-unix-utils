@@ -1,0 +1,176 @@
+[2026-05-23T22:20:46-04:00] [generation-run44] [stitch +0s] starting (limit=1)
+[2026-05-23T22:20:46-04:00] [generation-run44] [stitch +0s] stitch config: silence=true stitchTotal=0 stitchPerCycle=1 measure=4 generationBranch=""
+[2026-05-23T22:20:46-04:00] [generation-run44] [stitch +0s] resolved branch=generation-run44
+[2026-05-23T22:20:46-04:00] [generation-run44] [stitch +0s] repoRoot=/Users/pdiddy/COBBLER/generation-run44
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +0s] using GitHub repo petar-djukic/go-unix-utils generation generation-run44 for issues
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] worktreeBase=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] baseBranch=generation-run44
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] recovering stale tasks
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for stale branches with pattern task/generation-run44-*
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] recoverStaleBranches: no stale branches found
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: checking for orphaned in_progress issues
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: pruning worktrees
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] recoverStaleTasks: no stale state found
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] looking for next ready task (completed 0 so far)
+[2026-05-23T22:20:47-04:00] [generation-run44] [stitch +1s] pickTask: calling pickReadyIssue repo=petar-djukic/go-unix-utils generation=generation-run44
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] pickReadyIssue: picked #5560 "[stitch] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3)" gen=generation-run44
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] pickTask: picked #5560 id=5560 branch=task/generation-run44-5560 worktree=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] pickTask: title="[stitch] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3)"
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] pickTask: descriptionLen=1409
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] executing task 1: id=5560 title="[stitch] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3)"
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] doOneTask: starting task 5560 ([stitch] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3))
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] doOneTask: task #5560 claimed via pickReadyIssue label
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] transitionRequirements: marked 3 R-items as in_progress
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] doOneTask: creating worktree for 5560
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] createWorktree: dir=/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560 branch=task/generation-run44-5560
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] createWorktree: branch task/generation-run44-5560 does not exist, creating
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] createWorktree: branch task/generation-run44-5560 created
+[2026-05-23T22:20:53-04:00] [generation-run44] [stitch +7s] createWorktree: adding worktree
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] createWorktree: worktree ready at /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560 on branch task/generation-run44-5560
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] doOneTask: worktree created in 1s
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] resolveStandardFiles: 9 pattern(s) -> 268 file(s)
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] doOneTask: locBefore prod=25074 test=22144
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: no phase context file, using config defaults
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: stitch_exclude_tests=true, _test.go files will be excluded
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] resolveFileSet: 1 pattern(s) -> 114 file(s)
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildProjectContext: exclude set has 114 file(s)
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] resolveContextSources: 2 pattern(s) -> 2 file(s)
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] ensureTypedDocs: added missing typed doc docs/SPECIFICATIONS.yaml
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] ensureTypedDocs: added missing typed doc docs/road-map.yaml
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildProjectContext: using context_include (4 file(s))
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildProjectContext: loaded 23 SRDs from requirements.yaml (226 ready items)
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] loadSourceFiles: 21 file(s) from 1 dir(s)
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildProjectContext: excluded 4 _test.go file(s) from source context
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildProjectContext: vision=true arch=true roadmap=true specs=false eng=0 analysis=true issues=0 extra=0 src=17 files=4
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: projectCtx=true
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: filtered source files 17 -> 0 (required_reading has 2 source paths)
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] applyContextBudget: context size 131481 <= budget 200000, no truncation needed
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: injecting 3 shared_protocols
+[2026-05-23T22:20:54-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: injecting 6 package_contracts
+[2026-05-23T22:20:55-04:00] [generation-run44] [stitch +8s] buildStitchPrompt: 529769 bytes
+[2026-05-23T22:20:55-04:00] [generation-run44] [stitch +8s] doOneTask: prompt built, length=529769 bytes
+[2026-05-23T22:20:55-04:00] [generation-run44] [stitch +9s] commentCobblerIssue: posted comment on #5560
+[2026-05-23T22:20:55-04:00] [generation-run44] [stitch +9s] saveHistoryPrompt: saved .cobbler/history/2026-05-23-22-20-55-stitch-prompt.yaml
+[2026-05-23T22:20:55-04:00] [generation-run44] [stitch +9s] doOneTask: invoking Claude for task 5560
+[2026-05-23T22:20:55-04:00] [generation-run44] [stitch +9s] runClaude: promptLen=529769 dir="/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560" silence=true
+[2026-05-23T22:20:55-04:00] [generation-run44] [stitch +9s] credentials: extracting to .secrets/claude.json
+[2026-05-23T22:20:55-04:00] [generation-run44] [stitch +9s] credentials: written to .secrets/claude.json
+[2026-05-23T22:20:55-04:00] [generation-run44] [stitch +9s] runClaude: exec claude [--model claude-opus-4-6 --dangerously-skip-permissions -p --verbose --output-format stream-json] (mode=cli timeout=2026-05-23 22:45:55.815338 -0400 EDT m=+5628.310898126)
+[2026-05-23T22:20:56-04:00] [generation-run44] [stitch +10s] claude: [1s] first output
+[2026-05-23T22:20:56-04:00] [generation-run44] [stitch +10s] claude: [1s] ready
+[2026-05-23T22:21:00-04:00] [generation-run44] [stitch +14s] claude: [4s] rate_limit
+[2026-05-23T22:21:03-04:00] [generation-run44] [stitch +16s] claude: [7s +3s] turn 1: I'll start by reading the SRD for mkfifo and the existing source files to understand what R2.1, R2.2, R2.3 require and w...
+[2026-05-23T22:21:05-04:00] [generation-run44] [stitch +19s] claude: [10s +2s] turn 2
+[2026-05-23T22:21:05-04:00] [generation-run44] [stitch +19s] claude: [10s] turn 2: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/docs/specs/software-requirements/srd092-mkfifo.yaml
+[2026-05-23T22:21:06-04:00] [generation-run44] [stitch +19s] claude: [10s +1s] tools done, waiting for LLM
+[2026-05-23T22:21:06-04:00] [generation-run44] [stitch +19s] claude: [10s +0s] turn 3
+[2026-05-23T22:21:06-04:00] [generation-run44] [stitch +19s] claude: [10s] turn 3: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/mkfifo/main.go
+[2026-05-23T22:21:06-04:00] [generation-run44] [stitch +20s] claude: [11s +1s] tools done, waiting for LLM
+[2026-05-23T22:21:06-04:00] [generation-run44] [stitch +20s] claude: [11s +0s] turn 4
+[2026-05-23T22:21:06-04:00] [generation-run44] [stitch +20s] claude: [11s] turn 4: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/mkfifo/mkfifo_test.go
+[2026-05-23T22:21:06-04:00] [generation-run44] [stitch +20s] claude: [11s +0s] tools done, waiting for LLM
+[2026-05-23T22:21:06-04:00] [generation-run44] [stitch +20s] claude: [11s] ready
+[2026-05-23T22:22:10-04:00] [generation-run44] [stitch +1m24s] claude: [1m15s] rate_limit
+[2026-05-23T22:22:10-04:00] [generation-run44] [stitch +1m24s] claude: [1m15s] ready
+[2026-05-23T22:22:10-04:00] [generation-run44] [stitch +1m24s] claude: [1m15s] ready
+[2026-05-23T22:22:10-04:00] [generation-run44] [stitch +1m24s] claude: [1m15s +0s] tools done, waiting for LLM
+[2026-05-23T22:22:51-04:00] [generation-run44] [stitch +2m5s] claude: [1m56s +41s] turn 5
+[2026-05-23T22:22:51-04:00] [generation-run44] [stitch +2m5s] claude: [1m56s +0s] turn 6: Let me check the current state by building and running tests.
+[2026-05-23T22:22:52-04:00] [generation-run44] [stitch +2m6s] claude: [1m57s +1s] turn 7
+[2026-05-23T22:22:52-04:00] [generation-run44] [stitch +2m6s] claude: [1m57s] turn 7: tool Bash go build -o bin/mkfifo ./cmd/mkfifo/ && echo "BUILD OK"
+[2026-05-23T22:22:53-04:00] [generation-run44] [stitch +2m7s] claude: [1m57s +1s] tools done, waiting for LLM
+[2026-05-23T22:22:53-04:00] [generation-run44] [stitch +2m7s] claude: [1m57s +0s] turn 8
+[2026-05-23T22:22:53-04:00] [generation-run44] [stitch +2m7s] claude: [1m57s] turn 8: tool Bash go vet ./cmd/mkfifo/ && echo "VET OK"
+[2026-05-23T22:22:53-04:00] [generation-run44] [stitch +2m7s] claude: [1m58s +0s] tools done, waiting for LLM
+[2026-05-23T22:23:02-04:00] [generation-run44] [stitch +2m16s] claude: [2m7s +9s] turn 9
+[2026-05-23T22:23:02-04:00] [generation-run44] [stitch +2m16s] claude: [2m7s] turn 9: tool Bash go test ./cmd/mkfifo/ -count=1 -v 2>&1
+[2026-05-23T22:23:04-04:00] [generation-run44] [stitch +2m18s] claude: [2m9s +2s] tools done, waiting for LLM
+[2026-05-23T22:23:20-04:00] [generation-run44] [stitch +2m34s] claude: [2m25s +16s] turn 10
+[2026-05-23T22:23:20-04:00] [generation-run44] [stitch +2m34s] claude: [2m25s +0s] turn 11: All tests pass. Now let me check how other utilities in this repo test SIGPIPE, and look for edge cases to add.
+[2026-05-23T22:23:21-04:00] [generation-run44] [stitch +2m35s] claude: [2m26s +1s] turn 12
+[2026-05-23T22:23:21-04:00] [generation-run44] [stitch +2m35s] claude: [2m26s] turn 12: tool Grep SIGPIPE|sigpipe
+[2026-05-23T22:23:21-04:00] [generation-run44] [stitch +2m35s] claude: [2m26s +0s] tools done, waiting for LLM
+[2026-05-23T22:23:26-04:00] [generation-run44] [stitch +2m40s] claude: [2m31s +5s] turn 13
+[2026-05-23T22:23:26-04:00] [generation-run44] [stitch +2m40s] claude: [2m31s] turn 13: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/yes/yes_test.go
+[2026-05-23T22:23:26-04:00] [generation-run44] [stitch +2m40s] claude: [2m31s +0s] tools done, waiting for LLM
+[2026-05-23T22:23:29-04:00] [generation-run44] [stitch +2m43s] claude: [2m34s +3s] turn 14
+[2026-05-23T22:23:29-04:00] [generation-run44] [stitch +2m43s] claude: [2m34s] turn 14: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/sha512sum/sha512sum_test.go
+[2026-05-23T22:23:29-04:00] [generation-run44] [stitch +2m43s] claude: [2m34s +0s] tools done, waiting for LLM
+[2026-05-23T22:23:49-04:00] [generation-run44] [stitch +3m2s] claude: [2m53s +19s] turn 15
+[2026-05-23T22:23:49-04:00] [generation-run44] [stitch +3m2s] claude: [2m53s +0s] turn 16: Let me verify the error message format for invalid mode to make sure it matches GNU.
+[2026-05-23T22:23:51-04:00] [generation-run44] [stitch +3m5s] claude: [2m55s +2s] turn 17
+[2026-05-23T22:23:51-04:00] [generation-run44] [stitch +3m5s] claude: [2m55s] turn 17: tool Bash bin/mkfifo -m bogus pipe 2>&1; echo "exit: $?"
+[2026-05-23T22:23:51-04:00] [generation-run44] [stitch +3m5s] claude: [2m56s +0s] turn 18
+[2026-05-23T22:23:51-04:00] [generation-run44] [stitch +3m5s] claude: [2m56s] turn 18: tool Bash gmkfifo -m bogus pipe 2>&1; echo "exit: $?"
+[2026-05-23T22:23:51-04:00] [generation-run44] [stitch +3m5s] claude: [2m56s +0s] tools done, waiting for LLM
+[2026-05-23T22:23:51-04:00] [generation-run44] [stitch +3m5s] claude: [2m56s +0s] tools done, waiting for LLM
+[2026-05-23T22:24:03-04:00] [generation-run44] [stitch +3m17s] claude: [3m7s +12s] turn 19
+[2026-05-23T22:24:04-04:00] [generation-run44] [stitch +3m18s] claude: [3m9s +1s] turn 20: Both match. Now I'll add the missing test coverage for R2.1, R2.2, R2.3. The key gaps are:  1. **R2.3**: No SIGPIPE test...
+[2026-05-23T22:24:06-04:00] [generation-run44] [stitch +3m20s] claude: [3m11s +2s] turn 21
+[2026-05-23T22:24:06-04:00] [generation-run44] [stitch +3m20s] claude: [3m11s] turn 21: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/mkfifo/mkfifo_test.go
+[2026-05-23T22:24:06-04:00] [generation-run44] [stitch +3m20s] claude: [3m11s +0s] tools done, waiting for LLM
+[2026-05-23T22:24:12-04:00] [generation-run44] [stitch +3m26s] claude: [3m17s +6s] turn 22
+[2026-05-23T22:24:12-04:00] [generation-run44] [stitch +3m26s] claude: [3m17s] turn 22: tool Edit /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/mkfifo/mkfifo_test.go
+[2026-05-23T22:24:12-04:00] [generation-run44] [stitch +3m26s] claude: [3m17s +0s] tools done, waiting for LLM
+[2026-05-23T22:24:22-04:00] [generation-run44] [stitch +3m36s] claude: [3m27s +10s] turn 23: Now add the new tests after the existing `TestModePermissions` function.
+[2026-05-23T22:24:23-04:00] [generation-run44] [stitch +3m37s] claude: [3m28s +1s] turn 24
+[2026-05-23T22:24:23-04:00] [generation-run44] [stitch +3m37s] claude: [3m28s] turn 24: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/mkfifo/mkfifo_test.go
+[2026-05-23T22:24:23-04:00] [generation-run44] [stitch +3m37s] claude: [3m28s +0s] tools done, waiting for LLM
+[2026-05-23T22:24:35-04:00] [generation-run44] [stitch +3m49s] claude: [3m40s +12s] turn 25
+[2026-05-23T22:24:35-04:00] [generation-run44] [stitch +3m49s] claude: [3m40s] turn 25: tool Edit /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/mkfifo/mkfifo_test.go
+[2026-05-23T22:24:35-04:00] [generation-run44] [stitch +3m49s] claude: [3m40s +0s] tools done, waiting for LLM
+[2026-05-23T22:24:38-04:00] [generation-run44] [stitch +3m52s] claude: [3m43s +3s] turn 26: Now add the SIGPIPE test at the end of the file.
+[2026-05-23T22:24:39-04:00] [generation-run44] [stitch +3m53s] claude: [3m43s +1s] turn 27
+[2026-05-23T22:24:39-04:00] [generation-run44] [stitch +3m53s] claude: [3m43s] turn 27: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/mkfifo/mkfifo_test.go
+[2026-05-23T22:24:39-04:00] [generation-run44] [stitch +3m53s] claude: [3m44s +0s] tools done, waiting for LLM
+[2026-05-23T22:24:42-04:00] [generation-run44] [stitch +3m56s] claude: [3m47s +3s] turn 28
+[2026-05-23T22:24:42-04:00] [generation-run44] [stitch +3m56s] claude: [3m47s] turn 28: tool Read /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/mkfifo/mkfifo_test.go
+[2026-05-23T22:24:42-04:00] [generation-run44] [stitch +3m56s] claude: [3m47s +0s] tools done, waiting for LLM
+[2026-05-23T22:24:49-04:00] [generation-run44] [stitch +4m3s] claude: [3m54s +7s] turn 29
+[2026-05-23T22:24:49-04:00] [generation-run44] [stitch +4m3s] claude: [3m54s] turn 29: tool Edit /private/var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560/cmd/mkfifo/mkfifo_test.go
+[2026-05-23T22:24:49-04:00] [generation-run44] [stitch +4m3s] claude: [3m54s +0s] tools done, waiting for LLM
+[2026-05-23T22:24:52-04:00] [generation-run44] [stitch +4m6s] claude: [3m57s +2s] turn 30: Now run the full test suite to verify everything passes.
+[2026-05-23T22:24:53-04:00] [generation-run44] [stitch +4m6s] claude: [3m57s +1s] turn 31
+[2026-05-23T22:24:53-04:00] [generation-run44] [stitch +4m6s] claude: [3m57s] turn 31: tool Bash go test ./cmd/mkfifo/ -count=1 -v 2>&1
+[2026-05-23T22:24:55-04:00] [generation-run44] [stitch +4m9s] claude: [4m0s +3s] tools done, waiting for LLM
+[2026-05-23T22:24:59-04:00] [generation-run44] [stitch +4m13s] claude: [4m4s +4s] turn 32: All 4 test functions pass, including the 3 new tests (`all_failures`, `partial_failure_last`, `TestSIGPIPE`). Let me ver...
+[2026-05-23T22:25:00-04:00] [generation-run44] [stitch +4m14s] claude: [4m5s +1s] turn 33
+[2026-05-23T22:25:00-04:00] [generation-run44] [stitch +4m14s] claude: [4m5s] turn 33: tool Bash go build -o bin/mkfifo ./cmd/mkfifo/ && echo "BUILD OK" && go vet ./cmd/mkfifo/ ...
+[2026-05-23T22:25:00-04:00] [generation-run44] [stitch +4m14s] claude: [4m5s +0s] tools done, waiting for LLM
+[2026-05-23T22:25:07-04:00] [generation-run44] [stitch +4m21s] claude: [4m12s +7s] turn 34: All acceptance criteria met. Here's what was added to `cmd/mkfifo/mkfifo_test.go`:  - **`all_failures`** (R2.2): Differe...
+[2026-05-23T22:25:07-04:00] [generation-run44] [stitch +4m21s] claude: [4m12s] done: 34 turn(s), in=806233 (base=20 cache_create=230839 cache_read=575374) out=7626 cost=$2.3391
+[2026-05-23T22:25:07-04:00] [generation-run44] [stitch +4m21s] parseClaudeTokens: in=806233 (base=20 cache_create=230839 cache_read=575374) out=7626 cost=$2.3391
+[2026-05-23T22:25:07-04:00] [generation-run44] [stitch +4m21s] runClaude: finished in 4m12s in=806233 (cache_create=230839 cache_read=575374) out=7626 cost=$2.3391 (err=<nil>)
+[2026-05-23T22:25:07-04:00] [generation-run44] [stitch +4m21s] saveHistoryLog: saved .cobbler/history/2026-05-23-22-20-55-stitch-log.log
+[2026-05-23T22:25:07-04:00] [generation-run44] [stitch +4m21s] doOneTask: Claude completed for 5560 in 4m12s
+[2026-05-23T22:25:07-04:00] [generation-run44] [stitch +4m21s] commitWorktreeChanges: staging changes in /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560
+[2026-05-23T22:25:07-04:00] [generation-run44] [stitch +4m21s] cleanGoBinaries: removed 0 binary file(s)
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] commitWorktreeChanges: committing "Task 5560: [stitch] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3)"
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] commitWorktreeChanges: committed in worktree for 5560
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] resolveStandardFiles: 9 pattern(s) -> 268 file(s)
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] doOneTask: locAfter prod=25074 test=22195
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] doOneTask: merging task/generation-run44-5560 into generation-run44
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] mergeBranch: task/generation-run44-5560 into generation-run44 (repoRoot=/Users/pdiddy/COBBLER/generation-run44)
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] mergeBranch: checking out generation-run44
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] mergeBranch: checked out generation-run44
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] mergeBranch: merging task/generation-run44-5560
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] mergeBranch: merge successful
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] doOneTask: merge completed in 0s
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] doOneTask: diff files=2 ins=186 del=0
+[2026-05-23T22:25:09-04:00] [generation-run44] [stitch +4m23s] doOneTask: fileChanges=2 entries
+[2026-05-23T22:25:11-04:00] [generation-run44] [stitch +4m25s] doOneTask: cleaning up worktree for 5560
+[2026-05-23T22:25:11-04:00] [generation-run44] [stitch +4m25s] cleanupWorktree: removing worktree /var/folders/dl/cbns6zkx7txc7pt64b6cgzp40000gn/T/go-unix-utils-worktrees/5560
+[2026-05-23T22:25:12-04:00] [generation-run44] [stitch +4m26s] cleanupWorktree: deleting branch task/generation-run44-5560
+[2026-05-23T22:25:12-04:00] [generation-run44] [stitch +4m26s] cleanupWorktree: done for task 5560
+[2026-05-23T22:25:12-04:00] [generation-run44] [stitch +4m26s] saveHistoryStats: saved .cobbler/history/2026-05-23-22-20-55-stitch-stats.yaml
+[2026-05-23T22:25:12-04:00] [generation-run44] [stitch +4m26s] saveHistoryReport: saved .cobbler/history/2026-05-23-22-20-55-stitch-report.yaml
+[2026-05-23T22:25:12-04:00] [generation-run44] [stitch +4m26s] doOneTask: closing task 5560
+[2026-05-23T22:25:12-04:00] [generation-run44] [stitch +4m26s] closeStitchTask: closing #5560 "[stitch] Implement cmd/mkfifo error handling and differential tests (srd092 R2.1, R2.2, R2.3)"
+[2026-05-23T22:25:13-04:00] [generation-run44] [stitch +4m27s] commentCobblerIssue: posted comment on #5560
+[2026-05-23T22:25:13-04:00] [generation-run44] [stitch +4m27s] updateRequirementsFile: marked 3 R-items as complete for issue #5560
+[2026-05-23T22:25:15-04:00] [generation-run44] [stitch +4m29s] closeCobblerIssue: closed #5560
+[2026-05-23T22:25:17-04:00] [generation-run44] [stitch +4m31s] closeStitchTask: #5560 closed
+[2026-05-23T22:25:17-04:00] [generation-run44] [stitch +4m31s] doOneTask: task 5560 finished in 4m25s
+[2026-05-23T22:25:17-04:00] [generation-run44] [stitch +4m31s] task 5560 completed in 4m25s
+[2026-05-23T22:25:17-04:00] [generation-run44] [stitch +4m31s] reached per-cycle limit (1), pausing for measure
+[2026-05-23T22:25:17-04:00] [generation-run44] [stitch +4m31s] completed 1 task(s) in 4m31s

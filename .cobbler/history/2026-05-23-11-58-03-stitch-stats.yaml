@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5541"
+task_title: '[stitch] Implement cmd/truncate differential tests (srd083 R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3)'
+status: success
+started_at: "2026-05-23T15:58:03Z"
+duration: 20m22s
+duration_s: 1222
+tokens:
+    input: 868063
+    output: 31340
+    cache_creation: 291071
+    cache_read: 576978
+cost_usd: 3.2154927500000006
+num_turns: 29
+loc_before:
+    production: 23372
+    test: 20777
+loc_after:
+    production: 23372
+    test: 20671
+diff:
+    files: 2
+    insertions: 329
+    deletions: 303

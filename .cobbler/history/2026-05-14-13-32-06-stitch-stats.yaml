@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5196"
+task_title: '[stitch] cmd/uname: core flags implementation (srd044-uname R1.1-R1.4)'
+status: success
+started_at: "2026-05-14T17:32:06Z"
+duration: 5m20s
+duration_s: 319
+tokens:
+    input: 782053
+    output: 13055
+    cache_creation: 185566
+    cache_read: 596464
+cost_usd: 2.1793068499999997
+num_turns: 56
+rate_limit_wait_s: 3
+loc_before:
+    production: 4156
+    test: 3560
+loc_after:
+    production: 4289
+    test: 3560
+diff:
+    files: 2
+    insertions: 361
+    deletions: 0

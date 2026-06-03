@@ -1,0 +1,31 @@
+task_id: "5554"
+task_title: '[stitch] Implement cmd/chgrp error handling and verbose output (srd090 R3.1, R3.2, R3.3)'
+status: success
+branch: task/generation-run44-5554
+diff:
+    files: 4
+    insertions: 635
+    deletions: 18
+files:
+    - path: .cobbler/history/2026-05-23-21-12-07-stitch-orchestrator.log
+      status: M
+      insertions: 410
+      deletions: 0
+    - path: .cobbler/requirements.yaml
+      status: M
+      insertions: 6
+      deletions: 3
+    - path: cmd/chgrp/chgrp_test.go
+      status: M
+      insertions: 151
+      deletions: 0
+    - path: cmd/chgrp/main.go
+      status: M
+      insertions: 69
+      deletions: 15
+loc_before:
+    production: 24237
+    test: 21113
+loc_after:
+    production: 24291
+    test: 21264

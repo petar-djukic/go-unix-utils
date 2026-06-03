@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5565"
+task_title: '[stitch] Implement cmd/nice error handling and differential tests (srd094 R2.1, R2.2, R2.3)'
+status: success
+started_at: "2026-05-24T03:02:37Z"
+duration: 1m59s
+duration_s: 118
+tokens:
+    input: 504950
+    output: 2089
+    cache_creation: 225345
+    cache_read: 279592
+cost_usd: 1.9915632499999996
+num_turns: 18
+rate_limit_wait_s: 1
+loc_before:
+    production: 25655
+    test: 22806
+loc_after:
+    production: 25655
+    test: 22806
+diff:
+    files: 2
+    insertions: 105
+    deletions: 3

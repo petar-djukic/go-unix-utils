@@ -1,0 +1,25 @@
+caller: stitch
+task_id: "5377"
+task_title: '[stitch] cmd/sort: remaining numeric modes and check mode -- srd053 R3.2-R3.4, R4.1'
+status: success
+started_at: "2026-05-20T22:16:47Z"
+duration: 15m29s
+duration_s: 929
+tokens:
+    input: 1101061
+    output: 54646
+    cache_creation: 248745
+    cache_read: 852300
+cost_usd: 3.7252362499999996
+num_turns: 34
+rate_limit_wait_s: 2
+loc_before:
+    production: 12061
+    test: 11568
+loc_after:
+    production: 12449
+    test: 11568
+diff:
+    files: 4
+    insertions: 698
+    deletions: 170

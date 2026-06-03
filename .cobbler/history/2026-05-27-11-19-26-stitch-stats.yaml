@@ -1,0 +1,24 @@
+caller: stitch
+task_id: "5596"
+task_title: '[measuring] generation-run44 task 0'
+status: success
+started_at: "2026-05-27T15:19:26Z"
+duration: 8m28s
+duration_s: 508
+tokens:
+    input: 1586228
+    output: 23584
+    cache_creation: 269239
+    cache_read: 1316954
+cost_usd: 3.1702630000000007
+num_turns: 67
+loc_before:
+    production: 27575
+    test: 23072
+loc_after:
+    production: 27855
+    test: 23208
+diff:
+    files: 3
+    insertions: 624
+    deletions: 0

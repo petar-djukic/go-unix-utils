@@ -1,0 +1,23 @@
+task_id: "5137"
+task_title: '[stitch] cmd/basename: suffix removal and flags (srd015-basename R1.5, R2.1-R2.3)'
+status: success
+branch: task/generation-run44-5137
+diff:
+    files: 2
+    insertions: 208
+    deletions: 10
+files:
+    - path: .cobbler/history/2026-05-13-23-30-19-stitch-orchestrator.log
+      status: M
+      insertions: 89
+      deletions: 0
+    - path: cmd/basename/main.go
+      status: M
+      insertions: 120
+      deletions: 10
+loc_before:
+    production: 1954
+    test: 1165
+loc_after:
+    production: 2064
+    test: 1165
