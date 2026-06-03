@@ -102,17 +102,18 @@ def chart_cost_per_requirement_trend(d: dict, out_dir: Path) -> dict:
     runs["cost_per_req"] = runs["total_cost_usd"] / runs["requirements_completed"]
 
     fig, ax = plt.subplots(figsize=(13, 6))
-    ax.plot(runs["run_order"], runs["cost_per_req"], marker="o", color="#4c72b0")
+    ax.plot(runs["start_at"], runs["cost_per_req"], marker="o", color="#4c72b0")
     seen_versions: set[str] = set()
     for _, row in runs.iterrows():
         v = row["scaffold_version"]
         if v and v not in seen_versions:
-            ax.axvline(row["run_order"], color="#dd8452", alpha=0.4, linestyle="--", linewidth=1)
-            ax.text(row["run_order"], runs["cost_per_req"].max() * 1.02,
+            ax.axvline(row["start_at"], color="#dd8452", alpha=0.4, linestyle="--", linewidth=1)
+            ax.text(row["start_at"], runs["cost_per_req"].max() * 1.02,
                     str(v).split("-")[-1][:8], fontsize=7, color="#dd8452",
                     rotation=75, va="bottom")
             seen_versions.add(v)
-    ax.set_xlabel("run order (chronological)")
+    ax.set_xlabel("date")
+    fig.autofmt_xdate()
     ax.set_ylabel("cost per requirement completed (USD)")
     titled(
         ax, "Cost per requirement over time",
@@ -129,21 +130,22 @@ def chart_cost_per_requirement_trend(d: dict, out_dir: Path) -> dict:
 def chart_cost_per_loc_trend(d: dict, out_dir: Path) -> dict:
     runs = d["runs"].copy()
     runs = runs[(runs["total_loc_prod_delta"] > 0) & (runs["total_cost_usd"] > 0)].copy()
-    runs["cost_per_loc"] = runs["total_cost_usd"] / runs["total_loc_prod_delta"]
+    runs["cost_per_kloc"] = runs["total_cost_usd"] / (runs["total_loc_prod_delta"] / 1000)
 
     fig, ax = plt.subplots(figsize=(13, 6))
-    ax.plot(runs["run_order"], runs["cost_per_loc"], marker="o", color="#55a868")
-    ax.set_xlabel("run order (chronological)")
-    ax.set_ylabel("cost per LOC produced (USD)")
+    ax.plot(runs["start_at"], runs["cost_per_kloc"], marker="o", color="#55a868")
+    ax.set_xlabel("date")
+    fig.autofmt_xdate()
+    ax.set_ylabel("cost per KLOC produced (USD)")
     titled(
-        ax, "Cost per production LOC over time",
+        ax, "Cost per production KLOC over time",
         f"source: runs.csv; N={len(runs)} runs with positive LOC delta and cost",
     )
     save(fig, out_dir, "cost_per_loc_trend")
     return {
         "n_runs_with_loc": int(len(runs)),
-        "mean_cost_per_loc_usd": round(float(runs["cost_per_loc"].mean()), 6),
-        "median_cost_per_loc_usd": round(float(runs["cost_per_loc"].median()), 6),
+        "mean_cost_per_kloc_usd": round(float(runs["cost_per_kloc"].mean()), 4),
+        "median_cost_per_kloc_usd": round(float(runs["cost_per_kloc"].median()), 4),
     }
 
 
@@ -204,7 +206,7 @@ def chart_cache_hit_rate_across_runs(d: dict, out_dir: Path) -> dict:
         denom = sub["tokens_cache_read"] + non_cached
         rate = sub["tokens_cache_read"] / denom.replace(0, np.nan)
         rows.append({
-            "run_order": int(run["run_order"]),
+            "start_at": run["start_at"],
             "run_id": str(run["run_id"]),
             "n_tasks": int(len(sub)),
             "median_hit_rate": float(rate.median()) if rate.notna().any() else float("nan"),
@@ -212,9 +214,10 @@ def chart_cache_hit_rate_across_runs(d: dict, out_dir: Path) -> dict:
     df = pd.DataFrame(rows).dropna(subset=["median_hit_rate"])
 
     fig, ax = plt.subplots(figsize=(13, 6))
-    ax.scatter(df["run_order"], df["median_hit_rate"] * 100,
+    ax.scatter(df["start_at"], df["median_hit_rate"] * 100,
                s=df["n_tasks"] * 1.2 + 12, alpha=0.6, color="#8172b3", edgecolor="black", linewidth=0.4)
-    ax.set_xlabel("run order (chronological)")
+    ax.set_xlabel("date")
+    fig.autofmt_xdate()
     ax.set_ylabel("median cache hit rate per run (%)")
     ax.set_ylim(0, 105)
     titled(
@@ -228,25 +231,27 @@ def chart_cache_hit_rate_across_runs(d: dict, out_dir: Path) -> dict:
     }
 
 
-def chart_per_utility_cumulative_cost(d: dict, out_dir: Path) -> dict:
+def chart_per_utility_avg_cost(d: dict, out_dir: Path) -> dict:
     util = d["utilities"].copy()
-    util = util.sort_values("total_cost_usd", ascending=False).head(30)
+    util["avg_cost_usd"] = util["total_cost_usd"] / util["total_runs_touched"].replace(0, np.nan)
+    util = util.dropna(subset=["avg_cost_usd"])
+    util = util.sort_values("avg_cost_usd", ascending=False).head(30)
     fig, ax = plt.subplots(figsize=(13, 8))
     colors = ["#c44e52" if k == "cmd" else "#4c72b0" for k in util["target_kind"]]
-    ax.barh(util["target"], util["total_cost_usd"], color=colors)
+    ax.barh(util["target"], util["avg_cost_usd"], color=colors)
     ax.invert_yaxis()
-    ax.set_xlabel("cumulative cost across all runs (USD)")
+    ax.set_xlabel("average cost per completed utility (USD)")
     titled(
-        ax, "Top 30 utilities by cumulative cost",
-        f"source: utilities.csv; cmd in red, pkg in blue; total_runs_touched annotated",
+        ax, "Top 30 utilities by average completion cost",
+        f"source: utilities.csv; cmd in red, pkg in blue; total tasks annotated",
     )
     for i, (_, row) in enumerate(util.iterrows()):
-        ax.text(row["total_cost_usd"] + 0.5, i,
-                f" {int(row['total_runs_touched'])}r", fontsize=8, va="center", color="#555")
-    save(fig, out_dir, "per_utility_cumulative_cost")
+        ax.text(row["avg_cost_usd"] + 0.1, i,
+                f" {int(row['total_tasks'])}t", fontsize=8, va="center", color="#555")
+    save(fig, out_dir, "per_utility_avg_cost")
     return {
         "top_utility": str(util.iloc[0]["target"]),
-        "top_utility_cost": round(float(util.iloc[0]["total_cost_usd"]), 4),
+        "top_utility_avg_cost": round(float(util.iloc[0]["avg_cost_usd"]), 4),
     }
 
 
@@ -370,6 +375,145 @@ def chart_cost_vs_requirement_count(d: dict, out_dir: Path) -> dict:
     }
 
 
+def chart_requirement_cost_pdf(d: dict, out_dir: Path) -> dict:
+    tasks = d["tasks"].copy()
+    stitch = tasks[tasks["task_subtype"] == "stitch"].copy()
+
+    def count_reqs(r):
+        if pd.isna(r):
+            return 0
+        return len([x.strip() for x in str(r).split(",") if x.strip()])
+
+    stitch["req_count"] = stitch["requirements"].apply(count_reqs)
+    stitch = stitch[stitch["req_count"] > 0].copy()
+    stitch["cost_per_req"] = stitch["cost_usd"] / stitch["req_count"]
+
+    by_srd = stitch.groupby("srd_id").agg(
+        target=("target", "first"),
+        total_cost=("cost_usd", "sum"),
+        total_reqs=("req_count", "sum"),
+    ).reset_index()
+    by_srd["cost_per_req"] = by_srd["total_cost"] / by_srd["total_reqs"]
+
+    fig, ax = plt.subplots(figsize=(13, 6))
+    ax.hist(by_srd["cost_per_req"], bins=30, density=True, color="#4c72b0",
+            edgecolor="white", alpha=0.7, label="histogram")
+    from scipy.stats import gaussian_kde
+    x = np.linspace(by_srd["cost_per_req"].min() * 0.8, by_srd["cost_per_req"].max() * 1.1, 200)
+    kde = gaussian_kde(by_srd["cost_per_req"])
+    ax.plot(x, kde(x), color="#c44e52", linewidth=2.5, label="KDE")
+    med = by_srd["cost_per_req"].median()
+    mean = by_srd["cost_per_req"].mean()
+    ax.axvline(med, color="#55a868", linestyle="--", linewidth=2,
+               label=f"median ${med:.3f}")
+    ax.axvline(mean, color="#dd8452", linestyle="--", linewidth=2,
+               label=f"mean ${mean:.3f}")
+    ax.set_xlabel("cost per requirement (USD)")
+    ax.set_ylabel("density")
+    ax.legend(loc="upper right", fontsize=10)
+    titled(
+        ax, "Distribution of cost per requirement across SRDs",
+        f"source: tasks.csv grouped by srd_id; N={len(by_srd)} SRDs, {len(stitch)} tasks",
+    )
+    save(fig, out_dir, "requirement_cost_pdf")
+    return {
+        "n_srds": int(len(by_srd)),
+        "mean_cost_per_req": round(float(mean), 4),
+        "median_cost_per_req": round(float(med), 4),
+    }
+
+
+TOTAL_REQUIREMENTS = 1475
+
+
+def _run_label(run_id: str) -> str:
+    import re
+    m = re.search(r"run(\d+\w*)", run_id)
+    return m.group(0) if m else run_id.split("-")[-1]
+
+
+def chart_generation_progress(d: dict, out_dir: Path) -> dict:
+    """LOC produced and requirements covered per major generation run."""
+    runs = d["runs"].copy()
+    tasks = d["tasks"].copy()
+    stitch = tasks[tasks["task_subtype"] == "stitch"].copy()
+    stitch["commit_date"] = pd.to_datetime(stitch["commit_date"], utc=True)
+
+    def count_reqs(r):
+        if pd.isna(r):
+            return 0
+        return len([x.strip() for x in str(r).split(",") if x.strip()])
+
+    stitch["req_count"] = stitch["requirements"].apply(count_reqs)
+
+    active = runs[runs["task_count"] >= 30].sort_values("start_at").copy()
+    active["end_at"] = pd.to_datetime(active["end_at"], utc=True, errors="coerce")
+
+    rows = []
+    for _, run in active.iterrows():
+        start = run["start_at"]
+        end = run["end_at"] if pd.notna(run["end_at"]) else start + pd.Timedelta(days=7)
+        sub = stitch[(stitch["commit_date"] >= start) & (stitch["commit_date"] <= end)]
+        reqs = int(sub["req_count"].sum())
+        rows.append({
+            "run_id": run["run_id"],
+            "label": _run_label(run["run_id"]),
+            "date": run["start_at"],
+            "tasks": int(run["task_count"]),
+            "loc_prod": int(max(run["total_loc_prod_delta"], 0)),
+            "loc_test": int(max(run.get("total_loc_test_delta", 0), 0)),
+            "reqs": reqs,
+            "req_pct": reqs / TOTAL_REQUIREMENTS * 100,
+            "cost": float(run["total_cost_usd"]),
+        })
+    df = pd.DataFrame(rows)
+
+    fig, ax1 = plt.subplots(figsize=(14, 7))
+    x = np.arange(len(df))
+    w = 0.35
+
+    ax1.bar(x - w / 2, df["loc_prod"] / 1000, w, color="#4c72b0", label="production KLOC")
+    ax1.bar(x + w / 2, df["loc_test"] / 1000, w, color="#55a868", label="test KLOC")
+    ax1.set_ylabel("lines of code (KLOC)")
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(df["label"], rotation=40, ha="right")
+
+    ax2 = ax1.twinx()
+    ax2.plot(x, df["req_pct"], marker="D", color="#c44e52", linewidth=2.5,
+             markersize=7, label="% requirements", zorder=5)
+    ax2.set_ylabel("requirements covered (%)")
+    ax2.set_ylim(0, 110)
+
+    for i, row in df.iterrows():
+        if row["req_pct"] > 0:
+            ax2.annotate(
+                f"{row['req_pct']:.0f}%",
+                (i, row["req_pct"]), textcoords="offset points",
+                xytext=(0, 10), ha="center", fontsize=9, color="#c44e52",
+            )
+        total_kloc = (row["loc_prod"] + row["loc_test"]) / 1000
+        if total_kloc > 0:
+            ax1.text(i, total_kloc + 1, f"${row['cost']:.0f}",
+                     ha="center", fontsize=8, color="#555")
+
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=10)
+
+    titled(
+        ax1, "Generation progress across runs",
+        f"major runs (≥30 tasks) | {TOTAL_REQUIREMENTS} total requirements in spec | "
+        f"cost annotated above bars",
+    )
+    save(fig, out_dir, "generation_progress")
+    return {
+        "n_major_runs": int(len(df)),
+        "latest_req_pct": round(float(df.iloc[-1]["req_pct"]), 1),
+        "latest_loc_prod": int(df.iloc[-1]["loc_prod"]),
+        "peak_loc_prod": int(df["loc_prod"].max()),
+    }
+
+
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[2]
     out_dir = repo_root / "analysis" / "charts" / "economics"
@@ -385,9 +529,11 @@ def main() -> int:
         "cost_per_loc": chart_cost_per_loc_trend(d, out_dir),
         "cache_hit_within_run": chart_cache_hit_rate_within_run(d, out_dir),
         "cache_hit_across_runs": chart_cache_hit_rate_across_runs(d, out_dir),
-        "per_utility_cumulative": chart_per_utility_cumulative_cost(d, out_dir),
+        "per_utility_avg": chart_per_utility_avg_cost(d, out_dir),
         "same_utility_variance": chart_same_utility_variance(d, out_dir),
         "cost_vs_req_count": chart_cost_vs_requirement_count(d, out_dir),
+        "requirement_cost_pdf": chart_requirement_cost_pdf(d, out_dir),
+        "generation_progress": chart_generation_progress(d, out_dir),
     }
     with summary_path.open("w") as f:
         yaml.safe_dump(summary, f, sort_keys=False)
