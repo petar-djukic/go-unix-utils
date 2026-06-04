@@ -1,61 +1,83 @@
-task_ids_with_transcripts: 170
-task_ids_with_invocations: 185
-max_observed_attempts: 7
-failure_to_one_shot_rate_strict: 0.2486
-failure_to_one_shot_rate_status: 0.0811
-pass_at_1_strict: 0.7514
-pass_at_2_strict: 0.7784
-pass_at_3_strict: 0.7838
-pass_at_4_strict: 0.7946
-pass_at_5_strict: 0.7946
-pass_at_6_strict: 0.7946
-pass_at_7_strict: 0.7946
-pass_at_1_status: 0.9189
-pass_at_2_status: 0.9459
-pass_at_3_status: 0.9514
-pass_at_4_status: 0.9622
-pass_at_5_status: 0.9622
-pass_at_6_status: 0.9622
-pass_at_7_status: 0.9622
-total_tool_calls: 3093
-total_bash_calls: 1248
-go_build_or_vet_calls: 315
-go_build_or_vet_failed: 7
-go_test_calls: 138
-go_test_failed: 5
-mean_tool_calls_per_task: 18.2
-median_tool_calls_per_task: 14
-p95_tool_calls_per_task: 45
+task_ids_with_transcripts: 659
+task_ids_with_invocations: 678
+max_observed_attempts: 18
+failure_to_one_shot_rate_strict: 0.2257
+failure_to_one_shot_rate_status: 0.0472
+pass_at_1_strict: 0.7743
+pass_at_2_strict: 0.7861
+pass_at_3_strict: 0.7891
+pass_at_4_strict: 0.7935
+pass_at_5_strict: 0.7935
+pass_at_6_strict: 0.7935
+pass_at_7_strict: 0.7935
+pass_at_8_strict: 0.7935
+pass_at_9_strict: 0.7935
+pass_at_10_strict: 0.7935
+pass_at_11_strict: 0.7935
+pass_at_12_strict: 0.7935
+pass_at_13_strict: 0.7935
+pass_at_14_strict: 0.795
+pass_at_15_strict: 0.795
+pass_at_16_strict: 0.795
+pass_at_17_strict: 0.795
+pass_at_18_strict: 0.795
+pass_at_1_status: 0.9528
+pass_at_2_status: 0.9646
+pass_at_3_status: 0.9676
+pass_at_4_status: 0.972
+pass_at_5_status: 0.972
+pass_at_6_status: 0.972
+pass_at_7_status: 0.972
+pass_at_8_status: 0.972
+pass_at_9_status: 0.972
+pass_at_10_status: 0.972
+pass_at_11_status: 0.972
+pass_at_12_status: 0.972
+pass_at_13_status: 0.972
+pass_at_14_status: 0.9735
+pass_at_15_status: 0.9735
+pass_at_16_status: 0.9735
+pass_at_17_status: 0.9735
+pass_at_18_status: 0.9735
+total_tool_calls: 13711
+total_bash_calls: 5828
+go_build_or_vet_calls: 1451
+go_build_or_vet_failed: 17
+go_test_calls: 654
+go_test_failed: 108
+mean_tool_calls_per_task: 20.8
+median_tool_calls_per_task: 15
+p95_tool_calls_per_task: 56
 max_tool_calls_per_task: 187
-tasks_with_build_loops_2plus: 1
-tasks_with_test_loops_2plus: 0
-total_turns_recorded: 4796
+tasks_with_build_loops_2plus: 2
+tasks_with_test_loops_2plus: 7
+total_turns_recorded: 21821
 pass_at_phase:
   build:
-    n: 125
-    passed: 123
-    rate: 0.984
+    n: 550
+    passed: 548
+    rate: 0.9964
   test:
-    n: 95
-    passed: 95
-    rate: 1.0
+    n: 439
+    passed: 418
+    rate: 0.9522
   lint:
-    n: 108
-    passed: 107
-    rate: 0.9907
+    n: 563
+    passed: 562
+    rate: 0.9982
 cost_by_phase:
   build:
-    attempt_1: 27.8533
-    attempt_2_plus: 2.4619
-    total: 30.3152
+    attempt_1: 127.5884
+    attempt_2_plus: 3.0649
+    total: 130.6533
   test:
-    attempt_1: 16.9604
-    attempt_2_plus: 1.759
-    total: 18.7194
+    attempt_1: 72.9239
+    attempt_2_plus: 2.653
+    total: 75.5769
   lint:
-    attempt_1: 21.9743
-    attempt_2_plus: 1.61
-    total: 23.5843
+    attempt_1: 114.9101
+    attempt_2_plus: 2.2575
+    total: 117.1676
 run43_cost_decomposition:
   recorded_total_usd: 9.4069
   tasks_matched: 15

@@ -1,11 +1,11 @@
-n_runs_total: 59
-n_tasks_total: 2307
-tasks_assigned_to_run: 2303
+n_runs_total: 60
+n_tasks_total: 2706
+tasks_assigned_to_run: 2702
 heatmap:
   n_utilities_in_heatmap: 40
-  n_runs_in_heatmap: 59
+  n_runs_in_heatmap: 60
 zero_tests_per_run:
-  max_zero_test_count: 10
+  max_zero_test_count: 11
   runs_with_any_zero_test: 14
 median_drift:
   median_per_run:
@@ -67,47 +67,128 @@ median_drift:
     gh-3652-run40b: 0.8944
     gh-4209-run41: null
     gh-4209-run42: 0.8162
-    gh-4994-run43: 0.0
+    gh-4994-run43: null
+    run44: 0.7483
 diff_test_skip:
   cmd_dirs_total: 107
-  with_test_file: 104
-  with_t_skip: 21
+  with_test_file: 102
+  with_t_skip: 101
   skipping_files:
+  - cmd/arch/arch_test.go
+  - cmd/b2sum/b2sum_test.go
   - cmd/base32/base32_test.go
-  - cmd/base64/base64_test.go
+  - cmd/basename/basename_test.go
   - cmd/basenc/basenc_test.go
   - cmd/cat/cat_test.go
+  - cmd/chgrp/chgrp_test.go
+  - cmd/chown/chown_test.go
+  - cmd/chronic/chronic_test.go
+  - cmd/cksum/cksum_test.go
   - cmd/comm/comm_test.go
+  - cmd/cp/cp_test.go
+  - cmd/csplit/csplit_test.go
+  - cmd/cut/cut_test.go
   - cmd/date/date_test.go
+  - cmd/df/df_test.go
+  - cmd/dir/dir_test.go
   - cmd/dircolors/dircolors_test.go
+  - cmd/dirname/dirname_test.go
   - cmd/du/du_test.go
+  - cmd/echo/echo_test.go
+  - cmd/env/env_test.go
+  - cmd/expand/expand_test.go
+  - cmd/expr/expr_test.go
+  - cmd/factor/factor_test.go
   - cmd/false/false_test.go
+  - cmd/fmt/fmt_test.go
+  - cmd/fold/fold_test.go
+  - cmd/groups/groups_test.go
+  - cmd/head/head_test.go
+  - cmd/hostid/hostid_test.go
+  - cmd/hostname/hostname_test.go
+  - cmd/id/id_test.go
+  - cmd/join/join_test.go
+  - cmd/link/link_test.go
+  - cmd/ln/ln_test.go
+  - cmd/logname/logname_test.go
+  - cmd/ls/ls_test.go
+  - cmd/md5sum/md5sum_test.go
+  - cmd/mkdir/mkdir_test.go
+  - cmd/mkfifo/mkfifo_test.go
   - cmd/mknod/mknod_test.go
   - cmd/mktemp/mktemp_test.go
   - cmd/mv/mv_test.go
+  - cmd/nice/nice_test.go
+  - cmd/nl/nl_test.go
+  - cmd/nohup/nohup_test.go
+  - cmd/nproc/nproc_test.go
+  - cmd/numfmt/numfmt_test.go
   - cmd/od/od_test.go
+  - cmd/paste/paste_test.go
+  - cmd/pathchk/pathchk_test.go
+  - cmd/pee/pee_test.go
+  - cmd/pinky/pinky_test.go
+  - cmd/pr/pr_test.go
+  - cmd/printenv/printenv_test.go
+  - cmd/printf/printf_test.go
+  - cmd/ptx/ptx_test.go
+  - cmd/pwd/pwd_test.go
+  - cmd/readlink/readlink_test.go
+  - cmd/realpath/realpath_test.go
   - cmd/rm/rm_test.go
+  - cmd/rmdir/rmdir_test.go
+  - cmd/seq/seq_test.go
+  - cmd/sha1sum/sha1sum_test.go
+  - cmd/sha224sum/sha224sum_test.go
+  - cmd/sha256sum/sha256sum_test.go
+  - cmd/sha384sum/sha384sum_test.go
+  - cmd/sha512sum/sha512sum_test.go
+  - cmd/shuf/shuf_test.go
   - cmd/sleep/sleep_test.go
   - cmd/sort/sort_test.go
+  - cmd/split/split_test.go
+  - cmd/sponge/sponge_test.go
+  - cmd/stat/stat_test.go
+  - cmd/stty/stty_test.go
+  - cmd/sum/sum_test.go
+  - cmd/sync/sync_test.go
+  - cmd/tac/tac_test.go
+  - cmd/tail/tail_test.go
+  - cmd/tee/tee_test.go
+  - cmd/test/test_test.go
   - cmd/timeout/timeout_test.go
   - cmd/touch/touch_test.go
   - cmd/tr/tr_test.go
   - cmd/true/true_test.go
-  - cmd/version/version_test.go
+  - cmd/truncate/truncate_test.go
+  - cmd/ts/ts_test.go
+  - cmd/tsort/tsort_test.go
+  - cmd/tty/tty_test.go
+  - cmd/uname/uname_test.go
+  - cmd/unexpand/unexpand_test.go
+  - cmd/uniq/uniq_test.go
+  - cmd/unlink/unlink_test.go
+  - cmd/users/users_test.go
+  - cmd/vdir/vdir_test.go
+  - cmd/vidir/vidir_test.go
+  - cmd/wc/wc_test.go
+  - cmd/who/who_test.go
+  - cmd/whoami/whoami_test.go
+  - cmd/yes/yes_test.go
 trajectory:
   trajectory_targets:
   - pkg/testutils
-  - pkg/sys
   - cmd/ls
   - pkg/format
+  - pkg/sys
   - cmd/cat
-  - cmd/du
   - cmd/ts
   - cmd/sponge
+  - cmd/du
   - cmd/wc
-  - cmd/md5sum
+  - cmd/ln
 ratio_distribution:
-  n_runs_in_boxplot: 11
+  n_runs_in_boxplot: 12
 runs:
   run32:
     median_test_prod_ratio: 1.9569
@@ -195,13 +276,6 @@ runs:
     utilities_zero_test: 1
     zero_test_targets:
     - pkg/format
-  run43:
-    median_test_prod_ratio: 0.0
-    utilities_zero_test: 3
-    zero_test_targets:
-    - pkg/sizeparse
-    - pkg/sys
-    - pkg/testutils
   gh-543-gen-r:
     median_test_prod_ratio: 1.2816
     utilities_zero_test: 1
@@ -235,3 +309,18 @@ runs:
     utilities_zero_test: 1
     zero_test_targets:
     - cmd/cat
+  run44:
+    median_test_prod_ratio: 0.7483
+    utilities_zero_test: 11
+    zero_test_targets:
+    - cmd/base64
+    - cmd/chmod
+    - cmd/chroot
+    - cmd/hashutil
+    - cmd/install
+    - cmd/shred
+    - cmd/stat
+    - pkg/encutil
+    - pkg/hashutil
+    - pkg/sizeparse
+    - pkg/sys

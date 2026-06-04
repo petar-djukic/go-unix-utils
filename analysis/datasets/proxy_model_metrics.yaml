@@ -1,5 +1,5 @@
-training_set_size: 136
-total_tasks: 2175
+training_set_size: 535
+total_tasks: 2574
 feature_names:
 - tokens_input
 - tokens_output
@@ -16,175 +16,175 @@ feature_names:
 - kind_pkg
 models:
   total_tool_calls:
-    best_model: linear
-    test_r2: 0.3815
-    test_mae: 7.4188
-    test_rmse: 10.4442
+    best_model: random_forest
+    test_r2: 0.7113
+    test_mae: 6.0222
+    test_rmse: 8.88
     candidates:
       linear:
-        mae: 7.4188
-        rmse: 10.4442
-        r2: 0.3815
+        mae: 7.1328
+        rmse: 9.9557
+        r2: 0.6371
       random_forest:
-        mae: 7.0364
-        rmse: 10.7202
-        r2: 0.3484
+        mae: 6.0222
+        rmse: 8.88
+        r2: 0.7113
       gradient_boosting:
-        mae: 7.4253
-        rmse: 11.5054
-        r2: 0.2494
+        mae: 6.258
+        rmse: 9.0726
+        r2: 0.6986
   bash_calls:
     best_model: linear
-    test_r2: 0.5988
-    test_mae: 3.4903
-    test_rmse: 5.1846
+    test_r2: 0.5229
+    test_mae: 4.9213
+    test_rmse: 7.07
     candidates:
       linear:
-        mae: 3.4903
-        rmse: 5.1846
-        r2: 0.5988
+        mae: 4.9213
+        rmse: 7.07
+        r2: 0.5229
       random_forest:
-        mae: 3.7324
-        rmse: 6.2748
-        r2: 0.4123
+        mae: 4.5891
+        rmse: 7.0889
+        r2: 0.5203
       gradient_boosting:
-        mae: 3.955
-        rmse: 6.7126
-        r2: 0.3275
+        mae: 4.7357
+        rmse: 7.2076
+        r2: 0.5041
   read_calls:
     best_model: random_forest
-    test_r2: -0.1274
-    test_mae: 2.0234
-    test_rmse: 2.9867
+    test_r2: 0.4291
+    test_mae: 2.4819
+    test_rmse: 3.5553
     candidates:
       linear:
-        mae: 2.182
-        rmse: 3.0204
-        r2: -0.1529
+        mae: 2.706
+        rmse: 3.8044
+        r2: 0.3463
       random_forest:
-        mae: 2.0234
-        rmse: 2.9867
-        r2: -0.1274
+        mae: 2.4819
+        rmse: 3.5553
+        r2: 0.4291
       gradient_boosting:
-        mae: 2.1966
-        rmse: 3.2603
-        r2: -0.3434
+        mae: 2.5205
+        rmse: 3.5972
+        r2: 0.4155
   edit_calls:
-    best_model: linear
-    test_r2: -0.0912
-    test_mae: 1.9918
-    test_rmse: 3.7556
+    best_model: random_forest
+    test_r2: 0.2572
+    test_mae: 1.9645
+    test_rmse: 3.267
     candidates:
       linear:
-        mae: 1.9918
-        rmse: 3.7556
-        r2: -0.0912
+        mae: 2.2842
+        rmse: 3.3627
+        r2: 0.213
       random_forest:
-        mae: 1.7311
-        rmse: 3.7774
-        r2: -0.1039
+        mae: 1.9645
+        rmse: 3.267
+        r2: 0.2572
       gradient_boosting:
-        mae: 1.7707
-        rmse: 4.0945
-        r2: -0.2971
+        mae: 2.0342
+        rmse: 3.293
+        r2: 0.2453
   write_calls:
     best_model: linear
-    test_r2: 0.2121
-    test_mae: 1.057
-    test_rmse: 1.5184
+    test_r2: 0.3988
+    test_mae: 0.6923
+    test_rmse: 1.0
     candidates:
       linear:
-        mae: 1.057
-        rmse: 1.5184
-        r2: 0.2121
+        mae: 0.6923
+        rmse: 1.0
+        r2: 0.3988
       random_forest:
-        mae: 0.8894
-        rmse: 1.5206
-        r2: 0.2099
+        mae: 0.643
+        rmse: 1.1004
+        r2: 0.272
       gradient_boosting:
-        mae: 0.962
-        rmse: 1.6111
-        r2: 0.1131
+        mae: 0.6922
+        rmse: 1.1401
+        r2: 0.2186
   go_build_calls:
     best_model: linear
-    test_r2: 0.0274
-    test_mae: 0.6955
-    test_rmse: 1.1189
+    test_r2: 0.3233
+    test_mae: 0.5536
+    test_rmse: 0.8347
     candidates:
       linear:
-        mae: 0.6955
-        rmse: 1.1189
-        r2: 0.0274
+        mae: 0.5536
+        rmse: 0.8347
+        r2: 0.3233
       random_forest:
-        mae: 0.7083
-        rmse: 1.1607
-        r2: -0.0466
+        mae: 0.5496
+        rmse: 0.8666
+        r2: 0.2705
       gradient_boosting:
-        mae: 0.7314
-        rmse: 1.1547
-        r2: -0.0358
+        mae: 0.5964
+        rmse: 0.9054
+        r2: 0.2038
   go_test_calls:
     best_model: random_forest
-    test_r2: 0.005
-    test_mae: 0.6529
-    test_rmse: 0.8378
+    test_r2: 0.4137
+    test_mae: 0.5548
+    test_rmse: 0.7577
     candidates:
       linear:
-        mae: 0.7762
-        rmse: 0.9945
-        r2: -0.4021
+        mae: 0.7376
+        rmse: 0.9937
+        r2: -0.0085
       random_forest:
-        mae: 0.6529
-        rmse: 0.8378
-        r2: 0.005
+        mae: 0.5548
+        rmse: 0.7577
+        r2: 0.4137
       gradient_boosting:
-        mae: 0.7038
-        rmse: 0.9124
-        r2: -0.1801
+        mae: 0.5908
+        rmse: 0.7973
+        r2: 0.3508
   go_vet_calls:
     best_model: random_forest
-    test_r2: -0.1604
-    test_mae: 0.5422
-    test_rmse: 0.6407
+    test_r2: 0.1384
+    test_mae: 0.3621
+    test_rmse: 0.559
     candidates:
       linear:
-        mae: 0.5761
-        rmse: 0.7209
-        r2: -0.469
+        mae: 0.3766
+        rmse: 0.5685
+        r2: 0.1087
       random_forest:
-        mae: 0.5422
-        rmse: 0.6407
-        r2: -0.1604
+        mae: 0.3621
+        rmse: 0.559
+        r2: 0.1384
       gradient_boosting:
-        mae: 0.5863
-        rmse: 0.7025
-        r2: -0.395
+        mae: 0.3999
+        rmse: 0.6138
+        r2: -0.0388
   go_build_failed_calls:
     best_model: linear
-    test_r2: -0.0252
-    test_mae: 0.0787
-    test_rmse: 0.1711
+    test_r2: -0.0304
+    test_mae: 0.039
+    test_rmse: 0.1232
     candidates:
       linear:
-        mae: 0.0787
-        rmse: 0.1711
-        r2: -0.0252
+        mae: 0.039
+        rmse: 0.1232
+        r2: -0.0304
       random_forest:
-        mae: 0.0919
-        rmse: 0.2131
-        r2: -0.5907
+        mae: 0.0329
+        rmse: 0.1319
+        r2: -0.1815
       gradient_boosting:
-        mae: 0.0896
-        rmse: 0.2257
-        r2: -0.7849
+        mae: 0.0323
+        rmse: 0.1482
+        r2: -0.4912
 trend:
   total:
-    n_day_buckets: 34
-    n_tasks: 2175
-    global_mean: 26.09
+    n_day_buckets: 46
+    n_tasks: 2574
+    global_mean: 20.89
   go_build_failed:
-    n_day_buckets: 34
-    n_tasks: 2175
-    global_mean: 0.05
+    n_day_buckets: 46
+    n_tasks: 2574
+    global_mean: 0.02
 n_predicted_rows: 2039
-n_labeled_rows: 136
+n_labeled_rows: 535

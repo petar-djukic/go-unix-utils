@@ -1,5 +1,5 @@
-n_runs_total: 59
-n_tasks_total: 2307
+n_runs_total: 60
+n_tasks_total: 2706
 n_utilities_total: 115
 cost_per_requirement:
   n_runs_with_requirements: 2
@@ -7,8 +7,8 @@ cost_per_requirement:
   median_cost_per_req_usd: 0.3032
 cost_per_loc:
   n_runs_with_loc: 28
-  mean_cost_per_loc_usd: 0.009493
-  median_cost_per_loc_usd: 0.009785
+  mean_cost_per_kloc_usd: 10.1398
+  median_cost_per_kloc_usd: 9.7846
 cache_hit_within_run:
   target_run_id: gh-4209-run42
   n_tasks_in_target_run: 445
@@ -16,14 +16,23 @@ cache_hit_within_run:
 cache_hit_across_runs:
   n_runs: 38
   median_across_runs: 45.68
-per_utility_cumulative:
+per_utility_avg:
   top_utility: cmd/ls
-  top_utility_cost: 152.9525
+  top_utility_avg_cost: 20.7418
 same_utility_variance:
   n_utilities_3plus_runs: 30
-  max_cv: 1.6839
-  least_consistent_utility: cmd/ts
+  max_cv: 1.8764
+  least_consistent_utility: pkg/format
 cost_vs_req_count:
-  n_tasks_with_reqs: 2009
-  fit_slope_usd_per_req: 0.028
-  fit_intercept_usd: 1.0482
+  n_tasks_with_reqs: 2367
+  fit_slope_usd_per_req: 0.0099
+  fit_intercept_usd: 1.315
+requirement_cost_pdf:
+  n_srds: 113
+  mean_cost_per_req: 0.4664
+  median_cost_per_req: 0.4482
+generation_progress:
+  n_major_runs: 11
+  latest_req_pct: 51.5
+  latest_loc_prod: 32975
+  peak_loc_prod: 45789

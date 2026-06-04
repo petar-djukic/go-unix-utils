@@ -92,6 +92,10 @@ def find_stats_files(repo_root: Path) -> list[tuple[str, Path]]:
     if run43.exists():
         for f in sorted(run43.glob("*-stitch-stats.yaml")):
             pairs.append(("gh-4994-run43", f))
+    run44 = repo_root / ".cobbler" / "history"
+    if run44.exists():
+        for f in sorted(run44.glob("*-stitch-stats.yaml")):
+            pairs.append(("gh-5059-run44", f))
     recovered = repo_root / "analysis" / "raw" / "recovered"
     if recovered.exists():
         for d in sorted(recovered.iterdir()):

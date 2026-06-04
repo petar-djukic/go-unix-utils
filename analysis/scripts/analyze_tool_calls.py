@@ -476,6 +476,317 @@ def chart_cost_by_phase(d: dict, out_dir: Path) -> None:
     save(fig, out_dir, "cost_by_phase")
 
 
+RUN44_INV_ID = "gh-5059-run44"
+RUN44_TRANSCRIPT_ID = "run44"
+
+
+def _cost_by_category_and_outcome(d: dict, transcript_run_id: str, inv_run_id: str) -> pd.DataFrame:
+    """Full cost decomposition for a run, split by category and task outcome."""
+    turns = d["turns"][d["turns"]["run_id"] == transcript_run_id].copy()
+    tools = d["tools"][d["tools"]["run_id"] == transcript_run_id].copy()
+    inv = d["invocations"][d["invocations"]["run_id"] == inv_run_id].copy()
+    if turns.empty or inv.empty:
+        return pd.DataFrame()
+
+    turns["task_id_str"] = turns["task_id"].astype(str)
+    tools["task_id_str"] = tools["task_id"].astype(str)
+    inv["task_id_str"] = inv["task_id"].astype(str)
+    turns["est_cost"] = turns.apply(estimated_cost, axis=1)
+
+    recorded_per_task = inv.groupby("task_id_str")["cost_usd"].sum()
+    estimated_per_task = turns.groupby("task_id_str")["est_cost"].sum()
+    common = recorded_per_task.index.intersection(estimated_per_task.index)
+    scale = (recorded_per_task.loc[common] / estimated_per_task.loc[common].replace(0, 1)).fillna(0)
+
+    # Determine outcome per task: success if any invocation succeeded with LOC > 0
+    task_outcome = inv.groupby("task_id_str").apply(
+        lambda g: "success" if ((g["status"] == "success") & ((g["loc_prod_delta"] > 0) | (g["loc_test_delta"] > 0))).any() else "failed"
+    )
+
+    turns = turns[turns["task_id_str"].isin(common)].copy()
+    turns["cal_cost"] = turns["est_cost"] * turns["task_id_str"].map(scale).fillna(0)
+    turns["outcome"] = turns["task_id_str"].map(task_outcome).fillna("failed")
+
+    # Reasoning turns (no tools)
+    reasoning = turns[~turns["had_tool_use"]].copy()
+    reasoning["category"] = "reasoning"
+    reasoning_rows = reasoning.groupby(["category", "outcome"])["cal_cost"].sum().reset_index(name="cost")
+
+    # Tool turns: split cost across tools in the turn
+    tool_turns = turns[turns["had_tool_use"]].copy()
+    tool_turns["per_call"] = tool_turns["cal_cost"] / tool_turns["tool_count_in_turn"].replace(0, 1)
+    tools_merged = tools.merge(
+        tool_turns[["task_id", "session_uuid", "turn_index", "per_call", "outcome"]],
+        on=["task_id", "session_uuid", "turn_index"],
+        how="inner",
+    )
+    tools_merged["category"] = tools_merged.apply(
+        lambda r: _categorize_tool(r["tool_name"], r["bash_command_class"]), axis=1
+    )
+    tool_rows = tools_merged.groupby(["category", "outcome"])["per_call"].sum().reset_index(name="cost")
+
+    return pd.concat([reasoning_rows, tool_rows], ignore_index=True)
+
+
+def chart_cost_decomposition(d: dict, out_dir: Path) -> None:
+    """Where the cost goes, split by task outcome (success vs failure)."""
+    cost_df = _cost_by_category_and_outcome(d, RUN44_TRANSCRIPT_ID, RUN44_INV_ID)
+    if cost_df.empty:
+        return
+
+    inv = d["invocations"]
+    r44_inv = inv[inv["run_id"] == RUN44_INV_ID]
+    n_tasks = r44_inv["task_id"].nunique()
+
+    cat_order = ["reasoning", "read_code", "write_code", "build", "test", "lint", "other_bash", "other_tool"]
+    cat_labels = ["“reasoning”", "read code", "write code", "build", "test", "lint", "other bash", "other"]
+
+    pivot = cost_df.pivot_table(index="category", columns="outcome", values="cost", aggfunc="sum", fill_value=0)
+    for col in ["success", "failed"]:
+        if col not in pivot.columns:
+            pivot[col] = 0.0
+    pivot = pivot.reindex([c for c in cat_order if c in pivot.index]).fillna(0)
+    labels_used = [cat_labels[cat_order.index(c)] for c in pivot.index]
+
+    grand_total = pivot["success"].sum() + pivot["failed"].sum()
+    total_success = pivot["success"].sum()
+    total_failed = pivot["failed"].sum()
+
+    fig, ax = plt.subplots(figsize=(13, 7))
+    x = range(len(pivot))
+    s_vals = pivot["success"].values
+    f_vals = pivot["failed"].values
+
+    ax.bar(x, s_vals, color="#4c72b0", label="successful tasks")
+    ax.bar(x, f_vals, bottom=s_vals, color="#c44e52", label="failed tasks")
+
+    for i, (s, f) in enumerate(zip(s_vals, f_vals)):
+        total = s + f
+        if total > 0:
+            pct = total / grand_total * 100
+            ax.text(i, total + grand_total * 0.01, f"${total:.1f} ({pct:.0f}%)",
+                    ha="center", va="bottom", fontsize=10, color="#333")
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels_used, rotation=30, ha="right")
+    ax.set_ylabel("estimated cost (USD)")
+    ax.legend(loc="upper right", fontsize=10)
+
+    ax.text(
+        0.97, 0.82,
+        f"success cost: ${total_success:.0f} ({total_success/grand_total*100:.0f}%)\n"
+        f"failure cost: ${total_failed:.0f} ({total_failed/grand_total*100:.0f}%)",
+        transform=ax.transAxes, fontsize=11, va="top", ha="right",
+        bbox={"boxstyle": "round,pad=0.4", "facecolor": "#f8f8f8", "edgecolor": "#ccc"},
+    )
+
+    titled(
+        ax, "Run 44: where the cost goes",
+        f"N={n_tasks} tasks with transcripts | total ${grand_total:.0f} | "
+        f"split by task outcome (success = status success + productive LOC)",
+    )
+    save(fig, out_dir, "cost_decomposition")
+
+
+def _time_by_category_and_outcome(d: dict, transcript_run_id: str, inv_run_id: str) -> pd.DataFrame:
+    """Wall-clock time decomposition for a run, split by category and task outcome.
+
+    Time attribution: gap from each tool call to the next (within the same
+    session) is attributed to the earlier call's category. Time unaccounted
+    for by inter-tool gaps (session start to first tool, last tool to session
+    end) is attributed to 'reasoning'.
+    """
+    tools = d["tools"][d["tools"]["run_id"] == transcript_run_id].copy()
+    inv = d["invocations"][d["invocations"]["run_id"] == inv_run_id].copy()
+    if tools.empty or inv.empty:
+        return pd.DataFrame()
+
+    tools["task_id_str"] = tools["task_id"].astype(str)
+    inv["task_id_str"] = inv["task_id"].astype(str)
+    tools["ts"] = pd.to_datetime(tools["timestamp"], utc=True)
+    tools = tools.sort_values(["task_id", "session_uuid", "ts"])
+    tools["next_ts"] = tools.groupby(["task_id", "session_uuid"])["ts"].shift(-1)
+    tools["gap_s"] = (tools["next_ts"] - tools["ts"]).dt.total_seconds().fillna(0)
+
+    task_outcome = inv.groupby("task_id_str").apply(
+        lambda g: "success" if ((g["status"] == "success") & ((g["loc_prod_delta"] > 0) | (g["loc_test_delta"] > 0))).any() else "failed"
+    )
+
+    common = set(tools["task_id_str"].unique()) & set(inv["task_id_str"].unique())
+    tools = tools[tools["task_id_str"].isin(common)].copy()
+    tools["outcome"] = tools["task_id_str"].map(task_outcome).fillna("failed")
+    tools["category"] = tools.apply(
+        lambda r: _categorize_tool(r["tool_name"], r["bash_command_class"]), axis=1
+    )
+
+    tool_rows = tools.groupby(["category", "outcome"])["gap_s"].sum().reset_index(name="time_s")
+
+    total_duration = float(inv[inv["task_id_str"].isin(common)]["duration_s"].sum())
+    tool_time = tools["gap_s"].sum()
+    reasoning_time = max(total_duration - tool_time, 0)
+
+    success_dur = float(inv[inv["task_id_str"].isin(
+        set(task_outcome[task_outcome == "success"].index) & common
+    )]["duration_s"].sum())
+    fail_dur = float(inv[inv["task_id_str"].isin(
+        set(task_outcome[task_outcome == "failed"].index) & common
+    )]["duration_s"].sum())
+    success_tool = float(tools[tools["outcome"] == "success"]["gap_s"].sum())
+    fail_tool = float(tools[tools["outcome"] == "failed"]["gap_s"].sum())
+    success_reasoning = max(success_dur - success_tool, 0)
+    fail_reasoning = max(fail_dur - fail_tool, 0)
+
+    reasoning_rows = pd.DataFrame([
+        {"category": "reasoning", "outcome": "success", "time_s": success_reasoning},
+        {"category": "reasoning", "outcome": "failed", "time_s": fail_reasoning},
+    ])
+    result = pd.concat([reasoning_rows, tool_rows], ignore_index=True)
+    result["total_duration"] = total_duration
+    return result
+
+
+def chart_time_decomposition(d: dict, out_dir: Path) -> None:
+    """Where the wall-clock time goes, split by task outcome."""
+    time_df = _time_by_category_and_outcome(d, RUN44_TRANSCRIPT_ID, RUN44_INV_ID)
+    if time_df.empty:
+        return
+
+    inv = d["invocations"]
+    r44_inv = inv[inv["run_id"] == RUN44_INV_ID]
+    n_tasks = r44_inv["task_id"].nunique()
+    total_duration = time_df["total_duration"].iloc[0]
+
+    cat_order = CATEGORY_ORDER
+    cat_labels = ["“reasoning”", "read code", "write code", "build", "test", "lint", "other bash", "other"]
+
+    pivot = time_df.pivot_table(index="category", columns="outcome", values="time_s", aggfunc="sum", fill_value=0)
+    for col in ["success", "failed"]:
+        if col not in pivot.columns:
+            pivot[col] = 0.0
+    pivot = pivot.reindex([c for c in cat_order if c in pivot.index]).fillna(0)
+    labels_used = [cat_labels[cat_order.index(c)] for c in pivot.index]
+
+    total_s = pivot["success"].sum() + pivot["failed"].sum()
+    total_success = pivot["success"].sum()
+    total_failed = pivot["failed"].sum()
+
+    fig, ax = plt.subplots(figsize=(13, 7))
+    x = range(len(pivot))
+    s_vals = pivot["success"].values / 60
+    f_vals = pivot["failed"].values / 60
+
+    ax.bar(x, s_vals, color="#4c72b0", label="successful tasks")
+    ax.bar(x, f_vals, bottom=s_vals, color="#c44e52", label="failed tasks")
+
+    for i, (s, f) in enumerate(zip(s_vals, f_vals)):
+        total_min = s + f
+        if total_min > 0:
+            pct = (s + f) * 60 / total_s * 100
+            ax.text(i, total_min + total_s / 60 * 0.01, f"{total_min:.0f}m ({pct:.0f}%)",
+                    ha="center", va="bottom", fontsize=10, color="#333")
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels_used, rotation=30, ha="right")
+    ax.set_ylabel("wall-clock time (minutes)")
+    ax.legend(loc="upper right", fontsize=10)
+
+    ax.text(
+        0.97, 0.82,
+        f"success time: {total_success/60:.0f}m ({total_success/total_s*100:.0f}%)\n"
+        f"failure time: {total_failed/60:.0f}m ({total_failed/total_s*100:.0f}%)",
+        transform=ax.transAxes, fontsize=11, va="top", ha="right",
+        bbox={"boxstyle": "round,pad=0.4", "facecolor": "#f8f8f8", "edgecolor": "#ccc"},
+    )
+
+    titled(
+        ax, "Run 44: where the time goes",
+        f"N={n_tasks} tasks with transcripts | total {total_duration/3600:.1f}h | "
+        f"time from inter-tool-call gaps; unattributed time → reasoning",
+    )
+    save(fig, out_dir, "time_decomposition")
+
+
+def chart_unit_economics(d: dict, out_dir: Path) -> None:
+    """What the cost produces: cost per KLOC, cost per requirement, cost per utility."""
+    inv = d["invocations"]
+    tasks = d["tasks"]
+    r44_inv = inv[inv["run_id"] == RUN44_INV_ID].copy()
+    if r44_inv.empty:
+        return
+
+    r44_inv["task_id_str"] = r44_inv["task_id"].astype(str)
+    total_cost = float(r44_inv["cost_usd"].sum())
+
+    success = r44_inv[
+        (r44_inv["status"] == "success")
+        & ((r44_inv["loc_prod_delta"] > 0) | (r44_inv["loc_test_delta"] > 0))
+    ]
+    last_success = success.sort_values("started_at").drop_duplicates("task_id", keep="last")
+    loc_prod = int(last_success[last_success["loc_prod_delta"] > 0]["loc_prod_delta"].sum())
+    loc_test = int(last_success[last_success["loc_test_delta"] > 0]["loc_test_delta"].sum())
+
+    tasks = tasks.copy()
+    tasks["task_id_str"] = tasks["task_id"].astype(str)
+    success_ids = set(last_success["task_id_str"].unique())
+    r44_stitch = tasks[(tasks["task_id_str"].isin(success_ids)) & (tasks["task_subtype"] == "stitch")]
+    distinct_targets = r44_stitch["target"].nunique()
+
+    def _count_reqs(r):
+        if pd.isna(r):
+            return 0
+        return len([x.strip() for x in str(r).split(",") if x.strip()])
+
+    reqs_completed = int(r44_stitch["requirements"].apply(_count_reqs).sum())
+
+    metrics = {
+        "prod code": total_cost / (loc_prod / 1000) if loc_prod > 0 else 0,
+        "test code": total_cost / (loc_test / 1000) if loc_test > 0 else 0,
+        "requirement": total_cost / reqs_completed if reqs_completed > 0 else 0,
+        "utility": total_cost / distinct_targets if distinct_targets > 0 else 0,
+    }
+    raw_values = {
+        "prod code": f"{loc_prod/1000:.1f} KLOC",
+        "test code": f"{loc_test/1000:.1f} KLOC",
+        "requirement": f"{reqs_completed} reqs",
+        "utility": f"{distinct_targets} utilities",
+    }
+
+    fig, ax = plt.subplots(figsize=(11, 7))
+    names = list(metrics.keys())
+    values = [metrics[n] for n in names]
+    colors = ["#4c72b0", "#55a868", "#dd8452", "#8172b3"]
+    bars = ax.bar(names, values, color=colors, edgecolor="white", linewidth=1.5)
+
+    for bar, val, name in zip(bars, values, names):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2, val + max(values) * 0.02,
+            f"${val:.2f}",
+            ha="center", va="bottom", fontsize=13, fontweight="bold", color="#333",
+        )
+        ax.text(
+            bar.get_x() + bar.get_width() / 2, val / 2,
+            raw_values[name],
+            ha="center", va="center", fontsize=10, color="white",
+        )
+
+    labels = [f"$/KLOC\n{n}" for n in names[:2]] + [f"$/req\n{names[2]}", f"$/utility\n{names[3]}"]
+    ax.set_xticks(range(len(names)))
+    ax.set_xticklabels(labels, fontsize=11)
+    ax.set_ylabel("cost (USD)")
+
+    ax.text(
+        0.97, 0.95,
+        f"total spend: ${total_cost:.0f}",
+        transform=ax.transAxes, fontsize=12, va="top", ha="right",
+        bbox={"boxstyle": "round,pad=0.4", "facecolor": "#f8f8f8", "edgecolor": "#ccc"},
+    )
+
+    titled(
+        ax, "Run 44: what the cost produces",
+        f"N={r44_inv['task_id'].nunique()} tasks | ${total_cost:.0f} total | "
+        f"{loc_prod+loc_test} LOC generated across {distinct_targets} utilities",
+    )
+    save(fig, out_dir, "unit_economics")
+
+
 RUN43_RUN_ID = "gh-4994-run43"
 
 CATEGORY_ORDER = [
@@ -768,6 +1079,9 @@ def main() -> int:
     chart_first_pass_build_test_lint(d, out_dir)
     chart_cost_by_phase(d, out_dir)
     chart_total_cost_pie(d, out_dir)
+    chart_cost_decomposition(d, out_dir)
+    chart_time_decomposition(d, out_dir)
+    chart_unit_economics(d, out_dir)
 
     summary = write_summary(d, summary_path)
     print("=== Tool-call summary ===")

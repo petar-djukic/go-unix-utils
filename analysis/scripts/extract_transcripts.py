@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Parse Claude Code stitch JSONL transcripts into tools.csv and task_turns.csv.
 
-Walks two transcript roots:
-  - analysis/raw/run-43-cobbler/history/  (the in-flight run, preserved)
+Walks transcript roots:
+  - analysis/raw/run-43-cobbler/history/  (run 43, preserved)
+  - .cobbler/history/                     (run 44, on generation branch merged to main)
   - analysis/raw/recovered/<run_id>/      (recovered Feb-Mar transcripts)
 
 For each *-stitch-log.log, the matching *-stitch-stats.yaml in the same
 directory supplies the task_id. task_id format differs across eras:
-  - run-43 era: numeric string ("4998") joinable to tasks.csv
+  - run-43/44 era: numeric string ("4998") joinable to tasks.csv
   - Feb-Mar era: opaque worktree slug ("generation-...-0ya"), not joinable
 The `task_id_kind` column tags each row as `numeric` or `slug` so downstream
 analysis can filter to the joinable subset.
@@ -297,6 +298,10 @@ def find_logs(repo_root: Path) -> Iterator[tuple[str, Path]]:
     if run43_root.exists():
         for f in sorted(run43_root.glob("*-stitch-log.log")):
             yield "gh-4994-run43", f
+    run44_root = repo_root / ".cobbler" / "history"
+    if run44_root.exists():
+        for f in sorted(run44_root.glob("*-stitch-log.log")):
+            yield "run44", f
 
 
 def _self_check_classifier() -> None:
