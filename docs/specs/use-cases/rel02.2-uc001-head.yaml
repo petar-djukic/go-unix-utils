@@ -57,4 +57,4 @@ out_of_scope:
   - Zero-terminated line mode (-z) is excluded per the PRD.
   - Decimal multiplier suffixes (kB, MB, GB) are excluded per the PRD.
 
-test_suite: test-rel02.2
+test_suite: test-rel-02.2

@@ -52,4 +52,4 @@ out_of_scope:
   - Interactive shell built-in echo behavior is not tested; only the standalone binary is covered.
   - --help and --version output matching is not required.
 
-test_suite: test-rel05.0
+test_suite: test-rel-05.0

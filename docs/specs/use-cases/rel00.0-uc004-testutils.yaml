@@ -86,4 +86,4 @@ out_of_scope:
   - Binary compilation and installation are handled by magefiles, not pkg/testutils.
   - Retry logic and filesystem mocking are explicitly excluded by the PRD.
 
-test_suite: test-rel00.0
+test_suite: test-rel-00.0

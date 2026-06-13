@@ -48,4 +48,4 @@ out_of_scope:
   - Testing with an actual terminal device depends on the test environment and
     may be skipped in CI.
 
-test_suite: test-rel04.1
+test_suite: test-rel-04.1

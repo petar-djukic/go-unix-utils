@@ -51,4 +51,4 @@ out_of_scope:
   - SELinux or ACL-based permission handling beyond POSIX mode bits.
   - Behavior on filesystems that do not support standard POSIX permissions.
 
-test_suite: test-rel06.0
+test_suite: test-rel-06.0

@@ -50,4 +50,4 @@ out_of_scope:
   - Unlinking symbolic links to directories; the test covers regular files and plain directories only.
   - Behavior when the file is open by another process (OS-dependent semantics).
 
-test_suite: test-rel06.0
+test_suite: test-rel-06.0

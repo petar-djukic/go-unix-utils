@@ -53,4 +53,4 @@ out_of_scope:
   - Unicode multi-column character width is not tested; LC_ALL=C single-byte behavior is the requirement.
   - Backspace column adjustment is not implemented.
 
-test_suite: test-rel05.1
+test_suite: test-rel-05.1

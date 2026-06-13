@@ -43,4 +43,4 @@ out_of_scope:
   - Flags found in net-tools hostname (-s, -f, -d, -i) are not part of the
     GNU coreutils hostname and are not tested.
 
-test_suite: test-rel03.1
+test_suite: test-rel-03.1

@@ -52,4 +52,4 @@ success_criteria:
 out_of_scope:
   - One-file-system mode is excluded per the PRD.
 
-test_suite: test-rel07.1
+test_suite: test-rel-07.1

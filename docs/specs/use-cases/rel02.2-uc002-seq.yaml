@@ -54,4 +54,4 @@ out_of_scope:
   - Infinity (inf) as an endpoint is excluded; sequences must be bounded.
   - Locale-aware decimal separators are excluded; output always uses '.'.
 
-test_suite: test-rel02.2
+test_suite: test-rel-02.2

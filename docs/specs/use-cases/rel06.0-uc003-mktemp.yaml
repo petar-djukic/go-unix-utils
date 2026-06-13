@@ -55,4 +55,4 @@ out_of_scope:
   - Byte-for-byte stdout comparison; random suffixes make exact matching impossible.
   - Security properties of the random name generation beyond what the OS provides.
 
-test_suite: test-rel06.0
+test_suite: test-rel-06.0

@@ -52,4 +52,4 @@ out_of_scope:
   - Unicode multi-byte grapheme width calculation is not implemented; LC_ALL=C single-byte behavior is the requirement.
   - Lines without a trailing newline are handled by matching GNU behavior exactly.
 
-test_suite: test-rel05.0
+test_suite: test-rel-05.0

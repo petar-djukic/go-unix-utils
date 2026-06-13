@@ -47,4 +47,4 @@ out_of_scope:
   - Locale-aware collation beyond LC_ALL=C is excluded per the PRD.
   - "--nocheck-order is excluded per the PRD."
 
-test_suite: test-rel08.1
+test_suite: test-rel-08.1

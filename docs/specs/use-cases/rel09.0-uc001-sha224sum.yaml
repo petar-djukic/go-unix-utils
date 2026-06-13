@@ -50,4 +50,4 @@ success_criteria:
 out_of_scope:
   - SHA-256 digests are not implemented by this utility.
 
-test_suite: test-rel09.0
+test_suite: test-rel-09.0

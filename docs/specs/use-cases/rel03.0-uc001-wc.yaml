@@ -61,4 +61,4 @@ out_of_scope:
   - --total=always and --total=only are covered in the test suite but are not part of the primary flow.
   - Binary input edge cases are covered in the test suite but are not the primary flow.
 
-test_suite: test-rel03.0
+test_suite: test-rel-03.0

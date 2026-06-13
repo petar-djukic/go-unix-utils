@@ -54,4 +54,4 @@ out_of_scope:
   - Parallel sort (--parallel) is excluded per the PRD.
   - Random sort (-R) is excluded per the PRD.
 
-test_suite: test-rel07.0
+test_suite: test-rel-07.0

@@ -53,4 +53,4 @@ out_of_scope:
   - comm does not sort its inputs; tests use pre-sorted files.
   - Locale-aware collation is not tested; LC_ALL=C is used throughout.
 
-test_suite: test-rel05.3
+test_suite: test-rel-05.3

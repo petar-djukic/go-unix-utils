@@ -49,4 +49,4 @@ out_of_scope:
   - Logical mode (-L) behavior depends on the PWD environment variable, which
     may vary between test environments.
 
-test_suite: test-rel04.1
+test_suite: test-rel-04.1

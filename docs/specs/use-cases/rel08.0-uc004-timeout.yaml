@@ -48,4 +48,4 @@ out_of_scope:
   - Interactive terminal behavior with --foreground is not tested in the differential harness.
   - Long-running timeout tests are excluded to keep test execution fast.
 
-test_suite: test-rel08.0
+test_suite: test-rel-08.0

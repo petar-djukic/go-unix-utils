@@ -49,4 +49,4 @@ out_of_scope:
   - "%q shell-escaped string is a bash extension excluded per the PRD."
   - "--help and --version as flags are excluded per the PRD."
 
-test_suite: test-rel08.1
+test_suite: test-rel-08.1

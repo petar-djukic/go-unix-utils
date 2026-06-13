@@ -53,4 +53,4 @@ success_criteria:
 out_of_scope:
   - Follow mode (-f) is excluded per the PRD.
 
-test_suite: test-rel07.0
+test_suite: test-rel-07.0

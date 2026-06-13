@@ -50,4 +50,4 @@ success_criteria:
 out_of_scope:
   - SHA-1 is cryptographically broken; this implementation targets format compatibility only.
 
-test_suite: test-rel05.4
+test_suite: test-rel-05.4

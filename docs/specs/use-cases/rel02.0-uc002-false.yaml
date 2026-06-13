@@ -42,4 +42,4 @@ out_of_scope:
   - --help and --version output formatting is verified manually, not via differential testing.
   - Write-error exit code (R2.3) is not tested in the differential harness.
 
-test_suite: test-rel02.0
+test_suite: test-rel-02.0

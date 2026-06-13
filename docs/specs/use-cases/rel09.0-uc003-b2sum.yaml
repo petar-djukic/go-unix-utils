@@ -52,4 +52,4 @@ out_of_scope:
   - BLAKE2s algorithm is not implemented.
   - Keyed hashing and BLAKE2 MAC mode are not implemented.
 
-test_suite: test-rel09.0
+test_suite: test-rel-09.0

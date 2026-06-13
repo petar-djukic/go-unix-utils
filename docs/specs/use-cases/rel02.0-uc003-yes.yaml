@@ -51,4 +51,4 @@ out_of_scope:
   - Empty string argument ("yes ''") behavior is documented in the PRD but may diverge
     between GNU versions; test with caution.
 
-test_suite: test-rel02.0
+test_suite: test-rel-02.0

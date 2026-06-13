@@ -43,4 +43,4 @@ out_of_scope:
   - Specific encoding scheme implementations (provided by Go standard library).
   - SIGPIPE handling (each cmd/ utility handles independently).
 
-test_suite: test-rel00.0
+test_suite: test-rel-00.0

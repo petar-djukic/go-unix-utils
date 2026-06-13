@@ -48,4 +48,4 @@ out_of_scope:
   - NUL-delimited output (-z) is tested for byte correctness but not for consumption by
     downstream tools.
 
-test_suite: test-rel02.0
+test_suite: test-rel-02.0

@@ -49,4 +49,4 @@ out_of_scope:
   - Integer overflow behavior at the int64 boundary is not tested differentially because
     GNU expr uses GMP for arbitrary precision.
 
-test_suite: test-rel08.0
+test_suite: test-rel-08.0

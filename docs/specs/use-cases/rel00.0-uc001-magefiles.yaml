@@ -64,4 +64,4 @@ out_of_scope:
   - mage install is exercised by the operator manually; it is not part of this use case's primary flow.
   - Orchestrator, generator, scaffold, and prompt targets are provided by cobbler-scaffold and not covered here.
 
-test_suite: test-rel00.0
+test_suite: test-rel-00.0

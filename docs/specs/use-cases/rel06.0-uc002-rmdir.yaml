@@ -51,4 +51,4 @@ out_of_scope:
   - Recursive removal of non-empty directories; that is the domain of rm -r.
   - Behavior when the directory is a mount point.
 
-test_suite: test-rel06.0
+test_suite: test-rel-06.0

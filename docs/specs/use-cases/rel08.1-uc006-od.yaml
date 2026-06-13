@@ -49,4 +49,4 @@ out_of_scope:
   - "--strings (-S) mode is excluded per the PRD."
   - "--endian byte-order control is excluded per the PRD."
 
-test_suite: test-rel08.1
+test_suite: test-rel-08.1

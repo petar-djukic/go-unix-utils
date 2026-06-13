@@ -42,4 +42,4 @@ out_of_scope:
   - Processor type (-p) and hardware platform (-i) are not reported by arch;
     use uname for those fields.
 
-test_suite: test-rel03.1
+test_suite: test-rel-03.1

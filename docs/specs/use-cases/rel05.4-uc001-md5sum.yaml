@@ -52,4 +52,4 @@ out_of_scope:
   - HMAC-MD5 variants are not tested.
   - md5sum is not used for security; only format compatibility is verified.
 
-test_suite: test-rel05.4
+test_suite: test-rel-05.4

@@ -46,4 +46,4 @@ out_of_scope:
   - Numbers exceeding int64 range are not tested because Go's int64 and GNU factor's
     unsigned long long have different overflow behavior.
 
-test_suite: test-rel08.0
+test_suite: test-rel-08.0

@@ -48,4 +48,4 @@ out_of_scope:
   - "--filter mode is not tested via differential comparison because it executes shell commands."
   - "--verbose output is excluded per the PRD."
 
-test_suite: test-rel08.1
+test_suite: test-rel-08.1

@@ -50,4 +50,4 @@ out_of_scope:
   - Crown margin mode (-c) is excluded per the PRD.
   - Locale-aware line breaking is excluded per the PRD.
 
-test_suite: test-rel08.1
+test_suite: test-rel-08.1

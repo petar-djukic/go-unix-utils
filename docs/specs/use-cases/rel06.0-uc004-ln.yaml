@@ -51,4 +51,4 @@ out_of_scope:
   - Cross-filesystem hard link restrictions; tests run within a single filesystem.
   - Linking to directories (hard links to directories are disallowed on most systems).
 
-test_suite: test-rel06.0
+test_suite: test-rel-06.0

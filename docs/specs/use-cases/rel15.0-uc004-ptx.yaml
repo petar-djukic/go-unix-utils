@@ -37,4 +37,4 @@ success_criteria:
 out_of_scope:
   - Platform-specific features not available on macOS.
 
-test_suite: test-rel15.0
+test_suite: test-rel-15.0

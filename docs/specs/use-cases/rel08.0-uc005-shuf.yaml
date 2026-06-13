@@ -49,4 +49,4 @@ out_of_scope:
   - --random-source testing is excluded because it changes the output deterministically
     but depends on the random file content.
 
-test_suite: test-rel08.0
+test_suite: test-rel-08.0

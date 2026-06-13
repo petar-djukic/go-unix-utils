@@ -53,4 +53,4 @@ success_criteria:
 out_of_scope:
   - Reflink and sparse file support are excluded per the PRD.
 
-test_suite: test-rel07.1
+test_suite: test-rel-07.1

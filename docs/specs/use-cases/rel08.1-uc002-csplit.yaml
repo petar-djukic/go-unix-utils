@@ -48,4 +48,4 @@ out_of_scope:
   - "--suppress-matched advanced behavior is excluded per the PRD."
   - "--keep-files on error is excluded per the PRD."
 
-test_suite: test-rel08.1
+test_suite: test-rel-08.1
