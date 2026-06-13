@@ -44,4 +44,4 @@ out_of_scope:
   - The distinction between logname and whoami output depends on the login
     session and is not artificially tested.
 
-test_suite: test-rel04.1
+test_suite: test-rel-04.1

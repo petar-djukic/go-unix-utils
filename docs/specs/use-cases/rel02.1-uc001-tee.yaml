@@ -57,4 +57,4 @@ out_of_scope:
     is not automated in the differential harness.
   - Output-error modes (--output-error) and -p flag are excluded per the PRD.
 
-test_suite: test-rel02.1
+test_suite: test-rel-02.1

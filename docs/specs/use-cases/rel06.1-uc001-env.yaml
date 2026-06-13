@@ -51,4 +51,4 @@ out_of_scope:
   - Signal handling and the -S (split string) option are not tested.
   - Interaction with login shells or shell-specific environment inheritance is not tested.
 
-test_suite: test-rel06.1
+test_suite: test-rel-06.1

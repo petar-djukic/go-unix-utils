@@ -52,4 +52,4 @@ out_of_scope:
     downstream tools (xargs -0).
   - Multiple variable arguments on a single invocation are tested only if gprintenv supports them.
 
-test_suite: test-rel06.1
+test_suite: test-rel-06.1

@@ -43,4 +43,4 @@ out_of_scope:
   - The meaning of the host identifier value is platform-dependent and not validated
     beyond matching the reference binary output.
 
-test_suite: test-rel03.1
+test_suite: test-rel-03.1

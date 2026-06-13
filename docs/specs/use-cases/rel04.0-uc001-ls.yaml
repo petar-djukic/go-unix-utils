@@ -72,4 +72,4 @@ out_of_scope:
   - SIGWINCH behavior is specified in srd008-ls R4.5 but is not directly testable in the
     differential harness.
 
-test_suite: test-rel04.0
+test_suite: test-rel-04.0

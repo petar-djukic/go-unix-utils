@@ -184,186 +184,186 @@ use_case_index:
     title: "Count lines, words, and bytes via wc"
     release: rel03.0
     status: spec_complete
-    test_suite: test-rel03.0
+    test_suite: test-rel-03.0
     path: docs/specs/use-cases/rel03.0-uc001-wc.yaml
   - id: rel01.1-uc001-cat
     title: "Concatenate and display files via cat"
     release: rel01.1
     status: spec_complete
-    test_suite: test-rel01.1
+    test_suite: test-rel-01.1
     path: docs/specs/use-cases/rel01.1-uc001-cat.yaml
   - id: rel01.2-uc001-sponge
     title: "Soak stdin and write to file via sponge"
     release: rel01.2
     status: spec_complete
-    test_suite: test-rel01.2
+    test_suite: test-rel-01.2
     path: docs/specs/use-cases/rel01.2-uc001-sponge.yaml
   - id: rel01.3-uc001-du
     title: "Report recursive directory disk usage via du"
     release: rel01.3
     status: spec_complete
-    test_suite: test-rel01.3
+    test_suite: test-rel-01.3
     path: docs/specs/use-cases/rel01.3-uc001-du.yaml
   - id: rel04.0-uc001-ls
     title: "List directory contents via ls (core flags)"
     release: rel04.0
     status: spec_complete
-    test_suite: test-rel04.0
+    test_suite: test-rel-04.0
     path: docs/specs/use-cases/rel04.0-uc001-ls.yaml
   - id: rel04.0-uc002-ls-extended
     title: "List directory contents via ls (extended flags)"
     release: rel04.0
     status: spec_complete
-    test_suite: test-rel04.0-ext
+    test_suite: test-rel-04.0-ext
     path: docs/specs/use-cases/rel04.0-uc002-ls-extended.yaml
   - id: rel15.0-uc001-ts
     title: "Timestamp stdin lines via ts"
     release: rel15.0
     status: spec_complete
-    test_suite: test-rel15.0
+    test_suite: test-rel-15.0
     path: docs/specs/use-cases/rel15.0-uc001-ts.yaml
 
   - id: rel02.0-uc001-true
     title: "Exit successfully via true"
     release: rel02.0
     status: pending
-    test_suite: test-rel02.0
+    test_suite: test-rel-02.0
     path: docs/specs/use-cases/rel02.0-uc001-true.yaml
   - id: rel02.0-uc002-false
     title: "Exit unsuccessfully via false"
     release: rel02.0
     status: pending
-    test_suite: test-rel02.0
+    test_suite: test-rel-02.0
     path: docs/specs/use-cases/rel02.0-uc002-false.yaml
   - id: rel02.0-uc003-yes
     title: "Repeatedly output a string via yes"
     release: rel02.0
     status: pending
-    test_suite: test-rel02.0
+    test_suite: test-rel-02.0
     path: docs/specs/use-cases/rel02.0-uc003-yes.yaml
   - id: rel02.0-uc004-basename
     title: "Strip directory and suffix from filenames via basename"
     release: rel02.0
     status: pending
-    test_suite: test-rel02.0
+    test_suite: test-rel-02.0
     path: docs/specs/use-cases/rel02.0-uc004-basename.yaml
   - id: rel02.0-uc005-dirname
     title: "Strip last component from file paths via dirname"
     release: rel02.0
     status: pending
-    test_suite: test-rel02.0
+    test_suite: test-rel-02.0
     path: docs/specs/use-cases/rel02.0-uc005-dirname.yaml
   - id: rel02.1-uc001-tee
     title: "Copy stdin to stdout and files via tee"
     release: rel02.1
     status: pending
-    test_suite: test-rel02.1
+    test_suite: test-rel-02.1
     path: docs/specs/use-cases/rel02.1-uc001-tee.yaml
   - id: rel02.2-uc001-head
     title: "Print the first lines or bytes of files via head"
     release: rel02.2
     status: pending
-    test_suite: test-rel02.2
+    test_suite: test-rel-02.2
     path: docs/specs/use-cases/rel02.2-uc001-head.yaml
   - id: rel06.0-uc001-mkdir
     title: "Create directories via mkdir"
     release: rel06.0
     status: spec_complete
-    test_suite: test-rel06.0
+    test_suite: test-rel-06.0
     path: docs/specs/use-cases/rel06.0-uc001-mkdir.yaml
   - id: rel06.0-uc002-rmdir
     title: "Remove empty directories via rmdir"
     release: rel06.0
     status: spec_complete
-    test_suite: test-rel06.0
+    test_suite: test-rel-06.0
     path: docs/specs/use-cases/rel06.0-uc002-rmdir.yaml
   - id: rel06.0-uc003-mktemp
     title: "Create temporary files and directories via mktemp"
     release: rel06.0
     status: spec_complete
-    test_suite: test-rel06.0
+    test_suite: test-rel-06.0
     path: docs/specs/use-cases/rel06.0-uc003-mktemp.yaml
   - id: rel06.0-uc004-ln
     title: "Create links between files via ln"
     release: rel06.0
     status: spec_complete
-    test_suite: test-rel06.0
+    test_suite: test-rel-06.0
     path: docs/specs/use-cases/rel06.0-uc004-ln.yaml
   - id: rel06.0-uc005-unlink
     title: "Remove a single file via unlink"
     release: rel06.0
     status: spec_complete
-    test_suite: test-rel06.0
+    test_suite: test-rel-06.0
     path: docs/specs/use-cases/rel06.0-uc005-unlink.yaml
   - id: rel06.1-uc001-env
     title: "Run a command in a modified environment via env"
     release: rel06.1
     status: spec_complete
-    test_suite: test-rel06.1
+    test_suite: test-rel-06.1
     path: docs/specs/use-cases/rel06.1-uc001-env.yaml
   - id: rel06.1-uc002-printenv
     title: "Print environment variables via printenv"
     release: rel06.1
     status: spec_complete
-    test_suite: test-rel06.1
+    test_suite: test-rel-06.1
     path: docs/specs/use-cases/rel06.1-uc002-printenv.yaml
   - id: rel06.1-uc003-id
     title: "Print user and group information via id"
     release: rel06.1
     status: spec_complete
-    test_suite: test-rel06.1
+    test_suite: test-rel-06.1
     path: docs/specs/use-cases/rel06.1-uc003-id.yaml
   - id: rel06.1-uc004-whoami
     title: "Print effective user name via whoami"
     release: rel06.1
     status: spec_complete
-    test_suite: test-rel06.1
+    test_suite: test-rel-06.1
     path: docs/specs/use-cases/rel06.1-uc004-whoami.yaml
   - id: rel06.1-uc005-groups
     title: "Print group memberships via groups"
     release: rel06.1
     status: spec_complete
-    test_suite: test-rel06.1
+    test_suite: test-rel-06.1
     path: docs/specs/use-cases/rel06.1-uc005-groups.yaml
 
 test_suite_index:
-  - id: test-rel03.0
+  - id: test-rel-03.0
     title: "Test Suite: rel03.0 — wc specification and differential test"
     traces:
       - rel03.0-uc001-wc
     test_case_count: 13
-    path: docs/specs/test-suites/test-rel03.0.yaml
-  - id: test-rel01.1
+    path: docs/specs/test-suites/test-rel-03.0.yaml
+  - id: test-rel-01.1
     title: "Test Suite: rel01.1 — cat specification and differential test"
     traces:
       - rel01.1-uc001-cat
     test_case_count: 16
-    path: docs/specs/test-suites/test-rel01.1.yaml
-  - id: test-rel01.2
+    path: docs/specs/test-suites/test-rel-01.1.yaml
+  - id: test-rel-01.2
     title: "Test Suite: rel01.2 — sponge specification and differential test"
     traces:
       - rel01.2-uc001-sponge
     test_case_count: 8
-    path: docs/specs/test-suites/test-rel01.2.yaml
-  - id: test-rel01.3
+    path: docs/specs/test-suites/test-rel-01.2.yaml
+  - id: test-rel-01.3
     title: "Test Suite: rel01.3 — du specification and differential test"
     traces:
       - rel01.3-uc001-du
     test_case_count: 11
-    path: docs/specs/test-suites/test-rel01.3.yaml
-  - id: test-rel04.0
+    path: docs/specs/test-suites/test-rel-01.3.yaml
+  - id: test-rel-04.0
     title: "Test Suite: rel04.0 — ls core flag listing"
     traces:
       - rel04.0-uc001-ls
     test_case_count: 13
-    path: docs/specs/test-suites/test-rel04.0.yaml
-  - id: test-rel04.0-ext
+    path: docs/specs/test-suites/test-rel-04.0.yaml
+  - id: test-rel-04.0-ext
     title: "Test Suite: rel04.0 extended — ls extended flag listing"
     traces:
       - rel04.0-uc002-ls-extended
     test_case_count: 14
-    path: docs/specs/test-suites/test-rel04.0-ext.yaml
-  - id: test-rel15.0
+    path: docs/specs/test-suites/test-rel-04.0-ext.yaml
+  - id: test-rel-15.0
     title: "Test Suite: rel15.0 — ts, stty, pr, ptx"
     traces:
       - rel15.0-uc001-ts
@@ -371,9 +371,9 @@ test_suite_index:
       - rel15.0-uc003-pr
       - rel15.0-uc004-ptx
     test_case_count: 17
-    path: docs/specs/test-suites/test-rel15.0.yaml
+    path: docs/specs/test-suites/test-rel-15.0.yaml
 
-  - id: test-rel02.0
+  - id: test-rel-02.0
     title: "Test Suite: rel02.0 — trivial utilities (true, false, yes, basename, dirname)"
     traces:
       - rel02.0-uc001-true
@@ -382,20 +382,20 @@ test_suite_index:
       - rel02.0-uc004-basename
       - rel02.0-uc005-dirname
     test_case_count: 25
-    path: docs/specs/test-suites/test-rel02.0.yaml
-  - id: test-rel02.1
+    path: docs/specs/test-suites/test-rel-02.0.yaml
+  - id: test-rel-02.1
     title: "Test Suite: rel02.1 — tee"
     traces:
       - rel02.1-uc001-tee
     test_case_count: 9
-    path: docs/specs/test-suites/test-rel02.1.yaml
-  - id: test-rel02.2
+    path: docs/specs/test-suites/test-rel-02.1.yaml
+  - id: test-rel-02.2
     title: "Test Suite: rel02.2 — head"
     traces:
       - rel02.2-uc001-head
     test_case_count: 16
-    path: docs/specs/test-suites/test-rel02.2.yaml
-  - id: test-rel06.0
+    path: docs/specs/test-suites/test-rel-02.2.yaml
+  - id: test-rel-06.0
     title: "Test Suite: rel06.0 — file/directory creation and removal (mkdir, rmdir, mktemp, ln, unlink)"
     traces:
       - rel06.0-uc001-mkdir
@@ -404,8 +404,8 @@ test_suite_index:
       - rel06.0-uc004-ln
       - rel06.0-uc005-unlink
     test_case_count: 20
-    path: docs/specs/test-suites/test-rel06.0.yaml
-  - id: test-rel06.1
+    path: docs/specs/test-suites/test-rel-06.0.yaml
+  - id: test-rel-06.1
     title: "Test Suite: rel06.1 — environment and identity (env, printenv, id, whoami, groups)"
     traces:
       - rel06.1-uc001-env
@@ -414,7 +414,7 @@ test_suite_index:
       - rel06.1-uc004-whoami
       - rel06.1-uc005-groups
     test_case_count: 18
-    path: docs/specs/test-suites/test-rel06.1.yaml
+    path: docs/specs/test-suites/test-rel-06.1.yaml
 
 srd_to_use_case_mapping:
   - use_case: rel03.0-uc001-wc
@@ -551,10 +551,10 @@ traceability_diagram: |
     UC18["rel06.0-uc004-ln"] & UC19["rel06.0-uc005-unlink"]
     UC20["rel06.1-uc001-env"] & UC21["rel06.1-uc002-printenv"] & UC22["rel06.1-uc003-id"]
     UC23["rel06.1-uc004-whoami"] & UC24["rel06.1-uc005-groups"]
-    TS1["test-rel03.0"] & TS2["test-rel01.1"] & TS3["test-rel01.2"]
-    TS4["test-rel01.3"] & TS5["test-rel04.0"] & TS6["test-rel04.0-ext"] & TS7["test-rel15.0"]
-    TS8["test-rel02.0"] & TS9["test-rel02.1"] & TS10["test-rel02.2"]
-    TS11["test-rel06.0"] & TS12["test-rel06.1"]
+    TS1["test-rel-03.0"] & TS2["test-rel-01.1"] & TS3["test-rel-01.2"]
+    TS4["test-rel-01.3"] & TS5["test-rel-04.0"] & TS6["test-rel-04.0-ext"] & TS7["test-rel-15.0"]
+    TS8["test-rel-02.0"] & TS9["test-rel-02.1"] & TS10["test-rel-02.2"]
+    TS11["test-rel-06.0"] & TS12["test-rel-06.1"]
     V --> A
     A --> P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9
     A --> P12 & P13 & P14 & P15 & P16 & P17 & P18

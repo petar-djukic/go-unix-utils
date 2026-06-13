@@ -48,4 +48,4 @@ out_of_scope:
   - Locale-aware digit grouping is excluded per the PRD.
   - "--grouping is excluded per the PRD."
 
-test_suite: test-rel08.1
+test_suite: test-rel-08.1

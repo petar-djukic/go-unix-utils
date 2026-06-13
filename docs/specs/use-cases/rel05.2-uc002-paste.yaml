@@ -52,4 +52,4 @@ out_of_scope:
   - Files larger than available file descriptors are not a concern; paste opens all files simultaneously.
   - Multi-byte delimiter escape sequences beyond the defined set are not tested.
 
-test_suite: test-rel05.2
+test_suite: test-rel-05.2

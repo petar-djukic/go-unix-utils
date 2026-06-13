@@ -49,4 +49,4 @@ out_of_scope:
   - Creating or modifying symbolic links is not supported; use ln for that.
   - Relative output (--relative-to) is not supported; use realpath for that.
 
-test_suite: test-rel04.1
+test_suite: test-rel-04.1

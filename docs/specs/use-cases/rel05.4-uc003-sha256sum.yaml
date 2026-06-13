@@ -50,4 +50,4 @@ success_criteria:
 out_of_scope:
   - SHA-224 and SHA-256/224 truncations are not implemented.
 
-test_suite: test-rel05.4
+test_suite: test-rel-05.4

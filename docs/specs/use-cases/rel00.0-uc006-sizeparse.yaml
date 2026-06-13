@@ -42,4 +42,4 @@ out_of_scope:
   - Size formatting for output (handled by pkg/format.HumanSize).
   - Floating-point size parsing.
 
-test_suite: test-rel00.0
+test_suite: test-rel-00.0

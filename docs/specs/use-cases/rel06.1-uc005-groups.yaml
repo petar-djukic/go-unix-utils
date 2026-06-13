@@ -51,4 +51,4 @@ out_of_scope:
     The exact format of the "user : group1 group2" prefix varies across platforms;
     the test compares against ggroups output, not a hardcoded format.
 
-test_suite: test-rel06.1
+test_suite: test-rel-06.1

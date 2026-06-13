@@ -53,4 +53,4 @@ out_of_scope:
   - Real vs effective ID distinction (-r flag) is tested only if the test environment
     supports setuid scenarios.
 
-test_suite: test-rel06.1
+test_suite: test-rel-06.1

@@ -54,4 +54,4 @@ out_of_scope:
   - Multi-byte delimiter support is not tested; -d accepts one byte.
   - Locale-aware character cutting for -c is not tested beyond LC_ALL=C behavior.
 
-test_suite: test-rel05.2
+test_suite: test-rel-05.2

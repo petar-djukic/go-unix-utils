@@ -48,4 +48,4 @@ out_of_scope:
   - Setting system information is not supported and not tested.
   - Long-form flag names beyond --help and --version are not tested.
 
-test_suite: test-rel03.1
+test_suite: test-rel-03.1

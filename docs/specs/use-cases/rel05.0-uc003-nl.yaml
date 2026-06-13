@@ -52,4 +52,4 @@ out_of_scope:
   - Regex numbering style (-b p RE) beyond basic pattern matching is not the primary test focus.
   - Locale-aware regex collation is not tested; LC_ALL=C is used throughout.
 
-test_suite: test-rel05.0
+test_suite: test-rel-05.0

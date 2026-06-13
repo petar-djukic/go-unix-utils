@@ -47,4 +47,4 @@ out_of_scope:
   - Symlink timestamp modification (-h) is platform-dependent and not tested on all systems.
   - Nanosecond-precision timestamp comparison is not performed (filesystem granularity varies).
 
-test_suite: test-rel08.0
+test_suite: test-rel-08.0

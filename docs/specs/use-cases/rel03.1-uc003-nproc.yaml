@@ -47,4 +47,4 @@ out_of_scope:
   - CPU affinity and cgroup limits are not tested; on macOS, available and installed
     counts are typically identical.
 
-test_suite: test-rel03.1
+test_suite: test-rel-03.1

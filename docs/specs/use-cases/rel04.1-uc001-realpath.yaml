@@ -51,4 +51,4 @@ out_of_scope:
   - Behavior on filesystems with unusual symlink configurations is not tested
     beyond what the test environment provides.
 
-test_suite: test-rel04.1
+test_suite: test-rel-04.1

@@ -54,4 +54,4 @@ out_of_scope:
   - uniq does not sort its input; tests use pre-sorted or deliberately ordered input.
   - The --group flag is not implemented.
 
-test_suite: test-rel05.3
+test_suite: test-rel-05.3

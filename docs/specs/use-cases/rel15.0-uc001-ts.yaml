@@ -56,4 +56,4 @@ out_of_scope:
   - -m mode (monotonic clock) differential testing is noted in the test suite but excluded from the primary flow because the reference binary and Go binary may use different monotonic sources.
   - The use case does not cover cmd/ts code generation by the orchestrator; that is handled by the cobbler:stitch mage target.
 
-test_suite: test-rel15.0
+test_suite: test-rel-15.0

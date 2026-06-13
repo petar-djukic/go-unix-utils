@@ -74,4 +74,4 @@ out_of_scope:
   - SIGWINCH and terminal resize behavior during -R recursive listing is not testable in the
     differential harness.
 
-test_suite: test-rel04.0-ext
+test_suite: test-rel-04.0-ext

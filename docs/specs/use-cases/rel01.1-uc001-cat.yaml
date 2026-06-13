@@ -71,4 +71,4 @@ out_of_scope:
   - Same-file detection warning (cat reading from its own output) is not tested.
   - -u flag is accepted but has no observable effect; a test verifies acceptance only.
 
-test_suite: test-rel01.1
+test_suite: test-rel-01.1

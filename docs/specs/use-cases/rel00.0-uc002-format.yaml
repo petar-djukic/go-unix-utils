@@ -64,4 +64,4 @@ out_of_scope:
   - Terminal hyperlinks are not in scope.
   - East-asian full-width character width computation is deferred.
 
-test_suite: test-rel00.0
+test_suite: test-rel-00.0

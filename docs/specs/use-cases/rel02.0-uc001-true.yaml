@@ -44,4 +44,4 @@ out_of_scope:
   - Write-error exit code (R2.3) is not tested in the differential harness; it requires
     closing stdout before invocation, which is platform-specific.
 
-test_suite: test-rel02.0
+test_suite: test-rel-02.0

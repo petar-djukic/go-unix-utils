@@ -47,4 +47,4 @@ out_of_scope:
   - Extra arguments are rejected with an error; this is tested for exit code but not
     for exact error message wording.
 
-test_suite: test-rel06.1
+test_suite: test-rel-06.1
